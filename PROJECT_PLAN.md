@@ -13,8 +13,8 @@ This feeds into an O'Reilly Radar article series. Article 6 ("testing the test")
 - 2,564 defects mined from 50 repos, 14 languages, 14 categories
 - Master index: `dataset/DEFECT_LIBRARY.md` + `dataset/defects.jsonl`
 - Sample per-repo description files: `curl` (5 of 49) and `cli` (20 of 71)
-- Council of three review completed (Cursor/GPT-5.4 and Copilot/Gemini 2.5 Pro)
-- Council feedback incorporated: schema normalized, tooling paths fixed, docs corrected, JSONL export added, issue text reuse policy established
+- Council of three review in progress (Cursor/GPT-5.4 and Copilot/Gemini 2.5 Pro); Round 1 feedback incorporated, Round 2 verification underway
+- Round 1 fixes: schema normalized, tooling paths fixed, docs corrected, JSONL export added, issue text reuse policy established, legacy prefix map corrected, caret-style pre_fix_commits resolved to SHAs
 - Iterative playbook improvement loop planned but not yet started
 
 ## Phase 1: Complete the dataset

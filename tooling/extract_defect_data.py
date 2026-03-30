@@ -82,11 +82,11 @@ PREFIX_MAP = {
     "OB": ("oban", "oban-bg/oban"),
     "EQ": ("edgequake", "raphaelmansuy/edgequake"),
     "AS": ("agentscope-java", "alibaba/AgentScope"),
-    # Small repos from early mining
-    "P": ("pydantic", "pydantic/pydantic"),
-    "G": ("cli", "cli/cli"),
-    "J": ("jellyfin", "jellyfin/jellyfin"),
-    "O": ("okhttp", "square/okhttp"),
+    # Legacy prefixes from initial mining rounds
+    "P": ("spring-petclinic", "spring-projects/spring-petclinic"),
+    "G": ("gson", "google/gson"),
+    "J": ("javalin", "javalin/javalin"),
+    "O": ("octobatch", "andrewstellman/octobatch"),
 }
 
 

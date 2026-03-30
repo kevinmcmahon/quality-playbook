@@ -19,7 +19,7 @@ git diff 28fbf4a8..86b39c2     # shows the actual fix
 
 ## What's in the dataset
 
-Each defect has: a fix commit SHA, the pre-fix parent commit, severity, one of 14 canonical defect categories, a description derived from the actual git diff, the original GitHub issue/PR text (when available), the complete list of files changed, and a suggested detection angle for code review playbooks.
+Each defect has: a fix commit SHA, the pre-fix parent commit, severity, one of 14 canonical defect categories, a description derived from the actual git diff, a summary of the original GitHub issue/PR (when available), the complete list of files changed, and a suggested detection angle for code review playbooks.
 
 ### Languages
 

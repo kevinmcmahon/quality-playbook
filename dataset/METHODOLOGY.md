@@ -47,8 +47,8 @@ Each repository will have a `dataset/defects/<repo>/defects.md` file containing 
 **Commit message**:
 (verbatim commit message from git log)
 
-**Original issue description**:
-(full text from the GitHub issue or PR that reported/fixed this defect)
+**Issue/PR summary**:
+(1-3 sentence summary of the GitHub issue or PR, in our own words; see Issue Text Reuse Policy below)
 
 **Defect summary**:
 (2-4 sentence description of what was wrong, derived from examining the actual git diff)

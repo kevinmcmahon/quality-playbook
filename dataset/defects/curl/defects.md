@@ -29,7 +29,7 @@ Found by Codex Security
 Closes #21123
 ```
 
-**Original issue description**:
+**Issue/PR summary**:
 PR #21123 by Daniel Stenberg (bagder). The fix addresses a memory safety vulnerability where `data->state.url` could reference freed memory if `curl_url_get()` fails during `Curl_pretransfer()` execution when `CURLOPT_CURLU` is active. Since the pointer can be extracted with `CURLINFO_EFFECTIVE_URL` later, it must not linger pointing to freed memory. Found by Codex Security.
 
 **Defect summary**: Use-after-free in CURLINFO_EFFECTIVE_URL via OOM path. The `data->state.url` pointer was not cleared when URL extraction failed during pre-transfer setup, leaving a dangling pointer that could be dereferenced by subsequent info queries.
@@ -62,7 +62,7 @@ Spotted by Codex Security
 Closes #21111
 ```
 
-**Original issue description**:
+**Issue/PR summary**:
 PR #21111 by Daniel Stenberg (bagder). A low-risk integer overflow vulnerability on legacy Solaris systems in socket connectivity code. The PR consisted of a single commit addressing potential integer overflow conditions when computing socket connection parameters. Spotted by Codex Security.
 
 **Defect summary**: Low-risk integer overflow in socket connection on ancient Solaris. Arithmetic on socket-related values could overflow on platforms with narrower integer widths.
@@ -114,7 +114,7 @@ memory allocated by the tool itself must be freed with curlx_free().
 Closes #21099
 ```
 
-**Original issue description**:
+**Issue/PR summary**:
 PR #21099 by Daniel Stenberg (bagder). Addresses several critical memory management issues: memory allocated by libcurl must be freed with `curl_free()`, and memory allocated by the tool itself must be freed with `curlx_free()`. The PR also adds `--enable-init-mem-debug` / `CURL_DEBUG_GLOBAL_MEM` to detect memory mixups using custom allocators, adds "global-mem-debug" to curl's feature list, and introduces a new valgrind CI job to catch allocator mismatches.
 
 **Defect summary**: Multiple memory allocation/deallocation mismatches across 7 files. The curl tool was using the wrong free function (curl_free vs curlx_free) for memory returned from different allocation sources, which could corrupt the heap when custom allocators are active.
@@ -157,7 +157,7 @@ Spotted by Codex Security
 Closes #21075
 ```
 
-**Original issue description**:
+**Issue/PR summary**:
 PR #21075 by Daniel Stenberg (bagder). The fix ensures that strings returned from `curl_easy_escape()` are properly freed using `curl_free()` rather than the tool's internal memory management functions. This prevents potential problems when libcurl uses custom memory allocators. The implementation duplicates the escaped output into tool-owned memory and properly frees the original libcurl allocation. Follow-up to commit f37840a. Spotted by Codex Security.
 
 **Defect summary**: Incorrect free function for `curl_easy_escape()` return value. The tool was using its internal free function on memory owned by libcurl, which would corrupt the heap when custom allocators are configured.
@@ -194,7 +194,7 @@ Reported-by: James Fuller
 Closes #21062
 ```
 
-**Original issue description**:
+**Issue/PR summary**:
 PR #21062 by Daniel Stenberg (bagder). Addresses a memory leak occurring when curl tool uploads fail, particularly in retry scenarios. The fix centralizes per-transfer resource cleanup in a `del_per_transfer()` function, encompassing `per->curl`, `per->url`, `per->outfile`, and `per->uploadfile`, eliminating redundant cleanup code from `post_per_transfer()`. Includes test case 1673 with repeated upload failures to verify no leak. Reported by James Fuller.
 
 **Defect summary**: Memory leak on repeated upload failures. Per-transfer resources (curl handle, URL, output file, upload file) were not consistently cleaned up when uploads failed, causing cumulative memory leaks in retry scenarios.
