@@ -1,0 +1,19 @@
+# Repository clones (3.6GB+ of git history, not suitable for version control)
+repos/
+
+# Extracted defect data (5.6MB JSON, regenerable from repos + tooling scripts)
+tooling/defect_data.json
+
+# Python artifacts
+__pycache__/
+*.pyc
+.venv/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor artifacts
+*.swp
+*.swo
+*~
