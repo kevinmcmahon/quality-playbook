@@ -5,8 +5,8 @@ import json
 import subprocess
 from pathlib import Path
 
-DATA_FILE = Path("/sessions/quirky-practical-cerf/defect_data.json")
-REPOS_DIR = Path("/sessions/quirky-practical-cerf/repos")
+DATA_FILE = Path("tooling/defect_data.json")
+REPOS_DIR = Path("repos")
 
 with open(DATA_FILE) as f:
     all_data = json.load(f)

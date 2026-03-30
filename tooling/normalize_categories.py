@@ -1,10 +1,23 @@
 #!/usr/bin/env python3
-"""Normalize all defect categories to exactly 14 canonical labels."""
+"""Normalize all defect categories to exactly 14 canonical labels.
+
+Usage:
+    python3 tooling/normalize_categories.py [--library PATH]
+
+Defaults assume you're running from the QPB repo root:
+    --library  dataset/DEFECT_LIBRARY.md
+"""
+import argparse
 import re
 from collections import defaultdict
 from pathlib import Path
 
-LIBRARY = Path("/sessions/quirky-practical-cerf/mnt/pbprdf/DEFECT_LIBRARY.md")
+parser = argparse.ArgumentParser(description="Normalize QPB defect categories")
+parser.add_argument("--library", type=Path, default=Path("dataset/DEFECT_LIBRARY.md"),
+                    help="Path to DEFECT_LIBRARY.md")
+args = parser.parse_args()
+
+LIBRARY = args.library
 
 CANONICAL = [
     "validation gap",

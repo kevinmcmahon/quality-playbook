@@ -4,9 +4,9 @@
 **Language**: Go
 **Analysis Date**: 2026-03-29
 **Analyzer**: Claude Code Agent
-**Defect Count**: 20 (GH-01 through GH-20)
+**Defect Count**: 20 of 71 (GH-01 through GH-20; format sample)
 
-This file documents the first 20 real defects from the GitHub CLI repository, analyzed as part of the Quality Playbook Benchmark (QPB) dataset. Each defect was identified by examining the actual fix commit and understanding what the pre-fix code did wrong.
+This file documents the first 20 real defects from the GitHub CLI repository, analyzed as part of the Quality Playbook Benchmark (QPB) dataset. Each defect was identified by examining the actual fix commit and understanding what the pre-fix code did wrong. This uses an earlier format; the newer format in `curl/defects.md` (with commit message, original issue text, files changed, and diff stat) will be adopted for all repos.
 
 ---
 

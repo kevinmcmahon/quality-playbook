@@ -10,6 +10,12 @@ Results of running the quality playbook against pre-fix commits from [DEFECT_LIB
 
 Scoring is conservative: a "direct hit" requires that someone reading the playbook output would know to look at the specific code that has the bug. "Adjacent" means the output would lead a developer to the right neighborhood but not the specific issue.
 
+Additional tracking (not scores, but recorded alongside):
+- **Not evaluable** — Tool crashed, timed out, or produced no output for this defect
+- **False positive** — Tool flagged an issue in the affected file that doesn't correspond to any known defect
+
+Each score should include a brief evidence note explaining why that score was assigned, to enable adjudication and cross-reviewer consistency.
+
 ## Execution Parameters
 
 Each test run records:
@@ -49,28 +55,26 @@ Copy this section for each test run:
 
 | Category | Direct | Adjacent | Miss | Detection % |
 |----------|--------|----------|------|-------------|
-| state machine gap | | | | |
-| type safety | | | | |
-| validation gap | | | | |
 | error handling | | | | |
-| silent failure | | | | |
+| validation gap | | | | |
 | configuration error | | | | |
-| security issue | | | | |
+| type safety | | | | |
+| state machine gap | | | | |
 | concurrency issue | | | | |
-| SQL error | | | | |
+| serialization | | | | |
+| API contract violation | | | | |
 | protocol violation | | | | |
 | null safety | | | | |
+| silent failure | | | | |
+| security issue | | | | |
+| SQL error | | | | |
 | missing boundary check | | | | |
-| API contract violation | | | | |
 
 #### Results by Project
 
 | Project | Direct | Adjacent | Miss | Detection % |
 |---------|--------|----------|------|-------------|
-| gson | | | | |
-| javalin | | | | |
-| petclinic | | | | |
-| octobatch | | | | |
+| *(fill per tested repo)* | | | | |
 
 #### Results by Playbook Step
 
@@ -90,9 +94,7 @@ Which steps produced the detections? Maps to the "Playbook Angle" column in the 
 
 | Defect | Category | Score | Detecting Step | Notes |
 |--------|----------|-------|----------------|-------|
-| G-01 | type safety | | | |
-| G-02 | concurrency | | | |
-| ... | | | | |
+| *(fill per defect)* | | | | |
 
 ---
 
@@ -102,9 +104,7 @@ After multiple runs with different models, fill in:
 
 | Defect | Category | [Model A] | [Model B] | [Model C] |
 |--------|----------|-----------|-----------|-----------|
-| G-01 | type safety | | | |
-| G-02 | concurrency | | | |
-| ... | | | | |
+| *(fill per defect)* | | | | |
 
 ### Detection Rate by Category × Model
 

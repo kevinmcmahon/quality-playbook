@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""Assemble DEFECT_LIBRARY.md v8 with round-3 mining from all repos."""
+"""Assemble DEFECT_LIBRARY.md with round-3 mining from all repos.
+
+Note: This is a historical build script. The R3_FILES list below references
+temporary mining outputs that were used during initial dataset construction.
+To re-run, you would need the original mining output files.
+"""
 import re
 from collections import defaultdict
 from pathlib import Path
 
-LIBRARY = Path("/sessions/quirky-practical-cerf/mnt/pbprdf/DEFECT_LIBRARY.md")
+LIBRARY = Path("dataset/DEFECT_LIBRARY.md")
 content = LIBRARY.read_text()
 
 # Map of (r3 file, prefix) for all round-3 mined files

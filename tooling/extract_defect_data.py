@@ -1,14 +1,33 @@
 #!/usr/bin/env python3
-"""Extract local git data for all QPB defects: commit message, files changed, diff summary."""
+"""Extract local git data for all QPB defects: commit message, files changed, diff summary.
+
+Usage:
+    python3 tooling/extract_defect_data.py [--library PATH] [--repos PATH] [--output PATH]
+
+Defaults assume you're running from the QPB repo root:
+    --library  dataset/DEFECT_LIBRARY.md
+    --repos    repos/
+    --output   tooling/defect_data.json
+"""
+import argparse
 import json
 import re
 import subprocess
 from pathlib import Path
 from collections import defaultdict
 
-LIBRARY = Path("/sessions/quirky-practical-cerf/mnt/pbprdf/DEFECT_LIBRARY.md")
-REPOS_DIR = Path("/sessions/quirky-practical-cerf/repos")
-OUTPUT = Path("/sessions/quirky-practical-cerf/defect_data.json")
+parser = argparse.ArgumentParser(description="Extract git data for QPB defects")
+parser.add_argument("--library", type=Path, default=Path("dataset/DEFECT_LIBRARY.md"),
+                    help="Path to DEFECT_LIBRARY.md")
+parser.add_argument("--repos", type=Path, default=Path("repos"),
+                    help="Path to directory containing cloned repos")
+parser.add_argument("--output", type=Path, default=Path("tooling/defect_data.json"),
+                    help="Output path for extracted JSON data")
+args = parser.parse_args()
+
+LIBRARY = args.library
+REPOS_DIR = args.repos
+OUTPUT = args.output
 
 # Map prefix -> (repo_dir_name, github_owner_repo)
 PREFIX_MAP = {

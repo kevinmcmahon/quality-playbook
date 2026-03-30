@@ -3,7 +3,7 @@
 **Repository**: [curl/curl](https://github.com/curl/curl)
 **Language**: C
 **Repo type**: Library
-**Defect count**: 49 (CURL-01 through CURL-49)
+**Defect count**: 5 of 49 (CURL-01 through CURL-05; format sample)
 **Generated**: 2026-03-29
 
 ---

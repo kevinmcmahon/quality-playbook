@@ -31,7 +31,7 @@ For each repository:
 
 ## Per-Repo Description File Format
 
-Each repository has a `QPB/<repo>/defects.md` file containing detailed descriptions of every defect. The format for each defect entry is:
+Each repository will have a `dataset/defects/<repo>/defects.md` file containing detailed descriptions of its defects. Currently, sample files exist for `curl` (5 of 49 entries) and `cli` (20 of 71 entries). The remaining repositories will be generated after council review of the format. The target format for each defect entry is:
 
 ```markdown
 ## PREFIX-NN | Title | Category | Severity
@@ -96,12 +96,24 @@ Each per-repo `defects.md` file is self-contained. A reviewer can:
 
 ## Files in This Dataset
 
-- `DEFECT_LIBRARY.md` — Master index with all QPB entries (summary table, one row per defect)
-- `QPB/README.md` — This overview
-- `QPB/METHODOLOGY.md` — This methodology document
-- `QPB/<repo>/defects.md` — Per-repo detailed defect descriptions (one file per repository)
-- `DETECTION_RESULTS.md` — Results schema for scoring playbook runs against the QPB
-- `normalize_categories.py` — Category normalization script (14 canonical categories)
+- `dataset/DEFECT_LIBRARY.md` — Master index with all QPB entries (summary table, one row per defect)
+- `dataset/defects.jsonl` — Machine-readable export (one JSON object per line)
+- `dataset/METHODOLOGY.md` — This methodology document
+- `dataset/DETECTION_RESULTS.md` — Results schema for scoring playbook runs against the QPB
+- `dataset/defects/<repo>/defects.md` — Per-repo detailed defect descriptions
+- `tooling/extract_defect_data.py` — Git data extraction script
+- `tooling/normalize_categories.py` — Category normalization script (14 canonical categories)
+
+## Issue Text Reuse Policy
+
+The per-repo description files include an "Original issue description" field. To avoid legal risk from reproducing full GitHub issue or PR text:
+
+- **Commit messages** are included verbatim (they are part of the repository's version-controlled history under its license).
+- **Issue/PR descriptions** are summarized in our own words, not quoted verbatim. Each summary is 1-3 sentences capturing the essential technical content.
+- **Links** to the original issue/PR are always provided so readers can access the full context.
+- **No reproduction of comments, discussion threads, or reproduction steps** from issue trackers.
+
+This approach provides sufficient context for defect verification while respecting upstream content ownership.
 
 ## Known Limitations
 
