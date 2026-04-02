@@ -532,7 +532,7 @@ Key rules:
 
 The code review protocol has three passes. Each pass runs independently — a fresh session with no shared context except the requirements document (`quality/REQUIREMENTS.md`, produced in Step 7). This clean separation prevents cross-contamination between structural review and requirement-based review.
 
-**Pass 1 — Structural Review.** Read the code and spot anomalies. This is what every AI code review tool already does well. No requirements, no focus areas — just the model's own knowledge of code correctness. Keep these mandatory guardrails:
+**Pass 1 — Structural Review.** Read the code and spot anomalies. This is what every AI code review tool already does well. No requirements, no focus areas — just the model's own knowledge of code correctness. **This is a complete structural code review. Be thorough and exhaustive.** Passes 2 and 3 will add requirement-based analysis afterward — do not save anything for later. Do not self-ration attention because more passes are coming. Keep these mandatory guardrails:
 
 - Line numbers are mandatory — no line number, no finding
 - Read function bodies, not just signatures
