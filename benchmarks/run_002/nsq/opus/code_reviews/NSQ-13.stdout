@@ -1,0 +1,11 @@
+Review saved. Here's the summary:
+
+**2 BUGs found:**
+1. **Line 93** — `lp.Write(nsq.MagicV1)` error is silently discarded. If the magic bytes write fails, the connection proceeds in a bad protocol state, connectCallback still fires, and subsequent commands are sent on a broken connection.
+2. **Lines 75-76** — `Close()` calls `lp.conn.Close()` without a nil check. A peer that never successfully connected will panic on shutdown.
+
+**2 QUESTIONs:**
+1. **Lines 86-92** — `lp.state` uses non-atomic reads/writes (unlike `client_v2` which uses atomics for the same constants). Safe in current single-goroutine usage but fragile.
+2. **Lines 87-96** — Three-state logic relies on constructor always setting `stateDisconnected`; a zero-value `lookupPeer` would skip `connectCallback` due to shared `stateInit` constant.
+
+**Assessment: NEEDS DISCUSSION**

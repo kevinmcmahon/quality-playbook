@@ -1,0 +1,10 @@
+{
+    "defect_id": "CHI-15",
+    "model": "sonnet",
+    "category": "validation gap",
+    "pre_fix_commit": "98fc81f",
+    "fix_commit": "3e5747d",
+    "files_reviewed": "context.go,",
+    "duration_seconds": 219,
+    "description": "Context.RoutePattern() returned incomplete patterns by not cleaning route pattern suffixes. Wildcard routes generated patterns like \"/users/*/\" instead of \"/users/*\", breaking route introspection and logging."
+}

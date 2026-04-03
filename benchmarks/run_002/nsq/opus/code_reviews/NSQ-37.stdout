@@ -1,0 +1,7 @@
+Review saved. Found **2 findings**:
+
+1. **BUG (High) — `types.go:68`** — `UnmarshalJSON` indexes `r.Tombstoned[i]` without checking that `topics` and `tombstones` arrays have equal length. If `tombstones` is shorter or missing, this panics with index-out-of-range.
+
+2. **BUG (Medium) — `types.go:302–303`** — `ClientStatsByNodeTopology.Less` violates `sort.Sort`'s strict weak ordering contract. When two clients both match the node's region+zone, `Less(i,j)` and `Less(j,i)` both return `true`, which can cause panics in Go 1.19+.
+
+**Assessment: FIX FIRST**

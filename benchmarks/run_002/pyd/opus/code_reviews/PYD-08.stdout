@@ -1,0 +1,10 @@
+Review saved. Here's a summary of the 6 findings:
+
+| # | Type | Line | Severity | Description |
+|---|------|------|----------|-------------|
+| 1 | BUG | 2001 | Medium | `brand in PaymentCardBrand.mastercard` does substring check instead of equality — works by coincidence with current enum values but semantically wrong |
+| 2 | BUG | 1174 | Medium | `UuidVersion.__hash__` hashes `type(self.uuid_version)` (always `int`) instead of the value — all instances collide |
+| 3 | BUG | 1335 | Medium | `PathType.__hash__` same bug — hashes `type(self.path_type)` (always `str`) instead of value |
+| 4 | BUG | 3123 | Low | Redundant re-assignment of `custom_error_type` — dead code leftover (other two fields don't have this duplicate) |
+| 5 | QUESTION | 1017–1031 | Low | `ImportString._serialize` fallback returns raw `v` which may not be `str` despite return type annotation |
+| 6 | QUESTION | 682 | Low | `min_length or 0` pattern — harmless for current types but inconsistent with `if x is not None` pattern used elsewhere |

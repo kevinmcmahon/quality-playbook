@@ -11,23 +11,16 @@
 
 Before reviewing, read these files for context:
 1. `quality/QUALITY.md` — Quality constitution and fitness-to-purpose scenarios
-2. [Main architectural doc]
-3. [Key design decisions doc]
-4. [Any other essential context]
+2. `quality/requirements.md` — Testable requirements derived during playbook generation
+3. [Main architectural doc]
+4. [Key design decisions doc]
+5. [Any other essential context]
 
-## What to Check
+## Pass 1: Structural Review
 
-### Focus Area 1: [Subsystem/Risk Area Name]
+Read the code and report anything that looks wrong. No requirements, no focus areas — use your own knowledge of code correctness. Look for: race conditions, null pointer hazards, resource leaks, off-by-one errors, type mismatches, error handling gaps, and any code that looks suspicious.
 
-**Where:** [Specific files and functions]
-**What:** [Specific things to look for]
-**Why:** [What goes wrong if this is incorrect]
-
-### Focus Area 2: [Subsystem/Risk Area Name]
-
-[Repeat for 4–6 focus areas, mapped to architecture and risk areas from exploration]
-
-## Guardrails
+### Guardrails
 
 - **Line numbers are mandatory.** If you cannot cite a specific line, do not include the finding.
 - **Read function bodies, not just signatures.** Don't assume a function works correctly based on its name.
@@ -35,20 +28,82 @@ Before reviewing, read these files for context:
 - **Grep before claiming missing.** If you think a feature is absent, search the codebase. If found in a different file, that's a location defect, not a missing feature.
 - **Do NOT suggest style changes, refactors, or improvements.** Only flag things that are incorrect or could cause failures.
 
-## Output Format
-
-Save findings to `quality/code_reviews/YYYY-MM-DD-reviewer.md`
+### Output
 
 For each file reviewed:
 
-### filename.ext
+#### filename.ext
 - **Line NNN:** [BUG / QUESTION / INCOMPLETE] Description. Expected vs. actual. Why it matters.
 
-### Summary
-- Total findings by severity
-- Files with no findings
+## Pass 2: Requirement Verification
+
+Read `quality/requirements.md`. For each requirement, check whether the code satisfies it. This is a pure verification pass — your only job is "does the code satisfy this requirement?"
+
+Do NOT also do a general code review. Do NOT look for other bugs. Do NOT evaluate code quality. Just check each requirement.
+
+For each requirement, report one of:
+- **SATISFIED**: The code implements this requirement. Quote the specific code.
+- **VIOLATED**: The code does NOT satisfy this requirement. Explain what the code does vs. what the requirement says. Quote the code.
+- **PARTIALLY SATISFIED**: Some aspects implemented, others missing. Explain both.
+- **NOT ASSESSABLE**: Can't be checked from the files under review.
+
+### Output
+
+For each requirement:
+
+#### REQ-N: [requirement text]
+**Status**: SATISFIED / VIOLATED / PARTIALLY SATISFIED / NOT ASSESSABLE
+**Evidence**: [file:line] — [code quote]
+**Analysis**: [explanation]
+[If VIOLATED] **Severity**: [impact description]
+
+## Pass 3: Cross-Requirement Consistency
+
+Compare pairs of requirements from `quality/requirements.md` that reference the same field, constant, range, or security policy. For each pair, check whether their constraints are mutually consistent.
+
+What to look for:
+- **Numeric range vs bit width**: If one requirement says the valid range is [0, N) and another says the field is M bits wide, does N = 2^M?
+- **Security policy propagation**: If one requirement says a CA file is configured, do all requirements about connections that should use it actually reference using it?
+- **Validation bounds vs encoding limits**: Does a validation check in one file agree with the storage capacity in another?
+- **Lifecycle consistency**: If a resource is created by one requirement's code, is it cleaned up by another's?
+
+For each pair that shares a concept, verify consistency against the actual code.
+
+### Output
+
+For each shared concept:
+
+#### Shared Concept: [name]
+**Requirements**: REQ-X, REQ-Y
+**What REQ-X claims**: [summary]
+**What REQ-Y claims**: [summary]
+**Consistency**: CONSISTENT / INCONSISTENT
+**Code evidence**: [quotes from both locations]
+**Analysis**: [explanation]
+[If INCONSISTENT] **Impact**: [what happens when the contradiction is triggered]
+
+## Combined Summary
+
+| Source | Finding | Severity | Status |
+|--------|---------|----------|--------|
+| Pass 1 | [structural finding] | [severity] | BUG / QUESTION |
+| Pass 2, REQ-N | [requirement violation] | [severity] | VIOLATED |
+| Pass 3, REQ-X vs REQ-Y | [consistency issue] | [severity] | INCONSISTENT |
+
+- Total findings by pass and severity
 - Overall assessment: SHIP IT / FIX FIRST / NEEDS DISCUSSION
 ```
+
+### Why Three Passes Instead of Focus Areas
+
+Previous experiments (the QPB NSQ benchmark) showed that focus areas don't reliably improve AI code review. A generic "review for bugs" prompt scored 65.5%, while a playbook with 7 named focus areas scored 48.3% — the focus areas narrowed the model's attention and suppressed detections.
+
+The three-pass pipeline works because each pass does one thing well with no cross-contamination:
+- **Pass 1** lets the model do what it's already good at (structural review, ~65% of defects)
+- **Pass 2** catches individual requirement violations that structural review misses (absence bugs, spec deviations)
+- **Pass 3** catches contradictions between individually-correct pieces of code (cross-file arithmetic bugs, security policy gaps)
+
+Experiments on the NSQ codebase showed this pipeline finding 2 of 3 defects that were invisible to all structural review conditions — with zero knowledge of the specific bugs. The defects found were a cross-file numeric mismatch (validation bound vs bit field width) and a security design gap (configured CA not propagated to outbound auth client).
 
 ### Phase 2: Regression Tests for Confirmed Bugs
 

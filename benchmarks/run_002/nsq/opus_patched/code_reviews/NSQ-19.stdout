@@ -1,0 +1,17 @@
+Review saved. Here's a summary of the 6 findings (3 BUGs, 3 QUESTIONs):
+
+**BUGs:**
+1. **High — Deflate level silently drops to 0** (lines 397-402): Missing `else` branch means any client-requested positive deflate level is ignored. `deflateLevel` stays at its zero-value, so all deflate connections get level 0 (no compression). Focus Area 9 branch completeness violation.
+
+2. **Medium — DPUB disconnects on recoverable timeout error** (lines 878-882): Returns `FatalClientErr` for out-of-range timeout, while the analogous `REQ` handler (lines 720-732) clamps and continues. Inconsistent and overly punitive per Focus Area 10.
+
+3. **Medium — Tickers created before IDENTIFY** (lines 215-216): After IDENTIFY disables a feature (e.g., OutputBufferTimeout=0), the stopped ticker remains referenced, preventing GC until messagePump exits.
+
+**QUESTIONs:**
+4. **Medium — Double IDENTIFY causes settings mismatch** (lines 348-351, 276-278): IDENTIFY doesn't transition state, allowing re-entry. Second event is stuck in buffered channel since messagePump nil'd its reference.
+
+5. **Low — messagePump goroutine not joined on IOLoop exit** (lines 51, 114-121): Fire-and-forget pattern with no WaitGroup synchronization.
+
+6. **Low — RDY fatal disconnect for out-of-range count** (lines 660-665): Comment justifies it but conflicts with Focus Area 10 guidance.
+
+**Overall: FIX FIRST** — the deflate level bug silently degrades compression for all clients requesting a specific level.

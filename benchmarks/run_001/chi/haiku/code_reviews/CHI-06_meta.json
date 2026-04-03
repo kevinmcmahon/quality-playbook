@@ -1,0 +1,10 @@
+{
+    "defect_id": "CHI-06",
+    "model": "haiku",
+    "category": "type safety",
+    "pre_fix_commit": "fd503d9",
+    "fix_commit": "248d06c",
+    "files_reviewed": "middleware/wrap_writer.go,",
+    "duration_seconds": 98,
+    "description": "WrapResponseWriter incorrectly used logical OR ("
+}

@@ -1,0 +1,10 @@
+Review saved. Here's the summary:
+
+**1 BUG found (High Severity):**
+- **Line 68:** Struct tag `json:'version'` uses single quotes instead of double quotes. Go's JSON decoder ignores it, so `GetVersion()` always fails. This silently breaks nsqlookupd version pivoting — all lookupd requests use deprecated URIs instead of v1 endpoints.
+
+**2 QUESTIONs (Low Severity):**
+- **Line 278:** `GetLookupdTopicProducers` doesn't deduplicate producers across lookupd instances (unlike `GetLookupdProducers` which does), potentially causing duplicate operations.
+- **Lines 116/165/230/283/331/418/509/591:** Empty address lists trigger `0 == 0` total-failure check, returning a misleading error.
+
+**Assessment:** FIX FIRST

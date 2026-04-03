@@ -1,0 +1,14 @@
+Review complete. Saved to `NSQ-26_review.md`.
+
+**Summary of findings in `nsqd/protocol_v2.go`:**
+
+| # | Type | Severity | Line(s) | Description |
+|---|------|----------|---------|-------------|
+| 1 | QUESTION | Medium | 383 | `IDENTIFY` never transitions state from `stateInit`, allowing repeated calls that could double-wrap TLS/compression |
+| 2 | QUESTION | Medium | 88 | Unchecked type assertion `err.(protocol.ChildErr)` — panics if any future `Exec` error doesn't implement the interface |
+| 3 | QUESTION | Low | 316-321 | Empty topology zone/region strings match, treating all unconfigured clients as zone-local |
+| 4 | QUESTION | Low | 330-335 | Messages from `regionMsgChan` counted as `zoneLocalMsgCount` for zone-local clients — ambiguous metric semantics |
+| 5 | QUESTION | Low | 295-298 | `IdentifyEventChan` send uses `select/default`, silently dropping second IDENTIFY event if buffer full |
+| 6 | QUESTION | Low | 619/668 | `SUB` skips `stateConnected` (defined but unused in client protocol), allowing SUB without IDENTIFY |
+
+**Assessment: NEEDS DISCUSSION** — No confirmed bugs, but the `IDENTIFY` state machine gap (Findings 1, 5, 6) is the most notable concern and warrants maintainer input.

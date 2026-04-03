@@ -1,0 +1,3 @@
+Review saved. Found **1 bug**:
+
+- **Line 132 (Medium):** `{{#if ../graph_active}}` in the Total row uses `../` incorrectly. This code is outside `{{#each nodes}}` (which ends at line 122), so the root context is current and `graph_active` should be referenced directly without `../`. The prefix causes lookup above the root frame, always resolving to falsy. Result: the Rate column `<td>` is never rendered in the Total row when graphs are active, misaligning the table (9 columns vs 10 in header/data rows). The equivalent code in `topic.hbs:114` correctly uses `{{#if graph_active}}`, and the Total graph row in the same file at line 144 also correctly omits `../`.

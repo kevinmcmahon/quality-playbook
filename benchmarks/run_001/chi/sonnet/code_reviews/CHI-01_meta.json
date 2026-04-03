@@ -1,0 +1,10 @@
+{
+    "defect_id": "CHI-01",
+    "model": "sonnet",
+    "category": "error handling",
+    "pre_fix_commit": "6eb3588",
+    "fix_commit": "05f1ef7",
+    "files_reviewed": "middleware/route_headers.go,",
+    "duration_seconds": 123,
+    "description": "RouteHeaders middleware missing return statement after calling next.ServeHTTP when router had no routes configured. This caused next handler to be called twice - once in empty check and again at end of function."
+}

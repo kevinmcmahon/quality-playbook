@@ -2,16 +2,34 @@
 
 ## Purpose
 
-The QPB is a curated dataset of 2,564 real defects from 50 open-source repositories across 14 programming languages. Its purpose is to measure and improve the detection rate of AI-assisted code review playbooks by providing ground truth: known bugs at known commits with known fixes.
+The QPB is a curated dataset of 2,564 real defects from 50 open-source repositories across 14 programming languages. Its purpose is to iteratively improve the quality playbook skill by testing it against real historical bugs: if the playbook can't guide an agent to find a bug that actually existed and was actually fixed, that's a real miss worth learning from.
 
-This is mutation testing applied one level up — instead of injecting synthetic faults into code, we use real historical bugs as the oracle. If a code review playbook can't find a bug that actually existed and was actually fixed, that's a true miss.
+**Research question**: Does iterative, evidence-driven improvement of a structured code review playbook improve its bug detection rate on unseen codebases, as measured by a before/after comparison on held-out repositories?
+
+This is mutation testing applied one level up — instead of injecting synthetic faults into code, we use real historical bugs as the oracle.
 
 ## Dataset Composition
 
-- **2,564 defects** across **50 repositories** (55 prefixes including 5 original projects)
-- **14 languages**: Java, Python, Go, TypeScript, Rust, Scala, C#, JavaScript, Ruby, PHP, Kotlin, C, Swift, Elixir
-- **4 repo types**: Library, Framework, Application, Infrastructure
+- **2,592 defects** across **55 repositories** (60 prefixes including 5 original projects)
+- **15 languages**: Java, Python, Go, TypeScript, Rust, Scala, C#, JavaScript, Ruby, PHP, Kotlin, C, Swift, Elixir, Markdown (AI skill/agent definitions)
+- **5 repo types**: Library, Framework, Application, Infrastructure, Skill/Agent Registry
 - **14 defect categories**: error handling, validation gap, configuration error, type safety, state machine gap, concurrency issue, serialization, API contract violation, protocol violation, null safety, silent failure, security issue, SQL error, missing boundary check
+
+### New Code Repositories (2026-03-31)
+
+One traditional code repository was added:
+
+- **modelcontextprotocol/servers** — 8 defects (MCP-01 through MCP-08). TypeScript and Python MCP tool server implementations (filesystem, git, memory, fetch, sequential-thinking). These are standard code defects in the tool infrastructure that AI agents use, not skill/agent definitions. Defect categories: security issue (1), type safety (2), error handling (2), missing boundary check (1), silent failure (1), configuration error (1).
+
+### Skill/Agent Extension (2026-03-31)
+
+Three skill/agent repositories were added to test whether the playbook generalizes beyond traditional source code to AI instruction documents:
+
+- **github/awesome-copilot** — 10 defects (AC-01 through AC-10). Skill and agent definition files (.md with YAML frontmatter, embedded scripts). Defect categories: API contract violation (4), configuration error (3), validation gap (2), missing boundary check (1).
+- **anthropics/skills** — 7 defects (AS-01 through AS-07). Skill framework with Python tooling scripts. 1 merged fix, 6 with open PRs documenting confirmed defects at HEAD. Defect categories: configuration error (2), serialization (2), security issue (1), state machine gap (1), validation gap (1).
+- **sickn33/antigravity-awesome-skills** — 3 defects (AG-01 through AG-03). Security-focused fixes in skill tooling scripts (config data exposure, pipe-to-shell patterns, CI injection). Defect categories: security issue (3).
+
+These 20 skill/agent defects across 3 repos expand the QPB into a new artifact class (Markdown-based AI skills and agents with their supporting scripts), testing whether structured review principles transfer from code to instruction documents.
 
 ## How Defects Were Mined
 
@@ -23,129 +41,227 @@ For each repository:
 4. **Record**: fix commit SHA, pre-fix commit SHA (parent of fix), severity, category, one-line description, playbook detection angle
 5. **Verify**: confirm the fix commit exists and the parent commit is its immediate ancestor (`git rev-parse FIX_COMMIT^`)
 
+### Defect Inclusion Criteria
+
+Every defect in the QPB dataset must satisfy **all** of the following criteria. These are the formal rules for "QPB-worthiness."
+
+**Structural requirements** (must have):
+
+1. **Single fix commit.** The defect is tied to exactly one commit whose diff is the ground truth oracle. Checking out the parent gives you the exact code with the exact bug.
+2. **Single parent.** Fix commits with multiple parents (merges) are excluded so the pre-fix state is unambiguous.
+3. **Reviewable scope.** The fix touches files that a code reviewer could plausibly examine — source code, configuration, schemas, skill/agent definitions, templates. The defect must be discoverable by reading the pre-fix files, not only by running the system.
+4. **Canonical category.** The defect maps to one of the 14 canonical categories (see Dataset Composition above). If a defect doesn't fit any category, either propose a new category with justification or exclude the defect.
+
+**Substantiveness requirements** (the defect must be real and non-trivial):
+
+5. **Behavioral impact.** The defect caused (or would cause) incorrect behavior, data loss, security vulnerability, silent failure, or user-facing error. Cosmetic issues (typos in comments, whitespace, formatting) are excluded.
+6. **Non-trivial fix.** The fix involves a logic change, not just a rename, reformatting, or dependency version bump. A useful heuristic: if the fix diff contains only string literal changes with no control flow or structural impact, it's probably too trivial. Exception: string changes that fix API field names, GraphQL queries, file paths, or tool references that cause functional failures *are* substantive.
+7. **Independent defect.** Each defect entry represents one logical bug. If a single commit fixes multiple independent bugs, split them into separate entries (each referencing the same commit but scoping to different files/hunks). If the bugs are entangled, keep as one entry.
+
+**Documentation requirements** (the entry must be useful):
+
+8. **Defect description explains what was wrong.** Not just "fixed X" — the entry must describe the incorrect behavior in the pre-fix code clearly enough that a reviewer reading only the description could understand the bug.
+9. **Playbook angle identifies a detection strategy.** Each entry must suggest which playbook step(s) could catch this class of bug, framed as a general principle rather than a codebase-specific check.
+10. **Severity is justified.** High/Medium/Low with a rationale tied to impact (data loss = High, silent incorrect output = High, edge case with workaround = Medium, minor UX degradation = Low).
+
+**Exclusion criteria** (must not have any of these):
+
+- **Pure documentation fixes** — README typos, comment corrections, changelog updates with no code change
+- **Dependency bumps** — version updates in package managers unless the bump fixes a bug *in the project's own code*
+- **CI/CD configuration** — workflow file changes, build script tweaks (unless the build defect caused incorrect artifacts)
+- **Test-only fixes** — changes that only fix test code without a corresponding production defect (test refactors, flaky test fixes)
+- **Spelling/grammar corrections** — in code comments, error messages, or documentation (unless the misspelling caused a functional failure, e.g., a misspelled enum value)
+
+### Special Considerations for Skill/Agent Defects
+
+Skills and agents (Markdown-based AI instruction documents) are eligible for QPB if they meet the above criteria with these adaptations:
+
+- **"Source code" includes SKILL.md, agent.md, and supporting files** (reference docs, scripts, templates). These are the reviewable artifacts.
+- **Behavioral impact for skills** means: the skill would produce incorrect output, reference non-existent tools/APIs, give fabricated instructions, fail to trigger on intended queries, or silently skip edge cases.
+- **Common qualifying defect types for skills**: incorrect API/tool references, fabricated commands or installation instructions, missing edge case handling, broken handoff JSON schemas, incorrect GraphQL/REST field names in reference docs, missing tool declarations in frontmatter.
+- **Common non-qualifying changes for skills**: description rewording for better trigger matching (unless the old description caused functional misfires), adding new features or sections, reorganizing content without fixing a bug.
+
 ### Constraints
 
-- **Every defect is tied to a single fix commit.** This ensures unambiguous traceability: checking out the pre-fix commit gives you the exact code with the exact bug, and the fix commit diff is the ground truth oracle.
-- **Fix commits with multiple parents (merges) are excluded.** Only single-parent commits are included so the parent is unambiguous.
-- **Categories are normalized to exactly 14 canonical labels.** Raw category strings from mining were mapped to canonical categories using keyword-based rules (see `normalize_categories.py`).
+- **Categories are normalized to exactly 14 canonical labels.** Raw category strings from mining were mapped to canonical categories using keyword-based rules (see `normalize_categories.py`). As the dataset expands to skills/agents, new categories may be proposed through the standard process (document rationale, update normalization rules, re-run categorization).
 
 ---
 
-## Evaluation Protocol
+## Repository Split
 
-This section defines the exact procedure for measuring a playbook's detection rate against the QPB. The protocol is designed for reproducibility: a different team running the same protocol should produce statistically comparable results.
+The 50 repositories are divided into two groups before any evaluation begins:
 
-### Overview
+### Improvement Repos (~30)
 
-The evaluation has two phases per repository, then a scoring phase per defect:
+These repos are used for the iterative improvement process. The playbook is tested against their QPB defects, misses are analyzed, and playbook changes are proposed and validated. The playbook accumulates improvements as you work through these repos.
 
-1. **Phase 1 (Context Generation)**: Run the playbook's exploration steps at repo HEAD to build codebase understanding
-2. **Phase 2 (Defect Review)**: For each defect, check out the pre-fix code and run the playbook's review steps against the affected files
-3. **Scoring**: Compare each review's findings against the oracle (fix commit diff) using a three-level rubric
+### Held-Out Repos (~20)
 
-Phase 1 runs once per repository. Phase 2 runs once per defect. The two phases use different git states.
+These repos are untouched during the improvement process. After all improvement iterations are complete, the held-out repos provide clean before/after evidence: run the original playbook (v1.2.0) against their defects, then run the final improved playbook against the same defects. The difference measures whether the improvements generalize to unseen codebases.
 
-### Phase 1: Context Generation (Per Repository)
+### Split Criteria
 
-**Purpose**: Build the codebase context that the playbook's review steps depend on. This is the "understand the project" phase.
+The held-out set must be stratified to cover the same spread as the improvement set:
 
-**Git state**: Repository HEAD (latest commit on the default branch).
+- At least 2 repos per language (where the dataset has 2+ repos in that language)
+- At least 1 repo per project type (Library, Framework, Application, Infrastructure)
+- Proportional representation of defect categories (the held-out repos' combined defect categories should approximate the full dataset distribution)
 
-**Procedure**:
+Record the split and the rationale. The split is fixed before any improvement work begins and must not be changed based on results.
 
-```
-cd repos/<repo>
-git checkout HEAD          # or the default branch
-```
+---
 
-Run the playbook's Phase 1 exploration steps (Steps 0–4b from SKILL.md):
+## Improvement Protocol
 
-| Step | What It Does | Output |
-|------|-------------|--------|
-| Step 0 | Check for development history / chat logs | Context notes |
-| Step 1 | Identify domain, stack, specifications | Domain summary |
-| Step 2 | Map architecture (subsystems, data flow) | Architecture map |
-| Step 3 | Read existing tests (count, coverage, gaps) | Test inventory |
-| Step 4 | Read specifications | Requirement catalog |
-| Step 4b | Read function signatures and real data | Function call map |
+This is the core workflow for iteratively improving the playbook using QPB defects. Work through the improvement repos one at a time, accumulating playbook changes. The goal is to hill-climb the playbook's quality by exposing it to a diverse set of real-world failure modes — searching for general principles that improve detection, not overfitting to specific bugs.
 
-**Output**: A context artifact (structured text) summarizing the codebase. This artifact is saved to a run log and provided to every Phase 2 review for this repository.
+### Step 1: Generate Quality Infrastructure
 
-**Logging**: Record the full context artifact, the model used, token counts, and wall-clock time. The context artifact is an input to Phase 2 and must be reproducible — if the same model with the same prompt produces different context on two runs, that variance propagates to Phase 2 scores.
-
-**Contamination control**: Phase 1 runs at HEAD, which includes the fix commits for every QPB defect. This means the Phase 1 context may include code that was added by a fix commit. This is acceptable because:
-- Phase 1 is about understanding the codebase's architecture, domain, and conventions — not finding specific bugs
-- A human reviewer doing a code review would also understand the project's current state before reviewing a specific change
-- The pre-fix checkout in Phase 2 is what creates the evaluation condition; Phase 1 is background knowledge
-
-However, the Phase 1 prompt must NOT reference any specific QPB defects, fix commits, or bug descriptions. It should be the same prompt you'd give for any code review engagement.
-
-### Phase 2: Defect Review (Per Defect)
-
-**Purpose**: Run the playbook's review steps against the pre-fix version of the files changed by a specific fix commit, with the Phase 1 context available.
-
-**Git state**: Pre-fix commit for the affected files only.
-
-**Procedure**:
+For each improvement repo, use the playbook to generate quality infrastructure at the HEAD of the repo. This is the normal playbook workflow — the same thing a user would do when installing the playbook on a new project.
 
 ```
 cd repos/<repo>
-
-# 1. Identify files changed by the fix commit
-git diff-tree --no-commit-id --name-only -r <fix_commit>
-
-# 2. Check out the pre-fix versions of ONLY those files
-git checkout <pre_fix_commit> -- <file1> <file2> ...
-
-# 3. Run the playbook review steps (5, 5a, 5b, 6) against those files
-#    providing the Phase 1 context artifact as background
-
-# 4. Restore the files to HEAD when done
-git checkout HEAD -- <file1> <file2> ...
+git checkout HEAD    # or the default branch
 ```
 
-**Why checkout only the affected files, not the whole pre-fix commit?**
-- Checking out the entire repo at the pre-fix commit would invalidate the Phase 1 context (which was generated at HEAD)
-- In practice, a code reviewer reviews specific files, not the entire repo at a point in time
-- Checking out only the affected files preserves the surrounding codebase context while presenting the reviewer with the buggy code
+Give the agent the playbook and ask it to generate the quality infrastructure. The agent runs the playbook's exploration and generation steps (Steps 0–6 from SKILL.md), producing:
 
-**What the Phase 2 agent receives**:
-1. The Phase 1 context artifact (architecture map, test inventory, etc.)
-2. The playbook's review instructions (Steps 5, 5a, 5b, 6, and the `references/defensive_patterns.md` content)
-3. The file paths to review (from `git diff-tree`)
-4. Access to read those files (which are now at their pre-fix versions)
+- `quality/QUALITY.md` — quality constitution
+- `quality/test_functional.py` — spec-traced functional tests
+- `quality/RUN_CODE_REVIEW.md` — code review protocol
+- `quality/RUN_INTEGRATION_TESTS.md` — integration test protocol
+- `quality/RUN_SPEC_AUDIT.md` — spec audit protocol
+- `AGENTS.md` — AI bootstrap file
 
-**What the Phase 2 agent does NOT receive**:
+These files go into the repo's `quality/` folder (or whatever the playbook generates). This is the quality infrastructure that will be used for all subsequent defect reviews in this repo.
+
+**Why generate at HEAD, not at each pre-fix commit?** This is a deliberate design choice for two reasons:
+
+1. **Cost**: Generating quality infrastructure is token-intensive (the playbook's Steps 0–6 involve deep codebase exploration, architecture analysis, and multi-file generation). Regenerating per defect would multiply cost by the number of defects per repo — prohibitively expensive for a 2,564-defect dataset.
+2. **Consistency**: Generating once per repo means every defect in that repo is reviewed against the same quality infrastructure. If quality infrastructure varied per commit, differences in detection would reflect both playbook quality *and* quality-infrastructure quality, muddying the comparison. A single set of quality artifacts per repo isolates the playbook as the variable under study.
+
+The tradeoff is that HEAD-generated artifacts may encode post-fix knowledge (see Threats to Validity). This means the evaluation measures *retrospective defect review using modern repository context*, not historically pure pre-fix review. This framing is accurate to how the playbook is actually deployed: a user generates quality infrastructure on their current codebase, then uses it to review code. The before/after comparison controls for this because both playbook versions see the same HEAD-generated artifacts for the same repo, so any HEAD contamination is a constant, not a confound.
+
+**Optional ablation**: To measure the magnitude of HEAD contamination, run a small subset of defects (e.g., 5–10 per language) with quality infrastructure generated at the `pre_fix_commit` instead of HEAD. Compare detection rates between HEAD-generated and pre-fix-generated infrastructure. This quantifies the tradeoff rather than merely arguing for it.
+
+### Step 2: Review Pre-Fix Code
+
+For each QPB defect in this repo, rewind to the commit before the bug was fixed and run a code review using the quality infrastructure.
+
+```
+cd repos/<repo>
+git checkout <pre_fix_commit>
+
+# The quality/ folder from Step 1 is still present (it's untracked, so git checkout doesn't remove it)
+```
+
+Give the agent this prompt:
+
+> "Use the quality infrastructure files in the quality/ folder to review the following files: [list of files from git diff-tree --no-commit-id --name-only -r <fix_commit>]"
+
+**What the agent receives**:
+- The quality infrastructure from Step 1 (quality constitution, review protocol, functional tests, etc.)
+- The file paths to review
+- Access to the full repository at the `pre_fix_commit`
+
+**What the agent does NOT receive**:
 - The defect ID, title, or description
 - The fix commit SHA or diff
 - The defect category or severity
-- The playbook angle (which step should catch it)
 - Any hint that there is a known bug in these files
 
-**This is a blind review.** The agent believes it is doing a routine code review. If it finds the bug, that's a detection. If it doesn't, that's a miss.
+**Crucially, this is a blind review.** The agent has no knowledge of the defect. It believes it is doing a routine code review using the project's quality infrastructure. This is a cornerstone of the protocol's validity — the agent must find the bug through the playbook's guidance alone, not from any hint about what to look for.
 
-**Logging**: For each defect review, record:
+### Step 3: Score the Review
 
-| Field | Description |
-|-------|-------------|
-| `run_id` | Unique identifier for this evaluation run |
-| `defect_id` | QPB defect identifier (e.g., GH-03, CURL-02) |
-| `repo` | Repository name |
-| `playbook_version` | Playbook version being tested |
-| `model` | Model identifier (e.g., claude-opus-4-6) |
-| `timestamp` | ISO 8601 start time |
-| `duration_ms` | Wall-clock duration of the review |
-| `total_tokens` | Total tokens consumed (input + output) |
-| `phase1_context_hash` | SHA-256 of the Phase 1 context artifact (for reproducibility tracking) |
-| `files_reviewed` | List of file paths reviewed |
-| `findings_raw` | Full text of the agent's findings (unedited) |
-| `score` | direct_hit / adjacent / miss / not_evaluable |
-| `score_evidence` | Brief explanation of why this score was assigned |
-| `scorer` | Who scored it (human ID or "auto") |
+Compare the agent's findings against the oracle (fix commit diff) using the scoring rubric (see Scoring Rubric below). Record the score for each defect.
 
-All logs are appended to `runs/<run_id>/results.jsonl` (one JSON object per line, one line per defect).
+### Step 4: Analyze Misses
 
-### Scoring Rubric
+For each miss, examine:
+- The oracle (what the fix actually changed)
+- The agent's findings (what it actually said)
+- The quality infrastructure (what guidance was available)
+
+Identify the class of bug the playbook failed to guide the agent toward. Ask: what general principle, if added to the playbook, would have caught this?
+
+### Step 5: Propose Playbook Changes
+
+Draft playbook text changes as edits to the actual playbook files in `playbook/`. Each change must pass the Abstraction Level Validation (see below). Changes should be general software engineering principles, not fixes for specific codebases.
+
+### Step 6: Validate Changes
+
+Repeat the exercise from scratch for this repo:
+
+1. Remove the `quality/` folder
+2. Use the **updated** playbook to regenerate quality infrastructure (same as Step 1)
+3. Re-run the code review for **all** defects in this repo, not just the misses (same as Step 2). This detects regressions — a playbook change can fix one miss while breaking a previous hit.
+4. Score the results (same as Step 3). Compare each defect's new score against its original score.
+
+If the updated playbook catches previously missed bugs without regressing on previous hits, the changes are validated. If some misses still slip through, or if previous hits regressed, decide whether to iterate again, revise the changes, or accept the result.
+
+### Step 7: Bootstrapping Gate (Before Version Bump)
+
+Before finalizing a new playbook version, run the current playbook against the QPB repository itself. This catches defects in the QPB's own tooling scripts, data files, and documentation — and validates that the playbook's new detection patterns actually work on a real codebase.
+
+**Procedure:**
+
+1. Clone QPB into `repos/quality-playbook-benchmark` (or pull latest if already cloned)
+2. Copy the candidate playbook version into `.claude/skills/quality-playbook/` in the cloned repo
+3. Run the playbook's Phase 1–2 (explore + generate) to produce quality infrastructure for QPB
+4. Run `pytest quality/test_functional.py -v` — all generated tests must pass
+5. Run the generated code review protocol against QPB's tooling scripts
+6. If the review finds defects: fix them in QPB, then assess whether the fix pattern is general enough to warrant a new detection pattern in the playbook
+7. If new patterns are added, re-run from step 3 with the updated playbook to verify the additions don't break anything
+
+**Gate criteria:**
+- All generated functional tests pass (zero failures, zero errors)
+- No new tooling bugs found that the playbook should have caught but didn't
+- Any new detection patterns added during bootstrapping are grounded in real bugs (not hypothetical)
+
+**Why this matters:** The bootstrapping gate prevents two failure modes. First, it catches regressions — a playbook change that improves detection on external repos but breaks the playbook's own test generation. Second, it ensures that each version of the playbook can successfully review a real Python + Markdown codebase end-to-end, which is the minimum bar for deployment.
+
+**Record keeping:** Save the bootstrapping test results in `runs/improvement_001/bootstrapping/v<version>/` with the generated quality infrastructure and test output. This provides an audit trail showing that each version passed the gate.
+
+### Step 8: Proceed to Next Repo
+
+Move to the next improvement repo. The playbook now includes the changes from the previous repo. As you work through more repos, the playbook accumulates improvements.
+
+**Important**: Each repo gets a fresh start — generate quality infrastructure from scratch using the current playbook version, don't carry over quality files from previous repos.
+
+### Ordering
+
+Work through improvement repos in any order, but consider starting with repos that have diverse defect categories to maximize early learning. Record the order — it's part of the experimental design.
+
+---
+
+## Validation Protocol
+
+After completing the improvement loop across all improvement repos, run the validation protocol on the held-out repos to measure generalization.
+
+### Before/After Comparison
+
+For each held-out repo:
+
+1. **"Before" run**: Use the **original** playbook (v1.2.0) to generate quality infrastructure at HEAD, then review each QPB defect at its pre-fix commit using the quality infrastructure. Score each defect.
+
+2. **"After" run**: Use the **final improved** playbook to generate quality infrastructure at HEAD for the same repo, then review the same defects at the same pre-fix commits. Score each defect.
+
+Both runs use the same prompts — the only difference is the playbook version. Same agent, same model, same files. The playbook is the independent variable.
+
+**Session isolation**: Each `(repo, defect, playbook version)` evaluation must run in a fresh, isolated session with no retained conversation state, cached summaries, or tool memory from previous runs. This prevents cross-condition contamination — if the same agent reviews the same defect under both playbook versions, later runs must not inherit knowledge from earlier ones. Log a session identifier for each run. If feasible, randomize the order of before/after runs across defects to guard against systematic order effects.
+
+### What This Proves
+
+If the improved playbook detects more bugs than the original on the held-out repos, the improvement generalizes — it's not just overfitting to the specific bugs that motivated the changes. This is the paper's primary evidence.
+
+### Running Controls
+
+Each held-out defect gets scored twice (before and after). For paired comparison, use McNemar's test on the before/after scores. Report the transition matrix: how many defects moved from miss→hit, miss→adjacent, hit→miss, etc.
+
+---
+
+## Scoring Rubric
 
 Scoring compares the agent's raw findings against the oracle (fix commit diff).
 
@@ -158,30 +274,86 @@ Scoring compares the agent's raw findings against the oracle (fix commit diff).
 
 **Scoring is conservative**: direct hit requires that a developer reading the findings would know what to fix without looking at the oracle. Adjacent means they'd know where to look but would need to investigate further.
 
-**Inter-rater reliability**: For paper publication, a sample of scores should be independently rated by at least two scorers. Report Cohen's kappa or percent agreement. Disagreements should be resolved by a third scorer or by consensus.
+### Scoring Handbook (Worked Examples)
 
-### Statistical Framework
+To ensure inter-rater agreement, the following examples illustrate boundary cases:
 
-#### Sample Sizes
+**Direct hit examples**:
+- "The `err =` on line 279 should be `err :=` — the current code reuses the outer-scope error variable inside a goroutine, which creates a data race." → Direct hit: names the bug, the line, and the root cause.
+- "The cache key uses only `(user_id, query)` but doesn't include `locale`. Two users with different locales will get each other's cached results." → Direct hit: identifies the exact missing field and the consequence.
 
-The full QPB has 2,564 defects, but running all of them may be impractical (cost, time). For statistically meaningful results:
+**Adjacent examples**:
+- "The goroutine in `UpdatePortVisibility` has potential concurrency issues." → Adjacent: correct function, correct concern category, but doesn't identify the specific variable scoping problem.
+- "The caching layer should be reviewed for correctness — the key generation may not account for all relevant parameters." → Adjacent: correct area, but no specifics about which parameter is missing.
 
-- **Minimum viable sample**: 100 defects (yields ±10% confidence interval at 95% confidence for a 75% detection rate)
-- **Recommended sample**: 300 defects (yields ±5% confidence interval)
-- **Full benchmark**: 2,564 defects (definitive, but expensive)
+**Miss examples**:
+- The review discusses error handling in a completely different module and doesn't mention the affected function at all. → Miss.
+- The review mentions the affected file but only comments on naming conventions and code style. → Miss: the comments are unrelated to the defect.
 
-#### Stratified Sampling
+**Borderline cases**:
+- The review identifies the correct invariant ("cache keys must include all user-facing parameters") but names the wrong specific parameter. → Adjacent, not direct hit: the invariant is right but a developer would still need to investigate which parameter is actually missing.
+- The review identifies the exact bug but attributes it to the wrong root cause. → Direct hit if the finding would still lead a developer to the correct fix; adjacent if the wrong root cause would lead to the wrong fix.
+- Multi-file bugs: a direct hit requires identifying the bug's root cause, not merely flagging one of several affected files. If the review flags the right file but misses the cross-file interaction that constitutes the actual bug, score as adjacent.
 
-If not running the full benchmark, select defects using stratified random sampling to ensure representation across:
+**Inter-rater reliability**: For paper publication, a random sample of at least 50 scores (or 20% of the sample, whichever is larger) should be independently rated by at least two scorers. Report Cohen's kappa or percent agreement. Disagreements should be resolved by a third scorer or by consensus.
 
-1. **Category** — proportional to category distribution in the full dataset (e.g., if error handling is 18% of defects, 18% of the sample should be error handling)
-2. **Language** — at least 2 defects per language present in the dataset
-3. **Severity** — proportional to severity distribution
-4. **Repository** — at least 1 defect per repository (or per repository cluster if >50 repos)
+---
 
-Record the sampling method and random seed. This allows others to reproduce the exact sample.
+## Abstraction Level Validation
 
-#### Metrics
+Every proposed playbook change must be a general principle, not a fix for a specific codebase. Before any change is accepted:
+
+- **Strip all codebase-specific references.** The proposed text must not mention specific libraries, specific function names from the test repos, or specific variable names from the miss that motivated the change. If you can't state the rule without naming the library, the rule is too narrow.
+- **State the underlying invariant.** Each change should express a general software engineering principle that applies across languages and domains.
+- **Provide cross-language examples.** If the principle is real, it should have natural examples in at least 3 languages/ecosystems. If you can only think of examples from the miss that motivated it, the principle may be too narrow.
+- **Check for existing coverage.** Verify the playbook doesn't already cover the principle under a different name or in a different section. Duplication dilutes the playbook.
+
+### Council of Three Review Gate
+
+Before any proposed change is published to the playbook, a Council of Three review must validate:
+
+- **Abstraction level**: Is the rule general enough to apply to codebases the QPB hasn't tested? Could you explain it to a reviewer working on a completely different tech stack?
+- **Overfitting risk**: Does the rule help only with the specific miss, or does it plausibly help with a class of bugs? If you removed the QPB dataset entirely, would a senior engineer still agree this belongs in a code review playbook?
+- **Regression risk**: Could the new rule cause false positives that waste reviewer attention? Is the signal-to-noise ratio acceptable?
+- **Minimal scope**: Is the change the smallest addition that captures the principle? Could it be a single sentence added to an existing section instead of a new section?
+
+### Wide Multi-Tool Review
+
+After a playbook version passes the bootstrapping gate (Step 7) and Council of Three review, submit it for review across a diverse set of AI tools and models. The goal is to surface tool-specific failure modes — places where the playbook's instructions are clear to one model but ambiguous to another, or where a tool's orchestration layer interferes with the playbook's workflow.
+
+**Review targets** (v1.2.6):
+
+| # | Tool | Model | Category |
+|---|------|-------|----------|
+| 1 | Claude Code | Opus 4.6 | Coding agent — flagship |
+| 2 | Claude Code | Haiku 4.6 | Coding agent — small/fast |
+| 3 | Claude.ai web UI | Opus 4.6 (extended thinking) | Chat UI — Anthropic flagship |
+| 4 | Claude.ai web UI | Haiku 4.6 (extended thinking) | Chat UI — Anthropic small |
+| 5 | Cursor | CPT 5.4 | Coding IDE — OpenAI |
+| 6 | Copilot | Gemini 2.5 Pro | Coding IDE — Google |
+| 7 | ChatGPT web UI | GPT (with Thinking) | Chat UI — OpenAI |
+| 8 | Copilot web UI | Copilot (with Think Deeper) | Chat UI — Microsoft |
+| 9 | Ollama | Llama 3.3 70B | Local/open-weight — Meta |
+| 10 | Ollama | Qwen 2.5 72B | Local/open-weight — Alibaba |
+| 11 | Ollama | DeepSeek-R1 70B | Local/open-weight — reasoning |
+
+**What each reviewer does**: Point the tool at a QPB improvement repo (one that has cloned source), install the playbook as a skill or paste it as context, and ask the tool to generate quality infrastructure. Record: whether the tool successfully completed all phases, what it got wrong, where it got stuck, and any findings that other tools missed.
+
+**What to look for**:
+- Does the tool follow the playbook's phase structure, or does it skip phases?
+- Does it correctly parse function signatures before writing tests (Step 4b)?
+- Does the generated QUALITY.md contain project-specific scenarios, or generic filler?
+- Do the generated tests actually pass?
+- Does the tool handle the playbook's length (500+ lines) without losing context?
+- Does the local/open model produce usable output, or does it require frontier-model capabilities?
+
+**Recording results**: Save each review as a structured report in `reviews/` following the existing review schema. Tag with `type: wide-review`, the tool name, model name, playbook version, and target repo. Cross-tool comparison should focus on the detection patterns that vary by model — these are the playbook's weak spots where instructions need to be more explicit.
+
+---
+
+## Statistical Framework
+
+### Metrics
 
 Primary metrics (always report):
 
@@ -199,9 +371,10 @@ Secondary metrics (report when sample size permits):
 | **Detection rate by language** | Strict detection rate computed per programming language |
 | **Detection rate by severity** | Strict detection rate computed per severity level |
 | **Detection rate by playbook step** | Which playbook step produced the detection (from the "playbook angle" field) |
-| **False positive rate** | Findings that flag an issue in the reviewed files that doesn't correspond to any known QPB defect. Note: this is a lower bound — the "false positive" may be a real bug not in the QPB. |
+| **Novel findings rate** | Findings that flag an issue in the reviewed files that doesn't correspond to any known QPB defect. These are *not* necessarily false positives — they may be real, previously undiscovered bugs. Report separately and note that manual verification is needed to determine whether novel findings are true positives, false positives, or known issues outside the QPB scope. |
+| **Not-evaluable rate** | Proportion of defects scored as not_evaluable, reported by repo, category, and model. A high not-evaluable rate could mask poor performance. If >10% of defects in any stratum are not-evaluable, investigate and report the cause. |
 
-#### Confidence Intervals
+### Confidence Intervals
 
 Report 95% Wilson score confidence intervals for all detection rates. For a sample of size n with k detections:
 
@@ -210,61 +383,30 @@ p̂ = k/n
 CI = Wilson score interval (not Wald — Wald is unreliable for extreme proportions)
 ```
 
-For cross-model or cross-version comparisons, use McNemar's test (paired, since both runs score the same defects) or a chi-squared test (unpaired).
+For the before/after validation comparison, use McNemar's test (paired, since both playbook versions score the same defects).
 
-### Improvement Iteration Protocol
+### Clustering
 
-When using QPB results to improve the playbook:
+Defects are clustered within repositories — defects from the same repo are not independent observations. To account for this:
 
-1. **Run baseline**: Score playbook version N against the sample
-2. **Analyze misses**: For each miss, examine the oracle and the agent's findings. Identify the class of bug the playbook failed to guide the agent toward.
-3. **Propose changes**: Draft playbook text changes as edits to the actual playbook files in `playbook/`. Each change must pass the Abstraction Level Validation (see below).
-4. **Re-run misses**: Re-run ONLY the missed defects with the updated playbook text. Record re-run scores separately from baseline scores.
-5. **Run holdout**: Run the updated playbook against a HELD-OUT set of defects that were NOT used to identify misses. This is the real test — improvement on the training misses is expected; improvement on the holdout set demonstrates generalization.
-6. **Report both**: Always report baseline, re-run, and holdout scores. Improvement that only appears on re-runs (the defects that motivated the change) is overfitting.
+- Report repo-level detection rates alongside pooled rates. If a few held-out repos dominate the defect count or respond unusually well to the revised playbook, pooled rates can be misleading.
+- Compute bootstrap confidence intervals resampled at the repo level (resample repos, not individual defects) to capture between-repo variability.
+- If sample size permits, fit a mixed-effects logistic regression with repository as a random effect and playbook version as a fixed effect. This directly models the clustering structure and provides an estimate of the playbook effect that accounts for repo-level heterogeneity.
 
-#### Abstraction Level Validation
+### Power and Sample Size
 
-Every proposed playbook change must be a general principle, not a fix for a specific codebase. Before any change is accepted:
+The held-out set should contain enough defects to detect a meaningful before/after difference. Planning guidance:
 
-- **Strip all codebase-specific references.** The proposed text must not mention specific libraries, specific function names from the test repos, or specific variable names from the miss that motivated the change. If you can't state the rule without naming the library, the rule is too narrow.
-- **State the underlying invariant.** Each change should express a general software engineering principle that applies across languages and domains.
-- **Provide cross-language examples.** If the principle is real, it should have natural examples in at least 3 languages/ecosystems. If you can only think of examples from the miss that motivated it, the principle may be too narrow.
-- **Check for existing coverage.** Verify the playbook doesn't already cover the principle under a different name or in a different section. Duplication dilutes the playbook.
+- **Target**: At least 15–20 held-out repos with a combined total of at least 200 defects. This provides reasonable power to detect a 10–15 percentage point improvement with McNemar's test (alpha=0.05, power=0.80), assuming moderate within-repo correlation.
+- **Sensitivity check**: If the held-out set is smaller than planned, compute the minimum detectable effect size for the actual sample and report it. An underpowered comparison should be described as exploratory.
+- **Repo diversity**: The held-out set should span enough languages and project types that a null result is informative (not attributable to an unrepresentative sample).
 
-#### Council of Three Review Gate
+### Stopping Criterion
 
-Before any proposed change is published, a Council of Three review must validate:
-
-- **Abstraction level**: Is the rule general enough to apply to codebases the QPB hasn't tested? Could you explain it to a reviewer working on a completely different tech stack?
-- **Overfitting risk**: Does the rule help only with the specific miss, or does it plausibly help with a class of bugs? If you removed the QPB dataset entirely, would a senior engineer still agree this belongs in a code review playbook?
-- **Regression risk**: Could the new rule cause false positives that waste reviewer attention? Is the signal-to-noise ratio acceptable?
-- **Minimal scope**: Is the change the smallest addition that captures the principle? Could it be a single sentence added to an existing section instead of a new section?
-
-#### Re-Run Scoring Rules
-
-- Track detection rates honestly. Don't count re-runs in the baseline numbers.
-- Report both baseline scores AND re-run scores for each defect.
-- A change that converts a MISS to ADJACENT is partial credit, not full success.
-- **DIRECT HIT on re-run**: Change is validated. Proceed to Council of Three review.
-- **ADJACENT on re-run**: Change helped but may need tightening.
-- **Still MISS on re-run**: Revise the proposed text or accept that the miss isn't addressable by general playbook guidance.
-
-#### Train/Holdout Split
-
-When iterating on the playbook:
-
-- **Training set** (60%): Used for identifying misses and motivating playbook changes
-- **Holdout set** (40%): Scored only after playbook changes are finalized. Never used to motivate changes.
-
-The split should be stratified (same category/language/severity proportions in both sets). Record the split and random seed.
-
-#### Stopping Criterion
-
-Stop iterating when:
-- Detection rate on the holdout set plateaus (less than 2 percentage point improvement across two consecutive iterations), OR
-- The proposed changes fail the Abstraction Level Validation (changes are becoming too specific to the training misses), OR
-- The false positive rate increases by more than 5 percentage points (new guidance is causing false alarms)
+Stop iterating on improvement repos when:
+- Detection rate on newly encountered repos plateaus (less than 2 percentage point improvement across two consecutive repos), OR
+- The proposed changes fail the Abstraction Level Validation (changes are becoming too specific to particular codebases), OR
+- The novel findings rate increases materially (new guidance is causing false alarms)
 
 ---
 
@@ -276,15 +418,41 @@ For paper publication, the following must be available:
 |----------|---------|----------|
 | QPB defect dataset | Ground truth | `dataset/DEFECT_LIBRARY.md`, `dataset/defects.jsonl` |
 | Repository snapshots | Code under test | `repos/` (git clones with full history) |
-| Playbook under test | The intervention | `playbook/SKILL.md` + `playbook/references/` (also versioned in `awesome-copilot/skills/quality-playbook/`) |
-| Phase 1 context artifacts | Input to Phase 2 | `runs/<run_id>/contexts/<repo>.md` |
-| Phase 2 agent prompts | Exact prompts sent | `runs/<run_id>/prompts/<defect_id>.md` |
-| Phase 2 agent outputs | Raw findings | `runs/<run_id>/findings/<defect_id>.md` |
+| Playbook versions | The intervention (before and after) | `playbook/SKILL.md` + `playbook/references/` (versioned) |
+| Repo split | Which repos are improvement vs held-out | `dataset/REPO_SPLIT.md` |
+| Quality infrastructure | Generated per repo | `runs/<run_id>/quality/<repo>/` |
+| Agent prompts | Exact prompts sent | `runs/<run_id>/prompts/<defect_id>.md` |
+| Agent outputs | Raw findings | `runs/<run_id>/findings/<defect_id>.md` |
 | Scoring log | Score + evidence | `runs/<run_id>/results.jsonl` |
-| Run metadata | Parameters, timing, costs | `runs/<run_id>/metadata.json` |
-| Sampling record | Which defects, why | `runs/<run_id>/sample.json` |
+| Run metadata | Parameters, timing, model, playbook version | `runs/<run_id>/metadata.json` |
+| Improvement log | What changed and why per repo | `runs/<run_id>/improvement_log.md` |
 
 All run artifacts should be committed to version control or archived with the paper.
+
+### Logging
+
+For each defect review, record:
+
+| Field | Description |
+|-------|-------------|
+| `run_id` | Unique identifier for this evaluation run |
+| `defect_id` | QPB defect identifier (e.g., GH-03, CURL-02) |
+| `repo` | Repository name |
+| `pre_fix_commit` | Exact commit SHA checked out for this review |
+| `playbook_version` | Playbook version being tested |
+| `model` | Model identifier (e.g., claude-opus-4-6) |
+| `tool` | Tool used (e.g., Claude Code, Cursor, Copilot) |
+| `tool_version` | Tool version string (e.g., VS Code extension version, Cursor app version, Claude Code CLI version) |
+| `timestamp` | ISO 8601 start time |
+| `duration_ms` | Wall-clock duration of the review |
+| `session_id` | Unique identifier for this isolated session (confirms no cross-condition state leakage) |
+| `files_reviewed` | List of file paths reviewed |
+| `findings_file` | Path to the full findings file (e.g., `findings/<defect_id>.md`) |
+| `prompt_hash` | SHA-256 hash of the exact prompt sent (for verifying prompt consistency across conditions) |
+| `retry_count` | Number of retries needed (0 if first attempt succeeded) |
+| `timeout_policy` | Timeout setting used, if configurable by the tool |
+| `score` | direct_hit / adjacent / miss / not_evaluable |
+| `score_evidence` | Brief explanation of why this score was assigned |
 
 ### Review Output Directory
 
@@ -303,16 +471,15 @@ Naming convention: `{type}-{reviewer}-{subject}-{date}.md`
 runs/
   <run_id>/
     metadata.json          # Run parameters, model, playbook version, dates
-    sample.json            # Defect IDs in this run, sampling method, random seed
-    contexts/
-      <repo>.md            # Phase 1 context artifact for each repo
-      <repo>.tokens.json   # Token count and timing for Phase 1
+    quality/
+      <repo>/              # Quality infrastructure generated for each repo
     prompts/
-      <defect_id>.md       # Exact prompt sent for each Phase 2 review
+      <defect_id>.md       # Exact prompt sent for each defect review
     findings/
-      <defect_id>.md       # Raw agent output for each Phase 2 review
+      <defect_id>.md       # Raw agent output for each defect review
     results.jsonl          # One JSON line per defect: score, evidence, timing
-    summary.md             # Aggregate statistics, tables, charts
+    improvement_log.md     # What misses were found, what changes were proposed
+    summary.md             # Aggregate statistics, tables
 ```
 
 ---
@@ -368,33 +535,37 @@ Each repository will have a `dataset/defects/<repo>/defects.md` file containing 
 
 ### Internal Validity
 
-1. **Phase 1 contamination**: Phase 1 context is generated at HEAD, which includes fix commits. The agent may learn about the codebase's defensive patterns from code that was added by fix commits. Mitigation: Phase 1 builds general context (architecture, domain), not bug-specific knowledge. The review prompt in Phase 2 gives no indication of which bugs exist.
+1. **Quality infrastructure generated at HEAD includes post-fix information**: Quality infrastructure is generated at repo HEAD, which includes all fix commits. The generated artifacts (quality constitution, review protocol, functional tests) may encode defensive patterns, tests, or architectural knowledge introduced by those fixes. We chose repo-level HEAD-generated quality infrastructure because it matches real playbook deployment, keeps evaluation cost tractable (regenerating per defect would multiply cost by defects-per-repo), and ensures consistent review guidance across all defects in a repository. This introduces post-fix contamination risk, so claims are limited to *retrospective review with modern context* rather than unbiased historical detection. For many defects, especially recent ones, the project's architectural intent and quality expectations are stable enough that HEAD-generated infrastructure remains relevant; however, this may be less valid for older defects or repos with major architectural drift. The before/after comparison controls for this because both playbook versions see the same HEAD-generated artifacts. **Optional mitigation**: A HEAD-vs-pre-fix-commit ablation on a subset of defects can quantify the magnitude of this effect (see Step 1).
 
-2. **Prompt sensitivity**: Agent performance depends on exact prompt wording. Mitigation: Log exact prompts; report prompt variation experiments if feasible.
+2. **Prompt sensitivity**: Agent performance depends on exact prompt wording. Mitigation: Use the same prompts for before and after runs. Log exact prompts for reproducibility.
 
 3. **Scorer bias**: Human scorers who know the oracle may be biased toward generous scores. Mitigation: Use the conservative rubric (direct hit requires actionable specificity); report inter-rater reliability.
 
-4. **Model nondeterminism**: LLM outputs are stochastic. The same defect may score differently on two runs. Mitigation: For high-stakes results, run each defect 3 times and report majority vote. For exploratory runs, single-pass is acceptable but note it.
+4. **Model nondeterminism**: LLM outputs are stochastic. The same defect may score differently on two runs. Mitigation: For the improvement protocol, single-pass is acceptable. For the validation protocol, consider running each defect multiple times (e.g., 3 runs with majority vote) if cost permits, to reduce noise in the before/after comparison.
+
+5. **Model training-data leakage**: QPB uses public open-source repositories. Frontier LLMs may have been trained on some of the same repositories, issue discussions, or fix diffs. Measured "detection" may partly reflect prior exposure rather than playbook quality. Mitigation: (a) The before/after comparison controls for this — if the model has memorized a fix, it will find it with both playbook versions. (b) Report results separately for newer vs. older commits. (c) Limit claims to "performance on this benchmark" rather than "general code review ability."
+
+6. **Tool/model drift**: Model behavior can change over time for the same model tag. Mitigation: Run before and after validation as close together in time as possible. Record model identifiers and dates.
 
 ### External Validity
 
-1. **Mining bias**: Defects were mined from commit messages containing fix-related keywords. Bugs fixed without such keywords are missed. This biases toward well-documented fixes.
+1. **Mining bias**: Defects were mined from commit messages containing fix-related keywords. Bugs fixed without such keywords are missed.
 
-2. **Repository selection**: The 50 repositories were hand-selected for diversity, not randomly sampled from all open-source projects. Results may not generalize to closed-source or enterprise codebases.
+2. **Repository selection**: The 50 repositories were hand-selected for diversity, not randomly sampled. Results may not generalize to closed-source or enterprise codebases.
 
-3. **Single-commit constraint**: Bugs fixed across multiple commits are not captured. This may under-represent complex architectural defects that require multi-file refactoring.
+3. **Single-commit constraint**: Bugs fixed across multiple commits are not captured.
 
-4. **Category judgment**: Category assignment involves judgment calls. A bug might reasonably be categorized as both "error handling" and "null safety." We chose one primary category per defect.
+4. **Category judgment**: Category assignment involves judgment calls. We chose one primary category per defect.
 
-5. **Severity subjectivity**: Severity (Critical/High/Medium/Low) was assessed based on the defect description and affected code, not on production impact data.
+5. **Severity subjectivity**: Severity was assessed from the defect description, not production impact data.
 
 ### Construct Validity
 
-1. **Detection ≠ Prevention**: Finding a bug in a code review doesn't mean it would have been prevented. A reviewer might find the bug but fail to communicate it effectively, or the fix might introduce new bugs.
+1. **Detection ≠ Prevention**: Finding a bug in a code review doesn't mean it would have been prevented in practice.
 
-2. **Playbook vs. model**: It's hard to separate the playbook's contribution from the model's inherent code understanding. A sufficiently capable model might find the same bugs without any playbook guidance. Mitigation: run a "no playbook" baseline where the agent reviews the same files with only "find bugs in this code" as guidance, and compare detection rates.
+2. **File scoping as oracle hint**: The agent is told exactly which files to review — the files changed by the fix commit. A real reviewer wouldn't have this information. This means QPB evaluates the playbook's ability to *find bugs within a given review scope*, not its ability to *identify which files contain bugs*. Detection rates are inflated relative to realistic unscoped review. This narrower claim must be maintained consistently throughout the paper (abstract, introduction, method, and discussion). **Recommended ablation**: Run a subset of held-out defects (e.g., 5–10 per language) with an unscoped prompt that asks the agent to review the entire repository or a broad module rather than specific files. Report scoped and unscoped detection rates side by side. This quantifies the file-scoping advantage rather than leaving it as a qualitative caveat.
 
-3. **File scoping**: Providing the exact files changed by the fix commit is a form of hint — a real reviewer wouldn't know which files to examine. Mitigation: acknowledge this as a limitation. For a subset of defects, try the review without specifying files (point at the whole module instead) and compare.
+3. **Improvement repo ordering**: The order in which improvement repos are processed affects which bugs the playbook learns from first. Different orderings might produce different final playbooks. Mitigation: Record the ordering and note it as a design choice.
 
 ---
 
@@ -407,7 +578,64 @@ The per-repo description files include an "Original issue description" field. To
 - **Links** to the original issue/PR are always provided so readers can access the full context.
 - **No reproduction of comments, discussion threads, or reproduction steps** from issue trackers.
 
-This approach provides sufficient context for defect verification while respecting upstream content ownership.
+---
+
+## Related Work
+
+QPB should be positioned against existing benchmarks and evaluation methodologies in the AI-for-SE and software testing literature:
+
+**Real-bug benchmarks**: Defects4J (Just et al., 2014) provides 835 real bugs from 17 Java projects and is the standard benchmark for automated program repair (APR) research. Bears (Madeiral et al., 2019) and Bugs.jar (Saha et al., 2018) extend this approach to different Java project sets. QPB differs in three ways: (a) it spans 14 languages rather than Java only, (b) it evaluates *detection* (can a reviewer find the bug?) rather than *repair* (can a tool generate the fix?), and (c) it evaluates a structured review protocol rather than a standalone tool.
+
+**LLM-oriented benchmarks**: SWE-bench (Jimenez et al., 2024) evaluates LLM agents on their ability to resolve GitHub issues end-to-end (from issue description to passing tests). SWE-bench provides the issue description as input, while QPB provides no bug description — the agent must find the bug blind. HumanEval and MBPP evaluate code generation, not code review. QPB occupies a different niche: evaluating review protocols rather than generation or repair capabilities.
+
+**Mutation testing**: The conceptual ancestor of QPB. Mutation testing injects synthetic faults and measures whether tests detect them. QPB uses real historical bugs instead of injected mutants, which avoids the "unrealistic mutant" criticism but introduces different biases (mining bias, single-commit constraint).
+
+**Static analysis evaluation**: Tools like FindBugs/SpotBugs, PMD, and SonarQube are evaluated against known bug databases. QPB applies a similar oracle-based methodology to AI-assisted review protocols rather than rule-based static analyzers.
+
+**Code review research**: Studies on modern code review (Bacchelli & Bird, 2013; McIntosh et al., 2016) establish that code review finds bugs but is far from comprehensive. QPB quantifies this for AI-assisted review specifically, using the playbook as a structured intervention.
+
+The key novelty of QPB is combining real historical bugs as oracles with iterative improvement of a structured AI review protocol, across a multi-language dataset, with held-out repositories to validate generalization.
+
+---
+
+## Bootstrapping (Self-Review)
+
+The playbook is applied to the QPB repository itself as a validation step. This "bootstrapping" check verifies that the playbook can detect defects in its own supporting infrastructure — tooling scripts, data files, and documentation.
+
+### Procedure
+
+1. **Clone**: `git clone https://github.com/andrewstellman/quality-playbook-benchmark.git repos/quality-playbook-benchmark`
+2. **Install playbook**: Copy the current playbook version into `.claude/skills/quality-playbook/` in the cloned repo
+3. **Generate quality infrastructure**: Run the playbook's Phase 1 (explore) and Phase 2 (generate) against the QPB codebase, producing `quality/QUALITY.md`, `quality/test_functional.py`, `quality/RUN_CODE_REVIEW.md`, `quality/RUN_INTEGRATION_TESTS.md`, and `quality/RUN_SPEC_AUDIT.md`
+4. **Run tests**: Execute `pytest quality/test_functional.py -v` and record results
+5. **Fix findings**: Implement fixes for real data quality issues and tooling bugs
+6. **Assess playbook improvements**: Determine whether any findings suggest general playbook improvements (e.g., new detection patterns, new step guidance)
+7. **Iterate**: If playbook changes were made, re-run from step 3 to verify the updated playbook still generates passing tests
+
+### Bootstrapping Results (v1.2.5, 2026-03-31)
+
+**Generated infrastructure**: 38 functional tests across 7 test classes covering format compliance, category normalization, commit SHA validity, scenario-based data integrity, tooling integration, edge cases, and data quality.
+
+**Tooling script findings** (5 bugs fixed):
+- `extract_defect_data.py`: Bare `except:` clause in `git_cmd()` silently masks all errors — fixed to catch specific exceptions with stderr warning
+- `assemble_v8.py`: Unchecked `re.search().group(0)` crashes if "Total" row missing — fixed with None guard
+- `extract_defect_data.py`: Variable named `title` actually holds issue/PR reference — fixed label and downstream references
+- `normalize_categories.py` vs `assemble_v8.py`: Parallel canonical category definitions could diverge — added cross-reference comment
+- `generate_sample.py`: Only ZOOKEEPER and KAFKA JIRA prefixes mapped to URLs — expanded to all Apache JIRA projects
+
+**Markdown artifact findings** (detected by generated tests):
+- SHA placeholder values (`--`, `N/A`, `(merge)`, `(parent)`, `(commit before)`) found in 35 pre-fix commit entries — documented as known data gaps
+- Rows with unescaped pipe characters in description fields (e.g., CHI-06 with 10 columns) — parser handles gracefully
+- All 2,564 defect IDs follow PREFIX-NN format, all categories are canonical, no duplicates
+
+**Test outcome**: 37 passed, 1 skipped (commit resolution requires cloned repos), 0 failed.
+
+**Playbook improvement signal**: The bootstrapping found three patterns worth encoding as new detection guidance:
+1. **Truth fragmentation** (Finding 4) — canonical values defined in multiple files can silently diverge. Added to Step 5c.
+2. **Placeholder values masking data gaps** (SHA findings) — sentinel values like `--`, `N/A`, `(merge)` pass type checks but are semantically meaningless. Added to Step 5d.
+3. **Field label drift** (Finding 3) — positional extraction assigns data to variable names that become stale as the data format evolves. Added to Step 5c.
+
+These patterns were promoted to playbook v1.2.6, along with a Bootstrapping section documenting self-review as an explicit capability.
 
 ---
 
@@ -415,3 +643,7 @@ This approach provides sufficient context for defect verification while respecti
 
 - **2026-03-29**: Initial methodology document created with dataset composition, mining protocol, and scoring rubric.
 - **2026-03-30**: Major revision. Added: complete evaluation protocol (Phase 1/Phase 2 separation), statistical framework (sampling, confidence intervals, metrics), improvement iteration protocol (train/holdout split, stopping criterion), reproducibility requirements (run directory structure, logging schema), threats to validity (internal, external, construct). Moved scoring rubric into evaluation protocol. Added contamination controls, inter-rater reliability requirements, and "no playbook" baseline recommendation.
+- **2026-03-30**: Council of Three revision (addressing reviews from Cursor and GitHub Copilot). Added matched control conditions, scoring handbook, training-data leakage threat, clustering analysis, and Related Work section.
+- **2026-03-30**: Major restructure. Replaced the formal experimental protocol with an iterative improvement protocol that matches the actual playbook workflow: generate quality infrastructure at HEAD, review pre-fix code using quality infrastructure, analyze misses, improve playbook, validate by regenerating from scratch. Split repos into improvement (~30) and held-out (~20) groups. Held-out repos provide clean before/after validation evidence. Removed matched control conditions and budget-matched baselines (impractical with real tools like Claude Code, Cursor, Copilot which don't expose token-level control). Simplified logging to fields actually available from these tools. Preserved scoring rubric, scoring handbook, abstraction level validation, Council of Three review gate, threats to validity, and related work.
+- **2026-03-31**: Bootstrapping (self-review). Applied playbook v1.2.5 to QPB repository itself. Generated 38 functional tests, found and fixed 5 tooling script bugs, documented 35 SHA placeholder entries as known data gaps. Promoted three detection patterns to playbook v1.2.6: truth fragmentation (Step 5c), placeholder values masking data gaps (Step 5d), field label drift (Step 5c). Added Bootstrapping (Self-Review) subsection to playbook. Formalized bootstrapping as a mandatory gate in the improvement protocol (Step 7) — every new playbook version must pass bootstrapping before release. Added Wide Multi-Tool Review section with 8 review targets (Claude Code Opus/Haiku, Claude.ai web UI, Cursor + CPT 5.4, Copilot + Gemini 2.5 Pro, ChatGPT with Thinking, Copilot with Think Deeper, Ollama local model).
+- **2026-03-31**: Round 3 council revision. Added explicit research question. Strengthened HEAD contamination rationale with cost and consistency arguments; reframed as "retrospective review with modern context." Added HEAD-vs-pre-fix-commit ablation suggestion. Added session isolation requirement for validation protocol. Restored clustering analysis (repo-level bootstrap, mixed-effects model) and power/sample-size guidance. Restored unscoped file ablation and tightened file-scoping claim language. Extended logging table with tool_version, session_id, prompt_hash, retry_count, timeout_policy. Added hill-climbing rationale to improvement protocol intro. Emphasized blind review as protocol cornerstone.

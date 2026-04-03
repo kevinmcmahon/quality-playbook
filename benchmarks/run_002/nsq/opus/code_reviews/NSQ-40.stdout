@@ -1,0 +1,11 @@
+Review saved. Here's the summary:
+
+**3 findings in `apps/nsq_stat/nsq_stat.go`:**
+
+| # | Type | Severity | Line(s) | Description |
+|---|------|----------|---------|-------------|
+| 1 | BUG | High | 105-106 | Division by zero panic for sub-second `--status-every` values — `int64(interval.Seconds())` truncates to 0 |
+| 2 | BUG | Medium | 63,69,74,76 | Global `log.SetOutput` toggling is not goroutine-safe; also swallows fatal errors if crash happens while output is discarded |
+| 3 | QUESTION | Low | 59 | Loop warm-up iteration semantics with `--count` — appears intentional but non-obvious |
+
+**Assessment: FIX FIRST** — the division-by-zero is easily triggered with valid CLI input like `--status-every 500ms`.

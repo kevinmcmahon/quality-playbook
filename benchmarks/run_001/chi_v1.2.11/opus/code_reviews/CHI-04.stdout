@@ -1,0 +1,11 @@
+Review saved. Here's the summary:
+
+**1 High-severity BUG found:**
+
+- **Line 83-96: `Reset()` does not clear `methodsAllowed`** — Every other mutable slice/field on `Context` is zeroed in `Reset()`, but `methodsAllowed` (line 79) is missed. Since `Context` objects are recycled through `sync.Pool`, stale allowed-method entries from a previous request leak into the next one. This causes incorrect `Allow` headers on 405 Method Not Allowed responses. Fix: add `x.methodsAllowed = x.methodsAllowed[:0]`.
+
+**1 Low-severity QUESTION:**
+
+- **Line 133-138: Recursive `replaceWildcards`** — Uses recursion where a simple loop would suffice. Not a bug, but flagged for clarity.
+
+**Assessment: FIX FIRST**

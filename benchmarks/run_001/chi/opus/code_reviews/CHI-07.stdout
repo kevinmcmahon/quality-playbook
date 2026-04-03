@@ -1,0 +1,15 @@
+Review saved to `CHI-07_review.md`. Here's the summary:
+
+**7 findings** (5 BUG, 2 QUESTION) in `middleware/recoverer.go`:
+
+| # | Type | Severity | Line | Description |
+|---|------|----------|------|-------------|
+| 1 | BUG | **High** | 24 | `http.ErrAbortHandler` panic is swallowed — `recover()` consumes it but never re-panics, so the net/http server can't abort the connection |
+| 2 | BUG | Low | 102-103 | Dead code: `TrimSpace` removes tabs before `HasPrefix(line, "\t")` check |
+| 3 | BUG | Low | 108 | Same dead tab-prefix check in else branch — unreachable |
+| 4 | BUG | Low | 129-130 | Potential panic if `pkg` has no dot (slice `pkg[-1:]`) |
+| 5 | BUG | Low | 135-136 | Same potential panic in else branch for `method` |
+| 6 | QUESTION | Low | 75 | Fragile `"panic(0x"` prefix heuristic for locating panic boundary |
+| 7 | QUESTION | Low | 33 | `WriteHeader(500)` is a no-op if headers already flushed |
+
+**Overall assessment: NEEDS DISCUSSION** — The `http.ErrAbortHandler` swallowing is the most significant issue, as it silently changes connection-abort semantics.

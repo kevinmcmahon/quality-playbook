@@ -1,0 +1,14 @@
+Review saved. Here's the summary:
+
+**1 BUG, 5 QUESTIONs found across 2 files.**
+
+| # | Type | File | Line | Severity | Description |
+|---|------|------|------|----------|-------------|
+| 1 | **BUG** | nsqd.go | 82 | Medium | `os.Getwd()` error silently ignored — empty `dataPath` if it fails |
+| 2 | QUESTION | nsqd.go | 389–393 | Medium | `GetMetadata` iterates `topicMap` without lock (callers hold it, but method is exported) |
+| 3 | QUESTION | nsqd.go | 737, 749 | Low | Unrecognized TLS policy string silently downgrades to `NoClientCert` |
+| 4 | QUESTION | nsqd.go | 339 | Low | `writeSyncFile` ignores `f.Close()` error |
+| 5 | QUESTION | tcp.go | 64–65 | Low | Client deleted from `conns` map before `Close()` — inverted ordering |
+| 6 | QUESTION | tcp.go | 65, 69–72 | Low | `client.Close()` called twice (by Handle and tcpServer.Close) |
+
+**Overall: NEEDS DISCUSSION** — the BUG is low-probability but real; the `GetMetadata` locking gap and silent TLS downgrade warrant maintainer input.

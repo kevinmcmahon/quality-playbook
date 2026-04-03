@@ -1,0 +1,13 @@
+Review saved. Here's a summary of the key findings:
+
+**High severity (2):**
+- **channel.go:634-636** and **channel.go:663-665** — `processDeferredQueue` and `processInFlightQueue` both `goto exit` when a concurrent FIN/TOUCH removes a message between `PeekAndShift` and `pop`, abandoning all remaining timed-out messages until the next scan cycle. Should likely be `continue` instead of `goto exit`.
+
+**Medium severity (4):**
+- **channel.go:341-361** — Topology-aware `put()` sends to nil channels when the experiment flag is enabled but topology strings are unconfigured, silently routing all messages to disk instead of memory.
+- **channel.go:463-479** — `AddClient` TOCTOU race allows exceeding `MaxChannelConsumers` under concurrent SUB.
+- **stats.go:160, 176** — `GetStats` passes the topic filter string (potentially `""`) to `client.Stats()`, causing producer `pub_counts` to be truncated to one entry when no topic filter is specified.
+
+**Low severity (5 questions):** Non-atomic stats snapshots, GC counter uint32-to-int cast, test coverage gaps, unbuffered topology channel contention.
+
+**Overall: NEEDS DISCUSSION** — no critical data loss, but the queue processing race and topology nil-channel issues warrant attention.

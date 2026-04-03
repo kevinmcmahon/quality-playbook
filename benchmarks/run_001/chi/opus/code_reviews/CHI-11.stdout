@@ -1,0 +1,10 @@
+Review saved to `CHI-11_review.md`. Summary of findings:
+
+**1 Medium-severity BUG:**
+- **Line 89:** `pool.Put(rctx)` is not deferred. If the handler panics without Recoverer middleware, the `*Context` leaks from the pool. Fix: `defer mx.pool.Put(rctx)`.
+
+**2 Low-severity QUESTIONs:**
+- **Lines 85+89:** After `pool.Put`, the request's `context.Context` still references the recycled `rctx`, creating a latent data-race if goroutines outlive the handler.
+- **Lines 234-238:** Asymmetric middleware copying in `With()` between inline and non-inline parents is functionally correct but subtle.
+
+**Overall assessment:** NEEDS DISCUSSION — the non-deferred `pool.Put` is a real defect that a one-line `defer` would fix.

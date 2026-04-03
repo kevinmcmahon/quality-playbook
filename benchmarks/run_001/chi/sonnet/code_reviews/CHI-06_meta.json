@@ -1,0 +1,10 @@
+{
+    "defect_id": "CHI-06",
+    "model": "sonnet",
+    "category": "type safety",
+    "pre_fix_commit": "fd503d9",
+    "fix_commit": "248d06c",
+    "files_reviewed": "middleware/wrap_writer.go,",
+    "duration_seconds": 72,
+    "description": "WrapResponseWriter incorrectly used logical OR ("
+}

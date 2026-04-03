@@ -1,0 +1,111 @@
+QUALITY PLAYBOOK REVIEW: eval-driven-dev Skill
+===============================================
+
+TARGET: /sessions/quirky-practical-cerf/mnt/QPB/repos/awesome-copilot/skills/eval-driven-dev/
+
+REVIEW DATE: 2026-03-31
+
+METHODOLOGY: Applied Quality Playbook review principles (Steps 4-6) to a Markdown-based AI skill:
+  - Step 4 (Specifications): clarity, ambiguity, validation paths
+  - Step 5 (Defensive patterns): edge cases, brittleness, recovery
+  - Step 5a (State machines): phases, dependencies, termination
+  - Step 5c (Parallel path symmetry): consistency across scenarios
+  - Step 6 (Domain knowledge): Goodhart's Law, eval brittleness, overfitting
+  - Step 7 (Verification): output quality checks
+
+FINDINGS SUMMARY
+================
+
+OVERALL RATING: 7.5/10
+  - Pedagogically sound and comprehensive
+  - Clear step sequencing with checkpoints
+  - Strong on implementation details
+  - WEAK on brittleness detection and quality verification
+
+KEY VULNERABILITIES FOUND
+==========================
+
+CRITICAL (Domain Knowledge):
+  [6.1] Limited safeguards against Goodhart's Law in evaluators
+        → Agents can optimize metrics that diverge from actual quality
+  
+CRITICAL (Verification):
+  [7.1] No post-test verification of suite quality
+        → Tests can pass while measuring wrong things
+  [7.2] Missing evaluator sanity checks
+        → Broken evaluators produce false confidence
+
+HIGH (Specifications):
+  [4.1] Ambiguous expected_output semantics (exact vs. criteria vs. omitted)
+        → Agents conflate evaluation contexts, producing meaningless tests
+  [6.3] No overfitting detection or prevention
+        → Datasets can be cherry-picked to match current behavior
+
+MEDIUM (Defensive Patterns):
+  [5.2] No recovery path when tests show "No recorded assertions"
+        → Agents can get stuck in unproductive debug loops
+  [5.3] Dataset consistency assumptions between Steps 3-4 unforced
+        → Interface changes can invalidate entire downstream work
+  [5.4] Vague eval criteria pass through without concreteness check
+        → Criteria like "helpful" → unmeasurable evaluators
+
+MEDIUM (State Machines):
+  [5a.1] Circular dependencies in iteration (Step 6) underspecified
+         → No clear decision tree for when/how to rebuild dataset
+  [5a.2] No explicit termination condition for iteration
+         → Agents can loop indefinitely or give up prematurely
+
+MEDIUM (Parallel Paths):
+  [5c.1] Asymmetric guidance for evaluator selection
+         → Multi-aspect evaluation patterns not covered
+  [5c.2] Incomplete guidance for non-FastAPI frameworks
+         → Flask, Django, CLI apps have sparse documentation
+
+MEDIUM (Brittleness):
+  [6.2] Single reference trace as sole source of data shape truth
+        → Doesn't represent full data variation app actually handles
+
+SCORE BREAKDOWN (per playbook step)
+===================================
+
+Step 4 (Specifications)            6.5/10 ← Ambiguity at boundaries
+Step 5 (Defensive Patterns)         6.0/10 ← Good on implementation, poor on metrics
+Step 5a (State Machines)            7.0/10 ← Clear but gaps in iteration
+Step 5c (Parallel Path Symmetry)    6.5/10 ← Asymmetric guidance
+Step 6 (Domain Knowledge)           5.5/10 ← Goodhart's Law underexamined
+Step 7 (Verification)               5.5/10 ← No quality checks post-test
+
+TOP 5 RECOMMENDATIONS
+=====================
+
+HIGH PRIORITY (Safety):
+
+1. Add "Goodhart's Law red flags" section showing metric gaming patterns
+   and how to detect divergence between test scores and actual quality
+
+2. Require expected_output verification BEFORE dataset creation
+   (verify evaluator choice is unambiguous, not mixed semantics)
+
+3. Mandate trace adequacy assessment
+   (happy path + error path + edge cases confirmed before Step 4)
+
+4. Add post-test verification checkpoint
+   (score distribution, test count, spot-check failures before report)
+
+5. Define iteration termination conditions
+   (95% pass OR plateau detected OR 5 iterations reached)
+
+OUTPUT
+======
+
+Full analysis written to:
+  /sessions/quirky-practical-cerf/mnt/QPB/runs/improvement_001/scores/skill_eval_driven_dev.md
+  (702 lines)
+
+CONCLUSION
+==========
+
+The eval-driven-dev skill is STRONG PEDAGOGICALLY but has CRITICAL DEFENSIVE GAPS.
+It can produce false-positive tests (passing tests that measure wrong metrics) without
+augmentation. Recommend adding high-priority safeguards before deploying agents.
+

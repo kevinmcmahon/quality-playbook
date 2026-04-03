@@ -1,0 +1,16 @@
+Review saved to `/sessions/quirky-practical-cerf/mnt/QPB/repos/nsq/NSQ-36_review.md`.
+
+Note: The requested output path (`/sessions/quirky-practical-cerf/mnt/QPB/benchmarks/run_002/nsq/opus/code_reviews/NSQ-36_review.md`) was outside the sandbox, so I saved it in the repo root instead.
+
+**Summary of findings (6 total):**
+
+| # | Type | File | Line | Severity | Description |
+|---|------|------|------|----------|-------------|
+| 1 | QUESTION | nsqd.go | 82 | Low | `os.Getwd()` error silently ignored — empty dataPath if CWD deleted |
+| 2 | BUG | nsqd.go | 338-339 | Medium | `writeSyncFile` discards `f.Close()` error — metadata corruption risk on NFS |
+| 3 | BUG | nsqd.go | 389-415 | Medium | `GetMetadata` iterates `topicMap` without lock — safe today but fragile exported API |
+| 4 | QUESTION | nsqd.go | 479 | Low | `ctxCancel()` fires after all goroutines drain — surprising for external consumers |
+| 5 | QUESTION | nsqd.cfg.example | 53 | Low | `max_msg_size=1024768` doesn't match code default `1048576` — likely typo |
+| 6 | QUESTION | nsqd.cfg.example | 59 | Low | `max_body_size=5123840` doesn't match code default `5242880` — likely typo |
+
+**Assessment: NEEDS DISCUSSION** — The two medium-severity BUGs are in the metadata persistence path and warrant fixes.

@@ -1,0 +1,12 @@
+Review saved. Here's the summary:
+
+**2 BUGs, 2 QUESTIONs found in `nsq_to_file.go`:**
+
+| # | Type | Lines | Severity | Description |
+|---|------|-------|----------|-------------|
+| 1 | BUG | 191-198 | Medium | `Close()` calls `f.out.Sync()` before `f.gzipWriter.Close()`, so the gzip footer is never synced to disk. Crash after close = unreadable gzip file. `Sync()` at line 209 has the correct order. |
+| 2 | BUG | 391-394 | Low | `wg.Add(1)` called inside goroutine instead of before `go` launch — race with `wg.Wait()` on shutdown could exit before router finishes flushing. |
+| 3 | QUESTION | 106/340 | Low | `logChan` buffer is 1 with `maxInFlight=200` — intentional backpressure or bottleneck? |
+| 4 | QUESTION | 446 | Low | `time.Tick()` leak (benign since program-lifetime, but fragile). |
+
+**Assessment: NEEDS DISCUSSION** — the gzip close ordering is a real data-loss risk on crash.

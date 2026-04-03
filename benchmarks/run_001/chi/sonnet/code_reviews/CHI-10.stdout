@@ -1,0 +1,17 @@
+Review saved. Here's the summary:
+
+## Findings for `middleware/strip.go`
+
+### BUG — High — Line 44
+**`RedirectSlashes` nil pointer dereference.** `chi.RouteContext()` returns `nil` when there's no chi routing context (e.g., the middleware is wrapping a plain `http.ServeMux`). `RedirectSlashes` immediately dereferences `rctx` on the very next line without a nil check:
+```go
+rctx := chi.RouteContext(r.Context())  // line 43 — can return nil
+if rctx.RoutePath != "" {              // line 44 — PANIC if rctx == nil
+```
+The companion function `StripSlashes` in the same file correctly guards this with `if rctx != nil && rctx.RoutePath != ""` (line 17). There's even a `TestStripSlashesWithNilContext` test covering this exact scenario for `StripSlashes`, but no equivalent test for `RedirectSlashes`.
+
+### QUESTION — Medium — Line 25
+**`StripSlashes` updates `r.URL.Path` but not `r.URL.RawPath`** when `rctx == nil`. Per Go's `net/http`, a non-empty `RawPath` takes precedence over `Path` for routing. A percent-encoded trailing slash (`/foo%2Fbar/`) gets stripped from `Path` but not `RawPath`, making the strip silently ineffective.
+
+### QUESTION — Medium — Lines 50-51
+**`RedirectSlashes` redirect target uses decoded `r.URL.Path`** instead of `r.URL.RawPath`, potentially changing the semantic meaning of a percent-encoded path during the redirect (e.g., `/foo%2Fbar/` → redirects to `/foo/bar` instead of `/foo%2Fbar`).

@@ -1,0 +1,11 @@
+Review saved. Here's the summary:
+
+**1 BUG (High) found:**
+
+- **Line 80:** `break` inside `select` only exits the `select`, not the `for` loop. Graceful shutdown is completely broken — `t.wg.Wait()` on line 87 is unreachable dead code, a second signal double-closes channels (panic), and the ticker can create new consumers after termination.
+
+**2 QUESTIONs (Low):**
+- **Line 65:** `time.Tick` creates an unstoppable ticker (acceptable for process-lifetime use, but fragile)
+- **Line 94:** `regexp.MatchString` recompiles the pattern on every call
+
+**Assessment: FIX FIRST** — the shutdown bug must be addressed.

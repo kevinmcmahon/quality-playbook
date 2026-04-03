@@ -1,0 +1,17 @@
+Findings saved. Here's a summary of what I found in `context.go`:
+
+---
+
+### BUG 1 — `Reset()` missing `methodsAllowed` reset (High)
+**context.go:83–96**
+
+`Reset()` clears `methodNotAllowed` (line 94) but never does `x.methodsAllowed = x.methodsAllowed[:0]`. When a pooled context is reused, `tree.go:473/519` appends to the non-empty stale slice, so `mux.go:447` passes stale methods from a *previous* 405 request into `MethodNotAllowedHandler(...)`. The HTTP `Allow` response header for a 405 will include methods from an unrelated prior request.
+
+### BUG 2 — `RoutePattern()` returns `""` for root route `"/"` (Medium)
+**context.go:127**
+
+```go
+routePattern = strings.TrimSuffix(routePattern, "/")  // line 127
+```
+
+This has no guard for `routePattern == "/"`. `strings.TrimSuffix("/", "/")` returns `""`, so any request hitting the root route gets an empty string from `RoutePattern()` instead of `"/"`. Breaks instrumentation middleware and file-server path stripping.

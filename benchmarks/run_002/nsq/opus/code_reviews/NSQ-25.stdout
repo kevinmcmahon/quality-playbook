@@ -1,0 +1,13 @@
+Review saved. Here's the summary:
+
+**1 BUG found:**
+- **Line 383 (Medium):** IDENTIFY doesn't transition state from `stateInit`, allowing re-identification. Second IDENTIFY mutates client settings but messagePump never sees the update (its `identifyEventChan` is nil after first use). With TLS/compression, re-IDENTIFY corrupts the connection.
+
+**5 QUESTIONs:**
+- **Line 88:** Unconditional type assertion `err.(protocol.ChildErr)` — safe today but panics if a non-ChildErr error is ever returned
+- **Lines 316-321:** Empty topology zone/region strings match (`"" == ""`), making all clients zone-local when experiment is enabled without configuration
+- **Line 356:** Sample rate off-by-one — delivers (N+1)% instead of N%
+- **Lines 869-885:** MPUB `bodyLen` not enforced as a read boundary — stream misalignment possible with malformed clients
+- **Line 619:** `stateConnected` defined but never used in client protocol flow
+
+**Assessment:** NEEDS DISCUSSION — the re-IDENTIFY bug should be addressed.

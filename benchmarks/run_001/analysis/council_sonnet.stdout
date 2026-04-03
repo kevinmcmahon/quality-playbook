@@ -1,0 +1,14 @@
+Review saved to `/sessions/quirky-practical-cerf/mnt/QPB/benchmarks/run_001/analysis/council_sonnet.md`.
+
+---
+
+## Summary of Verdicts
+
+| Change | Verdict | Key Reason |
+|--------|---------|-----------|
+| **1: Accessor method consistency → Step 5c** | **REVISE** | Overlaps with existing "Parallel path symmetry" section; should be integrated there with clearer detection mechanics (enumerate all methods on the type, reason about *why* the accessor choice matters, not just that siblings should match) |
+| **2: String normalization → Step 5d** | **REVISE** | Content is correct and fills a real gap, but all three examples are Go stdlib calls. A 10-language playbook needs language-neutral framing or multi-language examples. Also: shift emphasis to "shortest *valid* input" not "empty input" — `"/"` is not empty |
+| **3: Test setup temporal ordering → Step 3** | **APPROVE** | Well-scoped, concrete decision rule ("if the resource is 'live' at creation, the configuration races"), fits naturally alongside the existing test harness consistency audit |
+| **4: Test harness concurrency → Step 5** | **REJECT** | Step 5 is for production code defensive patterns; test harness setup belongs in Step 3. Substantively redundant with Change 3 — both give `httptest.NewServer` vs `NewUnstartedServer` as the canonical example |
+
+**Structural observation not addressed by the proposals:** All three misses share a meta-pattern — *local confirmation bias*. Models found the suspicious code, confirmed it looked plausible in the first instance they checked, and stopped. A general audit-completion directive in `RUN_CODE_REVIEW.md` ("finding a pattern acceptable in one location is a trigger to check all analogous locations, not a reason to stop") would have caught all three more directly than any of the four individual additions.

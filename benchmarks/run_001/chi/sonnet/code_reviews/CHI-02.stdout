@@ -1,0 +1,19 @@
+Review saved. Here's a summary of what I found in `mux.go`:
+
+---
+
+## Findings: `mux.go` (CHI-02)
+
+### BUG — Line 110 | Medium — `Handle()` tab/whitespace parsing regression
+The worktree uses `strings.SplitN(pattern, " ", 2)` instead of the reference's `strings.IndexAny(pattern, " \t")` + `strings.TrimLeft(...)`. This means:
+- Tab-separated patterns (`"GET\t/path"`) aren't recognized — the whole string becomes the pattern → panic.
+- Double-space patterns (`"GET  /path"`) leave a leading space on the path component → panic.
+
+### BUG — Lines 121–129 | Low — `HandleFunc()` duplicates parsing instead of delegating
+Reference `HandleFunc` is `mx.Handle(pattern, handlerFn)`. Worktree has its own copy of the `SplitN` logic, carrying the same bugs and diverging structurally.
+
+### BUG — Lines 374–393 | **High** — `Find()` drops parent mount prefix for sub-routers
+When a node has subroutes, the worktree returns only the sub-router's local pattern (e.g., `/users/{id}`) instead of the full composite pattern (e.g., `/api/users/{id}`). The reference captures `rctx.routePattern` before entering the sub-router and concatenates `TrimSuffix(parentPattern, "/*") + subPattern`. The worktree skips both steps, silently breaking route-pattern-based logging and instrumentation for all mounted sub-routers.
+
+### BUG — Lines 468–475 | **High** — `r.Pattern` never set after route match
+The worktree replaces the reference's inline `r.Pattern = rctx.routePattern` with a call to `setPathValue(rctx, r)` — but `setPathValue` only calls `r.SetPathValue(key, value)` for URL params; it never assigns `r.Pattern`. On Go 1.22+, `r.Pattern` is always `""`, breaking any Prometheus/OpenTelemetry instrumentation that uses it for metric labels.

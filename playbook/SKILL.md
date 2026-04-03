@@ -27,20 +27,21 @@ Without a quality playbook, every new contributor (and every new AI session) sta
 
 ## What This Skill Produces
 
-Six files that together form a repeatable quality system:
+Seven files that together form a repeatable quality system:
 
 | File | Purpose | Why It Matters | Executes Code? |
 |------|---------|----------------|----------------|
 | `quality/QUALITY.md` | Quality constitution — coverage targets, fitness-to-purpose scenarios, theater prevention | Every AI session reads this first. It tells them what "good enough" means so they don't guess. | No |
+| `quality/requirements.md` | Testable requirements derived from specs, changelogs, config structs, source comments, and domain knowledge | The foundation for Passes 2 and 3 of the code review. Without requirements, review is limited to structural anomalies (~65% ceiling). With them, the review can catch intent violations — absence bugs, cross-file contradictions, and design gaps that are invisible to code reading alone. | No |
 | `quality/test_functional.*` | Automated functional tests derived from specifications | The safety net. Tests tied to what the spec says should happen, not just what the code does. Use the project's language: `test_functional.py` (Python), `FunctionalSpec.scala` (Scala), `functional.test.ts` (TypeScript), `FunctionalTest.java` (Java), etc. | **Yes** |
-| `quality/RUN_CODE_REVIEW.md` | Code review protocol with guardrails that prevent hallucinated findings | AI code reviews without guardrails produce confident but wrong findings. The guardrails (line numbers, grep before claiming, read bodies) often improve accuracy. | No |
+| `quality/RUN_CODE_REVIEW.md` | Three-pass code review protocol: structural review, requirement verification, cross-requirement consistency | Structural review alone misses ~35% of real defects. The three-pass pipeline adds requirement verification and consistency checking — backed by experiment evidence showing it finds bugs invisible to all structural review conditions. | No |
 | `quality/RUN_INTEGRATION_TESTS.md` | Integration test protocol — end-to-end pipeline across all variants | Unit tests pass, but does the system actually work end-to-end with real external services? | **Yes** |
 | `quality/RUN_SPEC_AUDIT.md` | Council of Three multi-model spec audit protocol | No single AI model catches everything. Three independent models with different blind spots catch defects that any one alone would miss. | No |
 | `AGENTS.md` | Bootstrap context for any AI session working on this project | The "read this first" file. Without it, AI sessions waste their first hour figuring out what's going on. | No |
 
 Plus output directories: `quality/code_reviews/`, `quality/spec_audits/`, `quality/results/`.
 
-The critical deliverable is the functional test file (named for the project's language and test framework conventions). The Markdown protocols are documentation for humans and AI agents. The functional tests are the automated safety net.
+The two critical deliverables are the requirements file and the functional test file. The requirements file (`quality/requirements.md`) feeds the code review protocol's verification and consistency passes — it's what makes the code review catch more than structural anomalies. The functional test file (named for the project's language and test framework conventions) is the automated safety net. The Markdown protocols are documentation for humans and AI agents.
 
 ## How to Use
 
@@ -199,6 +200,33 @@ Every project has a different failure profile. This step uses **two sources** �
 
 Generate realistic failure scenarios from this knowledge. You don't need to have observed these failures — you know from training that they happen to systems of this type. Write them as **architectural vulnerability analyses** with specific quantities and consequences. Frame each as "this architecture permits the following failure mode" — not as a fabricated incident report. Use concrete numbers to make the severity non-negotiable: "If the process crashes mid-write during a 10,000-record batch, `save_state()` without an atomic rename pattern will leave a corrupted state file — the next run gets JSONDecodeError and cannot resume without manual intervention." Then ground them in the actual code you explored: "Read persistence.py line ~340 (save_state): verify temp file + rename pattern."
 
+### Step 7: Derive Testable Requirements
+
+This is the most important step for the code review protocol. Everything found during exploration — specs, ChangeLog entries, config structs, source comments, defensive patterns, chat history — gets distilled into a set of testable requirements that the code review will verify.
+
+**Why this matters:** Structural code review (reading code and spotting anomalies) catches about 65% of real defects. The remaining 35% are intent violations — absence bugs (code that should exist but doesn't), cross-file contradictions (each file correct in isolation, but they disagree about a shared constraint), and design gaps (a feature that was never built). These defects are invisible to any amount of code reading because there's nothing wrong with the code that IS there. You need to know what the code is supposed to do, then check whether it does it. That's what testable requirements provide.
+
+**Mine every intent source for requirements, organized by category:**
+
+1. **Input Validation**: For every configuration field with a numeric type, state the valid range. For every field with domain constraints (percentiles must be in (0,1], ports must be in [1,65535], sizes must be positive), state the constraint. Check whether validation exists. This is the systematic audit that catches absence bugs — fields where validation should exist but doesn't.
+
+2. **Security Policy Propagation**: For every security credential configured (TLS certificates, CA files, auth tokens), trace whether it propagates to all connection paths. If an inbound TLS config uses a CA file, do outbound connections to auth servers also use it? This catches design gaps where a security setting was configured but never threaded through to all the places it needs to go.
+
+3. **API Contracts**: For every bit layout, encoding format, or protocol negotiation, verify that constants, ranges, and field widths are consistent across all files that reference them. A validation bound in one file must match the bit width in another. This catches cross-file contradictions.
+
+4. **Resource Lifecycle**: For every resource that's created during startup (listeners, goroutines, connections), verify it's cleaned up during shutdown. For every goroutine spawned, verify it's tracked by a WaitGroup or equivalent.
+
+**For each requirement:**
+- State it as a testable assertion: "X must satisfy Y" or "When A, the system must B"
+- Cite the source: spec section, ChangeLog entry, config field definition, source comment, or domain knowledge
+- Rate specificity: **specific** (testable against a single code location) or **directional** (guides an audit across multiple locations)
+
+**Keep all requirements.** Do not filter out "obvious" or "trivial" requirements. Experiments show that filtering is counterproductive — the cost of checking an extra requirement is low, and the cost of missing a bug because you pruned the requirement that would have caught it is high. Directional requirements ("all outbound connections must use the configured CA") are especially valuable for the cross-requirement consistency check even though they seem vague.
+
+**The systematic audit template for absence bugs:** After deriving requirements from documentation, do one more pass. For each category above, ask: "What requirements *should* exist based on the project's domain, even if the documentation doesn't mention them?" A messaging system should validate message sizes. A TLS-enabled system should propagate CA configuration to all connection types. A system with numeric config fields should validate their ranges. These are requirements that come from domain knowledge, not from reading the specific project's docs. They catch the absence bugs that documentation-only derivation misses.
+
+Record all requirements in a structured format. These feed directly into the code review protocol's verification and consistency passes.
+
 ---
 
 ## Phase 2: Generate the Quality Playbook
@@ -247,7 +275,9 @@ Key rules:
 
 **Read `references/review_protocols.md`** for the template.
 
-Key sections: bootstrap files, focus areas mapped to architecture, and these mandatory guardrails:
+The code review protocol has three passes. Each pass runs independently — a fresh session with no shared context except the requirements document. This clean separation prevents cross-contamination between structural review and requirement-based review.
+
+**Pass 1 — Structural Review.** Read the code and spot anomalies. This is what every AI code review tool already does well. No requirements, no focus areas — just the model's own knowledge of code correctness. Keep these mandatory guardrails:
 
 - Line numbers are mandatory — no line number, no finding
 - Read function bodies, not just signatures
@@ -255,7 +285,17 @@ Key sections: bootstrap files, focus areas mapped to architecture, and these man
 - Grep before claiming missing
 - Do NOT suggest style changes — only flag things that are incorrect
 
-**Phase 2: Regression tests.** After the review produces BUG findings, write regression tests in `quality/test_regression.*` that reproduce each bug. Each test should fail on the current implementation, confirming the bug is real. Report results as a confirmation table (BUG CONFIRMED / FALSE POSITIVE / NEEDS INVESTIGATION). See `references/review_protocols.md` for the full regression test protocol.
+Pass 1 catches ~65% of real defects: race conditions, null pointer hazards, resource leaks, off-by-one errors, type mismatches — structural problems visible in the code.
+
+**Pass 2 — Requirement Verification.** For each testable requirement derived in Step 7 of Phase 1, check whether the code satisfies it. For each requirement, either show the code that satisfies it or explain specifically why it doesn't. This is a pure verification pass — the reviewer's only job is "does the code satisfy this requirement?" Not a general review. Not looking for other bugs. Just verification.
+
+Pass 2 catches violations of individual requirements — cases where the code doesn't do what the specification says it should. This finds bugs that structural review misses because the code that IS there is correct; the bug is what's missing or what doesn't match the spec.
+
+**Pass 3 — Cross-Requirement Consistency.** Compare pairs of requirements that reference the same field, constant, range, or security policy. For each pair, verify that their constraints are mutually consistent. Do numeric ranges match bit widths? Do security policies propagate to all connection types? Do validation bounds in one file agree with encoding limits in another?
+
+Pass 3 catches contradictions where two individually-correct pieces of code disagree about a shared constraint. These bugs are invisible to both structural review and per-requirement verification because each requirement IS satisfied individually — the bug only appears when you compare them. This is the pass that catches cross-file arithmetic bugs and design gaps where a security configuration doesn't propagate to all connection paths.
+
+**After all three passes:** Combine findings. Write regression tests in `quality/test_regression.*` that reproduce each confirmed bug. Report results as a confirmation table (BUG CONFIRMED / FALSE POSITIVE / NEEDS INVESTIGATION). See `references/review_protocols.md` for the full three-pass template and regression test protocol.
 
 ### File 4: `quality/RUN_INTEGRATION_TESTS.md`
 
@@ -339,7 +379,8 @@ Here's what I generated:
 |------|-------------|------------|------------|
 | QUALITY.md | Quality constitution | 10 scenarios | ██████░░ High — grounded in code, but scenarios are inferred, not from real incidents |
 | Functional tests | Automated tests | 47 passing | ████████ High — all tests pass, 35% cross-variant |
-| RUN_CODE_REVIEW.md | Code review protocol | 8 focus areas | ████████ High — derived from architecture |
+| requirements.md | Testable requirements | N requirements | ██████░░ Medium — derived from docs and domain knowledge, benefits from human review |
+| RUN_CODE_REVIEW.md | Three-pass code review | 3 passes | ████████ High — structural + requirement verification + consistency |
 | RUN_INTEGRATION_TESTS.md | Integration test protocol | 9 runs × 3 providers | ██████░░ Medium — quality gates need threshold tuning |
 | RUN_SPEC_AUDIT.md | Council of Three audit | 10 scrutiny areas | ████████ High — guardrails included |
 | AGENTS.md | AI session bootstrap | Updated | ████████ High — factual |
@@ -461,6 +502,10 @@ Examine existing test files to understand how they set up test data. Whatever pa
 3. Concrete failure modes make standards non-negotiable — abstract requirements invite rationalization
 4. Guardrails transform AI review quality (line numbers, read bodies, grep before claiming)
 5. Triage before fixing — many "defects" are spec bugs or design decisions
+6. Structural review has a ceiling (~65%). The remaining ~35% are intent violations — absence bugs, cross-file contradictions, design gaps — invisible to any tool that only reads code. Requirements make the invisible visible.
+7. The specification is the unique contribution, not the review structure. Focus areas and review protocols are secondary to having the right testable requirements derived from intent sources.
+8. Cross-requirement consistency checking is essential. Bugs often live in the gap between two individually-correct pieces of code. Per-requirement verification alone can't find these.
+9. Keep all derived requirements — do not filter. The cost of checking an extra requirement is low; the cost of missing a bug because you pruned the requirement that would have caught it is high.
 
 ---
 

@@ -1,0 +1,9 @@
+Review saved. Found **2 bugs and 1 question** in `internal/quantile/aggregate.go`:
+
+1. **Line 97 — BUG (High):** `min` aggregation uses `"max"` keys instead of `"min"` keys. `math.Min(value["max"], p[i]["max"])` should be `math.Min(value["min"], p[i]["min"])`. The aggregated minimum is silently wrong.
+
+2. **Line 74 — BUG (High):** `Less()` sorts on key `"percentile"` which is never set anywhere — the actual key is `"quantile"`. Map lookup returns `0` for missing keys, so `sort.Sort()` on line 104 is a no-op. Percentiles are never reordered after `Add()`.
+
+3. **Line 101 — QUESTION (Low):** Division by zero possible if `count` is 0, producing `NaN` in the average.
+
+**Assessment: FIX FIRST**

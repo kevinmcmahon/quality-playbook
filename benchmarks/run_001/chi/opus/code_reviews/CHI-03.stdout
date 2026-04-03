@@ -1,0 +1,11 @@
+Review saved to `CHI-03_review.md`. Here's a summary of findings:
+
+**5 findings (4 BUG, 1 QUESTION) — Assessment: FIX FIRST**
+
+| # | Type | Line | Severity | Description |
+|---|------|------|----------|-------------|
+| 1 | BUG | 233 | High | `selectEncoder` can return non-empty encoding name with nil encoder, causing `Content-Encoding: gzip` header to be set while body is written uncompressed — corrupted responses |
+| 2 | BUG | 245 | Medium | `matchAcceptEncoding` uses substring matching (`strings.Contains`) instead of token matching, ignoring `q=0` (explicit rejection) per RFC 7231 |
+| 3 | BUG | 360 | Medium | `Hijack()` checks `cw.writer()` (the compression encoder) instead of `cw.ResponseWriter` — WebSocket upgrades always fail on compressible responses |
+| 4 | BUG | 367 | Low | Same issue as Hijack: `Push()` delegates to encoder instead of underlying ResponseWriter |
+| 5 | QUESTION | 10 | Low | `io/ioutil` import persists despite recent cleanup commit (a36a925) and Go 1.23 minimum — missed during cleanup |

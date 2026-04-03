@@ -1,0 +1,31 @@
+Review saved to `/sessions/quirky-practical-cerf/mnt/QPB/benchmarks/run_001/chi/sonnet/code_reviews/CHI-19_review.md`.
+
+---
+
+## Summary of findings for `tree.go`
+
+### BUG — Medium | Line 492
+
+After the `ntParam/ntRegexp` inner `for _, xn = range nds` loop exhausts every candidate without a match, execution falls to **line 492**:
+
+```go
+rctx.routeParams.Values = append(rctx.routeParams.Values, "")
+```
+
+Because `xn` (last node from the loop) is **not nil**, the `if xn == nil { continue }` guard at line 501 is bypassed. The outer code then calls `xn.findRoute(rctx, method, xsearch)` at line 528 with `xsearch == search` — the **original, untrimmed** path (still containing the param-value prefix). If that call returns non-nil, the function returns at line 530 **without** removing the stray `""`. The cleanup at lines 534–537 only runs when `findRoute` returns nil.
+
+The `""` is then copied into `URLParams.Values` at `FindRoute` line 387, with no corresponding entry added to `URLParams.Keys` — producing a silently misaligned key-value array for all `URLParam()` lookups on that request.
+
+*Likelihood:* Low in practice — param-node children expect post-param paths, so the untrimmed path almost never finds a structural match — but there is no invariant in the code that guarantees this.
+
+### QUESTION — Low | Lines 492 / 501–538
+
+The outer block (lines 501–538) appears designed for `ntStatic` and `ntCatchAll`. For `ntParam/ntRegexp` where the inner loop succeeds it is never reached (early `return`); where it fails, `xn` is a semantically meaningless leftover. A `continue` at the end of the inner loop would skip the outer block entirely for the failed-param case and eliminate the bug above. Whether the fallthrough is intentional is unclear from the code.
+
+### Verified correct
+- `patParamKeys` duplicate check checks the **full** accumulated list (not just the last key).
+- Regexp anchoring (`^`/`$`) happens in `patNextSegment` before `regexp.Compile`.
+- Nested brace counting in `patNextSegment` (`cc`) correctly finds the outer closing `}`.
+- Catch-all with empty `search` (`""`) is intentional and handled correctly.
+- `FindRoute` Keys/Values alignment is correct under all normal (inner-loop success) paths.
+- Anonymous regexp params (`{:\d+}`) work as documented.

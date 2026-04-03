@@ -1,0 +1,7 @@
+Review saved. Two findings:
+
+1. **Line 45 — BUG (Low):** Copy-paste error in error message. When the HTTP listener fails, the error reports `opts.TCPAddress` instead of `opts.HTTPAddress`, misleading operators.
+
+2. **Lines 44-45 — BUG (Medium):** Resource leak. If the HTTP listener fails to bind, the already-opened TCP listener (line 39) is never closed. The caller gets `(nil, err)` with no way to clean up the leaked socket.
+
+**Assessment:** FIX FIRST

@@ -1,0 +1,19 @@
+Review saved to `/sessions/quirky-practical-cerf/mnt/QPB/benchmarks/run_001/chi/sonnet/code_reviews/CHI-14_review.md`.
+
+---
+
+## Findings: `middleware/compress.go`
+
+### BUG — Line 247–253 | Severity: Medium
+**`matchAcceptEncoding` ignores `q=0` quality values**
+
+`strings.Contains(v, encoding)` is used to match Accept-Encoding tokens. When a client sends `Accept-Encoding: gzip;q=0` (explicitly rejecting gzip per RFC 7231 §5.3.4), `strings.Contains("gzip;q=0", "gzip")` returns `true` and gzip is incorrectly selected. The client receives a gzip-encoded body it explicitly said it cannot accept.
+
+---
+
+### BUG — Line 236–237 | Severity: High
+**`selectEncoder` returns a non-empty encoding name when the encoder function returns `nil`**
+
+In `SetEncoder` (line 167–180), if the probe call `fn(ioutil.Discard, c.level)` returns `nil` — which happens for the standard gzip/deflate encoders when an out-of-range level is passed (e.g., `NewCompressor(10, ...)`) — the encoder is NOT added to `pooledEncoders` but IS still added to `c.encoders` (line 180). At request time `fn(w, c.level)` returns `nil` again, and `selectEncoder` returns `(nil, "gzip", func(){})`.
+
+Back in `Handler`, `encoder == nil` so `cw.w` stays as the raw `ResponseWriter`, but `encoding = "gzip"` is non-empty. `WriteHeader` (line 318–320) then sets `Content-Encoding: gzip` and `compressable = true`. Since `compressable` is true, `writer()` returns `cw.w` (the plain `ResponseWriter`), so all response bytes are written **uncompressed** with a `Content-Encoding: gzip` header. The client will fail to decompress.

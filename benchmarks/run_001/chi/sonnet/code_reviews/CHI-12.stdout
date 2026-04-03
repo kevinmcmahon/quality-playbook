@@ -1,0 +1,17 @@
+Review complete. Findings saved to `/sessions/quirky-practical-cerf/mnt/QPB/benchmarks/run_001/chi/sonnet/code_reviews/CHI-12_review.md`.
+
+## Summary
+
+4 bugs found in `mux_test.go`:
+
+**Finding 1 — BUG/Medium — Line 1578**
+`t.Fatal(err)` called inside a spawned goroutine in `TestMuxContextIsThreadSafe`. Go documentation prohibits `t.Fatal` outside the test goroutine — it only calls `runtime.Goexit()` on the background goroutine, not the test, so failures are silently swallowed and the test can pass incorrectly.
+
+**Finding 2 — BUG/Low — Line 1714**
+In the shared `testRequest` helper, `defer resp.Body.Close()` is placed *after* `ioutil.ReadAll` and the `t.Fatal` error check. If the read fails, `runtime.Goexit()` fires before the defer is registered, so the response body is never closed. This helper is used throughout the entire test suite.
+
+**Finding 3 — BUG/Low — Line 194**
+Same defer-after-read antipattern in `TestMuxBasic` for the `http.Post` response body — `defer resp.Body.Close()` at line 194 comes after the `ioutil.ReadAll` error check at line 192.
+
+**Finding 4 — BUG/Low — Line 1747**
+`testFile.Read()` always returns `len(p)` instead of the actual bytes copied. When the caller's buffer is larger than `tf.contents`, the method falsely reports more bytes written than exist, violating the `io.Reader` contract. Currently dormant (the type is defined but never instantiated in any test).

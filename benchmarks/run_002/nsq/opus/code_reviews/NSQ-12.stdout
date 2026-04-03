@@ -1,0 +1,16 @@
+Review saved. Here's the summary:
+
+**2 BUGs found:**
+
+1. **channel.go:463-479** — `AddClient` TOCTOU race. `numClients` is read under `RLock`, then the `MaxChannelConsumers` check happens after releasing the lock, and the write occurs under a separate `Lock`. Concurrent `AddClient` calls can all pass the limit check simultaneously, exceeding `MaxChannelConsumers`.
+
+2. **channel.go:382-385** — `PutMessageDeferred` lacks `exitMutex.RLock()` and `Exiting()` check, unlike `PutMessage`. This allows deferred messages to race with `flush()` during channel shutdown, and inflates `messageCount` on an exiting channel.
+
+**4 QUESTIONs found:**
+
+3. **channel.go:663-665, 634-636** — `processInFlightQueue`/`processDeferredQueue` abandon the entire loop on a single `popInFlightMessage` failure (from concurrent FIN), delaying timeout processing of remaining messages.
+4. **channel.go:232** — `len(c.inFlightMessages)` and `len(c.deferredMessages)` read without mutexes in `flush()` (technically a data race, practically safe due to shutdown ordering).
+5. **topic.go:378-381** — `channel.Delete()` called under topic write lock, blocking all topic operations during potentially slow I/O.
+6. **topic.go:390-398** — `channel.Close()` called under topic `RLock`, similar extended lock hold concern.
+
+**Assessment: NEEDS DISCUSSION**

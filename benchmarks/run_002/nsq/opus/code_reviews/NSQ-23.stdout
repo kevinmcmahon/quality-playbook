@@ -1,0 +1,13 @@
+Review saved to `/sessions/quirky-practical-cerf/mnt/QPB/repos/nsq/NSQ-23_review.md` (the target path was outside the sandbox, so I wrote it to the repo root).
+
+**Summary of findings:**
+
+| # | Type | File | Line | Severity | Description |
+|---|------|------|------|----------|-------------|
+| 1 | **BUG** | `internal/lg/lg.go` | 50 | Low | `String()` returns `"WARNING"` for WARN but `ParseLogLevel()` only accepts `"warn"` — breaks `flag.Value` round-trip contract |
+| 2 | QUESTION | `nsqd/nsqd.go` | 82 | Low | `os.Getwd()` error silently discarded; empty `dataPath` if CWD deleted |
+| 3 | QUESTION | `nsqd/nsqd.go` | 338-339 | Low | `writeSyncFile` discards `f.Close()` error after Sync |
+| 4 | QUESTION | `nsqd/nsqd.go` | 389-414 | Medium | `GetMetadata()` iterates `topicMap` without lock; relies on callers holding it, but is a public method |
+| 5 | QUESTION | `nsqd/nsqd.go` | 479 | Low | `ctxCancel()` fires after all goroutines exit, contradicting `Context()` doc comment |
+
+**Overall: SHIP IT** — no critical or high-severity bugs found. `http_server.go`, `tcp_server.go`, and `apps/nsqd/main.go` are clean.

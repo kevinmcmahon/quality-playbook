@@ -1,0 +1,10 @@
+Review saved. Here's a summary of the 4 findings in `middleware/url_format.go`:
+
+| # | Type | Line | Severity | Description |
+|---|------|------|----------|-------------|
+| 1 | BUG | 52 | Medium | Reads `r.URL.Path` directly instead of checking `rctx.RoutePath` first, breaking composition with other path-modifying middleware (StripSlashes, CleanPath) |
+| 2 | QUESTION | 54 | Low | Outer guard uses `> 0` instead of `>= 0`, which is redundant with and stricter than the inner dot check on line 56 |
+| 3 | BUG | 40 | Low | Doc comment example has `case "xml:"` (colon inside string) instead of `case "xml":` — users copying the example get a case that never matches |
+| 4 | QUESTION | 52-63 | Medium | Does not consider `r.URL.RawPath` for percent-encoded URLs, unlike `CleanPath` middleware which does — changes routing behavior for encoded URLs |
+
+**Overall assessment: NEEDS DISCUSSION** — Works for common cases in isolation, but inconsistent with the chi middleware ecosystem's `RoutePath`/`RawPath` conventions.

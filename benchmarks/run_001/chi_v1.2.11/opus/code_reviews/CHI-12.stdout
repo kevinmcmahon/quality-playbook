@@ -1,0 +1,7 @@
+Review saved. Here's a summary of the 3 findings:
+
+**Finding 1 (High) — Line 1686-1689:** `TestServerBaseContext` calls `httptest.NewServer(r)` which starts the server immediately, then sets `ts.Config.BaseContext` *after* the server is already listening. This is a temporal ordering bug — the server is live before its configuration is complete. Should use `NewUnstartedServer` → configure → `Start()`.
+
+**Finding 2 (Medium) — Line 1576:** `TestMuxContextIsThreadSafe` calls `t.Fatal` from a child goroutine, violating the `testing` package contract. `Fatal`/`FailNow` must only be called from the test goroutine.
+
+**Finding 3 (Medium) — Line 744-746:** `TestMuxRouteGroups` uses `t.Logf` instead of `t.Fatalf` for the first middleware group's counter check, silently swallowing failures. The parallel assertion at line 753 correctly uses `t.Fatalf`.

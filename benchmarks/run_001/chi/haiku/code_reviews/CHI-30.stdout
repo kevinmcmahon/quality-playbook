@@ -1,0 +1,20 @@
+## Code Review Complete
+
+I've completed the targeted code review of `middleware/wrap_writer.go` following the chi router code review protocol. The review is saved to `/sessions/quirky-practical-cerf/mnt/QPB/benchmarks/run_001/chi/haiku/code_reviews/CHI-30_review.md`.
+
+### Summary of Findings
+
+**3 bugs identified:**
+
+1. **[CRITICAL BUG - Lines 202-204, 221]** Push method type mismatch
+   - The `Push()` method (HTTP/2 server push) is defined on `*httpFancyWriter` but the var assertion expects it on `http2FancyWriter`
+   - Will cause compile error
+
+2. **[HIGH BUG - Line 209]** Double-counting of bytes in ReadFrom
+   - When tee is enabled, `io.Copy()` calls `Write()` multiple times (each incrementing byte counter), then line 209 adds the byte count again
+   - Causes callers of `BytesWritten()` to receive incorrect metrics
+
+3. **[MEDIUM - Lines 9, 107]** Deprecated io/ioutil usage  
+   - Should use `io.Discard` instead of `ioutil.Discard` (consistent with recent "Remove last uses of io/ioutil" commits)
+
+All findings include exact line numbers, severity levels, evidence, and recommended fixes as required by the protocol.

@@ -1,0 +1,12 @@
+Review saved. Here's a summary of findings:
+
+**2 BUGs found:**
+1. **High — Line 209: Double byte counting in `ReadFrom`** — When `tee` is set, `io.Copy(&f.basicWriter, r)` calls `basicWriter.Write()` which already increments `bytes` on line 109. Then line 209 adds the total again, causing `BytesWritten()` to report ~2x the actual value.
+2. **Low — Lines 9, 107: Deprecated `io/ioutil`** — Already removed on main branch but still present here. Should use `io.Discard`.
+
+**3 QUESTIONs flagged:**
+- **Medium** — `Flush()` sets `wroteHeader = true` without setting `code`, so `Status()` returns 0 after a flush-before-write.
+- **Medium** — `Flush()` doesn't respect `discard` mode, unlike `Write` and `WriteHeader`.
+- **Low** — `http2FancyWriter.Push()` defined between `httpFancyWriter` methods (confusing placement).
+
+**Assessment: FIX FIRST** — The `ReadFrom` double-counting is a real correctness bug.

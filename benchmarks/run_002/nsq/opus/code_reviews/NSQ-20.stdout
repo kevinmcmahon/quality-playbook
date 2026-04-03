@@ -1,0 +1,25 @@
+Review complete. Saved to `/sessions/quirky-practical-cerf/mnt/QPB/benchmarks/run_002/nsq/opus/code_reviews/NSQ-20_review.md`.
+
+**Summary of findings across 4 files (5 skipped — not found in repo):**
+
+| Severity | Count |
+|----------|-------|
+| BUG (High) | 1 |
+| BUG (Medium) | 4 |
+| BUG (Low) | 2 |
+| QUESTION (Medium) | 2 |
+| QUESTION (Low) | 7 |
+
+**Top findings:**
+
+1. **BUG High — AddClient TOCTOU race** (channel.go:462-479): RLock checks `len(clients)` against `maxChannelConsumers`, drops the lock, then re-acquires write Lock to add. Concurrent calls can exceed the consumer limit.
+
+2. **BUG Medium — Topology-aware `put()` inconsistency with MemQueueSize=0** (channel.go:332-380): When `MemQueueSize=0`, messages can still go to unbuffered zone/region channels, contradicting the "consistent ordering" intent.
+
+3. **BUG Medium — `GetMetadata()` has no internal locking** (nsqd.go:389-415): Public method iterates `topicMap` without holding `n.RLock()` — relies entirely on callers to hold the lock.
+
+4. **BUG Medium — `processDeferredQueue` PQ/map desync risk** (channel.go:624-635): Item popped from PQ under lock, then map entry removed under a separate lock acquisition — gap allows inconsistency.
+
+5. **BUG Medium — Silent message loss on re-enqueue** (channel.go:637,675): `put()` errors during in-flight timeout and deferred processing are silently discarded, losing messages.
+
+**Assessment: NEEDS DISCUSSION**

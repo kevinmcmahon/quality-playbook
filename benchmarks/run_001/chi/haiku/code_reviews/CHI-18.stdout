@@ -1,0 +1,20 @@
+## Code Review Complete
+
+I've completed the code review of **middleware/strip.go** and saved findings to the review file. Here's a summary:
+
+### Key Finding: 1 BUG Identified
+
+**StripSlashes inconsistent path read/write logic (lines 18-28)** — Medium Severity
+- The middleware reads from `rctx.RoutePath` OR `r.URL.Path` (with condition: `rctx != nil && rctx.RoutePath != ""`)
+- But it writes to either path based on different logic (condition: `rctx == nil`)
+- **Problem:** If rctx exists but RoutePath is empty, the code reads from r.URL.Path but writes to rctx.RoutePath — these should match
+- **Impact:** Could cause sub-router to receive modified RoutePath that doesn't reflect the actual path being processed
+
+### Positive Findings
+
+✓ **RedirectSlashes** — No issues. Properly handles both chi and non-chi contexts, safely trims slashes, includes query params  
+✓ **StripPrefix** — Correct wrapper around http.StripPrefix  
+✓ Boundary safety on line 23 — Checks length before accessing index  
+✓ Proper nil checks throughout
+
+The detailed review with code examples and recommendations has been saved to `/sessions/quirky-practical-cerf/mnt/QPB/benchmarks/run_001/chi/haiku/code_reviews/CHI-18_review.md`

@@ -1,0 +1,14 @@
+Review saved. Here's the summary:
+
+**2 BUGs found:**
+
+1. **Line 316-321 (High):** DeflateLevel logic bug — when a client requests a positive deflate level, the value is never assigned to `deflateLevel`, so it stays `0`. Missing `else` branch means client-specified compression is silently ignored.
+
+2. **Lines 483, 505, 643 (Medium):** Unsafe pointer cast to `MessageID` (16 bytes) without validating that `params[1]` is long enough. A client sending a short message ID causes a buffer over-read via `unsafe.Pointer`.
+
+**3 QUESTIONs:**
+- Line 66: Unguarded type assertion `err.(util.ChildErr)` could panic if error type changes
+- Line 402: SUB allowed from `StateInit` without requiring IDENTIFY first
+- Line 111-114: In-flight timeout starts before message is actually sent
+
+**Assessment: FIX FIRST** — the deflate bug and unsafe pointer reads should be addressed.

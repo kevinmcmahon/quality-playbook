@@ -1,0 +1,19 @@
+Review saved. Here's a summary of the three bugs found in `middleware/wrap_writer.go`:
+
+---
+
+**BUG 1 — Line 74 (High): `WriteHeader` unconditionally forwards to underlying writer**
+
+The `if !b.wroteHeader` guard protects `b.code` and `b.wroteHeader`, but `b.ResponseWriter.WriteHeader(code)` is outside the guard and runs on every call. A second `WriteHeader` call propagates to the underlying writer, producing `"superfluous response.WriteHeader call"` log spam and potentially incorrect behavior in custom `ResponseWriter` implementations.
+
+---
+
+**BUG 2 — Lines 118, 135, 177 (Medium): `Flush()` sets `wroteHeader = true` but not `code`**
+
+All three `Flush()` methods mark headers as written (`wroteHeader = true`) without setting `code`. When flush triggers an implicit HTTP 200, `Status()` returns `0` instead of `200`. Logging/metrics middleware that reads `Status()` after a flush-based streaming response will record the wrong status.
+
+---
+
+**BUG 3 — Line 153 (High): `ReadFrom` double-counts bytes when tee is set**
+
+`io.Copy(&f.basicWriter, r)` routes through `basicWriter.Write()`, which already increments `b.bytes += n` (line 87). Then line 153 adds `n` again. `BytesWritten()` returns `2 * actual_bytes` whenever a tee writer is registered and `ReadFrom` is the code path.

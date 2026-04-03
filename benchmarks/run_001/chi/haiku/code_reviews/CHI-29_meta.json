@@ -1,0 +1,10 @@
+{
+    "defect_id": "CHI-29",
+    "model": "haiku",
+    "category": "null safety",
+    "pre_fix_commit": "7859137",
+    "fix_commit": "1c2d011",
+    "files_reviewed": "middleware/url_format.go,",
+    "duration_seconds": 68,
+    "description": "URLFormat middleware accessed rctx.RoutePath without nil check. When rctx was nil (possible in certain middleware chains), pointer dereference panicked. Static analyzer found vulnerability."
+}

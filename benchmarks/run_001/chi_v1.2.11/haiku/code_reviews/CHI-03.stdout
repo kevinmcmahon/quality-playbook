@@ -1,0 +1,16 @@
+Code review complete. I've identified **1 Critical Bug**, **2 Questions**, and **1 Suggestion** in middleware/compress.go:
+
+## Key Findings:
+
+**🔴 BUG-1 (Critical, Line 245):** The `matchAcceptEncoding()` function uses substring matching instead of exact token matching. If a client sends `Accept-Encoding: x-gzip`, the code incorrectly activates gzip compression because it checks if the header *contains* "gzip" rather than *equals* "gzip". This violates HTTP content negotiation (RFC 7231).
+
+**🟡 QUESTION-1 (Line 72):** Panic message claims "Only '/*' supported" but code actually supports `text/*`, `application/*` patterns. Message is misleading.
+
+**🟡 QUESTION-2 (Line 224):** Type assertion `pool.Get().(ioResetterWriter)` lacks explicit error handling. Probably safe in practice, but fragile.
+
+**🟢 SUGGESTION-1 (Lines 343-357):** The `Flush()` method might call `Flush()` twice on the same writer if it implements both `http.Flusher` and `compressFlusher` interfaces.
+
+All findings with line numbers, severity levels, impact analysis, and recommendations have been saved to:
+```
+/sessions/quirky-practical-cerf/mnt/QPB/benchmarks/run_001/chi_v1.2.11/haiku/code_reviews/CHI-03_review.md
+```

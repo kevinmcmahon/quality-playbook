@@ -1,0 +1,16 @@
+Review saved to `/sessions/quirky-practical-cerf/mnt/QPB/benchmarks/run_002/nsq/opus/code_reviews/NSQ-02_review.md`.
+
+## Key findings:
+
+**3 BUGs (Medium severity):**
+1. **`AddClient()` TOCTOU race** (channel.go:462-479) — RLock/unlock gap before Lock allows `maxChannelConsumers` to be exceeded
+2. **`processDeferredQueue` ignores `put()` error** (channel.go:637) — message removed from deferred but silently lost if re-queue fails
+3. **`processInFlightQueue` ignores `put()` error** (channel.go:675) — same pattern for timed-out in-flight messages
+
+**4 QUESTIONs (Medium/Low):**
+- `PutMessageDeferred()` lacks `exitMutex` guard unlike `PutMessage()` (channel.go:382)
+- `flush()` reads maps without locks for logging (channel.go:232)
+- `Depth()` non-atomic composite read (channel.go:283)
+- `NewChannelStats` non-atomic stats reads (stats.go:66-71)
+
+**Overall: NEEDS DISCUSSION** — the message-loss paths and the TOCTOU race are real correctness concerns.

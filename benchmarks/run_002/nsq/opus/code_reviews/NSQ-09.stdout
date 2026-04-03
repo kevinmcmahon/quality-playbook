@@ -1,0 +1,11 @@
+Review saved. Here's the summary:
+
+**2 BUGs found (HIGH severity):**
+- **Line 54:** Data race on `len(c.inFlightMessages)` — called in `NewChannelStats()` after the channel lock is released at line 142. The map has its own `inFlightMutex` which is not held either. Concurrent map read+write is UB in Go and can crash the process.
+- **Line 55:** Same data race on `len(c.deferredMessages)` — its `deferredMutex` is also not held.
+
+**3 QUESTIONs (LOW-MEDIUM):**
+- **Line 62:** `e2eProcessingLatencyStream.Result()` called without lock — depends on whether the quantile package is internally thread-safe.
+- **Lines 126, 135:** `len(n.topicMap)` and `len(t.channelMap)` read after releasing locks — technically races but only affect slice capacity hints.
+
+**Assessment: FIX FIRST** — The in-flight/deferred map races can cause runtime crashes under load.

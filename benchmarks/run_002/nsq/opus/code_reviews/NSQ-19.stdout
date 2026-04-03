@@ -1,0 +1,12 @@
+Review complete. Saved to `NSQ-19_review.md`. Summary of findings:
+
+**1 BUG:**
+- **Lines 303, 325 (Low):** Sample rate off-by-one — `rand.Int31n(100) > sampleRate` delivers `sampleRate+1`% of messages instead of `sampleRate`%. At max value 99, delivers 100% instead of 99%.
+
+**4 QUESTIONs:**
+- **Line 87 (Medium):** Unchecked type assertion `err.(protocol.ChildErr)` — panics if any handler ever returns a bare error.
+- **Line 627 (Low):** `stateConnected` constant exists but is dead code — SUB jumps directly from `stateInit` to `stateSubscribed`.
+- **Lines 615-626 (Low):** Unbounded retry loop in SUB for ephemeral channel races — no iteration limit.
+- **Lines 820-822 (Low):** MPUB checks auth before reading body (inconsistent with PUB) — safe only because auth failure is always fatal.
+
+**Overall: SHIP IT** — solid protocol handler with no critical issues.

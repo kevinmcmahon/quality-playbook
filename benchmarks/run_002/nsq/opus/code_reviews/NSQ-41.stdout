@@ -1,0 +1,13 @@
+Review saved. Here's the summary:
+
+**1 BUG found:**
+- **Line 315** — `PersistMetadata()` iterates `topicMap` without acquiring its own lock. All current callers hold the lock, but the method is exported, making the contract fragile.
+
+**5 QUESTIONs flagged:**
+- **Line 461-468** — TOCTOU in `DeleteExistingTopic`: concurrent deletes both succeed silently (CAS prevents crash but error is swallowed)
+- **Line 423** — `lookupPeers` slice read without lock after `n.Unlock()`, concurrent with appends in `lookupLoop`
+- **Line 348** — `rand.Int()` unseeded on Go <1.20, predictable temp file names
+- **Line 554** — TLS MaxVersion hardcoded to 1.2, blocks TLS 1.3 (comment references Go 1.5)
+- **Line 511-526** — Post-shutdown `Notify` goroutines can persist metadata of already-closed topics
+
+**Overall: NEEDS DISCUSSION** — no critical crashers, but concurrency contracts rely on caller discipline rather than enforcement.

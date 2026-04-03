@@ -1,0 +1,19 @@
+Review complete. Saved to `NSQ-52_review.md`. Here's the summary:
+
+**3 BUGs found:**
+
+1. **Line 633 (High)** — `break` instead of `continue` in `inFlightWorker`. When `popInFlightMessage` fails (race with `TouchMessage`/`FinishMessage`), it stops processing ALL remaining timed-out messages until the next 100ms tick, causing timeout backlog.
+
+2. **Line 635 (High)** — Data race reading `c.clients` map without `RLock`. Concurrent map read/write causes Go runtime panic.
+
+3. **Line 239 (Medium)** — `flush()` silently drops `writeMessageToBackend` error for `clientMsgChan` messages, unlike every other flush path which logs errors.
+
+**3 QUESTIONs found:**
+
+4. **Line 275 (Medium)** — `flush()` always returns `nil` despite error signature; error propagation is broken.
+
+5. **Lines 604–608 (Medium)** — `deferredWorker` ignores `doRequeue` error; shutdown race can silently lose deferred messages.
+
+6. **Line 118 (Low)** — `messagePump` not tracked by `WaitGroup`; shutdown relies on implicit synchronization.
+
+**Assessment: FIX FIRST** — The two high-severity bugs in the in-flight timeout path need fixing.

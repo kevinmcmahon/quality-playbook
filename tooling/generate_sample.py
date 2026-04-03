@@ -37,10 +37,21 @@ for defect_id in curl_ids[:5]:
             if ref.isdigit():
                 refs.append(f"https://github.com/{d['github_repo']}/pull/{ref}")
             else:
-                if 'ZOOKEEPER' in ref or 'KAFKA' in ref:
-                    refs.append(f"https://issues.apache.org/jira/browse/{ref}")
+                # Map known JIRA-style prefixes to their issue tracker URLs
+                jira_prefix = ref.split('-')[0] if '-' in ref else ''
+                JIRA_URLS = {
+                    'ZOOKEEPER': 'https://issues.apache.org/jira/browse/',
+                    'KAFKA': 'https://issues.apache.org/jira/browse/',
+                    'CASSANDRA': 'https://issues.apache.org/jira/browse/',
+                    'HBASE': 'https://issues.apache.org/jira/browse/',
+                    'HDFS': 'https://issues.apache.org/jira/browse/',
+                    'MAPREDUCE': 'https://issues.apache.org/jira/browse/',
+                    'YARN': 'https://issues.apache.org/jira/browse/',
+                }
+                if jira_prefix in JIRA_URLS:
+                    refs.append(f"{JIRA_URLS[jira_prefix]}{ref}")
                 else:
-                    refs.append(ref)
+                    refs.append(ref)  # Unknown JIRA prefix — output as-is
         # Deduplicate
         seen = set()
         unique_refs = []

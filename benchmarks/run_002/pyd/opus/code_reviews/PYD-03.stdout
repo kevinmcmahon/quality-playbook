@@ -1,0 +1,7 @@
+Review saved to `/sessions/quirky-practical-cerf/mnt/QPB/benchmarks/run_002/pyd/opus/code_reviews/PYD-03_review.md`.
+
+**Key finding:**
+
+**BUG in `function.rs` line 559** — Copy-paste error where `exclude_computed_fields` is assigned from `extra.exclude_none` instead of `extra.exclude_computed_fields` in the `SerializationInfo::new()` field serializer branch. This causes `SerializationInfo.exclude_computed_fields` to report the wrong value when accessed from field serializers with `info_arg=True`. The non-field-serializer branch (line 579) correctly uses `extra.exclude_computed_fields`.
+
+All other files reviewed (12 files) had no bugs found. Assessment: **FIX FIRST** — the fix is a one-line change.

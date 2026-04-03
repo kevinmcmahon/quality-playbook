@@ -1,0 +1,17 @@
+Review saved. Here's the summary:
+
+**3 BUGs, 5 QUESTIONs found across 4 files.**
+
+### Key findings:
+
+1. **BUG (Medium) — `lookup_protocol_v1_test.go:51`**: `defer prot.nsqlookupd.Exit()` is placed after the `errChan` send inside a goroutine. On test timeout, `Exit()` never runs, leaking TCP/HTTP listeners opened by `New()`.
+
+2. **BUG (Medium) — `nsqlookupd.go:54-76`**: `Main()` returns on the first goroutine error without closing listeners or waiting for the second goroutine. Relies entirely on caller calling `Exit()` — if they don't, goroutines and listeners leak.
+
+3. **BUG (Low) — `tcp.go:54-56`**: Double-close race between `Handle()` cleanup and `tcpServer.Close()` during shutdown. Benign for `net.Conn` (returns error, no panic) but logically racy.
+
+4. **QUESTION (Medium) — `tcp.go:47`**: `sync.Map` key uses `conn.RemoteAddr()` pointer identity — works in practice due to Go's caching behavior, but relies on undocumented implementation detail.
+
+5. **QUESTION (Medium) — `nsqlookupd.go:86-98`**: `Exit()` shutdown ordering can cause `Close()` to be called twice on clients from both `tcpServer.Close()` and `Handle()` goroutine cleanup.
+
+**Overall: NEEDS DISCUSSION** — The `Main()` error-exit contract is the most significant concern.

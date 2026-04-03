@@ -13,6 +13,7 @@ import argparse
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 from collections import defaultdict
 
@@ -101,7 +102,8 @@ def git_cmd(repo_dir, *args):
             timeout=30
         )
         return result.stdout.strip() if result.returncode == 0 else ""
-    except:
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+        print(f"  WARNING: git command failed in {repo_dir}: {e}", file=sys.stderr)
         return ""
 
 
@@ -204,7 +206,7 @@ for line in content.split('\n'):
         skipped += 1
         continue
 
-    title = parts[2].strip()
+    issue_ref = parts[2].strip()  # Issue/PR number (e.g., "#2068"), not a title
     fix_sha = parts[3].strip().strip('`')
     pre_fix_sha = parts[4].strip().strip('`')
     severity = parts[5].strip()
@@ -215,7 +217,7 @@ for line in content.split('\n'):
     defects.append({
         "defect_id": defect_id,
         "prefix": prefix,
-        "title": title,
+        "issue_ref": issue_ref,
         "fix_sha": fix_sha,
         "pre_fix_sha": pre_fix_sha,
         "severity": severity,
@@ -245,7 +247,7 @@ for i, d in enumerate(defects):
         d["severity"], d["category"], d["description"], d["playbook_angle"],
         repo_dir, d["github_path"]
     )
-    data["title"] = d["title"]
+    data["issue_ref"] = d["issue_ref"]
     results[d["defect_id"]] = data
 
     if (i + 1) % 100 == 0:

@@ -1,0 +1,19 @@
+## Code Review Complete
+
+I've completed the targeted review of **tree.go** (CHI-05) and saved my findings to:
+`/sessions/quirky-practical-cerf/mnt/QPB/benchmarks/run_001/chi/haiku/code_reviews/CHI-05_review.md`
+
+### Summary
+
+**1 CRITICAL BUG found:**
+
+**Line 469: Parameter Value Leakage in findRoute Backtracking**
+- Unconditionally appends an empty string to `rctx.routeParams.Values` after param/regexp node loop
+- The empty string is only removed in line 506 if backtracking fails
+- **If code returns early** (lines 488, 500, or sets methodNotAllowed at 493), the empty string leaks
+- Causes parameter corruption that propagates to final URLParams via line 374-375
+- **Violates protocol**: "Grep for calls to `append` that modify `rctx.routeParams` — verify reset logic"
+
+This is a **parameter leakage risk** under overlapping param patterns when backtracking occurs.
+
+The complete review with impact analysis, code paths, and example scenarios is saved to the output file.

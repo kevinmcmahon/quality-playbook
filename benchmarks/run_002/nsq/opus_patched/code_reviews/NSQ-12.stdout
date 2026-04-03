@@ -1,0 +1,21 @@
+Review saved. Here's the summary:
+
+**11 findings** (5 BUG, 5 QUESTION, 1 INCOMPLETE → reclassified) across both files.
+
+### High severity (2)
+- **channel.go:637** — `processDeferredQueue` discards `c.put(msg)` error after removing message from deferred structures → silent message loss
+- **channel.go:674** — `processInFlightQueue` discards `c.put(msg)` error after removing from in-flight structures → silent message loss
+
+### Medium severity (3)
+- **channel.go:463–479** — TOCTOU race in `AddClient` allows `MaxChannelConsumers` to be exceeded
+- **channel.go:95–100** — Topology channels created independently of experiment flag; no validation that TopologyZone/Region is set when experiment is enabled
+- **topic.go:377–381** — `channel.Delete()` called while holding `t.Lock()` with no panic recovery → potential permanent deadlock on panic
+
+### Low severity (5)
+- **channel.go:279 / topic.go:439** — `flush()` always returns nil despite backend write errors
+- **channel.go:632–636** — Inconsistent deferred queue state on concurrent removal
+- **channel.go:96,98** — Unbuffered topology channels make `flush()`/`Empty()` drain loops no-ops; `Depth()` always undercounts
+- **topic.go:49** — Asymmetry with Channel: topic creates unbuffered (not nil) memoryMsgChan at MemQueueSize=0
+- **topic.go:390–398** — Channels closed sequentially under topic RLock
+
+**Overall: FIX FIRST** — the two high-severity message loss paths in `processDeferredQueue` and `processInFlightQueue` are the primary concern.

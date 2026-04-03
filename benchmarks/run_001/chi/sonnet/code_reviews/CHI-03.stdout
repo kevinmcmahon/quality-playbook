@@ -1,0 +1,20 @@
+Review saved. Here's a summary of what I found:
+
+## Findings for `middleware/compress.go`
+
+### BUG — High | Lines 244–246
+`matchAcceptEncoding` uses `strings.Contains` without parsing quality values. `Accept-Encoding: gzip;q=0` explicitly means "do not use gzip" per RFC 7231 §5.3.4, but `strings.Contains("gzip;q=0", "gzip")` returns `true`. The middleware compresses with gzip against the client's explicit refusal, potentially producing undecodable responses.
+
+### BUG — Medium | Lines 244–246
+Same function: substring matching also fails to recognize `Accept-Encoding: *` (the RFC wildcard for "any encoding acceptable") — `strings.Contains("*", "gzip")` is `false`, so those clients never get compressed responses. Short encoder names can also spuriously match inside longer accepted tokens.
+
+### BUG — Low | Lines 10, 163, 168
+`io/ioutil` is still imported and `ioutil.Discard` used twice, despite commit `a36a925` ("Remove last uses of io/ioutil") already having done a project-wide cleanup. These should be `io.Discard`.
+
+### QUESTION — Medium | Lines 297–299
+`WriteHeader` forwards duplicate calls to the underlying `ResponseWriter.WriteHeader`, which triggers Go's "superfluous response.WriteHeader call" stderr warnings. Intentional or not?
+
+### QUESTION — Low | Lines 343–357
+`Flush()` has two sequential type-assertion branches; a writer implementing both `http.Flusher` and `compressFlusher` would have its flush called twice.
+
+**Assessment: FIX FIRST** — the `matchAcceptEncoding` protocol violations (Findings 1 & 2) are in the same 7-line function and are correctness bugs affecting all clients.

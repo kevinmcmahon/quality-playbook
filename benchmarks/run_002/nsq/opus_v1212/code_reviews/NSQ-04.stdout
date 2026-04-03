@@ -1,0 +1,14 @@
+Review saved. Here's the summary:
+
+**13 findings** across the two files (1 High, 4 Medium, 3 Low, 5 QUESTIONs):
+
+**High:**
+- `buildTLSConfig` (line 748-749): silently accepts unrecognized `TLSClientAuthPolicy` values (e.g., typos), forcing TLS required but with `NoClientCert` — a silent security downgrade
+
+**Medium:**
+- Line 82: `os.Getwd()` error silently discarded, risking empty data path
+- Lines 152-166: Listener and dirlock leak on partial `New()` construction failure
+- Line 389: Exported `GetMetadata` iterates `topicMap` without holding lock
+- Lines 706-719: `goto loop` in `queueScanLoop` skips `exitChan` check, delaying shutdown
+
+**Overall: FIX FIRST** — the TLS policy silent-accept is a security concern that warrants fixing before ship.

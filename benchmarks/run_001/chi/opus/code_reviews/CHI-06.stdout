@@ -1,0 +1,13 @@
+Review saved. Here's the summary:
+
+**4 findings** in `middleware/wrap_writer.go`:
+
+1. **BUG (High) — Line 131-133:** `ReadFrom` double-counts bytes when `tee` is set. `io.Copy(&f.basicWriter, r)` routes through `basicWriter.Write()` which increments `bytes`, then line 133 increments `bytes` again. `BytesWritten()` returns ~2x actual.
+
+2. **BUG (Medium) — Lines 119, 155:** `Flush()` sets `wroteHeader = true` without setting `code`. Subsequent `Write()` skips `maybeWriteHeader()`, so `Status()` returns 0 instead of 200 for flushed responses.
+
+3. **QUESTION (Medium) — Lines 20-29:** Constructor uses OR logic (`fl || hj || rf`) but fancy writer methods do unchecked type assertions. A writer implementing only `http.Flusher` would panic on `Hijack()`.
+
+4. **QUESTION (Low) — Lines 133, 138:** `int64` to `int` truncation in byte counting could overflow on 32-bit platforms.
+
+**Assessment: FIX FIRST**

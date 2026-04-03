@@ -1,0 +1,13 @@
+Review saved. Here's the summary:
+
+**5 BUGs, 2 QUESTIONs found — Assessment: FIX FIRST**
+
+| # | Type | Lines | Severity | Description |
+|---|------|-------|----------|-------------|
+| 1 | BUG | 116-117 | High | `initPQ()` replaces `inFlightMessages`/`deferredMessages` maps without holding their respective mutexes — data race when called from `Empty()` |
+| 2 | BUG | 308-311 | High | `PutMessageDeferred()` lacks `exitMutex`/`exitFlag` check (unlike `PutMessage`) and silently discards `StartDeferredTimeout` errors — messages lost, count inflated |
+| 3 | BUG | 543 | High | `processDeferredQueue()` ignores `doRequeue()` error — message already removed from deferred tracking, silently lost on backend failure |
+| 4 | BUG | 580 | High | `processInFlightQueue()` same issue — timed-out message permanently lost if `doRequeue()` fails |
+| 5 | BUG | 238 | Medium | `flush()` always returns nil, swallows all backend write errors during shutdown |
+| 6 | QUESTION | 205,223-236 | Medium | `flush()` accesses in-flight/deferred maps without locks — likely safe due to exit ordering but depends on `client.Close()` being synchronous |
+| 7 | QUESTION | 540-542,569-571 | Low | Pop failure causes early loop exit, delaying processing of other due messages until next tick |

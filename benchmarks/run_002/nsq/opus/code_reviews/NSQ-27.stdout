@@ -1,0 +1,11 @@
+Review saved. Here's the summary:
+
+**2 BUGs, 1 QUESTION found in `spread_writer.go`:**
+
+1. **Line 32 - BUG (High):** Division by zero panic when `Flush()` is called with an empty buffer. Reachable on idle nsqd with no topics and `StatsdMemStats` disabled.
+
+2. **Line 33 - BUG (High):** `time.NewTicker` panics on zero/negative duration. Reachable when `StatsdInterval` is configured to 1 second (making `interval - time.Second == 0`) or when the buffer is large enough for integer division truncation to yield 0.
+
+3. **Line 35 - QUESTION (Medium):** Write errors from the underlying `net.Conn` are silently discarded. Possibly intentional for UDP fire-and-forget, but makes flush failures invisible.
+
+**Assessment: FIX FIRST** - The two panics are reachable in production.

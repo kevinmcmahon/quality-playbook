@@ -6,6 +6,7 @@ temporary mining outputs that were used during initial dataset construction.
 To re-run, you would need the original mining output files.
 """
 import re
+import sys
 from collections import defaultdict
 from pathlib import Path
 
@@ -144,7 +145,11 @@ for line in content.split('\n'):
             prefix_counts[pfx][sev_m.group(1).capitalize()] += 1
 
 # Update total row in summary table
-old_total = re.search(r'\| \*\*Total\*\*.*', content).group(0)
+total_match = re.search(r'\| \*\*Total\*\*.*', content)
+if not total_match:
+    print("ERROR: Could not find **Total** row in summary table", file=sys.stderr)
+    sys.exit(1)
+old_total = total_match.group(0)
 new_total = f'| **Total** | | | **{all_defects}** | **{sev_counts["Critical"]}** | **{sev_counts["High"]}** | **{sev_counts["Medium"]}** | **{sev_counts["Low"]}** |'
 content = content.replace(old_total, new_total)
 
@@ -191,6 +196,8 @@ for pfx, info in prefix_counts.items():
         content = content.replace(old_row, new_row)
 
 # Update category distribution
+# Canonical categories must match normalize_categories.py CANONICAL list (14 labels).
+# Keys are lowercase lookup forms; values are display forms.
 CANONICAL = {
     "state machine gap": "state machine gap", "type safety": "type safety",
     "validation gap": "validation gap", "error handling": "error handling",

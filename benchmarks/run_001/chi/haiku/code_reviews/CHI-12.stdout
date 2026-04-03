@@ -1,0 +1,24 @@
+I've completed the code review of `mux_test.go` following the chi router code review protocol. Here's a summary of my findings:
+
+## Code Review Results
+
+**Findings: 3 total (1 BUG, 1 QUESTION, 1 SUGGESTION)**
+
+### **BUG - Line 2060-2068: Benchmark Reuses Response Recorder Without Reset** (Medium Severity)
+The benchmark function creates a single `httptest.NewRecorder()` that is reused across all iterations. State (response body, headers) accumulates across iterations without being reset, which could affect measurements and handler correctness if they check response writer state.
+
+### **QUESTION - Line 413-415: Allow Header Nil Check vs Empty Check** (Low Severity)
+The assertion checks `resp.Header.Values("Allow") != nil` but the error message says "should be empty". These are semantically different. If a handler sets an empty (non-nil) Allow header, the test wouldn't catch it. The assertion and error message should align.
+
+### **SUGGESTION - Line 1685-1719: Concurrent Test Lacks Positive Assertion** (Low Severity)
+The thread-safety test runs 100 concurrent goroutines making 10,000 requests each, but has no positive assertions that handlers actually executed or that the expected behavior occurred. While this implicitly tests for panics/races, explicit assertions would improve test clarity.
+
+The complete detailed review has been saved to:
+**`/sessions/quirky-practical-cerf/mnt/QPB/benchmarks/run_001/chi/haiku/code_reviews/CHI-12_review.md`**
+
+All findings include:
+- Exact line numbers (mandatory per protocol)
+- Complete code excerpts
+- Detailed explanation of the issue
+- Severity classification
+- Suggested fixes or clarifications

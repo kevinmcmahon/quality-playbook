@@ -1,0 +1,16 @@
+Review saved. Here's a summary of findings for `middleware/recoverer.go`:
+
+---
+
+### Findings
+
+**BUG — High — Line 24:** `http.ErrAbortHandler` panic is silently consumed, not re-panicked.  
+`recover()` is unconditional — it consumes the panic *before* the `rvr != http.ErrAbortHandler` guard is checked. When `rvr == http.ErrAbortHandler`, the panic is absorbed but never re-panicked, so `net/http`'s own deferred recovery in `(*conn).serve()` never sees it and never closes the connection. Code using `panic(http.ErrAbortHandler)` to forcibly abort a connection gets a no-op instead; the client receives an unintended 200 response.
+
+**BUG — Medium — Line 75:** `strings.HasPrefix(stack[i], "panic(0x")` doesn't match Go 1.17+ stack trace format.  
+Since Go 1.17, interface values in stack traces use curly braces: `panic({0xABCD, 0x1234})`, not `panic(0xABCD, 0x1234)`. The prefix `"panic(0x"` never matches on modern Go, so the `break` never fires, `lines` is never trimmed of boilerplate, and the pretty-printer output is malformed for every panic.
+
+**BUG — Low — Line 103:** `strings.HasPrefix(line, "\t")` is dead code.  
+`strings.TrimSpace(line)` is called on line 102, stripping all leading tabs. The `\t` prefix check immediately after is always false. Same dead check at line 108. The `.go:` condition still correctly routes source lines, so functional impact is minimal.
+
+**QUESTION — Medium — Line 33:** `w.WriteHeader(http.StatusInternalServerError)` is silently a no-op if the handler already committed a response before panicking. The client receives the previously-committed status (e.g., 200) with a truncated body.

@@ -1,0 +1,15 @@
+Review saved. Here's the summary:
+
+**3 BUGs found:**
+
+1. **DeflateLevel branch completeness (High, line 366–371)** — Missing `else` branch means client-requested positive deflate levels are silently replaced with 0. Only the default-to-6 path works.
+
+2. **IDENTIFY MsgTimeout response mismatch (Medium, line 394)** — Response always echoes `options.MsgTimeout` (server default) instead of the client's negotiated value.
+
+3. **Unsafe MessageID cast without length check (Medium, lines 535/557/695)** — FIN, REQ, and TOUCH cast `params[1]` to `MessageID` via unsafe pointer without verifying the slice has enough bytes. Short input causes out-of-bounds memory read.
+
+**3 QUESTIONs:** AddClient error not checked (line 480), REQ timeout uses FatalClientErr instead of clamping (line 565), messagePump goroutine not waited on at IOLoop exit (line 107).
+
+**Go channel lifecycle (Focus Area 12):** Clean — nil-channel idiom correctly applied throughout `messagePump`.
+
+**Assessment: FIX FIRST** — the deflate level bug silently breaks compression and the unsafe cast is a crash vector.

@@ -1,0 +1,13 @@
+Review saved. Here's the summary:
+
+**3 BUGs found in `nsqd/topic.go`:**
+
+| # | Severity | Line(s) | Description |
+|---|----------|---------|-------------|
+| 1 | Medium | 372-378 | **Unlocked `channelMap` iteration in Close path** — non-delete shutdown iterates the map without a lock, while `GetChannel`/`DeleteExistingChannel` don't check `exitFlag`. Data race risk. |
+| 2 | Medium | 398-421 | **`flush()` always returns nil** — backend write errors during shutdown are logged but swallowed. Silent message loss when disk queue is unhealthy. |
+| 3 | Low | 197-204 | **`PutMessages` undercounts on partial failure** — if `put()` fails mid-batch, successfully-put messages aren't counted in `messageCount`. |
+
+**2 QUESTIONs:** Delete path holding topic lock during `channel.Delete()` (fragile but currently safe), and ephemeral deletion race (safe due to `sync.Once`).
+
+**Assessment: NEEDS DISCUSSION** — shutdown-path bugs could cause message loss or panics under specific conditions.

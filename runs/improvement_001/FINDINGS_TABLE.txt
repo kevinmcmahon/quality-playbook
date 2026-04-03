@@ -1,0 +1,171 @@
+QUALITY PLAYBOOK REVIEW: eval-driven-dev Skill
+FINDINGS TABLE (Sorted by Severity)
+================================================================================
+
+CRITICAL FINDINGS (Fix Required)
+================================================================================
+
+[6.1] GOODHART'S LAW — Limited Safeguards Against Metric Gaming
+  Location: SKILL.md, investigation.md
+  Issue: Skill teaches how to set up evaluators but not how to detect when 
+         agents are optimizing the metric instead of actual quality
+  Impact: Tests pass while measuring wrong things; teams optimize toward 
+          higher scores instead of better code
+  Example: Evaluator that scores longer responses → optimizes for verbosity
+  Fix: Add "Goodhart's Law red flags" section with detection patterns
+
+[7.1] NO POST-TEST VERIFICATION
+  Location: SKILL.md §5b (checkpoint)
+  Issue: After tests run, no mandatory verification that suite is measuring quality
+  Impact: Can't detect false-positive tests (all pass, all fail, wrong metric)
+  Example: All tests score 0.0 (evaluator broken) but checkpoint clears them
+  Fix: Add post-test verification: score distribution, test count, spot-checks
+
+[7.2] NO EVALUATOR SANITY CHECKS
+  Location: eval-tests.md, investigation.md
+  Issue: Agents select/create evaluators but don't verify they work
+  Impact: Broken evaluators (e.g., scoring length instead of quality) silently
+          produce meaningless results
+  Example: create_llm_evaluator that measures response length, not accuracy
+  Fix: Require pre-run verification on 2–3 hand-picked items with known scores
+
+[4.1] AMBIGUOUS EXPECTED_OUTPUT SEMANTICS
+  Location: SKILL.md §4a, §5a; dataset-generation.md
+  Issue: Three distinct interpretations of expected_output allowed:
+         (1) exact answer, (2) quality criteria text, (3) omitted
+  Impact: Agents conflate semantics within single dataset; use wrong evaluators;
+          produce circular tests
+  Example: Mix items with "exact answer" and "style guidance" in same dataset
+  Fix: Require explicit evaluator choice BEFORE creating expected_output values
+
+[6.3] NO OVERFITTING DETECTION
+  Location: SKILL.md §4, §5, §6
+  Issue: Small datasets (5–20 items) are created from observed traces;
+         expected_output can be copied from actual output
+  Impact: Datasets overfit to current behavior; tests pass without catching
+          regressions; expected_output is tautology
+  Example: expected_output="π is approximately 3.14159" (copied from trace)
+  Fix: Add anti-overfitting checklist: is expected_output independent of output?
+       Would human QA write same expected_output before seeing traces?
+
+
+HIGH FINDINGS (Should Fix)
+================================================================================
+
+[4.2] UNDERSPECIFIED "DIVERSE" VALIDATION
+  Location: SKILL.md §4c, dataset-generation.md
+  Issue: "Verify diversity" requirement but no operational definition
+  Impact: Agents treat minor variations (same path, different names) as diverse;
+          miss edge cases and regression zones
+  Example: 5 items all hitting admin code path, none hitting basic-user path
+  Fix: Add minimum coverage checklist (happy path, edges, errors, boundaries)
+       Add pair-wise difference metric for dataset items
+
+[5.2] NO RECOVERY FOR "NO RECORDED ASSERTIONS"
+  Location: SKILL.md §5b
+  Issue: Identifies anti-pattern (test passes vacuously) but no systematic
+         recovery path
+  Impact: Agents get stuck in unproductive debug loops
+  Fix: Add checklist: is test async? is await used? is enable_storage() called?
+       etc. with structured decision tree
+
+[5.4] VAGUE CRITERIA PASS VALIDATION
+  Location: SKILL.md §1, §5a; dataset-generation.md
+  Issue: Criteria should be "specific to app's purpose," but skill provides
+         no method to detect when criterion is still too vague
+  Impact: Criteria like "helpful," "concise," "good" slip through; can't be
+          operationalized into measurable evaluators
+  Fix: Add concreteness rubric: is criterion falsifiable? observable? measurable?
+
+
+MEDIUM FINDINGS (Improve)
+================================================================================
+
+[5a.1] CIRCULAR DEPENDENCIES IN ITERATION (Step 6)
+  Location: SKILL.md §6, investigation.md
+  Issue: Iteration path ("fix → rebuild dataset? → rerun") underspecified
+  Impact: No clear decision tree; agents don't know when/how to rebuild dataset
+  Fix: Add explicit branching: LLM fix → rerun Step 5 vs. app fix → rebuild 
+       Step 4 vs. threshold → adjust ScoreThreshold
+
+[5a.2] NO ITERATION TERMINATION CONDITION
+  Location: SKILL.md §6, investigation.md
+  Issue: Says "repeat until passing or user satisfied" with no objective measure
+  Impact: Agents can loop indefinitely or give up prematurely
+  Fix: Define explicit stops: ≥95% pass, OR plateau (3 iterations unchanged),
+       OR 5 iterations reached
+
+[5c.1] ASYMMETRIC EVALUATOR GUIDANCE
+  Location: eval-tests.md
+  Issue: Strong warning about ExactMatchEval on LLM text; weaker guidance on
+         when to use standalone evaluators; multi-aspect patterns missing
+  Impact: Agents don't know: Faithfulness vs. PossibleEval? Multi-evaluator
+          test function vs. separate test functions?
+  Fix: Add decision table for all evaluator combinations; multi-aspect patterns
+
+[5c.2] INCOMPLETE APP TYPE COVERAGE
+  Location: run-harness-patterns.md
+  Issue: FastAPI + subprocess/TestClient documented; Flask, Django, CLI sparse
+  Impact: Agents working with non-FastAPI apps must reverse-engineer patterns
+  Fix: Expand with parallel examples for Flask, Django, CLI, async frameworks
+
+[6.2] BRITTLENESS OF SINGLE REFERENCE TRACE
+  Location: SKILL.md §2c, dataset-generation.md
+  Issue: Step 2 produces ONE reference trace; Step 4 assumes it covers all
+         data variation app actually handles
+  Impact: Datasets miss edge cases, data variations (long histories, different
+          profile shapes, error paths)
+  Fix: Mandate trace adequacy assessment after Step 2: run 2–3 additional
+       traces with varied inputs, confirm happy/error/edge coverage
+
+
+LOW FINDINGS (Polish)
+================================================================================
+
+[4.3] VALIDATION FAILURE RECOVERY UNSPECIFIED
+  Location: SKILL.md §4c, dataset-generation.md
+  Issue: If eval_input doesn't match reference trace schema, no repair path
+  Impact: Affects workflows with pre-existing apps; unclear whether to
+          rerun Step 2 or reject schema
+  Fix: Add repair decision tree for mismatch scenarios
+
+[5.3] DATASET CONSISTENCY ASSUMPTIONS BETWEEN STEPS 3–4 UNFORCED
+  Location: SKILL.md Steps 3–4
+  Issue: Step 3 says "verify function interface," Step 4 says "match schema,"
+         but no re-validation gate enforces consistency
+  Impact: Function interface changes between steps can invalidate all Step 4 items
+  Fix: Add re-validation gate before Step 5: run utility function on 2–3 
+       Step 4 items, confirm structure matches Step 3
+
+[5.3] MODE AMBIGUITY ("SETUP" VS. "ITERATION")
+  Location: SKILL.md "Two modes"
+  Issue: Distinction fuzzy: is "add tests" setup or iteration? Is "improve"
+         iteration if tests don't exist yet?
+  Impact: Low; documented fallback exists
+  Fix: Add mode detection flowchart (check if previous run exists, etc.)
+
+
+SUMMARY STATISTICS
+================================================================================
+
+Total Findings: 15
+  Critical:  4  (Goodhart's Law, post-test verification, expected_output, overfitting)
+  High:      3  (diversity, recovery path, vague criteria)
+  Medium:    6  (iteration branches, termination, asymmetric guidance, coverage, 
+               brittleness, consistency)
+  Low:       2  (validation recovery, mode ambiguity)
+
+Overall Rating: 7.5/10
+  Pedagogical Quality: 8.5/10  (clear, checkpointed, comprehensive)
+  Defensive Coverage: 5.5/10   (weak on Goodhart's Law, brittleness, verification)
+  Implementation Guidance: 8.0/10 (concrete patterns, anti-patterns, API reference)
+
+Risk Assessment:
+  WITHOUT HIGH-PRIORITY FIXES:
+    - Agents CAN produce false-positive test suites (tests pass, quality unclear)
+    - Agents CAN overfit datasets (cherry-pick to current behavior)
+    - Agents CAN create meaningless tests (optimizing wrong metrics)
+  
+  AFTER HIGH-PRIORITY FIXES (4 items):
+    - Risk drops significantly; skill becomes suitable for high-autonomy deployment
+

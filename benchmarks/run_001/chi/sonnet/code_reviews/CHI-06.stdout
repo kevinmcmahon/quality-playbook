@@ -1,0 +1,9 @@
+Two bugs found in `middleware/wrap_writer.go`:
+
+**Bug 1 — Double byte counting (lines 131-132, Medium)**
+In `httpFancyWriter.ReadFrom`, when a tee writer is set, `io.Copy(&f.basicWriter, r)` routes through `basicWriter.Write()` which already does `b.bytes += n`. Line 132 then adds `f.basicWriter.bytes += int(n)` again. `BytesWritten()` returns twice the actual bytes.
+
+**Bug 2 — `Flush()` loses status code (lines 119 and 155, Medium)**
+Both `httpFancyWriter.Flush()` and `http2FancyWriter.Flush()` set `f.wroteHeader = true` without setting `b.code`. When `Flush()` is the first output call, Go's `net/http` implicitly sends HTTP 200 to the wire, but the wrapper's `b.code` stays 0. `Status()` returns 0 instead of 200, corrupting access logs in any logging middleware that reads `ww.Status()` post-handler.
+
+Review saved to `/sessions/quirky-practical-cerf/mnt/QPB/benchmarks/run_001/chi/sonnet/code_reviews/CHI-06_review.md`.

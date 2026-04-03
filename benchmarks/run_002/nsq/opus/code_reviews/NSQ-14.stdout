@@ -1,0 +1,15 @@
+Review saved. Here's the summary:
+
+**7 findings** across both files:
+
+| # | Type | File | Line | Severity | Description |
+|---|------|------|------|----------|-------------|
+| 1 | **BUG** | protocol_v2.go | 860 | Low | MPUB bad topic error has duplicated `E_BAD_TOPIC` code prefix in the message |
+| 2 | QUESTION | protocol_v2.go | 296/383/668 | Medium | IDENTIFY callable multiple times but messagePump silently ignores 2nd+ events — client gets stale settings |
+| 3 | QUESTION | protocol_v2.go | 88 | Low | Unchecked type assertion `err.(protocol.ChildErr)` — safe today but fragile |
+| 4 | QUESTION | protocol_v2.go | 329-344 | Low | Topology metrics count by consumer locality, not by delivery channel — may be intentional |
+| 5 | QUESTION | protocol_v2.go | 356 | Low | Sampling off-by-one: `> sampleRate` delivers sampleRate+1 percent |
+| 6 | QUESTION | protocol_v2_test.go | 870-873 | Low | Test calls IDENTIFY 4x without verifying settings take effect |
+| 7 | QUESTION | protocol_v2_test.go | 190-199 | Low | Test assertions called from non-test goroutines |
+
+**Overall: SHIP IT** with a minor fix for the MPUB error message duplication.

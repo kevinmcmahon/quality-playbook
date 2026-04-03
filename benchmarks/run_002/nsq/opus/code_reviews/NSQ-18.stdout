@@ -1,0 +1,16 @@
+Review complete. Written to `/sessions/quirky-practical-cerf/mnt/QPB/repos/nsq/NSQ-18_review.md` (the target path was outside the sandbox).
+
+**Summary of findings (8 total):**
+
+| # | Type | File | Line(s) | Severity | Description |
+|---|------|------|---------|----------|-------------|
+| 1 | BUG | channel.go | 461-479 | HIGH | `AddClient` TOCTOU race — `numClients` read under RLock, limit check after unlock, write under separate Lock. `MaxChannelConsumers` can be exceeded. |
+| 2 | BUG | channel.go | 675 | MEDIUM | `processInFlightQueue` discards `put()` error — message already removed from in-flight, lost if put fails. |
+| 3 | BUG | channel.go | 637 | MEDIUM | `processDeferredQueue` discards `put()` error — same pattern, deferred message lost on failure. |
+| 4 | QUESTION | protocol_v2.go | 360 | MEDIUM | `StartInFlightTimeout` error unchecked in messagePump — message sent to client but potentially untracked. |
+| 5 | QUESTION | protocol_v2.go | 619 | LOW | `stateConnected` defined but never used; SUB goes directly from `stateInit` to `stateSubscribed`. |
+| 6 | QUESTION | protocol_v2.go | 327-344 | LOW | Backend messages not counted in topology stats. |
+| 7 | QUESTION | channel.go | 279 | LOW | `flush()` always returns nil despite backend write errors. |
+| 8 | QUESTION | channel.go | 232 | LOW | `flush()` reads shared map lengths without locks (likely safe due to exit ordering). |
+
+**Assessment: FIX FIRST** — The AddClient race and silent message loss bugs should be addressed.

@@ -1,0 +1,10 @@
+{
+    "defect_id": "CHI-05",
+    "model": "haiku",
+    "category": "error handling",
+    "pre_fix_commit": "ccb4c33",
+    "fix_commit": "5704d7e",
+    "files_reviewed": "tree.go,",
+    "duration_seconds": 204,
+    "description": "MethodNotAllowed handler not invoked when route matched with path variables but method not supported. Tree search found node but didn't set methodNotAllowed flag for subsequent handler routing logic."
+}

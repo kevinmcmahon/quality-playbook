@@ -1,0 +1,13 @@
+Review saved. Here's the summary:
+
+**7 findings in `nsqd/channel.go`** — Assessment: **FIX FIRST**
+
+| # | Type | Severity | Line | Description |
+|---|------|----------|------|-------------|
+| 1 | BUG | HIGH | 320-323 | `PutMessageDeferred()` missing `exitMutex.RLock()` — message can be added after `flush()` during shutdown, causing permanent loss |
+| 2 | BUG | MEDIUM | 401-418 | TOCTOU race in `AddClient()` — RLock check then Lock insert allows `maxChannelConsumers` to be exceeded or silent client overwrite |
+| 3 | BUG | MEDIUM | 441 | `RemoveClient()` reads `len(c.clients)` without lock — data race on ephemeral channel deletion check |
+| 4 | BUG | HIGH | 574 | `processDeferredQueue()` ignores `put()` error — message already removed from deferred map/PQ, silently lost on failure |
+| 5 | BUG | HIGH | 611 | `processInFlightQueue()` same issue — timed-out message silently dropped if `put()` fails |
+| 6 | QUESTION | LOW | 215 | `flush()` reads map lengths without locks (log-only, but technically a race) |
+| 7 | QUESTION | LOW | 252 | `flush()` always returns nil despite write errors (possibly intentional best-effort) |

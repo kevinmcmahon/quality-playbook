@@ -1,0 +1,18 @@
+The code review protocol has been generated and saved. Here's a summary of what was produced:
+
+**RUN_CODE_REVIEW.md** for NSQ — 10 focus areas covering all major subsystems and all 4 mandatory categories:
+
+| # | Focus Area | Mandatory Category |
+|---|-----------|-------------------|
+| 1 | Configuration Parameter Validation & Flag Interactions | Configuration parameter validation |
+| 2 | Input Validation Failure Modes (Clamp vs. Disconnect) | Input validation failure modes |
+| 3 | Graceful Shutdown Resource Completeness | Graceful shutdown resource completeness |
+| 4 | Concurrent Cleanup Ordering & Channel Lifecycle in Select | Concurrent cleanup ordering |
+| 5 | Topic and Channel Lifecycle — Delete vs. Close Paths | — |
+| 6 | Message Delivery, In-Flight Tracking, Timeout Processing | — |
+| 7 | HTTP API Input Handling and Error Consistency | — |
+| 8 | TLS, Authentication, and Connection Upgrade Ordering | — |
+| 9 | Queue Scan Loop and Worker Pool Management | — |
+| 10 | NSQLookupd Registration Database and Peer Lifecycle | — |
+
+Each focus area includes specific file paths with line numbers, concrete things to check, and why each matters. All 9 guardrails from the template are included (the original 6 plus the 3 new ones about validation failure modes, resource enumeration, and configuration completeness). The bootstrap section lists 11 project-specific files to read before starting the review.

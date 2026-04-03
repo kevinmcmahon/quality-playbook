@@ -1,0 +1,25 @@
+Review saved. Here's a summary of findings:
+
+---
+
+## Code Review: `tree.go` — Summary
+
+### BUG (High) — Line 61: `RegisterMethod` first custom method collides with `mTRACE`
+
+The 10 method constants (`mSTUB` through `mTRACE`) occupy bits 0–9. `methodMap` holds only the 9 HTTP methods — `mSTUB` is **not** in it. So `len(methodMap) == 9`, and:
+
+```go
+mt := methodTyp(math.Exp2(float64(9)))  // = 512 = mTRACE
+```
+
+The first custom method registered (e.g. `RegisterMethod("LINK")` as in the example) gets the same bit value as `mTRACE`. They share the same key in `endpoints`, silently overwriting each other's handlers.
+
+### BUG (Low) — Line 58: Overflow guard uses `>` instead of `>=`
+
+`n > strconv.IntSize` allows `n == strconv.IntSize` through, then `math.Exp2(64.0)` overflows `int64`. Should be `n >= strconv.IntSize`.
+
+### QUESTION (Low) — Line 473: Unconditional empty-string append after inner param loop
+
+After the `ntParam`/`ntRegexp` inner loop exhausts all alternatives, `""` is unconditionally appended to `routeParams.Values`, followed by a retry of `findRoute` on the last param node. If this retry somehow succeeds, `routeParams.Values` would have an extra `""` that `routeParams.Keys` (set from `h.paramKeys` at the leaf) doesn't account for — causing a keys/values length mismatch in `URLParams`. The cleanup at lines 508–511 removes it on failure, but the success path appears to be a latent bug.
+
+**Overall: FIX FIRST** — the `RegisterMethod` collision is a silent production bug in any chi app using custom HTTP methods.

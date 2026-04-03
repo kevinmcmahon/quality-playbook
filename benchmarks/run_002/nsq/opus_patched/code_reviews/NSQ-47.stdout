@@ -1,0 +1,15 @@
+Review complete. The file is saved at `/sessions/quirky-practical-cerf/mnt/QPB/repos/nsq/NSQ-47_review.md` (I couldn't write to the requested path due to sandbox restrictions — it's in the repo root alongside the other review files).
+
+**Key findings:**
+
+1. **High — HTTP connection leak in Exit()** (`nsqd/nsqd.go:442-480`): Both `nsqd` and `nsqlookupd` close HTTP listeners but never close active HTTP connections. Keep-alive connections will prevent `waitGroup.Wait()` from completing, causing shutdown hangs.
+
+2. **Medium — DPUB fatal disconnect for recoverable error** (`nsqd/protocol_v2.go:923-927`): DPUB disconnects clients for out-of-range defer timeout, while the identical REQ handler correctly clamps the value. Inconsistent validation failure mode.
+
+3. **Low — nsqlookupd IDENTIFY negative bodyLen panic** (`nsqlookupd/lookup_protocol_v1.go:207-213`): Missing `bodyLen <= 0` check before allocation — a malicious client can crash the process.
+
+4. **Medium — nsqlookupd Exit() same HTTP issue** (`nsqlookupd/nsqlookupd.go:86-99`): Same HTTP connection leak pattern as nsqd.
+
+Plus 3 QUESTIONs for discussion (context cancel ordering, unchecked type assertion, `log.Fatalf` in client handler).
+
+**Overall: NEEDS DISCUSSION** — the HTTP shutdown issue is the most impactful finding.

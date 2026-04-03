@@ -1,0 +1,13 @@
+Review saved. Here's a summary of findings:
+
+**4 findings in `handlebars_helpers.js`:**
+
+1. **Line 26 — BUG (High):** `prefix.substring(prefix.length, 1)` is broken — `substring` swaps args when start > end, so this returns most of the string instead of the last character. Always appends a dot, producing double-dots (`..`) if the prefix already ends with `'.'`.
+
+2. **Lines 93-100 — BUG (Medium):** The `e2e` branch of `genTargets` doesn't call `sanitizeGraphiteKey()` on topic/channel names, unlike the `topic` and `channel` branches. Special characters in names will produce malformed graphite keys.
+
+3. **Lines 187-197 — BUG (Low):** `percSuffix` produces wrong ordinals for teens (11→"st", 12→"nd", 13→"rd" instead of "th"). Unlikely to trigger with typical percentile values but logically incorrect.
+
+4. **Lines 113-114 — QUESTION (Low):** `default` helper treats all falsy values (including `0` and `""`) as missing. May be intentional.
+
+**Assessment: FIX FIRST**

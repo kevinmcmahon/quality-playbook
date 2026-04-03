@@ -1,0 +1,11 @@
+Review saved. Here's the summary:
+
+**2 BUGs found, 1 QUESTION:**
+
+1. **BUG (High) — Line 124:** `len(memStats.PauseNs)` is always 256 (fixed-size array), so the condition is always true and `length` is always set to `NumGC`. When `NumGC > 256`, the slice has zero-filled slots that corrupt all GC pause percentile calculations.
+
+2. **BUG (High) — Lines 152-157:** `percentile()` panics when `length` is 0 (no GC cycles yet). It computes `indexOfPerc = -1` and indexes `arr[-1]`, crashing the statsd goroutine permanently.
+
+3. **QUESTION (Low) — Lines 56-105:** Unsigned `uint64` counter diffs could underflow if a topic/channel is deleted and recreated with the same name between intervals.
+
+**Assessment: FIX FIRST** — Both bugs affect any long-running nsqd instance.

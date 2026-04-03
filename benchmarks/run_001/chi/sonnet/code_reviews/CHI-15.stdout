@@ -1,0 +1,12 @@
+Review saved. Here's a summary of findings for `context.go` in CHI-15:
+
+---
+
+**BUG — Line 122 — High: `RoutePattern()` missing nil receiver guard**
+`RouteContext(ctx)` can return nil. Calling `.RoutePattern()` on that nil `*Context` panics at line 123 when `strings.Join` accesses `x.RoutePatterns`. The function's own docstring demonstrates the exact call pattern that triggers this. Master added `if x == nil { return "" }` to guard it.
+
+**BUG — Lines 122–125 — Medium: `RoutePattern()` missing trailing slash cleanup**
+For a subrouter mounted at `/api` with a root handler `/`, `RoutePatterns` is `["/api/*", "/"]`. After joining and `replaceWildcards`, the result is `"/api/"`. Without `strings.TrimSuffix`, the trailing slash is not removed. Master applies `TrimSuffix("//")` then `TrimSuffix("/")` (guarded by `!= "/"`) after `replaceWildcards`. Without this, every mounted subrouter with a root route produces a spurious trailing slash in the pattern, causing duplicate metric series in tracing/monitoring systems.
+
+**QUESTION — Lines 45–79 — Medium: `methodsAllowed` field absent from `Context` struct**
+Master collects allowed methods into `rctx.methodsAllowed` during trie traversal and passes them to `MethodNotAllowedHandler()` to emit the `Allow` header (RFC 7231 §6.5.5). CHI-15 has no such field, so 405 responses are non-conformant. Flagged as QUESTION since the absence is internally consistent — need to confirm whether this is intentional.

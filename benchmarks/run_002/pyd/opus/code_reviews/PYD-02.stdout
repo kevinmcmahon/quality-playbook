@@ -1,0 +1,7 @@
+Review saved. Here's a summary of findings:
+
+**1 BUG found in `complex.rs:81`** — The condition `re != 0.0` treats `-0.0` as equal to `0.0` (IEEE 754 semantics), so `complex(-0.0, 1.0)` serializes as `"1j"` instead of `"-0+1j"`. This silently drops the negative zero from the real part, breaking round-trip fidelity. Python's own `str()` preserves it.
+
+**1 INCOMPLETE in `test_complex.py:8-23`** — No test cases cover negative zero in the real part (`complex(-0.0, 1.0)`), which is exactly what would catch this bug.
+
+**Overall: FIX FIRST** — The fix would be changing line 81 to something like `re != 0.0 || re.is_sign_negative()`.

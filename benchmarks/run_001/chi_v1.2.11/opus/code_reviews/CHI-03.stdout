@@ -1,0 +1,15 @@
+Review saved. Here's the summary of findings for `middleware/compress.go`:
+
+**7 findings total** (1 High, 2 Medium, 2 Low bugs + 2 Questions):
+
+| # | Type | Line | Severity | Description |
+|---|------|------|----------|-------------|
+| 1 | BUG | 245 | **High** | `matchAcceptEncoding` uses `strings.Contains` — ignores `q=0` rejections and matches substrings, violating RFC 9110 |
+| 2 | BUG | 360 | Medium | `Hijack()` delegates to compression writer instead of `ResponseWriter` — always fails when compression is active |
+| 3 | BUG | 367 | Medium | `Push()` — same incorrect delegation pattern as Hijack |
+| 4 | BUG | 218 | Low | `Accept-Encoding` split by `,` without trimming spaces — works by accident with current substring matching |
+| 5 | BUG | 179-182 | Low | Slice mutation during `range` loop without `break` — can skip elements |
+| 6 | QUESTION | 71-73 | Low | `*/*` wildcard rejected by validation — intentional or oversight? |
+| 7 | QUESTION | 226-229 | Low | Pooled encoders retain ResponseWriter references after request completes |
+
+**Overall: FIX FIRST** — The `q=0` ignore is an HTTP spec violation, and the Hijack/Push bugs break WebSocket upgrades through this middleware.

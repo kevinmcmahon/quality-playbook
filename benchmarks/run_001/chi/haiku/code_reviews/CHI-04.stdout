@@ -1,0 +1,14 @@
+## Code Review Complete
+
+I've analyzed **context.go** according to the code review protocol and found **1 HIGH severity bug**:
+
+### Bug Found:
+**methodsAllowed field not reset in Reset() method (lines 83-96)**
+
+The `methodsAllowed` slice accumulates allowed HTTP methods during routing but is never cleared when the context is reused from the pool. This causes stale method lists from previous requests to leak into subsequent 405 responses.
+
+- **Lines affected:** Reset method (83-96) is missing the reset line
+- **Impact:** Incorrect Allow header in 405 responses when contexts are reused
+- **Violates:** Protocol red flag "Context reset not clearing all fields" and Scenario #7 (Context pool safety)
+
+The report has been saved to `/sessions/quirky-practical-cerf/mnt/QPB/benchmarks/run_001/chi/haiku/code_reviews/CHI-04_review.md` with full details on the bug, impact analysis, and violation of protocol requirements.

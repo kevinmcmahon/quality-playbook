@@ -1,0 +1,7 @@
+Review saved. Two high-severity bugs found:
+
+1. **Line 51 — Key mismatch in `Less()`**: Sorts by `"percentile"` but the key used everywhere else is `"quantile"`. The sort on line 84 is effectively a no-op since `"percentile"` is never set (always returns `0.0`).
+
+2. **Line 74 — Wrong fields in `min` calculation**: `math.Min(value["max"], p[i]["max"])` uses max fields instead of min fields. Should be `math.Min(value["min"], p[i]["min"])`. The aggregated minimum values are garbage.
+
+**Assessment: FIX FIRST**

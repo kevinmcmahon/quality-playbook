@@ -1,0 +1,10 @@
+{
+    "defect_id": "CHI-30",
+    "model": "sonnet",
+    "category": "protocol violation",
+    "pre_fix_commit": "6ceb498",
+    "fix_commit": "d9d5e31",
+    "files_reviewed": "middleware/wrap_writer.go,",
+    "duration_seconds": 114,
+    "description": "WrapResponseWriter.WriteHeader() blocked informational status codes (100-199) like other responses, violating HTTP spec allowing multiple informational responses before final status. Status check logic only allowed first WriteHeader call for all status ranges."
+}

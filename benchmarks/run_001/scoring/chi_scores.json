@@ -1,0 +1,493 @@
+{
+  "benchmark": {
+    "run": "run_001",
+    "repository": "chi",
+    "date": "2026-03-31",
+    "total_defects": 30,
+    "total_reviews": 61,
+    "reviews_by_model": {
+      "opus": 21,
+      "sonnet": 20,
+      "haiku": 20
+    },
+    "missing_reviews": 9
+  },
+  "overall_statistics": {
+    "direct_hits": 31,
+    "adjacent": 19,
+    "misses": 11,
+    "no_reviews": 29,
+    "total_combinations": 90,
+    "reviews_generated": 61,
+    "hit_rate_percent_reviews_only": 51,
+    "hit_rate_percent_all_combinations": 34,
+    "hit_rate_with_adjacent_percent": 82
+  },
+  "by_model": {
+    "opus": {
+      "total_defects": 30,
+      "direct_hits": 9,
+      "adjacent": 8,
+      "misses": 4,
+      "no_reviews": 9,
+      "hit_rate_percent": 30,
+      "adjacent_rate_percent": 27
+    },
+    "sonnet": {
+      "total_defects": 30,
+      "direct_hits": 11,
+      "adjacent": 5,
+      "misses": 4,
+      "no_reviews": 10,
+      "hit_rate_percent": 37,
+      "adjacent_rate_percent": 17
+    },
+    "haiku": {
+      "total_defects": 30,
+      "direct_hits": 11,
+      "adjacent": 6,
+      "misses": 3,
+      "no_reviews": 10,
+      "hit_rate_percent": 37,
+      "adjacent_rate_percent": 20
+    }
+  },
+  "by_category": {
+    "error_handling": {
+      "count": 33,
+      "direct_hits": 13,
+      "adjacent": 7,
+      "misses": 3,
+      "no_reviews": 10,
+      "hit_rate_percent": 39
+    },
+    "validation_gap": {
+      "count": 18,
+      "direct_hits": 0,
+      "adjacent": 3,
+      "misses": 5,
+      "no_reviews": 10,
+      "hit_rate_percent": 0
+    },
+    "type_safety": {
+      "count": 9,
+      "direct_hits": 3,
+      "adjacent": 3,
+      "misses": 0,
+      "no_reviews": 3,
+      "hit_rate_percent": 33
+    },
+    "security_issue": {
+      "count": 6,
+      "direct_hits": 3,
+      "adjacent": 3,
+      "misses": 0,
+      "no_reviews": 0,
+      "hit_rate_percent": 50
+    },
+    "api_contract_violation": {
+      "count": 6,
+      "direct_hits": 3,
+      "adjacent": 0,
+      "misses": 0,
+      "no_reviews": 3,
+      "hit_rate_percent": 50
+    },
+    "sql_error": {
+      "count": 6,
+      "direct_hits": 3,
+      "adjacent": 3,
+      "misses": 0,
+      "no_reviews": 0,
+      "hit_rate_percent": 50
+    },
+    "concurrency_issue": {
+      "count": 6,
+      "direct_hits": 0,
+      "adjacent": 0,
+      "misses": 3,
+      "no_reviews": 3,
+      "hit_rate_percent": 0
+    },
+    "null_safety": {
+      "count": 3,
+      "direct_hits": 3,
+      "adjacent": 0,
+      "misses": 0,
+      "no_reviews": 0,
+      "hit_rate_percent": 100
+    },
+    "protocol_violation": {
+      "count": 3,
+      "direct_hits": 3,
+      "adjacent": 0,
+      "misses": 0,
+      "no_reviews": 0,
+      "hit_rate_percent": 100
+    }
+  },
+  "defects": [
+    {
+      "id": "CHI-01",
+      "category": "error handling",
+      "severity": "High",
+      "description": "RouteHeaders middleware missing return statement after calling next.ServeHTTP when router had no routes configured. This caused next handler to be called twice - once in empty check and again at end of function.",
+      "scores": {
+        "opus": "DIRECT HIT",
+        "sonnet": "DIRECT HIT",
+        "haiku": "DIRECT HIT"
+      }
+    },
+    {
+      "id": "CHI-02",
+      "category": "error handling",
+      "severity": "High",
+      "description": "Mux.Find not correctly handling nested routes and subrouters. Pattern composition failed when combining parent and child route patterns, returning partial paths or empty patterns for nested mount structures.",
+      "scores": {
+        "opus": "ADJACENT",
+        "sonnet": "DIRECT HIT",
+        "haiku": "ADJACENT"
+      }
+    },
+    {
+      "id": "CHI-03",
+      "category": "error handling",
+      "severity": "Medium",
+      "description": "Compressor middleware's Close() method checked for io.WriteCloser using cw.writer() instead of cw.w, bypassing the actual writer lookup and preventing proper cleanup of compression resources.",
+      "scores": {
+        "opus": "MISS",
+        "sonnet": "MISS",
+        "haiku": "MISS"
+      }
+    },
+    {
+      "id": "CHI-04",
+      "category": "validation gap",
+      "severity": "Medium",
+      "description": "RoutePattern() returned empty string for root route \"/\" after trimming suffixes, should preserve root as special case. Path cleanup logic unconditionally removed trailing slashes even for root pattern.",
+      "scores": {
+        "opus": "MISS",
+        "sonnet": "MISS",
+        "haiku": "MISS"
+      }
+    },
+    {
+      "id": "CHI-05",
+      "category": "error handling",
+      "severity": "Medium",
+      "description": "MethodNotAllowed handler not invoked when route matched with path variables but method not supported. Tree search found node but didn't set methodNotAllowed flag for subsequent handler routing logic.",
+      "scores": {
+        "opus": "ADJACENT",
+        "sonnet": "NO REVIEW",
+        "haiku": "ADJACENT"
+      }
+    },
+    {
+      "id": "CHI-06",
+      "category": "type safety",
+      "severity": "High",
+      "description": "WrapResponseWriter incorrectly used logical OR operator in method selection logic.",
+      "scores": {
+        "opus": "ADJACENT",
+        "sonnet": "ADJACENT",
+        "haiku": "ADJACENT"
+      }
+    },
+    {
+      "id": "CHI-07",
+      "category": "error handling",
+      "severity": "High",
+      "description": "Recoverer middleware parsed panic stack traces assuming \"panic(0x...\" format, but Go 1.17+ can produce \"panic\" without address. String slicing with negative index caused panics during error recovery.",
+      "scores": {
+        "opus": "ADJACENT",
+        "sonnet": "DIRECT HIT",
+        "haiku": "DIRECT HIT"
+      }
+    },
+    {
+      "id": "CHI-08",
+      "category": "error handling",
+      "severity": "Medium",
+      "description": "URLFormat middleware used strings.Index() instead of strings.LastIndex() to find file extension period, causing incorrect parameter extraction on paths with multiple dots (e.g., \"samples.1.json\" extracted \"json\" instead of \"1\").",
+      "scores": {
+        "opus": "ADJACENT",
+        "sonnet": "ADJACENT",
+        "haiku": "DIRECT HIT"
+      }
+    },
+    {
+      "id": "CHI-09",
+      "category": "validation gap",
+      "severity": "Medium",
+      "description": "Route tree regex matching allowed empty path parameters matching pattern like \"/{param:[0-9]*}/test\". Tree search should skip empty matches for patterns with quantifiers that require content boundaries.",
+      "scores": {
+        "opus": "ADJACENT",
+        "sonnet": "ADJACENT",
+        "haiku": "ADJACENT"
+      }
+    },
+    {
+      "id": "CHI-10",
+      "category": "security issue",
+      "severity": "Critical",
+      "description": "RedirectSlashes middleware vulnerable to open redirect via protocol-relative URL paths like \"//evil.com/\". Redirect construction didn't validate or normalize hostnames in redirect targets, allowing attacker control of redirect destination.",
+      "scores": {
+        "opus": "ADJACENT",
+        "sonnet": "ADJACENT",
+        "haiku": "ADJACENT"
+      }
+    },
+    {
+      "id": "CHI-11",
+      "category": "SQL error",
+      "severity": "High",
+      "description": "NotFound and MethodNotAllowed handlers incorrectly applied middleware chain to handler function itself instead of to parent mux when called via inline mux. This broke error handler middleware isolation in nested routing contexts.",
+      "scores": {
+        "opus": "ADJACENT",
+        "sonnet": "ADJACENT",
+        "haiku": "ADJACENT"
+      }
+    },
+    {
+      "id": "CHI-12",
+      "category": "concurrency issue",
+      "severity": "Medium",
+      "description": "Test data race in TestServerBaseContext: httptest.NewServer started listening before BaseContext config was applied, causing concurrent reads/writes to server config struct during test initialization.",
+      "scores": {
+        "opus": "MISS",
+        "sonnet": "MISS",
+        "haiku": "MISS"
+      }
+    },
+    {
+      "id": "CHI-13",
+      "category": "type safety",
+      "severity": "Medium",
+      "description": "RegisterMethod used math.Exp2(float64(n)) which caused first custom method to receive same bit value as mTRACE (value 1), causing collision. Should use 2 << n to ensure exponential growth with proper spacing.",
+      "scores": {
+        "opus": "DIRECT HIT",
+        "sonnet": "DIRECT HIT",
+        "haiku": "DIRECT HIT"
+      }
+    },
+    {
+      "id": "CHI-14",
+      "category": "API contract violation",
+      "severity": "Medium",
+      "description": "Compress middleware used Header().Set(\"Vary\", \"Accept-Encoding\") which replaced existing Vary headers instead of appending. Should use Header().Add() to preserve other cache-control requirements in Vary.",
+      "scores": {
+        "opus": "DIRECT HIT",
+        "sonnet": "DIRECT HIT",
+        "haiku": "DIRECT HIT"
+      }
+    },
+    {
+      "id": "CHI-15",
+      "category": "validation gap",
+      "severity": "Medium",
+      "description": "Context.RoutePattern() returned incomplete patterns by not cleaning route pattern suffixes. Wildcard routes generated patterns like \"/users/*/\" instead of \"/users/*\", breaking route introspection and logging.",
+      "scores": {
+        "opus": "MISS",
+        "sonnet": "MISS",
+        "haiku": "NO REVIEW"
+      }
+    },
+    {
+      "id": "CHI-16",
+      "category": "error handling",
+      "severity": "High",
+      "description": "WrapResponseWriter.WriteHeader() called underlying ResponseWriter.WriteHeader() unconditionally, even when wroteHeader flag was already true. HTTP spec requires WriteHeader called only once - this violated constraint and could corrupt response state.",
+      "scores": {
+        "opus": "DIRECT HIT",
+        "sonnet": "DIRECT HIT",
+        "haiku": "DIRECT HIT"
+      }
+    },
+    {
+      "id": "CHI-17",
+      "category": "error handling",
+      "severity": "High",
+      "description": "Recoverer middleware's defensive programming for Go 1.17+ still fragile: code checked for period to find method/package boundary but some lines still lacked periods, causing negative index panics. Additional check needed for \"panic(\" prefix handling.",
+      "scores": {
+        "opus": "DIRECT HIT",
+        "sonnet": "DIRECT HIT",
+        "haiku": "DIRECT HIT"
+      }
+    },
+    {
+      "id": "CHI-18",
+      "category": "security issue",
+      "severity": "Critical",
+      "description": "RedirectSlashes middleware vulnerable to open redirect via backslash paths like \"/\\evil.com/\". Code didn't normalize backslashes to forward slashes, allowing protocol-relative-style redirects.",
+      "scores": {
+        "opus": "DIRECT HIT",
+        "sonnet": "DIRECT HIT",
+        "haiku": "DIRECT HIT"
+      }
+    },
+    {
+      "id": "CHI-19",
+      "category": "SQL error",
+      "severity": "High",
+      "description": "Walk() function missed propagating inline middlewares from parent mux across mounted subrouters. ChainHandler middlewares attached via With() weren't included when walking nested routes, breaking introspection and middleware audit trails.",
+      "scores": {
+        "opus": "DIRECT HIT",
+        "sonnet": "DIRECT HIT",
+        "haiku": "DIRECT HIT"
+      }
+    },
+    {
+      "id": "CHI-20",
+      "category": "concurrency issue",
+      "severity": "Medium",
+      "description": "TestThrottleRetryAfter was flaky due to race condition between token replenishment and test assertions. Test didn't synchronize token bucket state, causing intermittent failures when timing skewed.",
+      "scores": {
+        "opus": "NO REVIEW",
+        "sonnet": "NO REVIEW",
+        "haiku": "NO REVIEW"
+      }
+    },
+    {
+      "id": "CHI-21",
+      "category": "validation gap",
+      "severity": "Medium",
+      "description": "Regexp routing with quantifiers like `/{param:[0-9]+}/` failed to set default empty string parameter value when pattern didn't match. Tree search skipped setting parameter value on empty match, breaking URLParam extraction for non-matching patterns.",
+      "scores": {
+        "opus": "NO REVIEW",
+        "sonnet": "NO REVIEW",
+        "haiku": "NO REVIEW"
+      }
+    },
+    {
+      "id": "CHI-22",
+      "category": "error handling",
+      "severity": "High",
+      "description": "Throttle middleware had broken handler invocation - tried to store handler state in throttler struct instead of returning closure function, causing context-dependent failures and incorrect request handling.",
+      "scores": {
+        "opus": "NO REVIEW",
+        "sonnet": "NO REVIEW",
+        "haiku": "NO REVIEW"
+      }
+    },
+    {
+      "id": "CHI-23",
+      "category": "validation gap",
+      "severity": "Medium",
+      "description": "Wildcard parameter validation check was in wrong location in patNextSegment. Sanity check for wildcard at end of pattern ran BEFORE the wildcard segment was parsed, allowing patterns like \"/foo/*bar\" to pass validation until later stages.",
+      "scores": {
+        "opus": "NO REVIEW",
+        "sonnet": "NO REVIEW",
+        "haiku": "NO REVIEW"
+      }
+    },
+    {
+      "id": "CHI-24",
+      "category": "type safety",
+      "severity": "High",
+      "description": "Compress middleware SetEncoder() function had inverted logic: `if e == \"\"` should be `if e != \"\"`. Empty encoding strings were being prepended to precedence list instead of valid encodings, breaking compression priority selection and causing fallback to no compression.",
+      "scores": {
+        "opus": "NO REVIEW",
+        "sonnet": "NO REVIEW",
+        "haiku": "NO REVIEW"
+      }
+    },
+    {
+      "id": "CHI-25",
+      "category": "error handling",
+      "severity": "Medium",
+      "description": "Compress middleware WriteHeader called `w.WriteHeader()` recursively instead of `w.ResponseWriter.WriteHeader()`, causing infinite delegation and incorrect status code propagation.",
+      "scores": {
+        "opus": "NO REVIEW",
+        "sonnet": "NO REVIEW",
+        "haiku": "NO REVIEW"
+      }
+    },
+    {
+      "id": "CHI-26",
+      "category": "API contract violation",
+      "severity": "Medium",
+      "description": "RedirectSlashes middleware stripped trailing slash from redirect path but lost query parameters in process. Redirect from `/path/?a=b` became `/path` instead of `/path?a=b`, violating HTTP redirect semantics.",
+      "scores": {
+        "opus": "NO REVIEW",
+        "sonnet": "NO REVIEW",
+        "haiku": "NO REVIEW"
+      }
+    },
+    {
+      "id": "CHI-27",
+      "category": "validation gap",
+      "severity": "High",
+      "description": "Wildcard pattern validation allowed invalid patterns like `/admin/*/other`. Tree validation only checked wildcard not in middle during sanity check, but didn't block patterns with text after wildcard.",
+      "scores": {
+        "opus": "NO REVIEW",
+        "sonnet": "NO REVIEW",
+        "haiku": "NO REVIEW"
+      }
+    },
+    {
+      "id": "CHI-28",
+      "category": "error handling",
+      "severity": "Medium",
+      "description": "Empty mux panic on ServeHTTP instead of returning 404. Code panicked with \"attempting to route to a mux with no handlers\" rather than gracefully handling undefined routes. Should delegate to NotFoundHandler for consistency.",
+      "scores": {
+        "opus": "NO REVIEW",
+        "sonnet": "NO REVIEW",
+        "haiku": "NO REVIEW"
+      }
+    },
+    {
+      "id": "CHI-29",
+      "category": "null safety",
+      "severity": "Medium",
+      "description": "URLFormat middleware accessed rctx.RoutePath without nil check. When rctx was nil (possible in certain middleware chains), pointer dereference panicked.",
+      "scores": {
+        "opus": "DIRECT HIT",
+        "sonnet": "DIRECT HIT",
+        "haiku": "DIRECT HIT"
+      }
+    },
+    {
+      "id": "CHI-30",
+      "category": "protocol violation",
+      "severity": "Medium",
+      "description": "WrapResponseWriter.WriteHeader() blocked informational status codes (100-199) like other responses, violating HTTP spec allowing multiple informational responses before final status.",
+      "scores": {
+        "opus": "DIRECT HIT",
+        "sonnet": "DIRECT HIT",
+        "haiku": "DIRECT HIT"
+      }
+    }
+  ],
+  "perfect_hit_defects": [
+    "CHI-01",
+    "CHI-13",
+    "CHI-14",
+    "CHI-16",
+    "CHI-17",
+    "CHI-18",
+    "CHI-19",
+    "CHI-29",
+    "CHI-30"
+  ],
+  "single_hit_defects": [
+    "CHI-02",
+    "CHI-08"
+  ],
+  "complete_miss_defects": [
+    "CHI-03",
+    "CHI-04",
+    "CHI-12",
+    "CHI-15"
+  ],
+  "no_review_defects": [
+    "CHI-20",
+    "CHI-21",
+    "CHI-22",
+    "CHI-23",
+    "CHI-24",
+    "CHI-25",
+    "CHI-26",
+    "CHI-27",
+    "CHI-28"
+  ]
+}

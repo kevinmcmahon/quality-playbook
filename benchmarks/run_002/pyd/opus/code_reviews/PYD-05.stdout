@@ -1,0 +1,13 @@
+Review complete. Saved to `/sessions/quirky-practical-cerf/mnt/QPB/benchmarks/run_002/pyd/opus/code_reviews/PYD-05_review.md`.
+
+**Summary of findings across the 3 files:**
+
+**1 BUG (HIGH):**
+- **`_generate_schema.py:2276`** — Typo `'defaut_factory'` (missing `l`) combined with a structural type mismatch (comparing `str` against `list[tuple[str, Any]]` via `not in`). This guard condition is always `True`, causing duplicate warnings when `default_factory_takes_validated_data` is set in an unsupported context.
+
+**3 QUESTIONs (LOW):**
+- **`_generate_schema.py:886`** — `_resolve_self_type()` ignores its `obj` parameter entirely, immediately overwriting it with `self.model_type_stack.get()`.
+- **`_generate_schema.py:293`** — The `deprecated` expression `bool(info.deprecated) or info.deprecated == '' or None` is confusing but functionally correct for all valid input types.
+- **`_generate_schema.py:1715`** — Variable name `args` shadows itself in list comprehension (works in Python 3 but is confusing).
+
+**No findings** in `_model_construction.py` or `test_generics.py`.

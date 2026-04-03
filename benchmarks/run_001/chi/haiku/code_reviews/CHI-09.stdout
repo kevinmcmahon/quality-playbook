@@ -1,0 +1,11 @@
+Code review complete. I've identified and documented **2 bugs and 1 question** in the `tree.go` file:
+
+**Key Findings:**
+
+1. **BUG (High Severity, Line 473):** Parameter value/key mismatch when no param nodes match. An empty string placeholder is appended but not cleaned up when a recursive search finds a handler, causing `routeParams.Values` and `routeParams.Keys` arrays to have misaligned lengths.
+
+2. **BUG (Medium Severity, Lines 458-465):** The `methodNotAllowed` flag is set when a param node has no handler for the requested method, but if the recursive search then finds a handler in child nodes, the flag isn't cleared. This leaves the routing context semantically inconsistent.
+
+3. **QUESTION (Line 473/502):** Uncertain about the intended behavior when all param nodes fail their regex checks—should their children still be explored? This seems semantically incorrect.
+
+The review has been saved to `/sessions/quirky-practical-cerf/mnt/QPB/benchmarks/run_001/chi/haiku/code_reviews/CHI-09_review.md` with all findings including exact line numbers, severity levels, code snippets, and impact analysis as required by the protocol.
