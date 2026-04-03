@@ -216,12 +216,19 @@ This is the most important step for the code review protocol. Everything found d
 
 4. **Resource Lifecycle**: For every resource that's created during startup (listeners, goroutines, connections), verify it's cleaned up during shutdown. For every goroutine spawned, verify it's tracked by a WaitGroup or equivalent.
 
-**For each requirement:**
-- State it as a testable assertion: "X must satisfy Y" or "When A, the system must B"
-- Cite the source: spec section, ChangeLog entry, config field definition, source comment, or domain knowledge
-- Rate specificity: **specific** (testable against a single code location) or **directional** (guides an audit across multiple locations)
+**For each requirement, provide all of these fields:**
+
+- **Summary**: State it as a testable assertion: "X must satisfy Y" or "When A, the system must B"
+- **User story**: Frame it from the caller's perspective: "As a [role] doing [action], I expect [behavior] **so that** [outcome]." The "so that" clause is mandatory — it forces you to articulate the intent behind the requirement. A reviewer who understands *why* a behavior matters will check it more carefully than one who only knows *what* the behavior is.
+- **Implementation note**: Explain how the code achieves (or should achieve) this requirement — the mechanism, the relevant code paths, the design choice. This is the technical justification: what does the implementation do and why was it built that way? (This used to be the only rationale. It's still valuable for reviewers who need to understand the code, but it's not sufficient on its own — it tells you what the code does without telling you who it serves.)
+- **Conditions of satisfaction**: List the specific, testable scenarios that prove this requirement is met. Include the happy path, edge cases, and failure modes. Think of these as acceptance criteria — if all conditions pass, the requirement is satisfied. Each condition should be concrete enough that a reviewer can check it against the code: "Duplicate keys with non-null first values are rejected," "Duplicate keys where the first value is null are rejected," "Duplicate keys in array-of-entry form are rejected." Conditions of satisfaction are what turn a vague requirement into a checklist.
+- **Alternative paths**: If the requirement has multiple code paths, modes, or entry points that must all satisfy it, list them. "Object-form map deserialization path" and "array-of-entry-form map deserialization path" are alternative paths for a duplicate-key requirement. Alternative paths are where bugs hide — a requirement can be satisfied on the primary path and violated on an alternative path that gets less testing.
+- **References**: Cite the source — spec section, ChangeLog entry, config field definition, source comment, issue number, or domain knowledge.
+- **Specificity**: **specific** (testable against a single code location) or **directional** (guides an audit across multiple locations)
 
 **Keep all requirements.** Do not filter out "obvious" or "trivial" requirements. Experiments show that filtering is counterproductive — the cost of checking an extra requirement is low, and the cost of missing a bug because you pruned the requirement that would have caught it is high. Directional requirements ("all outbound connections must use the configured CA") are especially valuable for the cross-requirement consistency check even though they seem vague.
+
+**Do not cap the requirement count.** Derive as many requirements as the project warrants. A small utility might have 20. A mature library with multiple subsystems, configuration surfaces, and documented behavioral contracts might have 100+. The goal is completeness — every behavioral contract that could be violated is a requirement. If you find yourself stopping because "that seems like enough," you're leaving bugs on the table.
 
 **The systematic audit template for absence bugs:** After deriving requirements from documentation, do one more pass. For each category above, ask: "What requirements *should* exist based on the project's domain, even if the documentation doesn't mention them?" A messaging system should validate message sizes. A TLS-enabled system should propagate CA configuration to all connection types. A system with numeric config fields should validate their ranges. These are requirements that come from domain knowledge, not from reading the specific project's docs. They catch the absence bugs that documentation-only derivation misses.
 
