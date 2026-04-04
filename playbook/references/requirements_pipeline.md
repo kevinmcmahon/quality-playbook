@@ -30,9 +30,9 @@ Versioned backups go in `quality/history/vX.Y/`.
 
 Before starting extraction, count the source files in the project (exclude tests, generated code, vendored dependencies, and build artifacts).
 
-- **Small project (≤100 source files):** Proceed normally — extract contracts from all files.
-- **Medium project (101–300 source files):** Focus on the 3–5 core subsystems identified in Phase 1, Step 2. Extract contracts from those modules and their internal dependencies. Note the scope in the CONTRACTS.md header so reviewers know what was covered.
-- **Large project (>300 source files):** Recommend that the user scope the pipeline to one subsystem at a time. Each subsystem gets its own pipeline run producing its own REQUIREMENTS.md, CONTRACTS.md, etc. Tell the user: "This project has N source files. For best results, run the requirements pipeline separately for each major subsystem (e.g., 'Generate requirements for the authentication module'). A single pipeline run across the full codebase will miss contracts due to context limits."
+- **Standard project (≤300 source files):** Proceed normally — extract contracts from all files. Projects in this range have been tested end-to-end (e.g., Gson at ~81 source files produced 110 requirements with full coverage).
+- **Large project (301–500 source files):** Focus on the 3–5 core subsystems identified in Phase 1, Step 2. Extract contracts from those modules and their internal dependencies. Note the scope in the CONTRACTS.md header so reviewers know what was covered.
+- **Very large project (>500 source files):** Recommend that the user scope the pipeline to one subsystem at a time. Each subsystem gets its own pipeline run producing its own REQUIREMENTS.md, CONTRACTS.md, etc. Tell the user: "This project has N source files. For best results, run the requirements pipeline separately for each major subsystem (e.g., 'Generate requirements for the authentication module'). A single pipeline run across the full codebase will miss contracts due to context limits."
 
 If the user explicitly asks for full-project scope on a large codebase, honor the request but warn that coverage will be thinner than subsystem-level runs.
 
