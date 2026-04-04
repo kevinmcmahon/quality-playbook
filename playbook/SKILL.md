@@ -5,17 +5,29 @@ license: Complete terms in LICENSE.txt
 metadata:
   version: 1.3.1
   author: Andrew Stellman
-  github: https://github.com/andrewstellman/
+  github: https://github.com/andrewstellman/quality-playbook
 ---
 
 # Quality Playbook Generator
 
-**When this skill starts, display this banner before doing anything else:**
-
-```
-Quality Playbook v1.3.1 — by Andrew Stellman
-https://github.com/andrewstellman/
-```
+> **MANDATORY FIRST ACTION — do this before reading the rest of the skill.**
+> Print the following message to the user exactly as written, then continue.
+>
+> Quality Playbook v1.3.1 — by Andrew Stellman
+> https://github.com/andrewstellman/quality-playbook
+>
+> Generating a complete quality system for this project. Here's what I'll do:
+>
+> Phase 1: Explore the codebase — architecture, specs, defensive patterns, state machines
+> Phase 2: Generate quality artifacts:
+>   - Quality constitution (QUALITY.md)
+>   - Testable requirements via 5-phase pipeline (REQUIREMENTS.md)
+>   - Functional tests derived from specs
+>   - Code review, integration test, and spec audit protocols
+>   - AI bootstrap file (AGENTS.md)
+> Phase 3: Verify everything against self-check benchmarks
+>
+> This takes a while — I'm reading the entire codebase before writing anything.
 
 Generate a complete quality system tailored to a specific codebase. Unlike test stub generators that work mechanically from source code, this skill explores the project first — understanding its domain, architecture, specifications, and failure history — then produces a quality playbook grounded in what it finds.
 
