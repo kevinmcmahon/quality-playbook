@@ -205,6 +205,22 @@ Then fix what you can: add requirements for domain gaps, sharpen vague condition
 
 **Important:** This is the final check. Be adversarial. Assume previous passes were imperfect. For each domain marked COVERED, verify that the cited requirements actually address the checklist item — don't just check the box.
 
+### Self-refinement loop (max 3 iterations)
+
+After the initial completeness check, run up to 3 refinement iterations to close the gaps Phase D identified:
+
+1. **Read the completeness report.** Identify all GAP entries, testability issues, and consistency issues.
+2. **Fix gaps in REQUIREMENTS.md.** For each GAP: add a new requirement using the 7-field template, or add conditions of satisfaction to an existing requirement. For testability issues: sharpen the condition. For consistency issues: resolve the conflict.
+3. **Re-run all three checks** (domain completeness, testability audit, cross-requirement consistency). Write the updated results to COMPLETENESS_REPORT.md.
+4. **Count the delta.** How many new requirements were added or existing requirements modified in this iteration?
+5. **Short-circuit check:** If the delta is fewer than 3 changes, stop — you've hit diminishing returns. Proceed to Phase E.
+
+**Why this works:** The initial completeness check identifies gaps but the model may not fix all of them in one pass, especially conceptual gaps where the model needs to re-read source files to understand what's missing. Each iteration shrinks the gap. Three iterations is enough to close the mechanical gaps; the remaining conceptual gaps are where cross-model audit and human review earn their keep.
+
+**Why it has limits:** This is self-refinement — the same model checking its own work. It catches gaps the model can see once they're pointed out (uncovered domains, vague conditions, numeric inconsistencies) but won't catch blind spots the model doesn't recognize as gaps. That's by design. The review and refinement protocols exist for closing those deeper gaps with different models or human input.
+
+After the loop completes (or short-circuits), proceed to Phase E.
+
 ---
 
 ## Phase E: Narrative pass

@@ -94,6 +94,20 @@ For each shared concept:
 - Overall assessment: SHIP IT / FIX FIRST / NEEDS DISCUSSION
 ```
 
+### Execution requirements
+
+**All three passes are mandatory.** Do not consolidate passes into a single review. Each pass produces distinct findings because it uses a different lens:
+
+- **Pass 1** finds structural bugs (race conditions, null hazards, resource leaks)
+- **Pass 2** finds requirement violations (missing behavior, spec deviations)
+- **Pass 3** finds cross-requirement contradictions (inconsistent ranges, conflicting guarantees)
+
+**Write each pass as a clearly labeled section** in the output file. Use the headers `## Pass 1: Structural Review`, `## Pass 2: Requirement Verification`, `## Pass 3: Cross-Requirement Consistency`, and `## Combined Summary`. If any pass would be empty, write the header and "No findings" — do not skip it.
+
+**Scoping for large codebases:** If the project has more than 50 requirements, Pass 2 does not need to verify every requirement against every file. Instead, focus Pass 2 on the requirements most relevant to the files being reviewed — check the requirements that reference those files or that govern the behavioral domain those files implement. The goal is depth on the files under review, not breadth across all requirements.
+
+**Self-check before finishing:** After writing all three passes and the combined summary, verify: (1) all three pass sections exist in the output, (2) Pass 2 references specific REQ-NNN numbers with SATISFIED/VIOLATED verdicts, (3) Pass 3 identifies at least one shared concept between requirements (even if consistent). If any check fails, go back and complete the missing pass.
+
 ### Why Three Passes Instead of Focus Areas
 
 Previous experiments (the QPB NSQ benchmark) showed that focus areas don't reliably improve AI code review. A generic "review for bugs" prompt scored 65.5%, while a playbook with 7 named focus areas scored 48.3% — the focus areas narrowed the model's attention and suppressed detections.

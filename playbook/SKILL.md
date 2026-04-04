@@ -227,7 +227,7 @@ This is the most important step for the code review protocol. Everything found d
 1. **Phase A — Contract extraction.** Read all source files, list every behavioral contract. Write to `quality/CONTRACTS.md`. This is discovery — list everything, even if it seems obvious.
 2. **Phase B — Requirement derivation.** Read CONTRACTS.md and documentation. Group related contracts, enrich with user intent, write formal requirements. Write to `quality/REQUIREMENTS.md`.
 3. **Phase C — Coverage verification.** Cross-reference every contract against every requirement. Fix gaps. Loop up to 3 times until coverage reaches 100%. Write to `quality/COVERAGE_MATRIX.md`.
-4. **Phase D — Completeness check.** Apply the domain checklist, testability audit, and cross-requirement consistency check. Write to `quality/COMPLETENESS_REPORT.md`.
+4. **Phase D — Completeness check + self-refinement loop.** Apply the domain checklist, testability audit, and cross-requirement consistency check. Write to `quality/COMPLETENESS_REPORT.md`. Then run up to 3 self-refinement iterations: read the report, fix gaps, re-check. Short-circuit when fewer than 3 changes per iteration.
 5. **Phase E — Narrative pass.** Add project overview, use cases (with actors, steps, and requirement traceability), cross-cutting concerns, category narratives. Reorder for top-down flow. Renumber sequentially.
 
 **For each requirement, provide all of these fields:**
@@ -396,9 +396,9 @@ Here's what I generated:
 
 | File | What It Does | Key Metric | Confidence |
 |------|-------------|------------|------------|
+| REQUIREMENTS.md | Testable requirements with use cases | N requirements, N use cases | ██████░░ Medium — solid baseline from 5-phase pipeline, improves with refinement passes |
 | QUALITY.md | Quality constitution | 10 scenarios | ██████░░ High — grounded in code, but scenarios are inferred, not from real incidents |
 | Functional tests | Automated tests | 47 passing | ████████ High — all tests pass, 35% cross-variant |
-| requirements.md | Testable requirements | N requirements | ██████░░ Medium — derived from docs and domain knowledge, benefits from human review |
 | RUN_CODE_REVIEW.md | Three-pass code review | 3 passes | ████████ High — structural + requirement verification + consistency |
 | RUN_INTEGRATION_TESTS.md | Integration test protocol | 9 runs × 3 providers | ██████░░ Medium — quality gates need threshold tuning |
 | RUN_SPEC_AUDIT.md | Council of Three audit | 10 scrutiny areas | ████████ High — guardrails included |
@@ -450,21 +450,36 @@ The user may go through several drill-downs before they're ready to improve anyt
 
 After the user has seen the summary (and optionally drilled into details), present the improvement options:
 
-> "Three ways to make this better:"
+> "Five ways to make this better:"
 >
-> **1. Review and harden individual items** — Pick any scenario, test, or protocol section and I'll walk through it with you. Good for: tightening specific quality gates, fixing inferred scenarios, adding missing edge cases.
+> **1. Review requirements interactively** — Read `quality/REVIEW_REQUIREMENTS.md` for a guided walkthrough of the requirements organized by use case. You can pick specific use cases to drill into, or walk through all of them sequentially. A different model can also fact-check the completeness report (cross-model audit). Good for: finding gaps the pipeline missed.
 >
-> **2. Guided Q&A** — I'll ask you 3-5 targeted questions about things I couldn't infer from the code: incident history, expected distributions, cost tolerance, model preferences. Good for: filling knowledge gaps that make scenarios more authoritative.
+> **2. Refine requirements with a different model** — Read `quality/REFINE_REQUIREMENTS.md` and run a refinement pass. You can run this with any AI model — Claude, GPT, Gemini — and each will catch different gaps. Run as many models as you want until you hit diminishing returns. Each pass backs up the current version and logs changes in `quality/VERSION_HISTORY.md`. Good for: pushing requirements from the baseline toward completeness.
 >
-> **3. Review development history** — Point me to exported AI chat history (Claude, Gemini, ChatGPT exports, Claude Code transcripts) and I'll mine it for design decisions, incident reports, and quality discussions that should be in QUALITY.md. Good for: grounding scenarios in real project history instead of inference.
+> **3. Review and harden other items** — Pick any scenario, test, or protocol section and I'll walk through it with you. Good for: tightening specific quality gates, fixing inferred scenarios, adding missing edge cases.
+>
+> **4. Guided Q&A** — I'll ask you 3-5 targeted questions about things I couldn't infer from the code: incident history, expected distributions, cost tolerance, model preferences. Good for: filling knowledge gaps that make scenarios more authoritative.
+>
+> **5. Feed in additional documentation** — The requirements pipeline works better with more intent sources. Point me to any of these and I'll use them to refine the requirements and quality constitution:
+>   - Exported AI chat history (Claude, Gemini, ChatGPT exports, Claude Code transcripts)
+>   - Slack or Teams channels where the project was discussed
+>   - Email threads, Jira/Linear tickets, or GitHub issues about the project
+>   - Design documents, architecture decision records, or meeting notes
+>   - Newsgroup posts, forum discussions, or mailing list archives
+>
+>   You can use tools like Claude Cowork, GitHub Copilot, or OpenClaw to connect to these sources and gather them into a folder, then point me at the folder. Good for: grounding scenarios and requirements in real project history instead of inference.
 >
 > "You can do any combination of these, in any order. Which would you like to start with?"
 
 ### Executing Each Improvement Path
 
-**Path 1: Review and harden.** The user picks an item. Walk through it: show the current text, explain your reasoning, ask if it's accurate. Revise based on their feedback. Re-run tests if the functional tests change.
+**Path 1: Review requirements interactively.** Point the user to `quality/REVIEW_REQUIREMENTS.md` and offer to walk through it together. The protocol supports self-guided (pick use cases), fully guided (sequential walkthrough), and cross-model audit (different model fact-checks the completeness report). Progress is tracked in `quality/REFINEMENT_HINTS.md` so the user can pick up where they left off.
 
-**Path 2: Guided Q&A.** Ask 3-5 questions derived from what you actually found during exploration. These categories cover the most common high-leverage gaps:
+**Path 2: Refine requirements with a different model.** Point the user to `quality/REFINE_REQUIREMENTS.md`. Each refinement pass: backs up the current version to `quality/history/vX.Y/`, reads feedback from REFINEMENT_HINTS.md, makes targeted improvements, bumps the minor version, and logs changes in VERSION_HISTORY.md. The user can run this with Claude, GPT, Gemini, or any other model — each catches different blind spots. Run until diminishing returns.
+
+**Path 3: Review and harden other items.** The user picks a scenario, test, or protocol section. Walk through it: show the current text, explain your reasoning, ask if it's accurate. Revise based on their feedback. Re-run tests if the functional tests change.
+
+**Path 4: Guided Q&A.** Ask 3-5 questions derived from what you actually found during exploration. These categories cover the most common high-leverage gaps:
 
 - **Incident history for scenarios.** "I found [specific defensive code]. What failure caused this? How many records were affected?"
 - **Quality gate thresholds.** "I'm checking that [field] contains [values]. What distribution is normal? What signals a problem?"
@@ -474,14 +489,14 @@ After the user has seen the summary (and optionally drilled into details), prese
 
 After the user answers, revise the generated files and re-run tests.
 
-**Path 3: Review development history.** If the user provides a chat history folder:
+**Path 5: Feed in additional documentation.** The user points you to additional intent sources — chat history, Slack exports, email threads, Jira tickets, design docs, meeting notes, forum archives. These contain design decisions, incident history, and quality discussions that didn't make it into formal documentation.
 
-1. Scan for index files and navigate to quality-relevant conversations (same approach as Step 0, but now with specific targets — you know which scenarios need grounding, which quality gates need thresholds, which design decisions need rationale).
-2. Extract: incident stories with specific numbers, design rationale for defensive patterns, quality framework discussions, cross-model audit results.
-3. Revise QUALITY.md scenarios with real incident details. Update integration test thresholds with real-world values. Add Council of Three empirical data if audit results exist.
-4. Re-run tests after revisions.
+1. Scan for index files and navigate to quality-relevant content (same approach as Step 0, but now with specific targets — you know which requirements need grounding, which scenarios need thresholds, which gaps need closing).
+2. Extract: incident stories with specific numbers, design rationale for defensive patterns, quality framework discussions, cross-model audit results, and behavioral contracts that weren't visible from the code alone.
+3. Feed findings into `quality/REFINEMENT_HINTS.md` as new feedback items, then run a refinement pass to update the requirements.
+4. Revise QUALITY.md scenarios with real incident details. Update integration test thresholds with real-world values. Re-run tests after revisions.
 
-If the user already provided chat history in Step 0, you've already mined it — but they may want to point you to specific conversations or ask you to dig deeper into a particular topic.
+If the user already provided chat history in Step 0, you've already mined it — but they may want to point you to specific conversations, connect additional sources, or ask you to dig deeper into a particular topic.
 
 ### Iteration
 
