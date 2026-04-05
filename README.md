@@ -1,156 +1,96 @@
 # Quality Playbook
 
-An open-source skill that generates a complete quality system for any codebase. Give it a repository and it produces six artifacts: a quality constitution, functional tests, a code review protocol, an integration test protocol, a multi-model spec audit, and a bootstrap context file for AI agents. It works with any language and any project type.
+Point an AI coding tool at any codebase. Get a complete quality engineering infrastructure: requirements derived from the actual intent of the code, functional tests traced to those requirements, a three-pass code review protocol, and a multi-model spec audit that catches bugs no single reviewer can find alone.
 
-**Version:** 1.2.15 | **Author:** Andrew Stellman | **License:** Apache 2.0
+**Version:** 1.3.2 | **Author:** [Andrew Stellman](https://github.com/andrewstellman) | **License:** Apache 2.0
 
-## What it does
+## The problem
 
-The playbook explores your codebase — reading source, specs, tests, config, and commit history — then generates artifacts grounded in what it actually finds, not generic templates. The core insight is that AI code review quality is bottlenecked by requirements: a reviewer that doesn't know what the code is *supposed* to do can only find structural issues. The playbook's main job is deriving requirements from every available source, then using those requirements to drive review.
+Most AI code review can only find structural issues: null dereferences, resource leaks, race conditions. That catches about 65% of real defects. The other 35% are intent violations -- bugs that can only be found if you know what the code is *supposed* to do. A function that silently returns null instead of throwing, a duplicate-key check that passes when the first value is null, a sanitization step that runs after the branch decision it was supposed to guard. These bugs look correct to any reviewer that doesn't know the spec.
 
-### Generated artifacts
+The playbook closes that gap. It reads your codebase, derives behavioral requirements from every source it can find (code, docs, specs, comments, defensive patterns, community documentation), and uses those requirements to drive review. The result is a quality system grounded in intent, not just structure.
+
+## Quick start
+
+The playbook is a skill for AI coding tools. Copy it into your project and ask the AI to run it.
+
+**GitHub Copilot:**
+```bash
+mkdir -p .github/skills/references
+cp playbook/SKILL.md .github/skills/SKILL.md
+cp playbook/references/* .github/skills/references/
+```
+
+**Claude Code:**
+```bash
+mkdir -p .claude/skills/quality-playbook/references
+cp playbook/SKILL.md .claude/skills/quality-playbook/SKILL.md
+cp playbook/references/* .claude/skills/quality-playbook/references/
+```
+
+Then tell your AI tool: *"Read the quality playbook skill and generate a complete quality system for this project."*
+
+The playbook runs in four phases: explore the codebase, generate quality artifacts, run a three-pass code review, and execute a multi-model spec audit. It takes 30-60 minutes depending on project size, and it works with any language.
+
+## What it produces
 
 The playbook generates these files in a `quality/` directory:
 
-| Artifact | Purpose |
-|----------|---------|
-| `QUALITY.md` | Quality constitution — coverage targets, fitness-to-purpose scenarios, theater prevention rules |
-| `test_functional.*` | Automated functional tests in the project's native language and framework |
-| `RUN_CODE_REVIEW.md` | Three-pass code review protocol (structural, requirement verification, cross-requirement consistency) |
-| `RUN_INTEGRATION_TESTS.md` | Integration test protocol for end-to-end validation across all variants |
-| `RUN_SPEC_AUDIT.md` | Council of Three spec audit — three independent models catch what any one alone misses |
-| `AGENTS.md` | Bootstrap context file for any AI session working on the project |
-
-Running these protocols produces output in `quality/code_reviews/`, `quality/spec_audits/`, and `quality/results/`.
-
-### Fitness-to-purpose over coverage
-
-The playbook prioritizes whether code works correctly under real-world conditions over how much of it ran during tests. A system can have 95% test coverage and still lose records silently. Fitness-to-purpose scenarios are natural-language assertions an LLM can evaluate against code — things like "a map with duplicate keys where the first value is null must still throw an exception."
-
-## Installation
-
-### Claude Code / Copilot
-
-Copy the skill to your project:
-
-```bash
-mkdir -p .skills/skills/quality-playbook
-cp SKILL.md .skills/skills/quality-playbook/SKILL.md
-```
-
-Or for GitHub Copilot:
-
-```bash
-mkdir -p .github/skills
-cp SKILL.md .github/skills/SKILL.md
-```
-
-### Running the pipeline
-
-The playbook runs as a 9-step pipeline. Each step can be invoked through any LLM coding assistant (Claude Code, GitHub Copilot CLI, Cursor, etc.):
-
-1. Generate the quality constitution, requirements, and protocols from codebase exploration
-2. Run the three-pass code review against HEAD
-3. Run functional tests
-4. Run integration tests
-5. Run spec audit (auditor 1)
-6. Run spec audit (auditor 2)
-7. Run spec audit (auditor 3)
-8. Triage and summarize all findings
-9. Run structural-only control (no playbook — baseline comparison)
-
-See `repos/gson-1.2.15/control_prompts/` for example prompts for each step.
-
-## Real bug found: Gson duplicate-key bypass
-
-During development, the playbook found a [real, previously unreported bug](https://github.com/google/gson/pull/2999) in Google's Gson library (23K+ GitHub stars). The documentation-enriched pipeline derived null-handling requirements from Gson's GitHub issues, then used those requirements to ground a code review. The review flagged that `MapTypeAdapterFactory`'s duplicate-key detection fails when the first value is `null`:
-
-```java
-// Bug: Map.put() returns null when previous value was null,
-// so this check misses duplicates where the first value is null
-V replaced = map.put(key, value);
-if (replaced != null) { ... }  // fails for {"a":null,"a":1}
-```
-
-This bug had existed since the duplicate-key check was introduced and was invisible to every existing test because they all used non-null first values. It was only detectable by knowing, from community documentation, that Gson's null handling has edge cases — exactly the kind of intent violation the playbook is designed to surface.
+| Artifact | What it does |
+|----------|-------------|
+| `REQUIREMENTS.md` | Behavioral requirements derived from code, docs, and community sources via a five-phase pipeline. This is the foundation -- without requirements, review is limited to structural bugs. |
+| `QUALITY.md` | Quality constitution defining what "correct" means for this specific project, with fitness-to-purpose scenarios and coverage theater prevention. |
+| `test_functional.*` | Functional tests in the project's native language, traced to requirements rather than generated from source code. |
+| `RUN_CODE_REVIEW.md` | Three-pass protocol: structural review, requirement verification, cross-requirement consistency. Each pass finds bugs the others can't. |
+| `RUN_SPEC_AUDIT.md` | Council of Three: three independent AI models audit the code against requirements. Different models have different blind spots, and the triage uses confidence weighting, not majority vote. |
+| `RUN_INTEGRATION_TESTS.md` | End-to-end test protocol that a different AI session can pick up and execute cold. |
+| `AGENTS.md` | Bootstrap file so every future AI session inherits the full quality infrastructure. |
 
 ## How it works
 
-The playbook's value comes from requirement derivation. The 9-step pipeline:
+The playbook's value comes from requirement derivation. AI code reviewers are bottlenecked by the same thing human reviewers are: if you don't know what the code is *supposed* to do, you can only find structural issues. The playbook's main job is figuring out intent, then using that intent to drive every downstream artifact.
 
-1. **Explores the codebase** — reads source files, configuration, specifications, test suites, and commit history to understand what the code does and what it's supposed to do
-2. **Derives requirements** — extracts behavioral contracts from code, documentation, and (when available) community sources like GitHub issues and user guides
-3. **Generates a quality constitution** — fitness-to-purpose scenarios that can be evaluated by an LLM, plus coverage targets and theater prevention rules
-4. **Runs a three-pass code review** — structural review (does the code have issues?), requirement verification (does the code satisfy the requirements?), and cross-requirement consistency (do the requirements contradict each other?)
-5. **Runs a multi-model spec audit** — three independent models audit the code against the specification, catching defects that any single model misses
-6. **Triages findings** — merges results across all passes, deduplicates, and assigns confidence levels
+**Phase 1: Explore.** The AI reads source files, tests, config, specs, and commit history. If you provide community documentation (GitHub issues, user guides, API docs, forum discussions), it reads those too. The goal is to understand not just what the code does, but what it's supposed to do.
 
-### Why community documentation matters
+**Phase 2: Generate.** A five-phase pipeline extracts behavioral contracts from the codebase, derives testable requirements, verifies coverage, checks completeness, and adds a narrative layer. The pipeline also generates functional tests, review protocols, and the quality constitution.
 
-The playbook's documentation enrichment experiment (see `repos/gson-1.2.15/EXPERIMENT.md`) showed that adding community documentation — GitHub issues, user guides, Javadoc, tutorials — to the pipeline produces measurably better results:
+**Phase 3: Review.** A three-pass code review runs against HEAD: structural review with anti-hallucination guardrails, requirement verification checking each requirement against the code, and cross-requirement consistency checking whether requirements contradict each other. About 65% of findings come from Pass 1, 35% from Passes 2 and 3.
 
-| Metric | Baseline (code only) | Enriched (+ community docs) |
-|--------|---------------------|----------------------------|
-| Requirements derived | 43 | 48 (+5) |
-| Fitness-to-purpose scenarios | 10 | 12 (+2) |
-| Spec audit findings | 5 | 9 (+80%) |
-| Cross-auditor redundancy | ~50% | 0% |
+**Phase 4: Audit.** Three independent AI models audit the code against the requirements. The triage process uses verification probes -- targeted checks that ask "is this actually true?" -- rather than dismissing single-model findings. The most valuable findings are often the ones only one model catches.
 
-All five new requirements from community docs targeted behavioral contracts invisible in source code. Three led directly to the confirmed Gson bug.
+### Why documentation matters
+
+Adding community documentation to the pipeline produces measurably better results. In a controlled experiment across multiple repositories, documentation-enriched runs found more bugs, different bugs, and higher-confidence bugs than code-only baselines. The documentation gives auditors spec language to check against, turning "this code looks odd" into "this code contradicts the documented behavior."
 
 ## The benchmark
 
-The playbook is validated against the **Quality Playbook Benchmark (QPB)**: 2,564 real defects from 50 open-source repositories across 14 programming languages. This is mutation testing applied one level up — instead of injecting synthetic faults into code, we use real historical bugs as ground truth. Each defect is tied to a single fix commit, so checking out the parent commit gives you the exact code with the exact bug.
+The playbook is validated against the **Quality Playbook Benchmark (QPB)**: 2,564 real defects from 50 open-source repositories across 14 programming languages. Instead of injecting synthetic faults, we use real historical bugs tied to single fix commits as ground truth. Checking out the parent commit gives you the exact code with the exact bug, so you can measure whether a review protocol would have caught it.
 
-### Quick start (benchmark)
+The key finding: approximately 65% of real defects are detectable by structural code review alone. The remaining 35% are intent violations that require knowing what the code is supposed to do. The playbook's value is in closing that gap.
 
-```bash
-# Example: CURL-01, use-after-free in transfer URL pointer
-cd repos/curl
-git checkout 28fbf4a8          # pre-fix commit
-# Run your code review against lib/transfer.c
-# Then compare your findings to the fix:
-git diff 28fbf4a8..86b39c2     # shows the actual fix
-```
+See `dataset/METHODOLOGY.md` for details on how the benchmark was built, and `dataset/DEFECT_LIBRARY.md` for the full index.
 
-### Dataset summary
-
-| Dimension | Count |
-|-----------|-------|
-| Total defects | 2,564 |
-| Repositories | 50 |
-| Languages | 14 (Go, Python, TypeScript, Java, C, C#, Rust, Ruby, PHP, Kotlin, Scala, JavaScript, Swift, Elixir) |
-| Defect categories | 14 (error handling, validation gap, configuration error, type safety, state machine gap, concurrency, serialization, API contract violation, protocol violation, null safety, silent failure, security, SQL error, missing boundary check) |
-
-### Key finding from the benchmark
-
-Approximately 65% of real defects are detectable by structural code review alone. The remaining 35% are intent violations — bugs that can only be found if you know what the code is supposed to do. The playbook's value is in closing that gap through requirement derivation.
-
-## Directory structure
+## Project structure
 
 ```
 QPB/
-├── README.md                   # This file
-├── dataset/                    # The benchmark dataset
-│   ├── DEFECT_LIBRARY.md       # Master index (2,564 defects)
-│   ├── METHODOLOGY.md          # How the dataset was built
-│   └── defects/                # Per-repo detailed descriptions
-├── repos/                      # Cloned repositories (gitignored)
-│   └── gson-1.2.15/            # Gson documentation enrichment experiment
-│       ├── EXPERIMENT.md        # Full experiment documentation
-│       ├── quality/             # Enriched pipeline output
-│       ├── quality_baseline/    # Baseline pipeline output
-│       ├── retrieved_documentation/  # 24-file community docs corpus
-│       └── control_prompts/     # 9-step pipeline prompts
-├── benchmarks/                 # Cross-repo validation experiments
-├── tooling/                    # Scripts for building the dataset
-└── .gitignore
+├── playbook/               # The skill itself
+│   ├── SKILL.md            # Main skill file
+│   ├── LICENSE.txt         # Apache 2.0
+│   └── references/         # Protocol and pipeline reference docs
+├── dataset/                # QPB benchmark (2,564 defects, 50 repos, 14 languages)
+│   ├── DEFECT_LIBRARY.md   # Master defect index
+│   ├── METHODOLOGY.md      # How the dataset was built
+│   └── defects/            # Per-repo descriptions
+├── repos/                  # Cloned test repositories (gitignored)
+├── benchmarks/             # Cross-repo validation experiments
+└── tooling/                # Dataset build scripts
 ```
 
 ## Context
 
-This project supports an O'Reilly Radar article series on AI-assisted code quality by Andrew Stellman. The playbook was built using AI-driven development with Octobatch, an open-source Python batch LLM orchestrator. See the [AI-Driven Development](https://github.com/andrewstellman/ai-driven-development) workspace for the full development history.
+This project supports an [O'Reilly Radar article series](https://oreillyradar.substack.com/p/the-accidental-orchestrator) on AI-driven development and agentic engineering by Andrew Stellman. The playbook was built using AI-driven development with [Octobatch](https://github.com/andrewstellman/octobatch), an open-source Python batch LLM orchestrator.
 
 ## License
 
-The playbook skill, benchmark dataset metadata, and tooling are original work under Apache 2.0. The cloned repositories in `repos/` retain their original licenses.
+The playbook skill, benchmark dataset metadata, and tooling are original work under Apache 2.0. Cloned repositories in `repos/` retain their original licenses.
