@@ -36,6 +36,12 @@ Before starting extraction, count the source files in the project (exclude tests
 
 If the user explicitly asks for full-project scope on a large codebase, honor the request but warn that coverage will be thinner than subsystem-level runs.
 
+### Scope breadth on the initial pass
+
+On the first pipeline run, favor breadth over depth. Cover all major subsystems and modules rather than going deep on a few. The goal is a broad baseline that the self-refinement loop and later review/refinement passes can deepen. If you focus on 3 modules and skip 8 others, the completeness check can't find gaps in modules it never saw.
+
+For projects with both a core library and supporting modules (middleware, plugins, adapters, extensions), include at least the core and the highest-risk supporting modules in Phase A. Note the scope in the CONTRACTS.md header so it's clear what was covered and what wasn't. Refinement passes can expand scope later, but the initial pass should cast the widest net the context window allows.
+
 ### Contract extraction
 
 Read every source file (within scope) and list every behavioral contract it implements or should implement. A behavioral contract is any promise the code makes to its callers:

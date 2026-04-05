@@ -96,6 +96,10 @@ When models disagree on factual claims, deploy a read-only probe: give one model
 
 That last category is the bridge between the spec audit and the test suite. Every confirmed finding not already covered by a test should become one.
 
+### Cross-artifact consistency check
+
+After triage, compare the spec audit findings against the code review findings from `quality/code_reviews/`. If the code review and spec audit disagree on the same factual claim (one says a bug is real, the other calls it a false positive), flag the disagreement and deploy a verification probe. The code review and spec audit use different methods (structural reading vs. spec comparison), so disagreements are informative, not errors. But a factual contradiction about what the code actually does needs to be resolved before either report is trusted.
+
 ## Fix Execution Rules
 
 - Group fixes by subsystem, not by defect number
@@ -129,6 +133,10 @@ Different models have different audit strengths. In practice:
 - **Models that need structure** (e.g., some Gemini variants) may perform poorly on open-ended audit prompts but respond dramatically to the four guardrails above.
 
 The specific models that excel will change over time. The principle holds: use multiple models with different strengths, and always include the four guardrails.
+
+### Minimum model capability
+
+The audit protocol requires reading function bodies, citing line numbers, grepping before claiming missing, and classifying defect types. Lightweight or speed-optimized models (Haiku-class, GPT-4o-mini-class) are not suitable as auditors. They tend to skim rather than read, skip the grep step, and produce shallow or empty reports ("No defects found") on codebases where stronger models find real bugs. Use models with strong code-reading ability for all three auditor slots. A weak auditor doesn't just miss findings — it reduces the Council from three independent perspectives to two.
 
 ## Tips for Writing Scrutiny Areas
 

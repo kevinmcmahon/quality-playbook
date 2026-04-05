@@ -102,11 +102,13 @@ For each shared concept:
 - **Pass 2** finds requirement violations (missing behavior, spec deviations)
 - **Pass 3** finds cross-requirement contradictions (inconsistent ranges, conflicting guarantees)
 
-**Write each pass as a clearly labeled section** in the output file. Use the headers `## Pass 1: Structural Review`, `## Pass 2: Requirement Verification`, `## Pass 3: Cross-Requirement Consistency`, and `## Combined Summary`. If any pass would be empty, write the header and "No findings" — do not skip it.
+**Write each pass as a clearly labeled section** in the output file. Use the headers `## Pass 1: Structural Review`, `## Pass 2: Requirement Verification`, `## Pass 3: Cross-Requirement Consistency`, and `## Combined Summary`.
+
+**If a pass has no findings, explain why.** Do not just write "No findings." Write what you checked and why nothing was wrong. For example: "Reviewed 12 functions in lib/response.js for null hazards, resource leaks, and error handling gaps. No confirmed bugs — all error paths either throw or return a well-defined default." A pass with no findings and no explanation is a pass that wasn't done.
 
 **Scoping for large codebases:** If the project has more than 50 requirements, Pass 2 does not need to verify every requirement against every file. Instead, focus Pass 2 on the requirements most relevant to the files being reviewed — check the requirements that reference those files or that govern the behavioral domain those files implement. The goal is depth on the files under review, not breadth across all requirements.
 
-**Self-check before finishing:** After writing all three passes and the combined summary, verify: (1) all three pass sections exist in the output, (2) Pass 2 references specific REQ-NNN numbers with SATISFIED/VIOLATED verdicts, (3) Pass 3 identifies at least one shared concept between requirements (even if consistent). If any check fails, go back and complete the missing pass.
+**Self-check before finishing:** After writing all three passes and the combined summary, verify: (1) all three pass sections exist in the output, (2) Pass 2 references specific REQ-NNN numbers with SATISFIED/VIOLATED verdicts, (3) Pass 3 identifies at least one shared concept between requirements (even if consistent), (4) every BUG finding has a corresponding regression test in `quality/test_regression.*` (see Phase 2 below). If any check fails, go back and complete the missing work.
 
 ### Why Three Passes Instead of Focus Areas
 
