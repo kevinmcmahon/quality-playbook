@@ -168,6 +168,20 @@ After writing all regression tests and the combined summary, run this checklist:
 
 This checklist is the enforcement mechanism for the closure mandate. Without it, the mandate is aspirational — agents document bugs fully in the pass summaries but skip the regression test and move on.
 
+### Post-spec-audit regression tests
+
+The closure mandate applies to spec-audit confirmed code bugs, not just code review bugs. After the spec audit triage categorizes findings, every finding classified as "Real code bug" must get a regression test — using the same conventions as code review regression tests (executable source file, expected-failure marker, test-finding alignment).
+
+**Why this is a separate step:** Code review regression tests are written immediately after the code review, before the spec audit runs. This means spec-audit bugs are systematically orphaned — they appear in the triage report but never enter the regression test file. Across v1.3.4 runs on 8 repos, spec-audit bugs accounted for ~30% of all findings, and only 1 of 8 repos (httpx) wrote regression tests for them.
+
+**Procedure:**
+1. After spec audit triage, read the triage summary for findings classified as "Real code bug."
+2. For each, write a regression test in `quality/test_regression.*` using the same format as code review regression tests. Use the spec audit report as the source citation: `[BUG from spec_audits/YYYY-MM-DD-triage.md]`.
+3. Run the test to confirm it fails (expected) or passes (needs investigation).
+4. Update the cumulative BUG tracker in PROGRESS.md with the test reference.
+
+If the spec audit produced no confirmed code bugs, skip this step — but document that in PROGRESS.md so the audit trail is complete.
+
 ### Cleaning up after spec audit reversals
 
 When the spec audit overturns a code review finding (classifies a BUG as a design choice or false positive), the corresponding regression test must be either deleted or moved to a separate file (`quality/design_behavior_tests.*`) that documents intentional behavior. A failing test that points at documented-correct behavior is worse than no test — it creates noise and erodes trust in the regression suite.

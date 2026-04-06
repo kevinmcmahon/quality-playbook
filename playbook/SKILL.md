@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate six quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis and missing safeguard detection. Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.4
+  version: 1.3.5
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -13,7 +13,7 @@ metadata:
 > **MANDATORY FIRST ACTION — do this before reading the rest of the skill.**
 > Print the following message to the user exactly as written, then continue.
 >
-> Quality Playbook v1.3.4 — by Andrew Stellman
+> Quality Playbook v1.3.5 — by Andrew Stellman
 > https://github.com/andrewstellman/quality-playbook
 >
 > Generating a complete quality system for this project. Here's what I'll do:
@@ -53,7 +53,7 @@ Seven files that together form a repeatable quality system:
 
 Plus output directories: `quality/code_reviews/`, `quality/spec_audits/`, `quality/results/`, `quality/history/`.
 
-The pipeline also generates supporting artifacts: `quality/CONTRACTS.md` (behavioral contracts), `quality/COVERAGE_MATRIX.md` (traceability), `quality/COMPLETENESS_REPORT.md` (final gate), `quality/VERSION_HISTORY.md` (review log), `quality/REVIEW_REQUIREMENTS.md` (interactive review protocol), and `quality/REFINE_REQUIREMENTS.md` (refinement pass protocol).
+The pipeline also generates supporting artifacts: `quality/PROGRESS.md` (phase-by-phase checkpoint log with cumulative BUG tracker), `quality/CONTRACTS.md` (behavioral contracts), `quality/COVERAGE_MATRIX.md` (traceability), `quality/COMPLETENESS_REPORT.md` (final gate), `quality/VERSION_HISTORY.md` (review log), `quality/REVIEW_REQUIREMENTS.md` (interactive review protocol), and `quality/REFINE_REQUIREMENTS.md` (refinement pass protocol).
 
 The two critical deliverables are the requirements file and the functional test file. The requirements file (`quality/REQUIREMENTS.md`) feeds the code review protocol's verification and consistency passes — it's what makes the code review catch more than structural anomalies. The functional test file (named for the project's language and test framework conventions) is the automated safety net. The Markdown protocols are documentation for humans and AI agents.
 
@@ -246,6 +246,59 @@ This is the most important step for the code review protocol. Everything found d
 
 Record all requirements in a structured format. These feed directly into the code review protocol's verification and consistency passes.
 
+### Checkpoint: Initialize PROGRESS.md
+
+After completing Phase 1 exploration, create `quality/PROGRESS.md`. This file is the skill's external memory — it persists state across phases so that context is never lost, even if the session is interrupted and resumed. It also serves as an audit trail for debugging and improvement.
+
+**Why this exists:** In single-session runs, the agent holds context in memory. But context degrades over long sessions — findings from Phase 1 are forgotten by Phase 3, BUG counts drift, spec-audit bugs get orphaned because the closure check never saw them. PROGRESS.md solves this by making every phase write its state to disk. The agent reads it back before each phase, so it always has an accurate picture of what happened so far. As a side benefit, it makes the skill work correctly even if the run is split across multiple sessions.
+
+Write the initial PROGRESS.md:
+
+```markdown
+# Quality Playbook Progress
+
+## Run metadata
+Started: [date/time]
+Project: [project name]
+Skill version: 1.3.5
+With docs: [yes/no]
+
+## Phase completion
+- [x] Phase 1: Exploration — completed [date/time]
+- [ ] Phase 2: Artifact generation
+- [ ] Phase 3: Code review + regression tests
+- [ ] Phase 4: Spec audit + triage
+- [ ] Phase 5: Post-review reconciliation + closure verification
+- [ ] Phase 6: Verification benchmarks
+
+## Artifact inventory
+| Artifact | Status | Path | Notes |
+|----------|--------|------|-------|
+| QUALITY.md | pending | | |
+| REQUIREMENTS.md | pending | | |
+| CONTRACTS.md | pending | | |
+| COVERAGE_MATRIX.md | pending | | |
+| COMPLETENESS_REPORT.md | pending | | |
+| Functional tests | pending | | |
+| RUN_CODE_REVIEW.md | pending | | |
+| RUN_INTEGRATION_TESTS.md | pending | | |
+| RUN_SPEC_AUDIT.md | pending | | |
+| AGENTS.md | pending | | |
+
+## Cumulative BUG tracker
+<!-- Every confirmed BUG from code review and spec audit goes here.
+     Each entry tracks closure status: regression test reference or explicit exemption.
+     The closure verification step reads this list to ensure nothing is orphaned. -->
+
+| # | Source | File:Line | Description | Severity | Closure | Test/Exemption |
+|---|--------|-----------|-------------|----------|---------|----------------|
+
+## Exploration summary
+[Brief notes on architecture, key modules, spec sources, defensive patterns found]
+```
+
+Update this file after every phase. The cumulative BUG tracker is the most important section — it ensures no finding is orphaned regardless of which phase produced it.
+
 ---
 
 ## Phase 2: Generate the Quality Playbook
@@ -354,6 +407,46 @@ If `AGENTS.md` already exists, update it — don't replace it. Add a Quality Doc
 
 If creating from scratch: project description, setup commands, build & test commands, architecture overview, key design decisions, known quirks, and quality docs pointers.
 
+### Checkpoint: Update PROGRESS.md after artifact generation
+
+Re-read `quality/PROGRESS.md`. Update:
+- Mark Phase 2 complete with timestamp
+- Update the artifact inventory: set each generated artifact to "generated" with its file path
+- Add exploration summary notes if not already present
+
+Then proceed to the code review. **Before starting the code review, re-read PROGRESS.md** to refresh your context on what was generated and what the exploration found.
+
+### Phase 2b: Code Review and Regression Tests
+
+Run the code review protocol (all three passes) as described in File 3. After producing findings, write regression tests for every confirmed BUG per the closure mandate in `references/review_protocols.md`.
+
+**Update PROGRESS.md:** Add every confirmed BUG to the cumulative BUG tracker with source "Code Review", the file:line reference, description, severity, and closure status (regression test function name or exemption reason). Mark Phase 3 (Code review + regression tests) complete.
+
+### Phase 2c: Spec Audit and Triage
+
+Run the spec audit protocol as described in File 5. After triage, categorize each confirmed finding.
+
+**Update PROGRESS.md:** Add every confirmed **code bug** from the spec audit to the cumulative BUG tracker with source "Spec Audit". This is critical — spec-audit bugs are systematically orphaned if they aren't added to the same tracker that the closure verification reads.
+
+### Post-spec-audit regression tests
+
+After the spec audit triage, check the cumulative BUG tracker in PROGRESS.md. Any spec-audit BUG that doesn't have a regression test yet needs one now. Write regression tests for spec-audit confirmed code bugs using the same conventions as code-review regression tests (expected-failure markers, test-finding alignment, executable source files).
+
+**Why this step exists:** Code review bugs get regression tests immediately because tests are written right after the review. Spec audit runs after the tests are written, so its confirmed bugs are orphaned — they appear in the triage report but never get tests. This step closes that gap.
+
+Update the BUG tracker entries with regression test references. Mark Phase 4 (Spec audit + triage) complete.
+
+### Phase 2d: Post-Review Reconciliation and Closure Verification
+
+Re-read `quality/PROGRESS.md` — specifically the cumulative BUG tracker. This is the authoritative list of all findings across both code review and spec audit.
+
+1. **Run the Post-Review Reconciliation** as described in `references/requirements_pipeline.md`. Update COMPLETENESS_REPORT.md.
+2. **Run closure verification:** For every row in the BUG tracker, verify it has either a regression test reference or an explicit exemption. If any BUG lacks both, write the test or exemption now.
+3. **Clean up after spec-audit reversals:** If the spec audit reclassified any code review BUG as a design choice or false positive, remove or relocate the corresponding regression test per `references/review_protocols.md`.
+4. **Resolve CR vs spec-audit conflicts:** If the code review and spec audit disagree on the same finding (one says BUG, the other says design choice), deploy a verification probe per `references/spec_audit.md` and record the resolution in the BUG tracker.
+
+Update PROGRESS.md: mark Phase 5 complete. The BUG tracker should now show closure for every entry.
+
 ---
 
 ## Phase 3: Verify
@@ -378,6 +471,15 @@ The critical checks:
 10. **Integration test quality gates were written from a Field Reference Table.** Verify that you built a Field Reference Table by re-reading each schema file before writing quality gates, and that every field name in the quality gates is copied from that table — not from memory. If you skipped the table, go back and build it now.
 
 If any benchmark fails, go back and fix it before proceeding.
+
+### Checkpoint: Finalize PROGRESS.md
+
+Re-read `quality/PROGRESS.md`. Update:
+- Mark Phase 6 (Verification benchmarks) complete with timestamp
+- Verify the BUG tracker has closure for every entry
+- Add a final summary line: "Run complete. N BUGs found (N from code review, N from spec audit). N regression tests written. N exemptions granted."
+
+The completed PROGRESS.md is a permanent audit trail. It documents what the skill did, what it found, and how it resolved each finding. Users can read it to understand the run, debug failures, and compare across runs.
 
 ---
 

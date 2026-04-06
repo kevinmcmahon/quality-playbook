@@ -230,6 +230,24 @@ Updated: [date]
 
 5. If the original verdict was COMPLETE but unaddressed findings exist, change the verdict to INCOMPLETE.
 
+### Resolving code review vs spec audit conflicts
+
+When the code review and spec audit disagree about the same behavioral claim — one says BUG, the other says design choice or false positive — the reconciliation must resolve the conflict, not paper over it.
+
+**Resolution procedure:**
+1. Identify the factual claim at the center of the disagreement. What does the code actually do?
+2. Deploy a verification probe: give a model the disputed claim and the relevant source code, and ask it to report ground truth. (See `spec_audit.md` § "The Verification Probe.")
+3. Record the resolution in the Post-Review Reconciliation section:
+   ```
+   ### Conflicts resolved
+   - [finding description]: Code review said [X], spec audit said [Y].
+     Verification probe: [what the code actually does].
+     Resolution: [BUG CONFIRMED / FALSE POSITIVE / DESIGN CHOICE]. [Explanation.]
+   ```
+4. If the resolution confirms a BUG, ensure it has a regression test. If the resolution overturns a BUG, clean up the regression test per `review_protocols.md` § "Cleaning up after spec audit reversals."
+
+**Do not resolve conflicts by defaulting to one source.** Neither the code review nor the spec audit is automatically more authoritative — they use different methods (structural reading vs. spec comparison) and have different blind spots. The verification probe is the tiebreaker.
+
 **This refresh is not optional.** A completeness report that predates the code review is a timestamp, not a quality gate. The refresh turns it into an actual reconciliation.
 
 ### Output format
