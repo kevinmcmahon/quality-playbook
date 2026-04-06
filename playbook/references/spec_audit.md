@@ -65,16 +65,20 @@ Requirements are tagged with `[Req: tier — source]`. Weight your findings by t
 
 ---
 
-## Pre-audit docs validation (when docs_gathered/ exists)
+## Pre-audit docs validation (required triage section)
 
-If the playbook was generated with supplemental documentation in `docs_gathered/`, spot-check the gathered docs for factual accuracy before running the audit. Stale or incorrect docs can skew audit confidence — a model that reads "the library handles X by doing Y" in the docs will rate a divergent finding higher even if the docs are wrong.
+The triage report must include a `## Pre-audit docs validation` section regardless of whether `docs_gathered/` exists. This section documents what the auditors used as their factual baseline.
+
+**If `docs_gathered/` exists:** Spot-check the gathered docs for factual accuracy before running the audit. Stale or incorrect docs can skew audit confidence — a model that reads "the library handles X by doing Y" in the docs will rate a divergent finding higher even if the docs are wrong.
 
 **Quick validation procedure (5 minutes max):**
 1. Pick 2–3 factual claims from `docs_gathered/` that describe specific runtime behavior (e.g., "invalid input raises ValueError", "field X defaults to Y", "format Z is not supported").
 2. Grep the source code for the cited behavior. Does the code match the docs?
 3. If any claim is wrong, note it in the triage header: "docs_gathered/ contains N known inaccuracies: [list]. Findings that rely on these claims are downgraded to NEEDS REVIEW."
 
-This is not a full docs audit — it's a quick sanity check to catch obvious staleness before it corrupts audit confidence.
+**If `docs_gathered/` does not exist:** State this explicitly: "No supplemental docs provided. Auditors relied on in-repo specs and code only." This confirms the absence is intentional, not an oversight.
+
+This section fires in every triage, not just when docs are present. In v1.3.5 cross-repo testing, it only fired in 1/8 repos because it was conditional — making it required ensures the audit trail always documents the factual baseline.
 
 ## Running the Audit
 
@@ -103,6 +107,10 @@ When the effective council is 2/3, downgrade the confidence tier: "All three" be
 | High | Two of three | Likely real — verify and fix |
 | Needs verification | One only | Could be real or hallucinated — deploy verification probe |
 
+**When the effective council is 2/3 or less:** Distinguish single-auditor findings from multi-auditor findings explicitly in the triage. With a 2/3 council, a finding from both present auditors has "High" confidence. A finding from only one present auditor has "Needs verification" — it cannot be promoted to confirmed BUG without a verification probe, because the missing auditor might have contradicted it. Do not treat all findings as equivalent just because the council is incomplete.
+
+In the triage summary table, add a column for auditor agreement: "2/2 present", "1/2 present", etc. This makes the confidence tier visible and auditable.
+
 ### The Verification Probe
 
 When models disagree on factual claims, deploy a read-only probe: give one model the disputed claim and ask it to read the code and report ground truth. Never resolve factual disputes by majority vote — the majority can be wrong about what code actually does.
@@ -117,6 +125,14 @@ When models disagree on factual claims, deploy a read-only probe: give one model
 - **Inferred requirement wrong** — The inferred requirement doesn't match actual intent → remove or correct it in QUALITY.md
 
 That last category is the bridge between the spec audit and the test suite. Every confirmed finding not already covered by a test should become one.
+
+### Legacy and historical scripts
+
+Scripts documented as "historical," "deprecated," or "not part of current workflow" are sometimes downgraded during triage on the theory that they don't affect current operations. This is correct when the script genuinely never runs. But if the script's bug has already materialized in canonical artifacts — duplicate entries in a published file, stale data in a checked-in cache, incorrect mappings that downstream tools consume — the bug is not historical. It's a live defect in the repository's published state.
+
+**Rule: If a legacy script's bug is already visible in canonical artifacts, promote it to confirmed BUG regardless of the script's status.** The script may be historical, but the damage it left behind is current. The regression test should target the artifact (the duplicate entry, the stale mapping), not the script — because the artifact is what users encounter.
+
+This rule exists because v1.3.5 bootstrap runs on QPB found duplicate changelog entries and stale cache mappings produced by a "historical" script. Both triages downgraded the findings because the script was historical. But the duplicate entries were already in the published library, visible to every user.
 
 ### Cross-artifact consistency check
 

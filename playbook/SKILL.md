@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate six quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis and missing safeguard detection. Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.5
+  version: 1.3.6
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -13,7 +13,7 @@ metadata:
 > **MANDATORY FIRST ACTION — do this before reading the rest of the skill.**
 > Print the following message to the user exactly as written, then continue.
 >
-> Quality Playbook v1.3.5 — by Andrew Stellman
+> Quality Playbook v1.3.6 — by Andrew Stellman
 > https://github.com/andrewstellman/quality-playbook
 >
 > Generating a complete quality system for this project. Here's what I'll do:
@@ -269,16 +269,16 @@ Write the initial PROGRESS.md:
 ## Run metadata
 Started: [date/time]
 Project: [project name]
-Skill version: 1.3.5
+Skill version: 1.3.6
 With docs: [yes/no]
 
 ## Phase completion
 - [x] Phase 1: Exploration — completed [date/time]
-- [ ] Phase 2: Artifact generation
-- [ ] Phase 3: Code review + regression tests
-- [ ] Phase 4: Spec audit + triage
-- [ ] Phase 5: Post-review reconciliation + closure verification
-- [ ] Phase 6: Verification benchmarks
+- [ ] Phase 2: Artifact generation (QUALITY.md, REQUIREMENTS.md, tests, protocols, AGENTS.md)
+- [ ] Phase 2b: Code review + regression tests
+- [ ] Phase 2c: Spec audit + triage
+- [ ] Phase 2d: Post-review reconciliation + closure verification
+- [ ] Phase 3: Verification benchmarks
 
 ## Artifact inventory
 | Artifact | Status | Path | Notes |
@@ -299,8 +299,13 @@ With docs: [yes/no]
      Each entry tracks closure status: regression test reference or explicit exemption.
      The closure verification step reads this list to ensure nothing is orphaned. -->
 
-| # | Source | File:Line | Description | Severity | Closure | Test/Exemption |
-|---|--------|-----------|-------------|----------|---------|----------------|
+| # | Source | File:Line | Description | Severity | Closure Status | Test/Exemption |
+|---|--------|-----------|-------------|----------|----------------|----------------|
+<!-- Closure Status values:
+     - "confirmed open (xfail)" — bug exists, regression test confirms it, fix pending
+     - "fixed (test passes)" — bug fixed, regression test now passes, xfail marker removed
+     - "exempt (reason)" — no regression test possible, reason documented -->
+
 
 ## Exploration summary
 [Brief notes on architecture, key modules, spec sources, defensive patterns found]
@@ -429,7 +434,7 @@ Then proceed to the code review. **Before starting the code review, re-read PROG
 
 Run the code review protocol (all three passes) as described in File 3. After producing findings, write regression tests for every confirmed BUG per the closure mandate in `references/review_protocols.md`.
 
-**Update PROGRESS.md:** Add every confirmed BUG to the cumulative BUG tracker with source "Code Review", the file:line reference, description, severity, and closure status (regression test function name or exemption reason). Mark Phase 3 (Code review + regression tests) complete.
+**Update PROGRESS.md:** Add every confirmed BUG to the cumulative BUG tracker with source "Code Review", the file:line reference, description, severity, and closure status (regression test function name or exemption reason). Mark Phase 2b (Code review + regression tests) complete.
 
 ### Phase 2c: Spec Audit and Triage
 
@@ -443,7 +448,7 @@ After the spec audit triage, check the cumulative BUG tracker in PROGRESS.md. An
 
 **Why this step exists:** Code review bugs get regression tests immediately because tests are written right after the review. Spec audit runs after the tests are written, so its confirmed bugs are orphaned — they appear in the triage report but never get tests. This step closes that gap.
 
-Update the BUG tracker entries with regression test references. Mark Phase 4 (Spec audit + triage) complete.
+Update the BUG tracker entries with regression test references. Mark Phase 2c (Spec audit + triage) complete.
 
 ### Phase 2d: Post-Review Reconciliation and Closure Verification
 
@@ -454,7 +459,15 @@ Re-read `quality/PROGRESS.md` — specifically the cumulative BUG tracker. This 
 3. **Clean up after spec-audit reversals:** If the spec audit reclassified any code review BUG as a design choice or false positive, remove or relocate the corresponding regression test per `references/review_protocols.md`.
 4. **Resolve CR vs spec-audit conflicts:** If the code review and spec audit disagree on the same finding (one says BUG, the other says design choice), deploy a verification probe per `references/spec_audit.md` and record the resolution in the BUG tracker.
 
-Update PROGRESS.md: mark Phase 5 complete. The BUG tracker should now show closure for every entry.
+**Terminal gate (mandatory before marking Phase 5 complete):**
+
+Re-read `quality/PROGRESS.md`. Count the BUG tracker entries. Then state aloud (print to the user):
+
+> "BUG tracker has N entries. N have regression tests, N have exemptions, N are unresolved. Code review confirmed M bugs. Spec audit confirmed K code bugs (L net-new). Expected total: M + L."
+
+If the tracker entry count does not equal M + L, stop and reconcile — a BUG was orphaned from the tracker. Do not mark Phase 2d complete until the counts match. This gate exists because the v1.3.5 bootstrap showed that agents reliably skip the tracker update after spec audit, orphaning 30-50% of confirmed bugs.
+
+Update PROGRESS.md: mark Phase 2d complete. The BUG tracker should now show closure status for every entry.
 
 ---
 
@@ -484,7 +497,7 @@ If any benchmark fails, go back and fix it before proceeding.
 ### Checkpoint: Finalize PROGRESS.md
 
 Re-read `quality/PROGRESS.md`. Update:
-- Mark Phase 6 (Verification benchmarks) complete with timestamp
+- Mark Phase 3 (Verification benchmarks) complete with timestamp
 - Verify the BUG tracker has closure for every entry
 - Add a final summary line: "Run complete. N BUGs found (N from code review, N from spec audit). N regression tests written. N exemptions granted."
 

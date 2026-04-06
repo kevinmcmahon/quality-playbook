@@ -11,7 +11,7 @@
 
 Before reviewing, read these files for context:
 1. `quality/QUALITY.md` — Quality constitution and fitness-to-purpose scenarios
-2. `quality/requirements.md` — Testable requirements derived during playbook generation
+2. `quality/REQUIREMENTS.md` — Testable requirements derived during playbook generation
 3. [Main architectural doc]
 4. [Key design decisions doc]
 5. [Any other essential context]
@@ -37,7 +37,7 @@ For each file reviewed:
 
 ## Pass 2: Requirement Verification
 
-Read `quality/requirements.md`. For each requirement, check whether the code satisfies it. This is a pure verification pass — your only job is "does the code satisfy this requirement?"
+Read `quality/REQUIREMENTS.md`. For each requirement, check whether the code satisfies it. This is a pure verification pass — your only job is "does the code satisfy this requirement?"
 
 Do NOT also do a general code review. Do NOT look for other bugs. Do NOT evaluate code quality. Just check each requirement.
 
@@ -59,7 +59,7 @@ For each requirement:
 
 ## Pass 3: Cross-Requirement Consistency
 
-Compare pairs of requirements from `quality/requirements.md` that reference the same field, constant, range, or security policy. For each pair, check whether their constraints are mutually consistent.
+Compare pairs of requirements from `quality/REQUIREMENTS.md` that reference the same field, constant, range, or security policy. For each pair, check whether their constraints are mutually consistent.
 
 What to look for:
 - **Numeric range vs bit width**: If one requirement says the valid range is [0, N) and another says the field is M bits wide, does N = 2^M?
@@ -510,6 +510,80 @@ The number of units/records/iterations per integration test run matters:
   - If the project has fan-out/expansion, use a count that produces a non-trivial number of children
 
 Look for `chunk_size`, `batch_size`, or similar configuration in the project to calibrate. When in doubt, 10–30 records is usually the right range for integration testing — enough to catch real issues without burning API budget.
+
+### Integration Testing for Skills and LLM-Automated Tools
+
+When the project under test is an AI skill, CLI tool that wraps LLM calls, or any software whose primary execution path involves invoking an AI model, the integration test protocol must include **LLM-automated integration tests** — tests that run the tool end-to-end via a command-line AI agent and structurally verify the output.
+
+This is distinct from standard integration tests because the system under test doesn't have a deterministic API to call. The "integration" is: install the skill into a test repo, invoke it through a CLI agent (GitHub Copilot CLI, Claude Code, or similar), and verify the output artifacts meet structural and content expectations.
+
+**Why this matters:** Skills and LLM tools cannot be tested by calling functions directly — their execution path goes through an AI agent that interprets instructions, reads files, and produces artifacts. The only way to test whether the skill works is to run it. Manual execution is fine for development, but a quality playbook should encode the test as a repeatable protocol.
+
+**Protocol structure for skill/LLM integration tests:**
+
+```markdown
+## Skill Integration Test Protocol
+
+### Prerequisites
+- CLI agent installed and configured (e.g., `gh copilot`, `claude`, `npx @anthropic-ai/claude-code`)
+- Test repo prepared with skill installed at `.github/skills/SKILL.md` (or equivalent)
+- Clean `quality/` directory (no artifacts from prior runs)
+- Optional: `docs_gathered/` folder for with-docs comparison runs
+
+### Test Matrix
+
+| Test | Method | Pass Criteria |
+|------|--------|---------------|
+| Full execution | Run skill via CLI with "execute" prompt | All expected artifacts exist in `quality/` |
+| PROGRESS.md completeness | Read `quality/PROGRESS.md` | All phases checked complete, BUG tracker populated |
+| Artifact structural check | Verify each expected file | Files are non-empty, contain expected sections |
+| BUG tracker closure | Count BUG entries vs regression tests | Every BUG has a test reference or exemption |
+| Baseline vs with-docs (optional) | Run twice: without and with docs_gathered/ | With-docs run produces >= baseline requirement count |
+
+### Execution
+
+```bash
+# Install skill into test repo
+cp -r path/to/skill/.github test-repo/.github
+
+# Run via CLI agent (adapt command to your agent)
+cd test-repo
+gh copilot -p "Read .github/skills/SKILL.md and its reference files. Execute the quality playbook for this project." \
+    --model gpt-5.4 --yolo > quality_run.output.txt 2>&1
+```
+
+### Structural Verification (automated)
+
+After the run, verify output structurally:
+
+```bash
+# Required artifacts exist and are non-empty
+for f in quality/QUALITY.md quality/REQUIREMENTS.md quality/CONTRACTS.md \
+         quality/COVERAGE_MATRIX.md quality/COMPLETENESS_REPORT.md \
+         quality/PROGRESS.md quality/RUN_CODE_REVIEW.md \
+         quality/RUN_INTEGRATION_TESTS.md quality/RUN_SPEC_AUDIT.md; do
+    [ -s "$f" ] || echo "FAIL: $f missing or empty"
+done
+
+# Functional test file exists (language-appropriate name)
+ls quality/test_functional.* quality/FunctionalSpec.* quality/functional.test.* 2>/dev/null \
+    || echo "FAIL: no functional test file"
+
+# PROGRESS.md has all phases checked
+grep -c '\[x\]' quality/PROGRESS.md  # should equal total phase count
+
+# BUG tracker has entries (if bugs were found)
+grep -c '^| [0-9]' quality/PROGRESS.md
+
+# Code reviews and spec audits produced substantive files
+find quality/code_reviews -name "*.md" -size +500c | wc -l  # should be >= 1
+find quality/spec_audits -name "*triage*" -size +500c | wc -l  # should be >= 1
+```
+```
+
+**Baseline vs with-docs comparison pattern:** Run the skill twice on the same repo — once without supplemental docs, once with a `docs_gathered/` folder containing project history. Compare: requirement count, scenario count, bug count, and pipeline completion. The with-docs run should produce equal or more requirements and equal or more bugs. If the baseline outperforms the with-docs run on bug detection, that's a finding about the docs quality, not a skill failure.
+
+**When to generate this protocol:** Generate a skill integration test section in `RUN_INTEGRATION_TESTS.md` whenever the project being analyzed is a skill, a CLI tool that wraps AI calls, or a framework for building AI-powered tools. Look for: `SKILL.md` files, prompt templates, LLM client configurations, agent orchestration code, or references to AI models in the codebase.
 
 ### Post-Run Verification Depth
 

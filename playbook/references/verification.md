@@ -1,4 +1,4 @@
-# Verification Checklist (Phase 3)
+# Verification Checklist (Phase 3: Verify)
 
 Before declaring the quality playbook complete, check every benchmark below. If any fails, go back and fix it.
 
@@ -52,6 +52,8 @@ Run the test suite using the project's test runner:
 - **Rust:** `cargo test` targeting the generated test — either the integration test target in `tests/` or inline `#[cfg(test)]` tests, matching the project's conventions
 
 **Check for both failures AND errors.** Most test frameworks distinguish between test failures (assertion errors) and test errors (setup failures, missing fixtures, import/resolution errors, exceptions during initialization). Both are broken tests. A common mistake: generating tests that reference shared fixtures or helpers that don't exist. These show up as setup errors, not assertion failures — but they are just as broken.
+
+**Expected-failure (xfail) tests do not count against this benchmark.** Regression tests in `quality/test_regression.*` use expected-failure markers (`@pytest.mark.xfail(strict=True)`, `@Disabled`, `t.Skip`, `#[ignore]`) to confirm that known bugs are still present. These tests are *supposed* to fail — that's the point. The "zero failures and zero errors" benchmark applies to `quality/test_functional.*` (the functional test suite), not to `quality/test_regression.*` (the bug confirmation suite). If your test runner reports failures from xfail-marked regression tests, that's correct behavior, not a benchmark violation. If an xfail test unexpectedly *passes*, that means the bug was fixed and the xfail marker should be removed — treat that as a finding to investigate, not a test failure.
 
 After running, check:
 - All tests passed — count must equal total test count
