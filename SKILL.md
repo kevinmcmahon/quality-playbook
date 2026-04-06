@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate six quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis and missing safeguard detection. Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.7
+  version: 1.3.8
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -13,7 +13,7 @@ metadata:
 > **MANDATORY FIRST ACTION — do this before reading the rest of the skill.**
 > Print the following message to the user exactly as written, then continue.
 >
-> Quality Playbook v1.3.7 — by Andrew Stellman
+> Quality Playbook v1.3.8 — by Andrew Stellman
 > https://github.com/andrewstellman/quality-playbook
 >
 > Generating a complete quality system for this project. Here's what I'll do:
@@ -93,6 +93,8 @@ Spend the first phase understanding the project. The quality playbook must be gr
 **Why explore first?** The most common failure in AI-generated quality playbooks is producing generic content — coverage targets that could apply to any project, scenarios that describe theoretical failures, tests that exercise language builtins instead of project code. Exploration prevents this by forcing every output to reference something real: a specific function, a specific schema, a specific defensive code pattern. If you can't point to where something lives in the code, you're guessing — and guesses produce quality playbooks nobody trusts.
 
 **Scaling for large codebases:** For projects with more than ~50 source files, don't try to read everything. Focus exploration on the 3–5 core modules (the ones that handle the primary data flow, the most complex logic, and the most failure-prone operations). Read representative tests from each subsystem rather than every test file. The goal is depth on what matters, not breadth across everything.
+
+**Specification-primary repositories:** Some repositories ship a specification, configuration, or protocol document as their primary product, with executable code as supporting infrastructure. Examples: a skill definition with benchmark tooling, a schema registry with validation scripts, a pipeline config with orchestration helpers. When the primary product is a specification rather than executable code, derive requirements from the specification's internal consistency, completeness, and correctness — not just from the executable code paths. The specification is the thing users depend on; the tooling is secondary. If you find yourself writing 80%+ of requirements about helper scripts and <20% about the primary specification, you have the focus inverted.
 
 ### Step 0: Ask About Development History
 
@@ -261,6 +263,8 @@ After completing Phase 1 exploration, create `quality/PROGRESS.md`. This file is
 
 **Why this exists:** In single-session runs, the agent holds context in memory. But context degrades over long sessions — findings from Phase 1 are forgotten by Phase 3, BUG counts drift, spec-audit bugs get orphaned because the closure check never saw them. PROGRESS.md solves this by making every phase write its state to disk. The agent reads it back before each phase, so it always has an accurate picture of what happened so far. As a side benefit, it makes the skill work correctly even if the run is split across multiple sessions.
 
+**Timestamp discipline:** Write each phase completion entry to PROGRESS.md immediately when you finish that phase, before starting the next phase. Do not batch-write or back-fill timestamps after the fact. The timestamps are an audit trail — if Phase 2 shows a completion time earlier than Phase 1, a reviewer cannot verify that phases ran in the correct sequence. If you realize you forgot to write a checkpoint, write it now with an honest timestamp and a note explaining the gap.
+
 Write the initial PROGRESS.md:
 
 ```markdown
@@ -269,7 +273,7 @@ Write the initial PROGRESS.md:
 ## Run metadata
 Started: [date/time]
 Project: [project name]
-Skill version: 1.3.7
+Skill version: 1.3.8
 With docs: [yes/no]
 
 ## Phase completion
@@ -303,6 +307,9 @@ With docs: [yes/no]
 |---|--------|-----------|-------------|----------|----------------|----------------|
 <!-- Closure Status values:
      - "confirmed open (xfail)" — bug exists, regression test confirms it, fix pending
+       Language equivalents: Python "xfail", TypeScript/JS "test.fails", Go "t.Skip",
+       Java "@Disabled", Rust "compile_fail" (for compile-time bugs). Use the
+       language-appropriate term in parentheses, e.g. "confirmed open (@Disabled)"
      - "fixed (test passes)" — bug fixed, regression test now passes, xfail marker removed
      - "exempt (reason)" — no regression test possible, reason documented -->
 
@@ -378,6 +385,8 @@ Pass 1 catches ~65% of real defects: race conditions, null pointer hazards, reso
 
 **Pass 2 — Requirement Verification.** For each testable requirement derived in Step 7 of Phase 1, check whether the code satisfies it. For each requirement, either show the code that satisfies it or explain specifically why it doesn't. This is a pure verification pass — the reviewer's only job is "does the code satisfy this requirement?" Not a general review. Not looking for other bugs. Just verification.
 
+**Minimum evidence rule:** Pass 2 must cite at least one code location (file:line or file:function) per requirement or per requirement group. Blanket satisfaction claims like "REQ-003 through REQ-012 — satisfied by the client paths reviewed during the pass" without any code citations do not satisfy Pass 2. If a group of requirements is satisfied by the same module, cite the module once and list the requirements it covers. The point is traceability — a reviewer reading Pass 2 should be able to follow the evidence chain from requirement to code without re-reading the entire codebase.
+
 Pass 2 catches violations of individual requirements — cases where the code doesn't do what the specification says it should. This finds bugs that structural review misses because the code that IS there is correct; the bug is what's missing or what doesn't match the spec.
 
 **Pass 3 — Cross-Requirement Consistency.** Compare pairs of requirements that reference the same field, constant, range, or security policy. For each pair, verify that their constraints are mutually consistent. Do numeric ranges match bit widths? Do security policies propagate to all connection types? Do validation bounds in one file agree with encoding limits in another?
@@ -441,7 +450,7 @@ Run the code review protocol (all three passes) as described in File 3. After pr
 
 ### Phase 2c: Spec Audit and Triage
 
-Run the spec audit protocol as described in File 5. After triage, categorize each confirmed finding.
+Run the spec audit protocol as described in File 5. The triage report **must** include a `## Pre-audit docs validation` section (see `references/spec_audit.md` for the full template). This section is required even if `docs_gathered/` is empty — in that case, note what baseline the auditors used instead. After triage, categorize each confirmed finding.
 
 **Update PROGRESS.md:** Add every confirmed **code bug** from the spec audit to the cumulative BUG tracker with source "Spec Audit". This is critical — spec-audit bugs are systematically orphaned if they aren't added to the same tracker that the closure verification reads.
 
@@ -506,10 +515,10 @@ If any benchmark fails, go back and fix it before proceeding.
 ### Metadata Consistency Check
 
 Before finalizing, re-read `quality/PROGRESS.md` and `quality/COMPLETENESS_REPORT.md` and verify:
-- The requirement count mentioned in COMPLETENESS_REPORT.md matches the actual number of REQ-NNN entries in REQUIREMENTS.md (including any added during the run)
+- The requirement count is explicit and consistent across all three surfaces: the count in REQUIREMENTS.md's header (add one if missing: "N requirements derived"), the count in PROGRESS.md's artifact inventory, and the count in COVERAGE_MATRIX.md's header. All three must state the same number, and it must match the actual count of `### REQ-NNN` headings in REQUIREMENTS.md.
 - The `With docs` field in PROGRESS.md accurately reflects whether `docs_gathered/` exists and contains files
 - The Terminal Gate Verification section is present and filled in
-- No stale pre-reconciliation text remains in COMPLETENESS_REPORT.md (the post-review reconciliation section should replace, not merely append to, earlier verdicts)
+- No stale pre-reconciliation text remains in COMPLETENESS_REPORT.md — if both a `## Verdict` and an `## Updated verdict` (or `## Post-Review Reconciliation`) section exist, delete the original `## Verdict` section entirely or rename it to `## Pre-review verdict (superseded)`. The final document must have exactly one authoritative verdict, not two competing ones.
 
 If any metadata is stale, fix it now.
 

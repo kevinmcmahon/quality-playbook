@@ -1,3 +1,0 @@
-error: unknown option '-f'
-
-Try 'copilot --help' for more information.

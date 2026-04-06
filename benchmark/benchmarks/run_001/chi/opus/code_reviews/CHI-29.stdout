@@ -1,5 +1,0 @@
-Review saved. Two findings:
-
-1. **High — Line 66:** Nil pointer dereference. `rctx` is nil-checked on line 54 for reading, but line 66 writes to `rctx.RoutePath` without a nil guard. If `RouteContext()` returns nil (middleware used outside chi) and the URL contains a dot, this panics.
-
-2. **Low — Line 40:** Doc example typo — `case "xml:"` has the colon inside the string literal instead of outside (`case "xml":`), so users copying the example get a dead branch.

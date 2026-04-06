@@ -1,7 +1,0 @@
-Review saved. Found **2 high-severity bugs**:
-
-1. **Line 62 — Index out of bounds panic:** `r.Tombstoned[i]` in `Producer.UnmarshalJSON` has no bounds check against `r.Topics`. If the JSON `"tombstones"` array is shorter than `"topics"` (or absent), this panics.
-
-2. **Lines 118-128 — `found` flag never reset:** In `TopicStats.Add()`, the `found` variable is declared outside the outer loop and never reset to `false` per iteration. After the first channel match, all subsequent unmatched channels from the source are silently dropped, producing incorrect aggregated channel statistics in nsqadmin.
-
-**Assessment: FIX FIRST**

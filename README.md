@@ -2,7 +2,7 @@
 
 Point an AI coding tool at any codebase. Get a complete quality engineering infrastructure: requirements derived from the actual intent of the code, functional tests traced to those requirements, a three-pass code review protocol, and a multi-model spec audit that catches bugs no single reviewer can find alone.
 
-**Version:** 1.3.7 | **Author:** [Andrew Stellman](https://github.com/andrewstellman) | **License:** Apache 2.0
+**Version:** 1.3.8 | **Author:** [Andrew Stellman](https://github.com/andrewstellman) | **License:** Apache 2.0
 
 ## The problem
 
@@ -62,31 +62,20 @@ The playbook's value comes from requirement derivation. AI code reviewers are bo
 
 Adding community documentation to the pipeline produces measurably better results. In a controlled experiment across multiple repositories, documentation-enriched runs found more bugs, different bugs, and higher-confidence bugs than code-only baselines. The documentation gives auditors spec language to check against, turning "this code looks odd" into "this code contradicts the documented behavior."
 
-## The benchmark
+## Validation
 
-The playbook is validated against the **Quality Playbook Benchmark (QPB)**: 2,564 real defects from 50 open-source repositories across 14 programming languages. Instead of injecting synthetic faults, we use real historical bugs tied to single fix commits as ground truth. Checking out the parent commit gives you the exact code with the exact bug, so you can measure whether a review protocol would have caught it.
+The playbook is validated against the [Quality Playbook Benchmark](https://github.com/andrewstellman/quality-playbook-benchmark): 2,564 real defects from 50 open-source repositories across 14 programming languages. Instead of injecting synthetic faults, we use real historical bugs tied to single fix commits as ground truth.
 
 The key finding: approximately 65% of real defects are detectable by structural code review alone. The remaining 35% are intent violations that require knowing what the code is supposed to do. The playbook's value is in closing that gap.
 
-See `benchmark/dataset/METHODOLOGY.md` for details on how the benchmark was built, and `benchmark/dataset/DEFECT_LIBRARY.md` for the full index.
-
-## Project structure
+## Repository structure
 
 ```
-QPB/
+quality-playbook/
 ├── SKILL.md                # The skill (main file)
 ├── references/             # Protocol and pipeline reference docs
 ├── LICENSE.txt             # Apache 2.0
-├── quality/                # Generated quality infrastructure (from running the skill on itself)
-├── repos/                  # Cloned test repositories (gitignored)
-└── benchmark/              # QPB benchmark dataset and supporting infrastructure
-    ├── dataset/            # 2,564 defects, 50 repos, 14 languages
-    │   ├── DEFECT_LIBRARY.md
-    │   ├── METHODOLOGY.md
-    │   └── defects/
-    ├── tooling/            # Dataset build scripts
-    ├── benchmarks/         # Cross-repo validation experiments
-    └── experiments/        # Requirement validation experiments
+└── quality/                # Generated quality infrastructure (from running the skill on itself)
 ```
 
 ## Context
@@ -95,4 +84,4 @@ This project supports an [O'Reilly Radar article series](https://oreillyradar.su
 
 ## License
 
-The playbook skill, benchmark dataset metadata, and tooling are original work under Apache 2.0. Cloned repositories in `repos/` retain their original licenses.
+Apache 2.0.

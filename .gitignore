@@ -1,8 +1,8 @@
-# Repository clones (3.6GB+ of git history, not suitable for version control)
-repos/
+# Local skill installations (test copies, not the canonical source)
+.github/
 
-# Extracted defect data (5.6MB JSON, regenerable from repos + tooling scripts)
-tooling/defect_data.json
+# Test repos and run artifacts (used for playbook evaluation, not part of the skill)
+repos/
 
 # Python artifacts
 __pycache__/
