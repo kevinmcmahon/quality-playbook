@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate six quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis and missing safeguard detection. Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.6
+  version: 1.3.7
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -13,7 +13,7 @@ metadata:
 > **MANDATORY FIRST ACTION — do this before reading the rest of the skill.**
 > Print the following message to the user exactly as written, then continue.
 >
-> Quality Playbook v1.3.6 — by Andrew Stellman
+> Quality Playbook v1.3.7 — by Andrew Stellman
 > https://github.com/andrewstellman/quality-playbook
 >
 > Generating a complete quality system for this project. Here's what I'll do:
@@ -269,7 +269,7 @@ Write the initial PROGRESS.md:
 ## Run metadata
 Started: [date/time]
 Project: [project name]
-Skill version: 1.3.6
+Skill version: 1.3.7
 With docs: [yes/no]
 
 ## Phase completion
@@ -306,6 +306,9 @@ With docs: [yes/no]
      - "fixed (test passes)" — bug fixed, regression test now passes, xfail marker removed
      - "exempt (reason)" — no regression test possible, reason documented -->
 
+
+## Terminal Gate Verification
+<!-- Filled in during Phase 2d. Must match BUG tracker counts exactly. -->
 
 ## Exploration summary
 [Brief notes on architecture, key modules, spec sources, defensive patterns found]
@@ -381,7 +384,7 @@ Pass 2 catches violations of individual requirements — cases where the code do
 
 Pass 3 catches contradictions where two individually-correct pieces of code disagree about a shared constraint. These bugs are invisible to both structural review and per-requirement verification because each requirement IS satisfied individually — the bug only appears when you compare them. This is the pass that catches cross-file arithmetic bugs and design gaps where a security configuration doesn't propagate to all connection paths.
 
-**After all three passes:** Combine findings. Write regression tests in `quality/test_regression.*` that reproduce each confirmed bug. Report results as a confirmation table (BUG CONFIRMED / FALSE POSITIVE / NEEDS INVESTIGATION). See `references/review_protocols.md` for the full three-pass template and regression test protocol.
+**After all three passes:** Combine findings. Write regression tests in `quality/test_regression.*` that reproduce each confirmed bug. Use the same test framework as `test_functional.*` — if functional tests use pytest, regression tests use pytest (with `@pytest.mark.xfail(strict=True)`); if functional tests use unittest, regression tests use unittest (with `@unittest.expectedFailure`). Report results as a confirmation table (BUG CONFIRMED / FALSE POSITIVE / NEEDS INVESTIGATION). See `references/review_protocols.md` for the full three-pass template and regression test protocol.
 
 ### File 4: `quality/RUN_INTEGRATION_TESTS.md`
 
@@ -459,13 +462,19 @@ Re-read `quality/PROGRESS.md` — specifically the cumulative BUG tracker. This 
 3. **Clean up after spec-audit reversals:** If the spec audit reclassified any code review BUG as a design choice or false positive, remove or relocate the corresponding regression test per `references/review_protocols.md`.
 4. **Resolve CR vs spec-audit conflicts:** If the code review and spec audit disagree on the same finding (one says BUG, the other says design choice), deploy a verification probe per `references/spec_audit.md` and record the resolution in the BUG tracker.
 
-**Terminal gate (mandatory before marking Phase 5 complete):**
+**Terminal gate (mandatory before marking Phase 2d complete):**
 
-Re-read `quality/PROGRESS.md`. Count the BUG tracker entries. Then state aloud (print to the user):
+Re-read `quality/PROGRESS.md`. Count the BUG tracker entries. Then:
 
-> "BUG tracker has N entries. N have regression tests, N have exemptions, N are unresolved. Code review confirmed M bugs. Spec audit confirmed K code bugs (L net-new). Expected total: M + L."
+1. Print the following statement to the user (this is mandatory, not optional):
+
+   > "BUG tracker has N entries. N have regression tests, N have exemptions, N are unresolved. Code review confirmed M bugs. Spec audit confirmed K code bugs (L net-new). Expected total: M + L."
+
+2. Write the same statement into PROGRESS.md under a new `## Terminal Gate Verification` section (immediately after the BUG tracker table). This persists the gate into the artifact so reviewers can verify it without reading session logs.
 
 If the tracker entry count does not equal M + L, stop and reconcile — a BUG was orphaned from the tracker. Do not mark Phase 2d complete until the counts match. This gate exists because the v1.3.5 bootstrap showed that agents reliably skip the tracker update after spec audit, orphaning 30-50% of confirmed bugs.
+
+3. Verify the `With docs` metadata field in PROGRESS.md matches reality: if `docs_gathered/` exists and contains files, it should say `yes`; otherwise `no`. Fix it if wrong.
 
 Update PROGRESS.md: mark Phase 2d complete. The BUG tracker should now show closure status for every entry.
 
@@ -493,6 +502,16 @@ The critical checks:
 10. **Integration test quality gates were written from a Field Reference Table.** Verify that you built a Field Reference Table by re-reading each schema file before writing quality gates, and that every field name in the quality gates is copied from that table — not from memory. If you skipped the table, go back and build it now.
 
 If any benchmark fails, go back and fix it before proceeding.
+
+### Metadata Consistency Check
+
+Before finalizing, re-read `quality/PROGRESS.md` and `quality/COMPLETENESS_REPORT.md` and verify:
+- The requirement count mentioned in COMPLETENESS_REPORT.md matches the actual number of REQ-NNN entries in REQUIREMENTS.md (including any added during the run)
+- The `With docs` field in PROGRESS.md accurately reflects whether `docs_gathered/` exists and contains files
+- The Terminal Gate Verification section is present and filled in
+- No stale pre-reconciliation text remains in COMPLETENESS_REPORT.md (the post-review reconciliation section should replace, not merely append to, earlier verdicts)
+
+If any metadata is stale, fix it now.
 
 ### Checkpoint: Finalize PROGRESS.md
 
