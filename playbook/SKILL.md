@@ -62,8 +62,17 @@ The two critical deliverables are the requirements file and the functional test 
 Point this skill at any codebase:
 
 ```
+Execute the quality playbook for this project.
+```
+
+This is the full pipeline end to end: explore the codebase → generate all quality artifacts → run the code review with regression tests → run the spec audit with triage → run post-review reconciliation and closure verification → finalize PROGRESS.md. Every phase described below, nothing skipped. This is the default when someone says "execute," "run," or "generate and execute" the playbook.
+
+Other entry points for partial runs:
+
+```
 Generate a quality playbook for this project.
 ```
+→ Phases 1–2 only: explore and generate artifacts (QUALITY.md, REQUIREMENTS.md, functional tests, protocols). Does not run the code review or spec audit.
 
 ```
 Update the functional tests — the quality playbook already exists.
