@@ -84,7 +84,7 @@ PREFIX_MAP = {
     "EQ": ("edgequake", "raphaelmansuy/edgequake"),
     "AS": ("agentscope-java", "alibaba/AgentScope"),
     # Legacy prefixes from initial mining rounds
-    "P": ("spring-petclinic", "spring-projects/spring-petclinic"),
+    "P": ("spring-petclinic-rest", "spring-petclinic/spring-petclinic-rest"),
     "G": ("gson", "google/gson"),
     "J": ("javalin", "javalin/javalin"),
     "O": ("octobatch", "andrewstellman/octobatch"),
@@ -253,7 +253,12 @@ for i, d in enumerate(defects):
     if (i + 1) % 100 == 0:
         print(f"  Processed {i+1}/{len(defects)}...")
 
-# Save
+# Save — but fail loudly if nothing was extracted
+if not results:
+    print(f"\nERROR: No defects extracted (found {len(defects)} parseable rows but all were skipped).", file=sys.stderr)
+    print(f"Check that --repos points to a directory with cloned repositories.", file=sys.stderr)
+    sys.exit(1)
+
 with open(OUTPUT, 'w') as f:
     json.dump(results, f, indent=2)
 

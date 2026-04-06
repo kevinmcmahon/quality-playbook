@@ -5,7 +5,7 @@ A curated dataset of 2,564 real defects from 50 open-source repositories across 
 ## Structure
 
 - `DEFECT_LIBRARY.md` — Master index with all QPB entries (summary table format)
-- `QPB/<repo>/defects.md` — Per-repo detailed defect descriptions with:
+- `defects/<repo>/defects.md` — Per-repo detailed defect descriptions with:
   - Full defect context (what was wrong, what files were affected)
   - Fix description (what the fix changed and why)
   - Files changed (the specific files modified by the fix commit)

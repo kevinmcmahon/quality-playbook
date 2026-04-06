@@ -12,13 +12,6 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
-parser = argparse.ArgumentParser(description="Normalize QPB defect categories")
-parser.add_argument("--library", type=Path, default=Path("dataset/DEFECT_LIBRARY.md"),
-                    help="Path to DEFECT_LIBRARY.md")
-args = parser.parse_args()
-
-LIBRARY = args.library
-
 CANONICAL = [
     "validation gap",
     "error handling",
@@ -175,55 +168,62 @@ def normalize(raw: str) -> str:
 
 
 # --- Main ---
-content = LIBRARY.read_text()
-lines = content.split('\n')
-changes = 0
-before_dist = defaultdict(int)
-after_dist = defaultdict(int)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Normalize QPB defect categories")
+    parser.add_argument("--library", type=Path, default=Path("dataset/DEFECT_LIBRARY.md"),
+                        help="Path to DEFECT_LIBRARY.md")
+    args = parser.parse_args()
+    LIBRARY = args.library
 
-new_lines = []
-for line in lines:
-    m = re.match(r'^(\| [A-Z]+-\d+\s*)', line)
-    if m and line.count('|') >= 8:
-        parts = line.split('|')
-        if len(parts) >= 8:
-            raw_cat = parts[6].strip()
-            before_dist[raw_cat] += 1
-            normalized = normalize(raw_cat)
-            after_dist[normalized] += 1
-            if raw_cat != normalized:
-                parts[6] = f' {normalized} '
-                line = '|'.join(parts)
-                changes += 1
-    new_lines.append(line)
+    content = LIBRARY.read_text()
+    lines = content.split('\n')
+    changes = 0
+    before_dist = defaultdict(int)
+    after_dist = defaultdict(int)
 
-content = '\n'.join(new_lines)
+    new_lines = []
+    for line in lines:
+        m = re.match(r'^(\| [A-Z]+-\d+\s*)', line)
+        if m and line.count('|') >= 8:
+            parts = line.split('|')
+            if len(parts) >= 8:
+                raw_cat = parts[6].strip()
+                before_dist[raw_cat] += 1
+                normalized = normalize(raw_cat)
+                after_dist[normalized] += 1
+                if raw_cat != normalized:
+                    parts[6] = f' {normalized} '
+                    line = '|'.join(parts)
+                    changes += 1
+        new_lines.append(line)
 
-# Rebuild category distribution table
-total = sum(after_dist.values())
-cat_table = "## Category Distribution\n\n| Category | Count | % |\n|----------|-------|---|\n"
-for cat, count in sorted(after_dist.items(), key=lambda x: -x[1]):
-    pct = 100.0 * count / total if total > 0 else 0
-    cat_table += f"| {cat} | {count} | {pct:.1f}% |\n"
+    content = '\n'.join(new_lines)
 
-cat_start = content.find('## Category Distribution')
-cat_end = content.find('\n## Project Classification')
-content = content[:cat_start] + cat_table + content[cat_end:]
+    # Rebuild category distribution table
+    total = sum(after_dist.values())
+    cat_table = "## Category Distribution\n\n| Category | Count | % |\n|----------|-------|---|\n"
+    for cat, count in sorted(after_dist.items(), key=lambda x: -x[1]):
+        pct = 100.0 * count / total if total > 0 else 0
+        cat_table += f"| {cat} | {count} | {pct:.1f}% |\n"
 
-LIBRARY.write_text(content)
+    cat_start = content.find('## Category Distribution')
+    cat_end = content.find('\n## Project Classification')
+    content = content[:cat_start] + cat_table + content[cat_end:]
 
-print(f"Normalized {changes} rows out of {total}")
-print(f"Before: {len(before_dist)} distinct categories")
-print(f"After:  {len(after_dist)} distinct categories")
-print()
-print("=== FINAL DISTRIBUTION ===")
-for cat, count in sorted(after_dist.items(), key=lambda x: -x[1]):
-    pct = 100.0 * count / total
-    print(f"  {count:4d} ({pct:5.1f}%)  {cat}")
+    LIBRARY.write_text(content)
 
-# Verify no non-canonical survived
-remaining = set(after_dist.keys()) - {CANONICAL_DISPLAY[c] for c in CANONICAL_SET}
-if remaining:
-    print(f"\nWARNING: {len(remaining)} non-canonical categories remain: {remaining}")
-else:
-    print(f"\nAll {total} rows now use exactly 14 canonical categories.")
+    print(f"Normalized {changes} rows out of {total}")
+    print(f"Before: {len(before_dist)} distinct categories")
+    print(f"After:  {len(after_dist)} distinct categories")
+    print()
+    print("=== FINAL DISTRIBUTION ===")
+    for cat, count in sorted(after_dist.items(), key=lambda x: -x[1]):
+        pct = 100.0 * count / total
+        print(f"  {count:4d} ({pct:5.1f}%)  {cat}")
+
+    # Verify no non-canonical survived
+    remaining = set(after_dist.keys()) - {CANONICAL_DISPLAY[c] for c in CANONICAL_SET}
+    if remaining:
+        print(f"\nWARNING: {len(remaining)} non-canonical categories remain: {remaining}")
+    else:
+        print(f"\nAll {total} rows now use exactly 14 canonical categories.")

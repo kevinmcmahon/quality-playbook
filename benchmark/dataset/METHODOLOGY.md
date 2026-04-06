@@ -10,8 +10,8 @@ This is mutation testing applied one level up — instead of injecting synthetic
 
 ## Dataset Composition
 
-- **2,592 defects** across **55 repositories** (60 prefixes including 5 original projects)
-- **15 languages**: Java, Python, Go, TypeScript, Rust, Scala, C#, JavaScript, Ruby, PHP, Kotlin, C, Swift, Elixir, Markdown (AI skill/agent definitions)
+- **2,564 defects** across **55 prefixes** (50 code repositories plus 5 original projects)
+- **14 languages**: Java, Python, Go, TypeScript, Rust, Scala, C#, JavaScript, Ruby, PHP, Kotlin, C, Swift, Elixir
 - **5 repo types**: Library, Framework, Application, Infrastructure, Skill/Agent Registry
 - **14 defect categories**: error handling, validation gap, configuration error, type safety, state machine gap, concurrency issue, serialization, API contract violation, protocol violation, null safety, silent failure, security issue, SQL error, missing boundary check
 

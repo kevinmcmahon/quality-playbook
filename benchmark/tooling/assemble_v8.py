@@ -10,6 +10,10 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+# Import the canonical normalize function to avoid mapper divergence
+sys.path.insert(0, str(Path(__file__).parent))
+from normalize_categories import normalize as _canonical_normalize
+
 LIBRARY = Path("dataset/DEFECT_LIBRARY.md")
 content = LIBRARY.read_text()
 
@@ -196,71 +200,11 @@ for pfx, info in prefix_counts.items():
         content = content.replace(old_row, new_row)
 
 # Update category distribution
-# Canonical categories must match normalize_categories.py CANONICAL list (14 labels).
-# Keys are lowercase lookup forms; values are display forms.
-CANONICAL = {
-    "state machine gap": "state machine gap", "type safety": "type safety",
-    "validation gap": "validation gap", "error handling": "error handling",
-    "api contract violation": "API contract violation", "api contract": "API contract violation",
-    "configuration error": "configuration error", "security issue": "security issue",
-    "concurrency issue": "concurrency issue", "silent failure": "silent failure",
-    "sql error": "SQL error", "protocol violation": "protocol violation",
-    "null safety": "null safety", "missing boundary check": "missing boundary check",
-    "serialization": "serialization",
-}
-
+# Uses the canonical normalize() function from normalize_categories.py
+# to avoid mapper divergence between the two scripts.
 def map_cat(raw):
-    raw_lower = raw.lower().strip().replace('**', '').strip()
-    raw_lower = re.sub(r'\s*\(.*?\)', '', raw_lower).strip()
-    # Direct match
-    if raw_lower in CANONICAL:
-        return CANONICAL[raw_lower]
-    # Keyword matching
-    kw_map = [
-        (["state machine", "state management", "lifecycle", "initialization"], "state machine gap"),
-        (["type safety", "type mismatch", "type cast", "type error", "generic"], "type safety"),
-        (["validation", "input validation", "missing check", "bounds check"], "validation gap"),
-        (["error handling", "exception", "error recovery", "resource leak", "resource cleanup"], "error handling"),
-        (["api contract", "contract violation", "breaking change", "api compatibility"], "API contract violation"),
-        (["config", "configuration", "setting", "option", "flag"], "configuration error"),
-        (["security", "auth", "csrf", "xss", "injection", "credential", "permission"], "security issue"),
-        (["concurrency", "race", "deadlock", "thread", "parallel", "atomic", "synchron"], "concurrency issue"),
-        (["silent", "swallow", "ignore", "suppress", "lost"], "silent failure"),
-        (["sql", "query", "database", "migration"], "SQL error"),
-        (["protocol", "http", "websocket", "rfc", "spec compliance"], "protocol violation"),
-        (["null", "nil", "none", "npe", "nullpointer", "optional"], "null safety"),
-        (["boundary", "overflow", "underflow", "limit", "range", "off-by-one"], "missing boundary check"),
-        (["serial", "deserial", "json", "xml", "encode", "decode", "marshal", "parse", "format"], "serialization"),
-    ]
-    for keywords, cat in kw_map:
-        for kw in keywords:
-            if kw in raw_lower:
-                return cat
-    # Fallback mappings
-    fallbacks = {
-        "performance": "configuration error",
-        "test": "validation gap",
-        "build": "configuration error",
-        "documentation": "validation gap",
-        "platform": "configuration error",
-        "compatibility": "configuration error",
-        "deprecation": "API contract violation",
-        "regression": "state machine gap",
-        "memory": "error handling",
-        "resource": "error handling",
-        "correctness": "validation gap",
-        "logic error": "validation gap",
-        "calculation": "missing boundary check",
-        "aggregation": "missing boundary check",
-        "output": "serialization",
-        "rendering": "serialization",
-        "accessibility": "validation gap",
-        "dependency": "configuration error",
-    }
-    for kw, cat in fallbacks.items():
-        if kw in raw_lower:
-            return cat
-    return "validation gap"  # default fallback
+    """Delegate to the canonical normalizer to ensure consistent category mapping."""
+    return _canonical_normalize(raw)
 
 all_cats = defaultdict(int)
 for line in content.split('\n'):

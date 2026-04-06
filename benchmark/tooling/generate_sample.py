@@ -22,7 +22,9 @@ output_lines = []
 for defect_id in curl_ids[:5]:
     d = all_data[defect_id]
 
-    output_lines.append(f"### {defect_id} | {d['title']} | {d['category']} | {d['severity']}")
+    # Use 'title' if present (legacy cache), fall back to 'issue_ref' (current extractor output)
+    display_ref = d.get('title') or d.get('issue_ref', defect_id)
+    output_lines.append(f"### {defect_id} | {display_ref} | {d['category']} | {d['severity']}")
     output_lines.append("")
 
     # Fix and pre-fix SHAs
@@ -35,7 +37,12 @@ for defect_id in curl_ids[:5]:
         refs = []
         for ref in d['issue_refs']:
             if ref.isdigit():
-                refs.append(f"https://github.com/{d['github_repo']}/pull/{ref}")
+                # Use issue_urls from extractor if available; otherwise default to issues (not pull)
+                matching_urls = [u for u in d.get('issue_urls', []) if f"/{ref}" in u]
+                if matching_urls:
+                    refs.extend(matching_urls)
+                else:
+                    refs.append(f"https://github.com/{d['github_repo']}/issues/{ref}")
             else:
                 # Map known JIRA-style prefixes to their issue tracker URLs
                 jira_prefix = ref.split('-')[0] if '-' in ref else ''
