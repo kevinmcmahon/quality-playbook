@@ -17,15 +17,15 @@ The playbook is a skill for AI coding tools. Copy it into your project and ask t
 **GitHub Copilot:**
 ```bash
 mkdir -p .github/skills/references
-cp playbook/SKILL.md .github/skills/SKILL.md
-cp playbook/references/* .github/skills/references/
+cp SKILL.md .github/skills/SKILL.md
+cp references/* .github/skills/references/
 ```
 
 **Claude Code:**
 ```bash
 mkdir -p .claude/skills/quality-playbook/references
-cp playbook/SKILL.md .claude/skills/quality-playbook/SKILL.md
-cp playbook/references/* .claude/skills/quality-playbook/references/
+cp SKILL.md .claude/skills/quality-playbook/SKILL.md
+cp references/* .claude/skills/quality-playbook/references/
 ```
 
 Then tell your AI tool: *"Read the quality playbook skill and generate a complete quality system for this project."*
@@ -68,23 +68,25 @@ The playbook is validated against the **Quality Playbook Benchmark (QPB)**: 2,56
 
 The key finding: approximately 65% of real defects are detectable by structural code review alone. The remaining 35% are intent violations that require knowing what the code is supposed to do. The playbook's value is in closing that gap.
 
-See `dataset/METHODOLOGY.md` for details on how the benchmark was built, and `dataset/DEFECT_LIBRARY.md` for the full index.
+See `benchmark/dataset/METHODOLOGY.md` for details on how the benchmark was built, and `benchmark/dataset/DEFECT_LIBRARY.md` for the full index.
 
 ## Project structure
 
 ```
 QPB/
-├── playbook/               # The skill itself
-│   ├── SKILL.md            # Main skill file
-│   ├── LICENSE.txt         # Apache 2.0
-│   └── references/         # Protocol and pipeline reference docs
-├── dataset/                # QPB benchmark (2,564 defects, 50 repos, 14 languages)
-│   ├── DEFECT_LIBRARY.md   # Master defect index
-│   ├── METHODOLOGY.md      # How the dataset was built
-│   └── defects/            # Per-repo descriptions
+├── SKILL.md                # The skill (main file)
+├── references/             # Protocol and pipeline reference docs
+├── LICENSE.txt             # Apache 2.0
+├── quality/                # Generated quality infrastructure (from running the skill on itself)
 ├── repos/                  # Cloned test repositories (gitignored)
-├── benchmarks/             # Cross-repo validation experiments
-└── tooling/                # Dataset build scripts
+└── benchmark/              # QPB benchmark dataset and supporting infrastructure
+    ├── dataset/            # 2,564 defects, 50 repos, 14 languages
+    │   ├── DEFECT_LIBRARY.md
+    │   ├── METHODOLOGY.md
+    │   └── defects/
+    ├── tooling/            # Dataset build scripts
+    ├── benchmarks/         # Cross-repo validation experiments
+    └── experiments/        # Requirement validation experiments
 ```
 
 ## Context
