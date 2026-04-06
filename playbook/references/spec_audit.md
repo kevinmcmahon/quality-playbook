@@ -65,6 +65,17 @@ Requirements are tagged with `[Req: tier — source]`. Weight your findings by t
 
 ---
 
+## Pre-audit docs validation (when docs_gathered/ exists)
+
+If the playbook was generated with supplemental documentation in `docs_gathered/`, spot-check the gathered docs for factual accuracy before running the audit. Stale or incorrect docs can skew audit confidence — a model that reads "the library handles X by doing Y" in the docs will rate a divergent finding higher even if the docs are wrong.
+
+**Quick validation procedure (5 minutes max):**
+1. Pick 2–3 factual claims from `docs_gathered/` that describe specific runtime behavior (e.g., "invalid input raises ValueError", "field X defaults to Y", "format Z is not supported").
+2. Grep the source code for the cited behavior. Does the code match the docs?
+3. If any claim is wrong, note it in the triage header: "docs_gathered/ contains N known inaccuracies: [list]. Findings that rely on these claims are downgraded to NEEDS REVIEW."
+
+This is not a full docs audit — it's a quick sanity check to catch obvious staleness before it corrupts audit confidence.
+
 ## Running the Audit
 
 1. Give the identical prompt to three AI tools
@@ -73,7 +84,18 @@ Requirements are tagged with `[Req: tier — source]`. Weight your findings by t
 
 ## Triage Process
 
-After all three models report, merge findings:
+After all three models report, merge findings.
+
+**Log the effective council size.** If a model did not return a usable report (timeout, empty output, refusal), record this in the triage header:
+
+```
+## Council Status
+- Model A: Fresh report received (YYYY-MM-DD)
+- Model B: Fresh report received (YYYY-MM-DD)
+- Model C: TIMEOUT — no usable report. Effective council: 2/3.
+```
+
+When the effective council is 2/3, downgrade the confidence tier: "All three" becomes impossible, "Two of three" becomes the ceiling. When the effective council is 1/3, all findings are "Needs verification" regardless of how confident that single model is. Do not silently substitute stale reports from prior runs — if a model didn't produce a fresh report for this run, it didn't participate.
 
 | Confidence | Found By | Action |
 |------------|----------|--------|

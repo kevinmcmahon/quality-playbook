@@ -108,7 +108,71 @@ For each shared concept:
 
 **Scoping for large codebases:** If the project has more than 50 requirements, Pass 2 does not need to verify every requirement against every file. Instead, focus Pass 2 on the requirements most relevant to the files being reviewed — check the requirements that reference those files or that govern the behavioral domain those files implement. The goal is depth on the files under review, not breadth across all requirements.
 
-**Self-check before finishing:** After writing all three passes and the combined summary, verify: (1) all three pass sections exist in the output, (2) Pass 2 references specific REQ-NNN numbers with SATISFIED/VIOLATED verdicts, (3) Pass 3 identifies at least one shared concept between requirements (even if consistent), (4) every BUG finding has a corresponding regression test in `quality/test_regression.*` (see Phase 2 below). If any check fails, go back and complete the missing work.
+**Self-check before finishing:** After writing all three passes and the combined summary, verify: (1) all three pass sections exist in the output, (2) Pass 2 references specific REQ-NNN numbers with SATISFIED/VIOLATED verdicts, (3) Pass 3 identifies at least one shared concept between requirements (even if consistent), (4) every BUG finding has a corresponding regression test in `quality/test_regression.*` (see Phase 2 below), (5) every regression test exercises the actual code path cited in the finding (see test-finding alignment check below). If any check fails, go back and complete the missing work.
+
+### Adversarial stance when documentation is available
+
+If the playbook was generated with supplemental documentation (docs_gathered/, community docs, user guides, API references), the code review must use that documentation *against* the code, not in its defense. Documentation tells you what the code is supposed to do. Your job is to find where it doesn't.
+
+**Do not let documentation explanations excuse code defects.** If the docs say "the library handles X gracefully" but the code doesn't check for X, that's a bug — the documentation makes it *more* of a bug, not less. A richer understanding of intent should make you *harder* on the code, not softer.
+
+The failure mode this addresses: when models have access to documentation, they build a richer mental model of the software and become more *forgiving* of code that approximately matches that model. The documentation gives the model reasons to believe the code works, which suppresses detections. Fight this by treating documentation as the prosecution's evidence — it defines what the code promised, and your job is to find broken promises.
+
+### Test-finding alignment check
+
+For each regression test that claims to reproduce a specific finding, verify that the test actually exercises the cited code path. A test that targets a different function, a different branch, or a different failure mode than the finding it claims to reproduce is worse than no test — it creates false confidence.
+
+**Verification procedure:** For each regression test:
+1. Read the finding: note the specific file, line number, function, and failure condition
+2. Read the test: identify which function it calls and what condition it asserts
+3. Confirm alignment: the test must call the function cited in the finding, trigger the specific condition the finding describes, and assert on the behavior the finding says is wrong
+
+If the test doesn't exercise the cited code path, either fix the test or mark the finding as UNCONFIRMED. Do not ship a regression test that passes or fails for reasons unrelated to the finding.
+
+### Closure mandate
+
+Every confirmed BUG finding must produce a regression test in `quality/test_regression.*`. The test must be an executable source file in the project's language — not a Markdown file, not prose documentation, not a comment block describing what a test would do. If the project uses Java, write a `.java` file. If Python, a `.py` file. The test must compile (or parse) and be runnable by the project's test framework.
+
+**No language exemptions.** If introducing failing tests before fixes is a concern, use the language's expected-failure mechanism:
+- Python: `@pytest.mark.xfail(strict=True, reason="BUG: [description]")`
+- Go: `t.Skip("BUG: [description] — unskip after fix")`
+- Rust: `#[ignore] // BUG: [description] — remove ignore after fix`
+- Java: `@Disabled("BUG: [description] — enable after fix")`
+- TypeScript/JavaScript: `it.skip("BUG: [description]", ...)`
+
+These patterns ensure every bug has an executable test that can be enabled when the fix lands, without polluting CI with expected failures.
+
+**The only acceptable exemption** is when a regression test genuinely cannot be written — for example, the bug requires multi-threaded timing that can't be reliably reproduced, or requires an external service not available in the test environment. In that case, write an explicit exemption note in the combined summary explaining why, and include a minimal code sketch showing what you would test if you could.
+
+Findings without either an executable regression test or an explicit exemption note are incomplete. The combined summary must not include unresolved findings — every BUG must have closure.
+
+### Regression test semantic convention
+
+All regression tests must assert **desired correct behavior** and be marked as expected-to-fail on the current code. Do not write tests that assert the current broken behavior and pass. The distinction matters:
+
+- **Correct:** Test says "this input should produce X" → test fails because buggy code produces Y → marked `xfail`/`@Disabled`/`t.Skip` → when bug is fixed, test passes and the skip marker is removed.
+- **Wrong:** Test says "this input produces Y (the buggy output)" → test passes on buggy code → when bug is fixed, test fails silently → stale test that now asserts wrong behavior.
+
+The `xfail(strict=True)` pattern (Python/pytest) is the gold standard: it fails if the bug is present (expected), and also fails if the bug is fixed but the `xfail` marker wasn't removed (strict). Other languages should approximate this with skip + reason.
+
+### Post-review closure verification
+
+After writing all regression tests and the combined summary, run this checklist:
+
+1. **Count BUGs in the combined summary.** This is the expected count.
+2. **Count test functions in `quality/test_regression.*`.** This should equal or exceed the BUG count (some BUGs may need multiple tests).
+3. **For each BUG row in the summary**, verify it has either:
+   - A `REGRESSION TEST:` line citing the test function name, OR
+   - An `EXEMPTION:` line explaining why no test was written
+4. **If any BUG lacks both**, go back and write the test or the exemption before declaring the review complete.
+
+This checklist is the enforcement mechanism for the closure mandate. Without it, the mandate is aspirational — agents document bugs fully in the pass summaries but skip the regression test and move on.
+
+### Cleaning up after spec audit reversals
+
+When the spec audit overturns a code review finding (classifies a BUG as a design choice or false positive), the corresponding regression test must be either deleted or moved to a separate file (`quality/design_behavior_tests.*`) that documents intentional behavior. A failing test that points at documented-correct behavior is worse than no test — it creates noise and erodes trust in the regression suite.
+
+After spec audit triage, check: does any test in `quality/test_regression.*` correspond to a finding that was reclassified as non-defect? If so, remove it from the regression file.
 
 ### Why Three Passes Instead of Focus Areas
 

@@ -87,6 +87,12 @@ Total contracts extracted: N
 
 ---
 
+### Requirement heading format
+
+All requirements in REQUIREMENTS.md must use the format `### REQ-NNN: Title` where NNN is a zero-padded three-digit number and Title is a short descriptive name. Do not use alternative formats like `### REQ-NNN — Title`, `### REQ-NNN. Title`, `**REQ-NNN**: Title`, or freeform headings without a number. Consistent formatting enables automated tooling to parse and cross-reference requirements.
+
+---
+
 ## Phase B: Derive requirements from contracts
 
 **Input:** `quality/CONTRACTS.md`, project documentation, SKILL.md Step 7 template.
@@ -188,6 +194,44 @@ For each requirement, check whether its conditions of satisfaction are actually 
 
 Check pairs of requirements that reference the same concept. Do ranges agree? Do null-handling rules agree? Do thread-safety guarantees conflict with lifecycle contracts? Do configuration defaults match across requirements?
 
+### Check 4: Cross-artifact consistency (if code review or spec audit results exist)
+
+If `quality/code_reviews/` or `quality/spec_audits/` contain results from a previous or current run, read them. For every finding with status VIOLATED, BUG, or INCONSISTENT, check whether the requirements address the behavioral concern that finding targets. If a code review found a bug in compression header parsing that the requirements don't cover, that's a completeness gap — add a requirement or conditions of satisfaction to close it.
+
+**The completeness report cannot say COMPLETE if unaddressed findings exist.** If any VIOLATED/BUG/INCONSISTENT finding from code review or spec audit targets behavior not covered by requirements, the verdict must be INCOMPLETE with the specific gaps listed.
+
+This check exists because earlier versions of the pipeline produced completeness reports that said "COMPLETE" while the code review in the same run found requirement violations. The completeness report must be consistent with all other quality artifacts.
+
+### Post-review completeness refresh (mandatory)
+
+**After the code review and spec audit are complete**, re-read `quality/COMPLETENESS_REPORT.md` and update it. The initial completeness report was written before the code review and spec audit ran, so it cannot reflect their findings. This refresh step reconciles the completeness verdict with the actual review results.
+
+**Procedure:**
+1. Read the combined summary from `quality/code_reviews/` — count VIOLATED and BUG findings.
+2. Read the triage summary from `quality/spec_audits/` — count confirmed code bugs.
+3. For each finding, check whether REQUIREMENTS.md has a requirement covering that behavior.
+4. Append a `## Post-Review Reconciliation` section to COMPLETENESS_REPORT.md:
+
+```
+## Post-Review Reconciliation
+Updated: [date]
+
+### Code review findings: N VIOLATED, M BUG
+- [finding summary] → covered by REQ-NNN / NOT COVERED (gap)
+- ...
+
+### Spec audit findings: N confirmed code bugs
+- [finding summary] → covered by REQ-NNN / NOT COVERED (gap)
+- ...
+
+### Updated verdict
+[COMPLETE if all findings are covered by requirements, INCOMPLETE if gaps remain]
+```
+
+5. If the original verdict was COMPLETE but unaddressed findings exist, change the verdict to INCOMPLETE.
+
+**This refresh is not optional.** A completeness report that predates the code review is a timestamp, not a quality gate. The refresh turns it into an actual reconciliation.
+
 ### Output format
 
 ```
@@ -203,11 +247,14 @@ Generated: [date]
 ## Consistency issues
 [For each conflict: REQ-NNN and REQ-NNN disagree about...]
 
+## Cross-artifact gaps (if code review/spec audit results exist)
+[For each unaddressed finding: finding summary → missing requirement or condition]
+
 ## Verdict
 COMPLETE or INCOMPLETE with recommended actions
 ```
 
-Then fix what you can: add requirements for domain gaps, sharpen vague conditions, resolve consistency issues.
+Then fix what you can: add requirements for domain gaps, sharpen vague conditions, resolve consistency issues, and close cross-artifact gaps.
 
 **Important:** This is the final check. Be adversarial. Assume previous passes were imperfect. For each domain marked COVERED, verify that the cited requirements actually address the checklist item — don't just check the box.
 
