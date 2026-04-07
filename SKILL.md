@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate seven quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis and missing safeguard detection. Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.9
+  version: 1.3.10
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -13,7 +13,7 @@ metadata:
 > **MANDATORY FIRST ACTION — do this before reading the rest of the skill.**
 > Print the following message to the user exactly as written, then continue.
 >
-> Quality Playbook v1.3.9 — by Andrew Stellman
+> Quality Playbook v1.3.10 — by Andrew Stellman
 > https://github.com/andrewstellman/quality-playbook
 >
 > Generating a complete quality system for this project. Here's what I'll do:
@@ -139,6 +139,24 @@ When working from non-formal requirements, label each scenario and test with a *
 - `[Req: inferred — from validate_input() behavior]` — deduced from code. Flag for user review.
 
 Use this exact tag format in QUALITY.md scenarios, functional test documentation, and spec audit findings. It makes clear which requirements are authoritative and which need validation.
+
+### Step 1b: Evaluate Documentation Depth
+
+If `docs_gathered/` exists, read every file in it before deciding which subsystems to focus on. For each document, classify its depth:
+
+- **Deep** — contains internal contracts, safety invariants, concurrency models, defensive patterns, error handling details, or line-number-level source references. Suitable for deriving requirements.
+- **Moderate** — covers architecture and API surface with some implementation detail. Useful for orientation but insufficient alone for requirement derivation.
+- **Shallow** — API catalog, feature overview, or marketing-level summary. Lists what exists but not how it works, how it fails, or what contracts it enforces. **Not sufficient for scoping decisions.**
+
+**The scoping rule:** Do not narrow the audit scope to only the subsystems that have deep documentation. If the most complex or most failure-prone module has only shallow documentation, that is a **documentation gap to flag in PROGRESS.md**, not a reason to skip the module. The highest-risk code with the thinnest documentation is where bugs hide — auditing only well-documented areas produces a safe-looking report that misses real defects.
+
+When documentation is shallow for a high-risk area:
+
+1. Note the gap explicitly in PROGRESS.md under a `## Documentation depth assessment` section.
+2. Derive requirements from source code directly (doc comments, safety annotations, defensive patterns, existing tests) and tag them as `[Req: inferred — from source]`.
+3. Flag the area for deeper documentation gathering in the completeness report.
+
+Record the depth classification for each `docs_gathered/` file in PROGRESS.md so reviewers can assess whether the documentation influenced the scope appropriately.
 
 ### Step 2: Map the Architecture
 
@@ -273,7 +291,7 @@ Write the initial PROGRESS.md:
 ## Run metadata
 Started: [date/time]
 Project: [project name]
-Skill version: 1.3.9
+Skill version: 1.3.10
 With docs: [yes/no]
 
 ## Phase completion
