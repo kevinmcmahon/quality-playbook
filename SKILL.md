@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate seven quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis and missing safeguard detection. Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.10
+  version: 1.3.11
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -13,7 +13,7 @@ metadata:
 > **MANDATORY FIRST ACTION — do this before reading the rest of the skill.**
 > Print the following message to the user exactly as written, then continue.
 >
-> Quality Playbook v1.3.10 — by Andrew Stellman
+> Quality Playbook v1.3.11 — by Andrew Stellman
 > https://github.com/andrewstellman/quality-playbook
 >
 > Generating a complete quality system for this project. Here's what I'll do:
@@ -94,6 +94,16 @@ Spend the first phase understanding the project. The quality playbook must be gr
 
 **Scaling for large codebases:** For projects with more than ~50 source files, don't try to read everything. Focus exploration on the 3–5 core modules (the ones that handle the primary data flow, the most complex logic, and the most failure-prone operations). Read representative tests from each subsystem rather than every test file. The goal is depth on what matters, not breadth across everything.
 
+**Pre-flight: Scope declaration for large repositories**
+
+Before exploring any source code, estimate scale: approximate source-file count (excluding tests, docs, and generated files), major subsystem count, and documentation volume. Note the count in PROGRESS.md.
+
+- **Fewer than 200 source files:** Proceed with full exploration. The depth-vs-breadth guidance above still applies.
+- **200–500 source files:** Declare your intended scope before exploring. Write a `## Scope declaration` section to PROGRESS.md naming the 3–5 subsystems you will cover, the expected file count for each, and which subsystems you are deferring with rationale. Then proceed with exploration of the declared scope only.
+- **More than 500 source files:** Stop and write a mandatory scope declaration to PROGRESS.md before reading any source files. The scope declaration must include: (a) the subsystems covered in this run, (b) the subsystems explicitly deferred, (c) the exclusion rationale for each deferred subsystem, and (d) recommended subsystem scope for follow-on runs. Do not begin exploration until this is written. A scope declaration that covers "everything" is not valid for repositories above this threshold.
+
+**Resuming a previous session:** If PROGRESS.md already exists and shows phases marked complete, read it first. Do not redo phases already marked complete — resume from the first phase marked incomplete. If a scope declaration is already written, honor it exactly. If the previous session's scope declaration deferred subsystems, do not expand scope to cover them unless this run is explicitly a follow-on for the deferred areas.
+
 **Specification-primary repositories:** Some repositories ship a specification, configuration, or protocol document as their primary product, with executable code as supporting infrastructure. Examples: a skill definition with benchmark tooling, a schema registry with validation scripts, a pipeline config with orchestration helpers. When the primary product is a specification rather than executable code, derive requirements from the specification's internal consistency, completeness, and correctness — not just from the executable code paths. The specification is the thing users depend on; the tooling is secondary. If you find yourself writing 80%+ of requirements about helper scripts and <20% about the primary specification, you have the focus inverted.
 
 ### Step 0: Ask About Development History
@@ -157,6 +167,15 @@ When documentation is shallow for a high-risk area:
 3. Flag the area for deeper documentation gathering in the completeness report.
 
 Record the depth classification for each `docs_gathered/` file in PROGRESS.md so reviewers can assess whether the documentation influenced the scope appropriately.
+
+**Coverage commitment table:** After classifying all `docs_gathered/` documents, produce this table in PROGRESS.md under the `## Documentation depth assessment` section:
+
+| Document | Depth | Subsystem | Requirements commitment | If excluded: justification |
+|----------|-------|-----------|------------------------|---------------------------|
+
+For every **deep** document, map it to the subsystem it covers, then either commit to deriving requirements from it ("will cover in Phase 2") or provide a specific justification that names the tradeoff. A sentence like "out of scope for this run" is not sufficient — the justification must say *why*, e.g., "interpreter JIT is excluded because this run focuses on the parser/compiler/GC pipeline; separate run recommended."
+
+**Gate:** A high-risk subsystem documented deeply in `docs_gathered/` must not silently disappear from the requirements set. If a deep document has a "will cover" commitment but produces zero requirements by the end of Step 7, the requirements pipeline is incomplete — go back and derive requirements for the gap before proceeding to Phase 2 artifact generation.
 
 ### Step 2: Map the Architecture
 
@@ -256,8 +275,10 @@ This is the most important step for the code review protocol. Everything found d
 1. **Phase A — Contract extraction.** Read all source files, list every behavioral contract. Write to `quality/CONTRACTS.md`. This is discovery — list everything, even if it seems obvious.
 2. **Phase B — Requirement derivation.** Read CONTRACTS.md and documentation. Group related contracts, enrich with user intent, write formal requirements. Write to `quality/REQUIREMENTS.md`.
 3. **Phase C — Coverage verification.** Cross-reference every contract against every requirement. Fix gaps. Loop up to 3 times until coverage reaches 100%. Write to `quality/COVERAGE_MATRIX.md`. The matrix must have **one row per requirement** (REQ-001, REQ-002, etc.) — not grouped ranges like "C-001 to C-007 | REQ-001, REQ-003". Grouped ranges make machine verification impossible and hide gaps.
-4. **Phase D — Completeness check + self-refinement loop.** Apply the domain checklist, testability audit, and cross-requirement consistency check. Write to `quality/COMPLETENESS_REPORT.md`. Then run up to 3 self-refinement iterations: read the report, fix gaps, re-check. Short-circuit when fewer than 3 changes per iteration.
+4. **Phase D — Completeness check + self-refinement loop.** Apply the domain checklist, testability audit, and cross-requirement consistency check. Also verify that every deep document with a "will cover" commitment in the coverage commitment table has at least one requirement traced to it — if not, add requirements for the gap before continuing. Write to `quality/COMPLETENESS_REPORT.md` as a **baseline** completeness report (without a `## Verdict` section — the verdict is deferred to Phase 2d post-reconciliation, which produces the only verdict that counts for closure). Then run up to 3 self-refinement iterations: read the report, fix gaps, re-check. Short-circuit when fewer than 3 changes per iteration.
 5. **Phase E — Narrative pass.** Add project overview, use cases (with actors, steps, and requirement traceability), cross-cutting concerns, category narratives. Reorder for top-down flow. Renumber sequentially.
+
+**REQUIREMENTS.md must begin with a human-readable overview** that answers: What is this project? What does it do? Who are the actors (users, systems, hardware, protocols)? What are the highest-risk areas? This overview should be useful to someone who has never seen the project before. If the project is a library or driver where all actors are systems, describe the system actors and their interactions. Do not start with raw scope metadata or HTML comments — lead with a plain-language description. Follow the overview with concrete use cases (with actors, preconditions, and steps) before the individual requirements.
 
 **For each requirement, provide all of these fields:**
 
@@ -271,6 +292,16 @@ This is the most important step for the code review protocol. Everything found d
 
 **Do not cap the requirement count.** Derive as many as the project warrants. A small utility might have 20. A mature library might have 100+. The goal is completeness.
 
+**Step 7a: Documentation-to-requirement reconciliation**
+
+Re-read the coverage commitment table from PROGRESS.md. For each deep document you committed to covering ("will cover in Phase 2"), verify that at least one requirement traces to the subsystem it documents. If your requirements cover only some committed subsystems, add requirements for the gaps before completing Step 7.
+
+For each subsystem, record one of the following in PROGRESS.md:
+- the requirement IDs that cover it, or
+- an explicit exclusion with rationale, risk acknowledgment, and recommended follow-up
+
+A deep-documented subsystem with a "will cover" commitment and zero mapped requirements is a process failure, not a legitimate scope choice. Do not proceed to artifact generation until every commitment is satisfied or explicitly converted to a justified exclusion.
+
 **After the pipeline:** The skill also generates `quality/REVIEW_REQUIREMENTS.md` (interactive review protocol) and `quality/REFINE_REQUIREMENTS.md` (refinement pass protocol). These support iterative improvement — the user can review requirements interactively, run refinement passes with different models, and keep versioned backups of each iteration. See `references/requirements_pipeline.md` for the full versioning protocol and backup structure.
 
 Record all requirements in a structured format. These feed directly into the code review protocol's verification and consistency passes.
@@ -280,6 +311,8 @@ Record all requirements in a structured format. These feed directly into the cod
 After completing Phase 1 exploration, create `quality/PROGRESS.md`. This file is the skill's external memory — it persists state across phases so that context is never lost, even if the session is interrupted and resumed. It also serves as an audit trail for debugging and improvement.
 
 **Why this exists:** In single-session runs, the agent holds context in memory. But context degrades over long sessions — findings from Phase 1 are forgotten by Phase 3, BUG counts drift, spec-audit bugs get orphaned because the closure check never saw them. PROGRESS.md solves this by making every phase write its state to disk. The agent reads it back before each phase, so it always has an accurate picture of what happened so far. As a side benefit, it makes the skill work correctly even if the run is split across multiple sessions.
+
+**Checkpoint discipline for long runs:** After each requirements-pipeline phase (Contracts, Requirements, Coverage Matrix, Completeness, Narrative), update `quality/PROGRESS.md` with: completed phase, artifact paths, current scoped subsystems, remaining work, and exact resume point. This ensures a resumed session can continue from the last completed checkpoint without redoing work.
 
 **Timestamp discipline:** Write each phase completion entry to PROGRESS.md immediately when you finish that phase, before starting the next phase. Do not batch-write or back-fill timestamps after the fact. The timestamps are an audit trail — if Phase 2 shows a completion time earlier than Phase 1, a reviewer cannot verify that phases ran in the correct sequence. If you realize you forgot to write a checkpoint, write it now with an honest timestamp and a note explaining the gap.
 
@@ -291,7 +324,7 @@ Write the initial PROGRESS.md:
 ## Run metadata
 Started: [date/time]
 Project: [project name]
-Skill version: 1.3.10
+Skill version: 1.3.11
 With docs: [yes/no]
 
 ## Phase completion
@@ -347,6 +380,13 @@ Update this file after every phase. The cumulative BUG tracker is the most impor
 
 Now write the six files. For each one, follow the structure below and consult the relevant reference file for detailed guidance.
 
+**Artifact dependency rules:**
+- `quality/RUN_CODE_REVIEW.md` Pass 2 depends on a stable `quality/REQUIREMENTS.md` — thin requirements produce thin Pass 2 review. If the requirements count seems low for the code surface (fewer than ~3–4 requirements per core module), note this at the start of the Pass 2 report.
+- Functional tests depend on `quality/REQUIREMENTS.md` and `quality/QUALITY.md` — after any requirements refinement, re-verify that `test_functional.*` still covers every requirement.
+- `quality/RUN_SPEC_AUDIT.md` depends on requirements, quality scenarios, and docs validation.
+- `quality/COMPLETENESS_REPORT.md` has two stages: baseline (pre-review, no verdict section) and final (post-reconciliation in Phase 2d, with the authoritative verdict).
+- `quality/PROGRESS.md` is the authoritative state file and must be updated before each downstream artifact begins.
+
 **Why six files instead of just tests?** Tests catch regressions but don't prevent new categories of bugs. The quality constitution (`QUALITY.md`) tells future sessions what "correct" means before they start writing code. The protocols (`RUN_*.md`) provide structured processes for review, integration testing, and spec auditing that produce repeatable results — instead of leaving quality to whatever the AI feels like checking. Together, these files create a quality system where each piece reinforces the others: scenarios in QUALITY.md map to tests in the functional test file, which are verified by the integration protocol, which is audited by the Council of Three.
 
 ### File 1: `quality/QUALITY.md` — Quality Constitution
@@ -399,6 +439,15 @@ The code review protocol has three passes. Each pass runs independently — a fr
 - Grep before claiming missing
 - Do NOT suggest style changes — only flag things that are incorrect
 
+**Minimum required Pass 1 scrutiny areas (address each explicitly):**
+
+1. **Input validation and boundary handling** — check every trust boundary where external or caller-supplied data enters the code. Every string parser, enum lookup, and binary-format parser must reject input that shares a valid prefix with a valid token but contains additional characters.
+2. **Resource lifecycle** — allocation, refcount management, error-path cleanup, lock release on failure, file descriptor/handle lifetime. Every function that acquires a reference or resource must release it on every early-exit path, or must complete all validation before acquiring the resource.
+3. **Concurrency and state management** — lock ordering, atomic operation correctness (every atomic modification of a shared state word must use read-modify-write semantics and preserve bits outside the intended modification), state machine completeness (all states handled at all consumers).
+4. **Unit and encoding correctness** — every field read from hardware, protocol structures, or user input that has defined units must be converted correctly before use in calculations or comparisons.
+
+These four areas must appear as labeled subsections in the Pass 1 report. If a project has no meaningful concurrency, say so explicitly and document why rather than omitting the section. Add project-specific scrutiny areas beyond these four as warranted.
+
 Pass 1 catches ~65% of real defects: race conditions, null pointer hazards, resource leaks, off-by-one errors, type mismatches — structural problems visible in the code.
 
 **Pass 2 — Requirement Verification.** For each testable requirement derived in Step 7 of Phase 1, check whether the code satisfies it. For each requirement, either show the code that satisfies it or explain specifically why it doesn't. This is a pure verification pass — the reviewer's only job is "does the code satisfy this requirement?" Not a general review. Not looking for other bugs. Just verification.
@@ -410,6 +459,16 @@ Pass 2 catches violations of individual requirements — cases where the code do
 **Pass 3 — Cross-Requirement Consistency.** Compare pairs of requirements that reference the same field, constant, range, or security policy. For each pair, verify that their constraints are mutually consistent. Do numeric ranges match bit widths? Do security policies propagate to all connection types? Do validation bounds in one file agree with encoding limits in another?
 
 Pass 3 catches contradictions where two individually-correct pieces of code disagree about a shared constraint. These bugs are invisible to both structural review and per-requirement verification because each requirement IS satisfied individually — the bug only appears when you compare them. This is the pass that catches cross-file arithmetic bugs and design gaps where a security configuration doesn't propagate to all connection paths.
+
+**Source code boundary rule:** The playbook must never modify files outside the `quality/` directory. All source-tree changes — bug fixes, test additions to the project's own test suite — must be expressed as `git diff`-format patch files saved under `quality/patches/`. This ensures the original source tree remains untouched, patches are reviewable and reversible, and the playbook's findings are cleanly separable from the code it audited.
+
+**BUGS.md:** After all review and audit phases, generate `quality/BUGS.md` — a consolidated bug report with full reproduction details for each confirmed bug. For each bug, include: bug ID, source (code review or spec audit), file:line, description, severity, minimal reproduction scenario (what input or sequence triggers the bug), expected vs actual behavior, and references to the regression test and any proposed fix patch.
+
+**Patch files:** For each confirmed bug, generate:
+- `quality/patches/BUG-NNN-regression-test.patch` — a `git diff` that adds a test demonstrating the bug (this is the most valuable patch — it proves the bug exists independently of any opinion about the fix)
+- `quality/patches/BUG-NNN-fix.patch` (optional) — a `git diff` with the proposed fix
+
+Patches must apply cleanly against the original source tree with `git apply`. Do not modify the source tree directly.
 
 **After all three passes:** Combine findings. Write regression tests in `quality/test_regression.*` that reproduce each confirmed bug. Use the same test framework as `test_functional.*` — if functional tests use pytest, regression tests use pytest (with `@pytest.mark.xfail(strict=True)`); if functional tests use unittest, regression tests use unittest (with `@unittest.expectedFailure`). Report results as a confirmation table (BUG CONFIRMED / FALSE POSITIVE / NEEDS INVESTIGATION). See `references/review_protocols.md` for the full three-pass template and regression test protocol.
 
@@ -444,6 +503,12 @@ Must include: safety constraints, pre-flight checks, test matrix with specific p
 Three independent AI models audit the code against specifications. Why three? Because each model has different blind spots — in practice, different auditors catch different issues. Cross-referencing catches what any single model misses.
 
 The protocol defines: a copy-pasteable audit prompt with guardrails, project-specific scrutiny areas, a triage process (merge findings by confidence level), and fix execution rules (small batches by subsystem, not mega-prompts).
+
+**Secondary emphasis lenses:** Optionally assign each audit model a secondary emphasis — for example, one starts with input validation, one with resource lifecycle, one with concurrency. Each model still performs a full independent audit; the emphasis biases attention without restricting coverage. Do not split models into disjoint ownership by bug class.
+
+**Minority finding rule:** During triage, any finding where only one of three auditors flags it (a minority finding) requires a re-investigation — read the specific code location and make an explicit CONFIRMED/FALSE-POSITIVE determination rather than discarding by default. Minority findings are disproportionately likely to be real bugs that two models missed.
+
+**Code review vs spec audit conflicts:** If the code review and spec audit disagree on the same finding, the spec audit finding is not automatically correct. Deploy a verification probe — read the specific code location and determine which assessment is accurate. Record the resolution in the BUG tracker. A code review BUG not flagged by any spec auditor is still confirmed but should be verified with a targeted probe before closure.
 
 ### File 6: `AGENTS.md`
 
@@ -491,6 +556,8 @@ Re-read `quality/PROGRESS.md` — specifically the cumulative BUG tracker. This 
 
 **Terminal gate (mandatory before marking Phase 2d complete):**
 
+**Prerequisite check:** The terminal gate may run only if Phase 2b (code review) and Phase 2c (spec audit) are both complete, or explicitly marked skipped with rationale in PROGRESS.md. A zero-bug outcome is valid only if code review and spec audit artifacts exist (i.e., `quality/code_reviews/` and `quality/spec_audits/` directories contain report files). If these artifacts are missing and the phases are not explicitly skipped, the terminal gate fails — do not mark Phase 2d complete.
+
 Re-read `quality/PROGRESS.md`. Count the BUG tracker entries. Then:
 
 1. Print the following statement to the user (this is mandatory, not optional):
@@ -500,6 +567,8 @@ Re-read `quality/PROGRESS.md`. Count the BUG tracker entries. Then:
 2. Write the same statement into PROGRESS.md under a new `## Terminal Gate Verification` section (immediately after the BUG tracker table). This persists the gate into the artifact so reviewers can verify it without reading session logs.
 
 If the tracker entry count does not equal M + L, stop and reconcile — a BUG was orphaned from the tracker. Do not mark Phase 2d complete until the counts match. This gate exists because the v1.3.5 bootstrap showed that agents reliably skip the tracker update after spec audit, orphaning 30-50% of confirmed bugs.
+
+**Regression test function-name verification:** For each BUG tracker entry that references a regression test, grep for the test function name in the regression test file and confirm it exists. An agent can write a test name in the tracker without actually creating the test. If any referenced test function does not exist, write it now before passing the gate.
 
 3. Verify the `With docs` metadata field in PROGRESS.md matches reality: if `docs_gathered/` exists and contains files, it should say `yes`; otherwise `no`. Fix it if wrong.
 
