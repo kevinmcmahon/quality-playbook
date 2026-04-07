@@ -18,6 +18,7 @@ The playbook is a skill for AI coding tools. Copy it into your project and ask t
 ```bash
 mkdir -p .github/skills/references
 cp SKILL.md .github/skills/SKILL.md
+cp LICENSE.txt .github/skills/LICENSE.txt
 cp references/* .github/skills/references/
 ```
 
@@ -25,26 +26,27 @@ cp references/* .github/skills/references/
 ```bash
 mkdir -p .claude/skills/quality-playbook/references
 cp SKILL.md .claude/skills/quality-playbook/SKILL.md
+cp LICENSE.txt .claude/skills/quality-playbook/LICENSE.txt
 cp references/* .claude/skills/quality-playbook/references/
 ```
 
 Then tell your AI tool: *"Read the quality playbook skill and generate a complete quality system for this project."*
 
-The playbook runs in four phases: explore the codebase, generate quality artifacts, run a three-pass code review, and execute a multi-model spec audit. It takes 30-60 minutes depending on project size, and it works with any language.
+The playbook runs in six tracked phases: explore the codebase (Phase 1), generate quality artifacts (Phase 2), run a three-pass code review with regression tests (Phase 2b), execute a multi-model spec audit (Phase 2c), reconcile and close findings (Phase 2d), and verify against self-check benchmarks (Phase 3). It takes 30-60 minutes depending on project size, and it works with any language.
 
 ## What it produces
 
-The playbook generates these files in a `quality/` directory:
+The playbook generates these files:
 
-| Artifact | What it does |
-|----------|-------------|
-| `REQUIREMENTS.md` | Behavioral requirements derived from code, docs, and community sources via a five-phase pipeline. This is the foundation -- without requirements, review is limited to structural bugs. |
-| `QUALITY.md` | Quality constitution defining what "correct" means for this specific project, with fitness-to-purpose scenarios and coverage theater prevention. |
-| `test_functional.*` | Functional tests in the project's native language, traced to requirements rather than generated from source code. |
-| `RUN_CODE_REVIEW.md` | Three-pass protocol: structural review, requirement verification, cross-requirement consistency. Each pass finds bugs the others can't. |
-| `RUN_SPEC_AUDIT.md` | Council of Three: three independent AI models audit the code against requirements. Different models have different blind spots, and the triage uses confidence weighting, not majority vote. |
-| `RUN_INTEGRATION_TESTS.md` | End-to-end test protocol that a different AI session can pick up and execute cold. |
-| `AGENTS.md` | Bootstrap file so every future AI session inherits the full quality infrastructure. |
+| Artifact | Location | What it does |
+|----------|----------|-------------|
+| `REQUIREMENTS.md` | `quality/` | Behavioral requirements derived from code, docs, and community sources via a five-phase pipeline. This is the foundation -- without requirements, review is limited to structural bugs. |
+| `QUALITY.md` | `quality/` | Quality constitution defining what "correct" means for this specific project, with fitness-to-purpose scenarios and coverage theater prevention. |
+| `test_functional.*` | `quality/` | Functional tests in the project's native language, traced to requirements rather than generated from source code. |
+| `RUN_CODE_REVIEW.md` | `quality/` | Three-pass protocol: structural review, requirement verification, cross-requirement consistency. Each pass finds bugs the others can't. |
+| `RUN_SPEC_AUDIT.md` | `quality/` | Council of Three: three independent AI models audit the code against requirements. Different models have different blind spots, and the triage uses confidence weighting, not majority vote. |
+| `RUN_INTEGRATION_TESTS.md` | `quality/` | End-to-end test protocol that a different AI session can pick up and execute cold. |
+| `AGENTS.md` | project root | Bootstrap file so every future AI session inherits the full quality infrastructure. |
 
 ## How it works
 
@@ -54,9 +56,13 @@ The playbook's value comes from requirement derivation. AI code reviewers are bo
 
 **Phase 2: Generate.** A five-phase pipeline extracts behavioral contracts from the codebase, derives testable requirements, verifies coverage, checks completeness, and adds a narrative layer. The pipeline also generates functional tests, review protocols, and the quality constitution.
 
-**Phase 3: Review.** A three-pass code review runs against HEAD: structural review with anti-hallucination guardrails, requirement verification checking each requirement against the code, and cross-requirement consistency checking whether requirements contradict each other. About 65% of findings come from Pass 1, 35% from Passes 2 and 3.
+**Phase 2b: Code review.** A three-pass code review runs against HEAD: structural review with anti-hallucination guardrails, requirement verification checking each requirement against the code, and cross-requirement consistency checking whether requirements contradict each other. About 65% of findings come from Pass 1, 35% from Passes 2 and 3. Each confirmed bug gets a regression test.
 
-**Phase 4: Audit.** Three independent AI models audit the code against the requirements. The triage process uses verification probes -- targeted checks that ask "is this actually true?" -- rather than dismissing single-model findings. The most valuable findings are often the ones only one model catches.
+**Phase 2c: Spec audit.** Three independent AI models audit the code against the requirements. The triage process uses verification probes -- targeted checks that ask "is this actually true?" -- rather than dismissing single-model findings. The most valuable findings are often the ones only one model catches.
+
+**Phase 2d: Reconciliation.** Post-review reconciliation closes the loop: every bug from code review and spec audit is tracked, regression-tested or explicitly exempted, and the completeness report is finalized with one authoritative verdict.
+
+**Phase 3: Verify.** Self-check benchmarks validate the generated artifacts against internal consistency rules -- requirement counts match across all surfaces, no stale text remains, and every finding has a closure status.
 
 ### Why documentation matters
 

@@ -32,6 +32,7 @@ Copy the skill into your AI coding tool's skill directory:
 ```bash
 mkdir -p .claude/skills/quality-playbook/references
 cp SKILL.md .claude/skills/quality-playbook/SKILL.md
+cp LICENSE.txt .claude/skills/quality-playbook/LICENSE.txt
 cp references/* .claude/skills/quality-playbook/references/
 ```
 
@@ -39,6 +40,7 @@ cp references/* .claude/skills/quality-playbook/references/
 ```bash
 mkdir -p .github/skills/references
 cp SKILL.md .github/skills/SKILL.md
+cp LICENSE.txt .github/skills/LICENSE.txt
 cp references/* .github/skills/references/
 ```
 
