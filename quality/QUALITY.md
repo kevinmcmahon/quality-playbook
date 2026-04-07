@@ -1,170 +1,139 @@
-# Quality Constitution: Quality Playbook Benchmark (QPB)
+# Quality Constitution: Quality Playbook v1.3.8
 
 ## Purpose
 
-The Quality Playbook Benchmark (QPB) is a curated dataset of 2,564 real defects from 50 open-source repositories, designed to measure and improve the detection rate of AI-assisted code review playbooks. Quality for QPB means:
+The Quality Playbook is a specification-first product. Its users depend on the skill text, protocol references, installation docs, and generated quality artifacts being internally consistent enough that a fresh AI session can execute the playbook cold and leave behind a trustworthy audit trail. For this repository, **fitness for use** means more than "the Markdown renders" — it means the packaged skill, supporting references, and bootstrap docs all agree about what gets installed, what phases must run, how evidence is persisted, and how bugs are closed.
 
-- **Deming**: Quality is built into the dataset structure, methodology documentation, and tooling so every AI session that uses QPB inherits the same ground truth and reproducibility standards.
-- **Juran**: Fitness for use means QPB provides reliable, verified ground truth for measuring code review effectiveness. A defect record must be verifiable, complete, and traceable to actual code.
-- **Crosby**: Building a rigorous dataset upfront costs effort but prevents downstream analysis based on corrupted or ambiguous defect data — which would invalidate all results.
+This repo inherits three quality principles directly. **Deming:** the quality bar must be built into the skill and reference docs, not reconstructed ad hoc by each AI session. **Juran:** the product is fit only if downstream agents can install it, execute it, and verify its outputs without inventing missing steps or relaxing the guardrails. **Crosby:** the cost of maintaining these contracts in the docs is far lower than the cost of a self-bootstrap run that silently skips verification, loses BUG tracker entries, or ships inconsistent legal/packaging metadata.
 
 ## Coverage Targets
 
 | Subsystem | Target | Why |
 |-----------|--------|-----|
-| DEFECT_LIBRARY.md format compliance | 100% | Every defect record must be verifiable. Missing or malformed fields make scoring impossible. A single corrupted row undermines statistical validity. |
-| Category normalization (14 canonical labels) | 100% | Categories are the axes for analysis (cross-model detection rates by category, defect patterns). Inconsistent categories produce aggregation errors and false detection rate conclusions. |
-| Tooling script correctness | 95%+ | Scripts regenerate extracted data and normalize categories. Bugs in these tools produce systematic data errors affecting all downstream analysis. Core modules (extract, normalize, assemble) must be reliable. |
-| Defect count consistency across documents | 100% | DEFECT_LIBRARY.md, per-repo description files, and DETECTION_RESULTS.md must agree on defect counts. Discrepancies indicate silent data loss or corruption. |
-| Cross-document reference integrity | 100% | Every defect ID in DEFECT_LIBRARY.md must have a corresponding entry in the per-repo description file. Every per-repo file must reference actual commits. Missing references make defects non-evaluable. |
+| `SKILL.md` / `.github/skills/SKILL.md` | 95% | This file defines the execution contract. Drift here causes silent pipeline skips, especially around `PROGRESS.md`, terminal-gate reconciliation, and verification. |
+| `references/review_protocols.md` + `references/spec_audit.md` | 95% | These references encode the closure mandate, docs validation, and skill integration protocol. Weak coverage here permits BUG-orphaning and audit theater. |
+| `references/requirements_pipeline.md` + review/refinement refs | 90% | Requirement numbering, versioning, and reconciliation must stay parseable across runs or later sessions cannot trust the derived spec. |
+| `README.md` / `AGENTS.md` / `LICENSE.txt` | 90% | These are the public bootstrap surface. Drift in installation steps, phase descriptions, or license terms creates user-visible breakage and compliance risk. |
+| `docs_gathered/` and run artifacts | 80% | The gathered docs are supplemental evidence, but they materially improve requirements and audit quality when they are discovered and used correctly. |
 
 ## Coverage Theater Prevention
 
-For QPB, a fake test would be:
+For this repository, fake tests look polished but fail to protect the product:
 
-- **Asserting a defect library entry contains something without verifying format** — e.g., "assert line 50 contains a defect ID" without checking if the ID is valid or if all 8 columns are present.
-- **Counting defects without verifying they are evaluable** — e.g., "assert 2,564 defects exist" without checking that every defect has a valid fix_commit and pre_fix_commit.
-- **Asserting category normalization completed without checking canonical membership** — e.g., "assert normalization succeeded" without verifying every category is one of 14 canonical labels.
-- **Mocking git operations instead of testing against real repository clones** — Git operations are the foundation; testing with mocks bypasses the real failure modes.
-- **Testing DEFECT_LIBRARY.md format without testing against actual markdown parsing** — Markdown is permissive; a test that "asserts a line is present" might pass while actual markdown parsing fails.
-- **Extracting defect data without validating commit existence** — A commit hash in the library might be malformed or not exist in the repo. Tests must verify against `git rev-parse`.
+- Verifying that a Markdown file merely exists without checking the sections and tables that downstream agents rely on.
+- Checking only one copy of the skill while ignoring the mirrored `.github/skills/` package that users actually install.
+- Asserting that the quality docs mention "testing" or "audit" without checking for the required guardrails such as `## Terminal Gate Verification`, `## Pre-audit docs validation`, or the Field Reference Table.
+- Treating `docs_gathered/` as present without proving the skill uses it as supplemental evidence.
+- Counting regression tests without proving each one aligns to a concrete BUG or closure rule.
 
 ## Fitness-to-Purpose Scenarios
 
-### Scenario 1: Defect Library Row Corruption Propagates to All Analysis
+### Scenario 1: Canonical and packaged skill copies diverge
 
-**Requirement tag:** [Req: formal — DEFECT_LIBRARY.md format spec, column definitions]
+**Requirement tag:** [Req: formal — README.md §Quick start; AGENTS.md §Installing the skill]
 
-**What happened:** DEFECT_LIBRARY.md is the master index with 2,564 rows. Each row has 8 columns separated by `|`: ID, title, fix_commit, pre_fix_commit, severity, category, description, playbook_angle. A corrupted row (missing a column, unescaped pipe character, truncated field) is silently valid markdown — the markdown parser does not error. But downstream tools that split rows on `|` may assign fields incorrectly (category ends up in the description column) or silently skip the row (if column count doesn't match). This produces silent data loss: evaluators believe they're scoring 2,564 defects but are actually scoring 2,563 (or fewer) because one row is malformed. Statistical analysis on corrupted data invalidates all results. At scale across multiple evaluation runs (10+ models, 50+ repos), one corrupted row affects hundreds of detection rate comparisons.
+**What happened:** The repository ships both canonical root docs and the `.github/skills/` install copy. If those copies drift, a user following the quick-start installs behavior that the root docs no longer describe. For a skill repo, that is equivalent to shipping two different products with the same version label.
 
-**The requirement:** Every row in DEFECT_LIBRARY.md must have exactly 8 pipe-separated columns. No column may contain an unescaped pipe character. All required fields (ID, fix_commit, pre_fix_commit, category) must be non-empty. The category must be one of exactly 14 canonical labels. This must be verified by parsing the actual markdown, not by inspection.
+**The requirement:** The root skill and reference docs must remain byte-for-byte aligned with the packaged `.github/skills/` mirror.
 
-**How to verify:**
-- Run: `pytest quality/test_functional.py::test_defect_library_format_compliance -v`
-- Expected: Test reads DEFECT_LIBRARY.md as markdown table, parses all rows, validates 8 columns per row, no unescaped pipes, all required fields non-empty, categories canonical.
-- Failure criteria: Any row with wrong column count, any row with unescaped pipes, any required field empty, any category not in the canonical 14-label set.
+**How to verify:** Run `python3 -m unittest discover -s quality -p 'test_*.py' -v` and confirm `test_scenario_1_canonical_and_packaged_skill_copies_diverge`, `test_root_and_github_skill_files_are_identical`, and `test_root_and_github_reference_trees_match` pass.
 
 ---
 
-### Scenario 2: Category Miscount Skews Detection Rate Statistics by 3-7%
+### Scenario 2: Public docs advertise the wrong license
 
-**Requirement tag:** [Req: formal — normalize_categories.py specification, canonical category list]
+**Requirement tag:** [Req: formal — SKILL.md frontmatter `license: Complete terms in LICENSE.txt`; LICENSE.txt]
 
-**What happened:** Raw defect mining produces category strings like "bug", "validation", "null check", etc. normalize_categories.py maps these to one of 14 canonical labels. If a normalization rule is broken (e.g., mapping "validation gap" to "error handling" instead of "validation gap"), all 15 defects using that rule get miscategorized. Detection results aggregated by category are then wrong: "validation gap" detection rate is reported as X% when the actual underlying defects include Y% in another category. For detection analysis, this directly breaks the core research question: "which categories are hard for models to detect?" If categories are misaligned, we can't answer that question. With 2,564 defects across 14 categories (average 183 per category), a mismapped rule affecting 15+ defects shifts that category's reported detection rate by 8%+.
+**What happened:** A spec-first repo cannot afford license drift because users rely on the docs, not a compiled artifact, to know reuse terms. If README claims Apache 2.0 while the shipped `LICENSE.txt` is MIT, downstream adopters inherit contradictory legal guidance and may package the skill under the wrong terms.
 
-**The requirement:** All 2,564 defects must be categorized into exactly one of 14 canonical labels. The normalization rules (keyword matching with ordered precedence) must be deterministic: the same raw category string always produces the same canonical label. All 2,564 defects must be verifiable as canonical. Mismatched or drifted categories must be caught before analysis.
+**The requirement:** Public-facing metadata must agree with the actual `LICENSE.txt` contents everywhere the repo describes the shipped skill.
 
-**How to verify:**
-- Run: `pytest quality/test_functional.py::test_category_normalization_all_canonical -v`
-- Expected: Test reads DEFECT_LIBRARY.md, extracts the category column for all 2,564 rows, verifies every category matches one of exactly 14 canonical strings (case-insensitive match). Produces a histogram showing defects per category.
-- Failure criteria: Any category string not matching the 14 canonical labels. Histogram shows fewer than expected defects in any category (indicates mismatches elsewhere).
+**How to verify:** Confirm the functional traceability check `test_scenario_2_public_docs_advertise_the_wrong_license` passes and the regression probe `test_readme_license_text_matches_shipped_license_file` remains in `quality/test_regression.py` until the drift is fixed.
 
 ---
 
-### Scenario 3: Tooling Script Produces Silent Data Loss on Large Batches
+### Scenario 3: README still teaches the old phase model
 
-**Requirement tag:** [Req: formal — extract_defect_data.py specification, DEFECT_LIBRARY.md format spec]
+**Requirement tag:** [Req: formal — SKILL.md §Phase 2b/2c/2d and §Phase 3]
 
-**What happened:** extract_defect_data.py reads DEFECT_LIBRARY.md, parses each defect ID (PREFIX-NN format), maps the prefix to a repo directory, and runs `git log` / `git show` to extract commit details. If the script encounters a malformed defect ID or a repo directory that doesn't exist, it may log a warning (if error handling exists) or silently skip the row. With 50 repos and 2,564 defects, a silent skip would produce a defect_data.json file that's incomplete — missing data for 10+ defects. Downstream tools that depend on defect_data.json would then ignore those defects in analysis. This is silent data loss: the library says 2,564 but the extraction only produced data for 2,540. No alert. Analysis proceeds on incomplete ground truth.
+**What happened:** The skill now depends on six tracked phases: `1`, `2`, `2b`, `2c`, `2d`, and `3`. If README still summarizes the run as four phases, a downstream operator can stop after audit and never execute reconciliation or verification. That produces clean-looking artifacts with stale BUG counts and no final quality gate.
 
-**The requirement:** extract_defect_data.py must process all 2,564 defects. Every defect ID must be parseable. Every prefix must map to an existing repository directory. Every fix_commit must be resolvable via `git rev-parse` in the corresponding repo. If any defect cannot be processed, the script must fail with an explicit error message naming the defect and the reason (e.g., "GH-03: PREFIX_MAP missing entry for GH2" or "CURL-02: Commit abc123 not found in repos/curl"). No silent skips. The output defect_data.json must include entries for all 2,564 defects.
+**The requirement:** Public execution docs must describe the same tracked phase model the skill enforces, including reconciliation and verification.
 
-**How to verify:**
-- Run: `pytest quality/test_functional.py::test_extract_defect_data_completeness -v`
-- Expected: Test loads DEFECT_LIBRARY.md and invokes extract_defect_data.py. Checks that output defect_data.json contains entries for all 2,564 defects (by ID). For a sample of 20 defects across different repos, verifies the extracted data is non-empty (commit message not blank, files_changed list not empty).
-- Failure criteria: defect_data.json missing any defect ID, or any defect with empty commit message / files list.
+**How to verify:** Confirm the functional traceability check `test_scenario_3_readme_still_teaches_the_old_phase_model` passes and the regression probe `test_readme_phase_summary_mentions_six_tracked_phases_and_verification` remains in `quality/test_regression.py` until README reflects the tracked phase model.
 
 ---
 
-### Scenario 4: Cross-Document Defect Count Mismatch Indicates Data Integrity Loss
+### Scenario 4: Install snippets omit required package files
 
-**Requirement tag:** [Req: formal — DEFECT_LIBRARY.md, per-repo description files format]
+**Requirement tag:** [Req: formal — `.github/skills/LICENSE.txt`; README.md §Quick start; AGENTS.md §Installing the skill]
 
-**What happened:** DEFECT_LIBRARY.md lists 2,564 defects. Each defect has a prefix (e.g., GH, CURL, RLS). Per-repo description files in dataset/defects/<repo>/defects.md are organized by prefix and should list all defects for that repo. If one per-repo file is incomplete (20 of 71 defects listed for cli/cli, instead of all 71), the row count in defect_data.json differs from the count in the per-repo file. This mismatch indicates silent data loss during per-repo file generation. Evaluators checking out the pre-fix commit for defect GH-50 might find GH-50 is not in the per-repo description file (or the commit listed there is wrong) — making the defect non-evaluable. At scale across 50 repos, missing or incorrect per-repo files make hundreds of defects impossible to evaluate.
+**What happened:** The installed skill references `LICENSE.txt`, and the packaged skill directory ships that file. If the quick-start snippets copy only `SKILL.md` and `references/`, downstream repos receive an incomplete package. The skill still looks installed, but one of its declared files is missing from the target tree.
 
-**The requirement:** For every defect in DEFECT_LIBRARY.md, there must be a corresponding entry in the per-repo description file matching its prefix. The per-repo file must list exactly as many defects as DEFECT_LIBRARY.md assigns to that prefix. Cross-document counts must match (within rounding). Any prefix with a count mismatch must be flagged.
+**The requirement:** Installation instructions must copy every file the packaged skill depends on, including `LICENSE.txt`.
 
-**How to verify:**
-- Run: `pytest quality/test_functional.py::test_per_repo_defect_count_consistency -v`
-- Expected: Test reads DEFECT_LIBRARY.md, groups defects by prefix, counts defects per prefix. Then reads each per-repo description file (if it exists), counts entries, and compares. Produces a report showing prefix, DEFECT_LIBRARY.md count, per-repo file count, and match status.
-- Failure criteria: Any prefix with a count mismatch (e.g., GH has 71 in DEFECT_LIBRARY.md but dataset/defects/cli/defects.md lists only 20). Any per-repo file missing (if DEFECT_LIBRARY.md has defects for that prefix, the file must exist).
+**How to verify:** Confirm the functional traceability check `test_scenario_4_install_snippets_omit_required_package_files` passes and the regression probe `test_install_instructions_copy_required_license_file` remains in `quality/test_regression.py` until install snippets copy `LICENSE.txt`.
 
 ---
 
-### Scenario 5: Commit SHA Typo in DEFECT_LIBRARY.md Makes Defect Non-Evaluable
+### Scenario 5: Spec-audit bugs disappear between phases
 
-**Requirement tag:** [Req: formal — DEFECT_LIBRARY.md column spec, pre_fix_commit and fix_commit format]
+**Requirement tag:** [Req: formal — SKILL.md §Phase 2c and §Phase 2d]
 
-**What happened:** A defect row lists fix_commit = "abc123def" (40-char SHA, but typo: only 39 chars valid, last char is "f" instead of a hex digit). When evaluators check out this commit or use it as an oracle, `git rev-parse abc123def` fails (invalid SHA). The defect cannot be evaluated. If this happens for 5+ defects out of 2,564, statistical power is reduced. More importantly, if this is discovered late (after evaluation runs start), it requires re-evaluation of affected defects, wasting compute and model API calls. Commit SHA validation must happen upfront.
+**What happened:** Earlier self-bootstrap runs showed a recurring failure mode: spec audit found real bugs, but they never reached the cumulative BUG tracker or regression suite. The result looked complete because the triage doc existed, yet 30-50% of confirmed bugs were effectively orphaned from closure verification.
 
-**The requirement:** Every fix_commit and pre_fix_commit in DEFECT_LIBRARY.md must be a valid 40-character SHA-1 hash (or resolvable ref, though 40-char SHA is preferred). Each commit must exist in the corresponding repository (resolved via `git rev-parse COMMIT`). The pre_fix_commit must be the immediate parent of the fix_commit (`git rev-parse FIX_COMMIT^ == PRE_FIX_COMMIT`). Any invalid or non-resolvable commit must be detected before the defect is usable.
+**The requirement:** Every confirmed code bug from code review **and** spec audit must enter the same BUG tracker and carry closure evidence before Phase 2d can complete.
 
-**How to verify:**
-- Run: `pytest quality/test_functional.py::test_commit_sha_validity -v`
-- Expected: Test reads DEFECT_LIBRARY.md, extracts fix_commit and pre_fix_commit for all 2,564 defects. For a sample of 100 defects (evenly distributed across prefixes), invokes `git rev-parse` in the corresponding repo to verify both commits exist and pre_fix_commit is the parent of fix_commit.
-- Failure criteria: Any invalid SHA format, any SHA that doesn't resolve, any case where pre_fix_commit != git rev-parse FIX_COMMIT^.
+**How to verify:** Confirm `test_scenario_5_spec_audit_bugs_disappear_between_phases` passes and `quality/PROGRESS.md` contains a populated BUG tracker plus matching terminal-gate arithmetic.
 
 ---
 
-### Scenario 6: Tooling Script Failure on Edge Cases Requires Manual Intervention
+### Scenario 6: Stale supplemental docs skew the audit baseline
 
-**Requirement tag:** [Req: formal — normalize_categories.py specification, error handling requirements]
+**Requirement tag:** [Req: formal — `references/spec_audit.md` §Pre-audit docs validation]
 
-**What happened:** normalize_categories.py processes all 2,564 defects and applies keyword-based normalization rules. If a defect has a malformed or unexpected category string (e.g., a raw category with Unicode characters, or a very long string that causes regex backtracking), the script might hang, crash, or produce a nonsensical output. Without defensive error handling, the script fails silently (returns partial output, exits with code 0). Downstream tools depend on all 2,564 categories being normalized; if the script failed on defect #1,500, the output file has categories for 1–1,499 only, and defects 1,500–2,564 have no canonical category assigned. This is silent data loss again, surfaced only if someone manually inspects the output.
+**What happened:** `docs_gathered/` is intentionally powerful: it lets auditors read prior reviews, design decisions, and incident history. If a stale or wrong gathered document is treated as authoritative without validation, the Council of Three becomes more confident for the wrong reasons and can promote documentation drift into false defects.
 
-**The requirement:** All tooling scripts must include defensive error handling: try/catch for subprocess calls, input validation, explicit logging of failures. If any defect cannot be processed, the script must emit a clear error message and exit with a non-zero code. No silent failures. All errors must be loggable for auditing.
+**The requirement:** Every spec-audit triage must validate 2-3 concrete claims from `docs_gathered/` against current source before using those docs as audit evidence.
 
-**How to verify:**
-- Run: `pytest quality/test_functional.py::test_normalize_categories_handles_edge_cases -v`
-- Expected: Test calls normalize_categories.py with deliberately malformed input (missing category field, very long category string, non-ASCII characters) and verifies the script exits with an error code and produces a clear error message (not a silent skip or hang).
-- Failure criteria: Script returns exit code 0 despite processing error. Script hangs or times out. No error message logged for problematic defects.
+**How to verify:** Confirm `test_scenario_6_stale_supplemental_docs_skew_the_audit_baseline` passes and `quality/spec_audits/2026-04-06-triage.md` includes `## Pre-audit docs validation` with concrete claim-by-claim checks.
 
 ---
 
-### Scenario 7: API Contract Violation — Evaluation Results Schema Mismatch
+### Scenario 7: Partial sessions masquerade as successful runs
 
-**Requirement tag:** [Req: formal — DETECTION_RESULTS.md scoring schema]
+**Requirement tag:** [Req: formal — `references/spec_audit.md` §Detecting partial sessions and carried-over artifacts]
 
-**What happened:** Evaluators run the quality playbook and score each defect: direct_hit / adjacent / miss / not_evaluable. Results are recorded in a JSONL file (`results.jsonl`) with fields: run_id, defect_id, score, etc. If the scorer uses a non-standard score value (e.g., "direct-hit" instead of "direct_hit", or "MISS" instead of "miss"), downstream analysis that filters on score value silently ignores that row. An evaluator scores 281 defects but because of a typo in 10 score values, analysis only counts 271 defects. Statistical comparison between runs is then invalid: one run appears to have lower detection rate but it's only because the score values don't match the schema.
+**What happened:** Long self-bootstrap runs create scaffolding early. If a session dies after creating empty review or audit files, later readers can mistake those artifacts for evidence that the review actually ran. That produces "clean" runs whose only success was directory creation.
 
-**The requirement:** All evaluation results must conform to DETECTION_RESULTS.md schema: score must be one of exactly 4 values (direct_hit, adjacent, miss, not_evaluable), all fields present, defect_id must match a valid entry in DEFECT_LIBRARY.md. Any result record that doesn't conform must be rejected during import/analysis.
+**The requirement:** Partial sessions and carried-over artifacts must be labeled as failed or stale, never reported as clean zero-finding runs.
 
-**How to verify:**
-- Run: `pytest quality/test_functional.py::test_detection_results_schema_validation -v`
-- Expected: Test reads a sample detection results JSONL file (or creates one synthetically) and validates each record against the schema: required fields, score enum, defect_id exists in DEFECT_LIBRARY.md. Reports any schema violations.
-- Failure criteria: Any missing required field, any invalid score value, any defect_id not in DEFECT_LIBRARY.md.
+**How to verify:** Confirm `test_scenario_7_partial_sessions_masquerade_as_successful_runs` passes and generated review/audit files contain substantive content instead of empty templates.
 
 ---
+
+### Scenario 8: Integration quality gates hallucinate artifact fields
+
+**Requirement tag:** [Req: formal — `references/review_protocols.md` §The Field Reference Table]
+
+**What happened:** For a documentation-heavy repo, the most common integration failure is not a crash — it is a structurally plausible protocol that names the wrong fields or omits the skill-specific integration section entirely. The protocol looks impressive, but every downstream execution step is off by one missing column or stale heading.
+
+**The requirement:** The integration protocol must build a Field Reference Table from the actual artifact templates and include the skill/LLM integration section for this repository class.
+
+**How to verify:** Confirm `test_scenario_8_integration_quality_gates_hallucinate_artifact_fields` and `test_integration_protocol_contains_field_reference_table` pass.
 
 ## AI Session Quality Discipline
 
-Every AI session working on QPB must:
-
-1. Read this QUALITY.md file before starting work.
-2. Run the full test suite (`pytest quality/test_functional.py -v`) before marking any task complete.
-3. Add tests for new tooling features (not just happy path — include validation and error cases).
-4. Update this file if new failure modes are discovered in code review or audit.
-5. Output a Quality Compliance Checklist (below) before ending a session.
-6. Never remove a fitness-to-purpose scenario — only add or refine.
-
-## Quality Compliance Checklist
-
-Before ending a session, verify:
-
-- [ ] All tests in `quality/test_functional.py` pass (run `pytest quality/test_functional.py -v`)
-- [ ] Code coverage for core modules remains above 80% (run `pytest quality/test_functional.py --cov=tooling`)
-- [ ] All defects in DEFECT_LIBRARY.md are verified for format, SHA validity, and category correctness
-- [ ] Per-repo description files match DEFECT_LIBRARY.md counts (no silent data loss)
-- [ ] All tooling scripts run without errors on the full 2,564-defect dataset
-- [ ] DEFECT_LIBRARY.md row count matches sum of per-repo defect counts
-- [ ] No fitness-to-purpose scenarios were removed or weakened
+1. Read `quality/QUALITY.md` and `quality/REQUIREMENTS.md` before editing the skill or references.
+2. Treat the root docs and `.github/skills/` package as one product; never update one without verifying the other.
+3. When a BUG is confirmed, add executable closure evidence before ending the session.
+4. Never mark verification complete without reading `quality/PROGRESS.md` and reconciling the terminal-gate counts.
+5. Use `docs_gathered/` as evidence, not decoration: validate it, cite it, and keep its influence auditable.
+6. Update this file whenever a new documentation-drift or audit-integrity failure mode is discovered.
 
 ## The Human Gate
 
-The following require human judgment and cannot be automated:
-
-- **Verification of defect accuracy** — Is the defect description correct? Does the fix commit actually fix the described issue? Requires reading actual code and commit messages.
-- **Category appropriateness** — Is a defect correctly categorized? Some defects genuinely span multiple categories; human judgment is needed to assign the primary category.
-- **Severity assessment** — Is a "Critical" severity accurate, or should it be "High"? Requires understanding the system's context and failure impact.
-- **Playbook angle accuracy** — Which playbook step should detect this? Requires reading the playbook and reasoning about what the step is designed to catch.
-- **Dataset completeness decisions** — Which new repos should be added to fill gaps? Which languages are underrepresented? Requires strategic judgment about research value.
+- Final judgment on legal/licensing intent if documentation history and the license file genuinely disagree.
+- Decisions to weaken or remove quality gates that would materially change the skill's promised review rigor.
+- Whether a lower-confidence gathered document should remain in `docs_gathered/` as an audit source.
+- Tone and article-framing choices in README prose that affect communication but not functional correctness.

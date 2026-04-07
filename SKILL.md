@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate seven quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis and missing safeguard detection. Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.8
+  version: 1.3.9
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -13,7 +13,7 @@ metadata:
 > **MANDATORY FIRST ACTION — do this before reading the rest of the skill.**
 > Print the following message to the user exactly as written, then continue.
 >
-> Quality Playbook v1.3.8 — by Andrew Stellman
+> Quality Playbook v1.3.9 — by Andrew Stellman
 > https://github.com/andrewstellman/quality-playbook
 >
 > Generating a complete quality system for this project. Here's what I'll do:
@@ -237,7 +237,7 @@ This is the most important step for the code review protocol. Everything found d
 
 1. **Phase A — Contract extraction.** Read all source files, list every behavioral contract. Write to `quality/CONTRACTS.md`. This is discovery — list everything, even if it seems obvious.
 2. **Phase B — Requirement derivation.** Read CONTRACTS.md and documentation. Group related contracts, enrich with user intent, write formal requirements. Write to `quality/REQUIREMENTS.md`.
-3. **Phase C — Coverage verification.** Cross-reference every contract against every requirement. Fix gaps. Loop up to 3 times until coverage reaches 100%. Write to `quality/COVERAGE_MATRIX.md`.
+3. **Phase C — Coverage verification.** Cross-reference every contract against every requirement. Fix gaps. Loop up to 3 times until coverage reaches 100%. Write to `quality/COVERAGE_MATRIX.md`. The matrix must have **one row per requirement** (REQ-001, REQ-002, etc.) — not grouped ranges like "C-001 to C-007 | REQ-001, REQ-003". Grouped ranges make machine verification impossible and hide gaps.
 4. **Phase D — Completeness check + self-refinement loop.** Apply the domain checklist, testability audit, and cross-requirement consistency check. Write to `quality/COMPLETENESS_REPORT.md`. Then run up to 3 self-refinement iterations: read the report, fix gaps, re-check. Short-circuit when fewer than 3 changes per iteration.
 5. **Phase E — Narrative pass.** Add project overview, use cases (with actors, steps, and requirement traceability), cross-cutting concerns, category narratives. Reorder for top-down flow. Renumber sequentially.
 
@@ -273,7 +273,7 @@ Write the initial PROGRESS.md:
 ## Run metadata
 Started: [date/time]
 Project: [project name]
-Skill version: 1.3.8
+Skill version: 1.3.9
 With docs: [yes/no]
 
 ## Phase completion
@@ -385,7 +385,7 @@ Pass 1 catches ~65% of real defects: race conditions, null pointer hazards, reso
 
 **Pass 2 — Requirement Verification.** For each testable requirement derived in Step 7 of Phase 1, check whether the code satisfies it. For each requirement, either show the code that satisfies it or explain specifically why it doesn't. This is a pure verification pass — the reviewer's only job is "does the code satisfy this requirement?" Not a general review. Not looking for other bugs. Just verification.
 
-**Minimum evidence rule:** Pass 2 must cite at least one code location (file:line or file:function) per requirement or per requirement group. Blanket satisfaction claims like "REQ-003 through REQ-012 — satisfied by the client paths reviewed during the pass" without any code citations do not satisfy Pass 2. If a group of requirements is satisfied by the same module, cite the module once and list the requirements it covers. The point is traceability — a reviewer reading Pass 2 should be able to follow the evidence chain from requirement to code without re-reading the entire codebase.
+**Minimum evidence rule:** Pass 2 must cite at least one code location (file:line or file:function) **per requirement**. Blanket satisfaction claims like "REQ-003 through REQ-012 — satisfied by the client paths reviewed during the pass" without per-requirement code citations do not satisfy Pass 2. If two or three requirements are satisfied by the same function, cite the function once and list those specific requirements — but each requirement must appear individually with its own SATISFIED/VIOLATED verdict, not as part of an unverified range. A group of more than three requirements under a single citation is a sign that the verification was superficial. The point is traceability — a reviewer reading Pass 2 should be able to follow the evidence chain from any single requirement to the code that satisfies it without re-reading the entire codebase.
 
 Pass 2 catches violations of individual requirements — cases where the code doesn't do what the specification says it should. This finds bugs that structural review misses because the code that IS there is correct; the bug is what's missing or what doesn't match the spec.
 
@@ -518,7 +518,7 @@ Before finalizing, re-read `quality/PROGRESS.md` and `quality/COMPLETENESS_REPOR
 - The requirement count is explicit and consistent across all three surfaces: the count in REQUIREMENTS.md's header (add one if missing: "N requirements derived"), the count in PROGRESS.md's artifact inventory, and the count in COVERAGE_MATRIX.md's header. All three must state the same number, and it must match the actual count of `### REQ-NNN` headings in REQUIREMENTS.md.
 - The `With docs` field in PROGRESS.md accurately reflects whether `docs_gathered/` exists and contains files
 - The Terminal Gate Verification section is present and filled in
-- No stale pre-reconciliation text remains in COMPLETENESS_REPORT.md — if both a `## Verdict` and an `## Updated verdict` (or `## Post-Review Reconciliation`) section exist, delete the original `## Verdict` section entirely or rename it to `## Pre-review verdict (superseded)`. The final document must have exactly one authoritative verdict, not two competing ones.
+- No stale pre-reconciliation text remains in COMPLETENESS_REPORT.md — if both a `## Verdict` and an `## Updated verdict` (or `## Post-Review Reconciliation`) section exist, **delete the original `## Verdict` section entirely**. Do not rename it, relabel it, or mark it as superseded — remove it from the document. The final document must have exactly one `## Verdict` heading with the post-reconciliation assessment. Two verdict sections, regardless of labeling, is a deliverable defect.
 
 If any metadata is stale, fix it now.
 
