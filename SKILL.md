@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate seven quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis and missing safeguard detection. Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.13
+  version: 1.3.14
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -13,7 +13,7 @@ metadata:
 > **MANDATORY FIRST ACTION — do this before reading the rest of the skill.**
 > Print the following message to the user exactly as written, then continue.
 >
-> Quality Playbook v1.3.13 — by Andrew Stellman
+> Quality Playbook v1.3.14 — by Andrew Stellman
 > https://github.com/andrewstellman/quality-playbook
 >
 > Generating a complete quality system for this project. Here's what I'll do:
@@ -273,12 +273,43 @@ This is the most important step for the code review protocol. Everything found d
 **The five-phase pipeline:**
 
 1. **Phase A — Contract extraction.** Read all source files, list every behavioral contract. Write to `quality/CONTRACTS.md`. This is discovery — list everything, even if it seems obvious.
-2. **Phase B — Requirement derivation.** Read CONTRACTS.md and documentation. Group related contracts, enrich with user intent, write formal requirements. Write to `quality/REQUIREMENTS.md`. For each requirement, record the **doc source** — the specific gathered document (filename), section, and passage that establishes the expected behavior. If the requirement derives from source code rather than documentation, record "source: [file:line]" and tag it `[Req: inferred — from source]`. This doc-source field creates the forward link in the traceability chain: gathered docs → requirements → bugs → tests. Without it, a reviewer cannot verify that the requirement reflects the spec's actual intent rather than the agent's interpretation.
+2. **Phase B — Requirement derivation.** Read CONTRACTS.md and documentation. Group related contracts, enrich with user intent, write formal requirements. Write to `quality/REQUIREMENTS.md`. For each requirement, record the **doc source** with its authority tier — the specific gathered document (filename), section, and passage that establishes the expected behavior, prefixed with `[Tier N]`. If the requirement derives from source code rather than documentation, record `[Tier 3] [source] file:line` and tag it `[Req: inferred — from source]`. This doc-source field creates the forward link in the traceability chain: gathered docs → requirements → bugs → tests. Without it, a reviewer cannot verify that the requirement reflects the spec's actual intent rather than the agent's interpretation.
 3. **Phase C — Coverage verification.** Cross-reference every contract against every requirement. Fix gaps. Loop up to 3 times until coverage reaches 100%. Write to `quality/COVERAGE_MATRIX.md`. The matrix must have **one row per requirement** (REQ-001, REQ-002, etc.) — not grouped ranges like "C-001 to C-007 | REQ-001, REQ-003". Grouped ranges make machine verification impossible and hide gaps.
-4. **Phase D — Completeness check + self-refinement loop.** Apply the domain checklist, testability audit, and cross-requirement consistency check. Also verify that every deep document with a "will cover" commitment in the coverage commitment table has at least one requirement traced to it — if not, add requirements for the gap before continuing. Write to `quality/COMPLETENESS_REPORT.md` as a **baseline** completeness report (without a `## Verdict` section — the verdict is deferred to Phase 2d post-reconciliation, which produces the only verdict that counts for closure). Then run up to 3 self-refinement iterations: read the report, fix gaps, re-check. Short-circuit when fewer than 3 changes per iteration.
-5. **Phase E — Narrative pass.** Add project overview, use cases (with actors, steps, and requirement traceability), cross-cutting concerns, category narratives. Reorder for top-down flow. Renumber sequentially.
+4. **Phase D — Completeness check + self-refinement loop.** Apply the domain checklist, testability audit, and cross-requirement consistency check. Also verify that every deep document with a "will cover" commitment in the coverage commitment table has at least one requirement traced to it — if not, add requirements for the gap before continuing.
 
-**REQUIREMENTS.md must begin with a human-readable overview** that answers: What is this project? What does it do? Who are the actors (users, systems, hardware, protocols)? What are the highest-risk areas? This overview should be useful to someone who has never seen the project before. If the project is a library or driver where all actors are systems, describe the system actors and their interactions. Do not start with raw scope metadata or HTML comments — lead with a plain-language description. Follow the overview with concrete use cases (with actors, preconditions, and steps) before the individual requirements.
+   Write to `quality/COMPLETENESS_REPORT.md` as a **baseline** completeness report (without a `## Verdict` section — the verdict is deferred to Phase 2d post-reconciliation, which produces the only verdict that counts for closure). Then run up to 3 self-refinement iterations: read the report, fix gaps, re-check. Short-circuit when fewer than 3 changes per iteration.
+5. **Phase E — Narrative pass.** Add project overview (with overview validation gate), then derive use cases (with use case derivation gate). Both gates must pass before proceeding to category narratives, cross-cutting concerns, and final reordering. This sequencing prevents multi-pass loops where a failed late gate forces re-derivation. Reorder for top-down flow. Renumber sequentially.
+
+**REQUIREMENTS.md must begin with a human-readable overview** that answers: What is this project? What does it do? Who are the actors (users, systems, hardware, protocols)? What are the highest-risk areas? This overview should be useful to someone who has never seen the project before. If the project is a library or driver where all actors are systems, describe the system actors (kernel maintainers, protocol peers, integrators, end-user developers) and their interactions. Do not start with raw scope metadata or HTML comments — lead with a plain-language description.
+
+**Overview validation gate (mandatory).** After writing the overview, perform this self-check before proceeding to use case derivation:
+
+> Does this overview describe the project the way its actual users would recognize it? Specifically:
+> - Does it name the project's ecosystem role and real-world significance?
+> - Does it identify who depends on it and for what?
+> - Would a developer who uses this project daily say "yes, that's what it is and why it matters"?
+> - For well-known projects, does it reflect publicly known adoption (e.g., Cobra → kubectl/Hugo/GitHub CLI; Express → millions of Node.js API servers; Zod → form validation/tRPC; Serde → the default Rust serialization layer)?
+
+If the overview reads like it was written by someone who only read the source code and never used the software, revise it before proceeding. The overview sets the frame for everything downstream — feature-oriented use cases and internally focused requirements are symptoms of an overview that only describes the code, not the project.
+
+**Use case derivation (mandatory, runs after overview gate).** Derive 5–7 use cases from the validated overview and gathered documentation, then validate them against the code. Each use case must:
+
+- Describe a **real user outcome**, not a code feature. "Developer builds a CLI tool with nested subcommands, persistent flags, and shell completion" — not "Framework supports command trees."
+- Name a **concrete actor** and what they are trying to accomplish. Actors include end-user developers, system administrators, kernel maintainers, protocol peers, integrators, and automated consumers.
+- Be **recognizable to an actual user** of the software. For well-known projects, validate use cases against the model's own knowledge of the project, community docs, tutorials, and real-world adoption patterns.
+- Connect to at least one requirement through testable conditions of satisfaction.
+
+The pipeline should explicitly ask: "Based on this project's overview, gathered documentation, and known user base, what are the 5–7 most important things real users do with this software?" Derive use cases from that question — not from scanning the code and grouping features into categories.
+
+**Use case validation against code:** After deriving use cases from the overview and docs, verify each one against the codebase. If a use case describes something the code doesn't actually support, revise or remove it. If the code supports an important user outcome that no use case covers, add one. The goal is use cases that are both user-recognizable AND code-grounded.
+
+**Acceptance criteria span check (mandatory, runs after use case derivation).** After use cases are finalized and validated against code, check whether the conditions of satisfaction across all requirements collectively span the project's main behaviors:
+
+> Do these acceptance criteria, taken together, cover the project? Is there a major user-facing behavior described in the overview or use cases that no requirement's conditions of satisfaction would catch if it broke?
+
+For each use case, at least one requirement's conditions of satisfaction must be traceable to it, and at least one linked requirement must be `specific` (not `architectural-guidance`). Use cases with no linked specific requirements indicate a gap. When gaps are found, either: (a) add new requirements or sharpen existing conditions to cover the gap, or (b) revise the use case if it doesn't reflect what the requirements actually protect. Record the results of this check in the completeness report.
+
+Follow the use cases with the individual requirements.
 
 **For each requirement, provide all of these fields:**
 
@@ -288,8 +319,15 @@ This is the most important step for the code review protocol. Everything found d
 - **Conditions of satisfaction**: Specific, testable scenarios that prove this requirement is met. Include the happy path, edge cases, and failure modes. Each individual contract from Phase A that was grouped into this requirement becomes a condition of satisfaction.
 - **Alternative paths**: Multiple code paths, modes, or entry points that must all satisfy the requirement. Alternative paths are where bugs hide.
 - **References**: Cite the source — spec section, ChangeLog entry, config field definition, source comment, issue number, or domain knowledge.
-- **Doc source**: The specific gathered document and section that establishes this requirement's expected behavior. Format: `[doc_filename] § [section/page]` with a ≤15-word behavioral contract quote. If derived from source code, use `[source] file:line` with the relevant comment or assertion. This field feeds the TDD traceability chain — when a bug violates this requirement, the test cites this passage.
-- **Specificity**: **specific** (testable against a single code location) or **directional** (guides an audit across multiple locations)
+- **Doc source**: The specific gathered document and section that establishes this requirement's expected behavior, with an inline authority tier. Format: `[Tier N] [doc_filename] § [section/page]` with a ≤15-word behavioral contract quote. If derived from source code, use `[Tier 3] [source] file:line` with the relevant comment or assertion. This field feeds the TDD traceability chain — when a bug violates this requirement, the test cites this passage.
+
+  **Authority tiers:**
+  - **Tier 1 (Canonical):** Official API docs, published specs, language/protocol standards. These directly state the expected behavior.
+  - **Tier 2 (Strong secondary):** Design documents, gathered docs with behavioral contracts, well-maintained READMEs, inline Javadoc/docstrings that define public API contracts, formal locking annotations and safety invariants that document caller-facing contracts (not incidental implementation notes — the test is "was this written as a deliberate contract for callers?").
+  - **Tier 3 (Weak secondary):** Changelogs, issue summaries, troubleshooting guides, source comments, test files, migration guides.
+
+  Requirements backed only by Tier 3 sources must be tagged `[Req: inferred]` with a note explaining why no stronger source exists. The completeness report must flag the ratio of Tier 1/2/3 sources across all requirements.
+- **Specificity**: **specific** (testable — must have conditions of satisfaction that a code reviewer can check against a specific code location or behavior; this is the default and counts toward coverage metrics) or **architectural-guidance** (not testable against individual code paths — covers cross-cutting properties like "remain lightweight and stdlib-compatible" or "no_std support"; informs the quality constitution but is not counted in coverage metrics; most projects should have 0–3 architectural-guidance requirements — more than 5 suggests over-broad classification). The category "directional" is retired. Any requirement that would have been "directional" must either be made specific (with testable conditions) or explicitly classified as architectural-guidance.
 
 **Do not cap the requirement count.** Derive as many as the project warrants. A small utility might have 20. A mature library might have 100+. The goal is completeness.
 
@@ -302,6 +340,28 @@ For each subsystem, record one of the following in PROGRESS.md:
 - an explicit exclusion with rationale, risk acknowledgment, and recommended follow-up
 
 A deep-documented subsystem with a "will cover" commitment and zero mapped requirements is a process failure, not a legitimate scope choice. Do not proceed to artifact generation until every commitment is satisfied or explicitly converted to a justified exclusion.
+
+**Step 7b: Bidirectional traceability check (mandatory)**
+
+**Timing: Execute Step 7a and 7b after Phase E completes** (i.e., after the overview validation gate, use case derivation, and acceptance criteria span check have all run). The reverse traceability check depends on finalized requirements AND finalized use cases.
+
+After requirements derivation is complete, run a reverse traceability check. Forward traceability (gathered docs → requirements → bugs → tests) is already built into the pipeline. This step checks the reverse direction: do significant code paths map back to requirement conditions?
+
+This operates at **path/branch/helper granularity**, not file level. File-level coverage was 100% in v1.3.13 and still missed two real bugs. The question is not "does this file map to some requirement?" but "does this significant branch map to a requirement clause that states what must be preserved here?"
+
+**Scoped to four categories** (not an open-ended branch audit):
+
+1. **Alternative paths already named in requirements.** If a requirement mentions fallback or alternative paths (e.g., "MSI-X vs INTx fallback," "admin queue present vs absent," "sync vs async"), each alternative must have an explicit **symmetry condition** — a statement of what invariant must hold across both paths. A requirement that says "the system handles both X and Y" without specifying what "handles" means for each is incomplete.
+
+2. **Helpers that translate public constants into runtime behavior.** If a helper function whitelists, filters, or translates between UAPI-defined constants and runtime behavior (e.g., `vring_transport_features()` whitelisting feature bits, codec registry lookups, feature flag gates), it must have a helper-specific requirement enumerating the expected preserved/translated values.
+
+3. **Capability-negotiation and fallback logic.** Code paths where the system negotiates capabilities with an external peer (protocol version negotiation, feature detection, graceful degradation) must have requirements covering both the negotiated-up and negotiated-down paths.
+
+4. **Functions named in prior BUGS.md, VERSION_HISTORY.md, or spec audit outputs.** If a previous run found a bug in a specific function, future runs must show explicit re-check evidence for that function ("known bug class sentinels"). This prevents the "lost requirement" regression class. If prior spec audit outputs exist in `quality/spec_audits/`, read them before running the sentinel check — cross-model findings from council reviews are a high-value source of known bug surfaces.
+
+For each category, check whether the requirements contain specific conditions covering the identified paths. Orphaned paths — significant code paths without requirement coverage — trigger a "coverage gap" marker in the completeness report. These gaps must be resolved (by adding requirement conditions or by providing explicit justification) before the completeness report can declare requirements sufficient.
+
+**Carry-forward rule:** When a prior run's REQUIREMENTS.md exists in the quality directory, the pipeline must read it and check whether any conditions from the prior version were dropped. If conditions were dropped, the pipeline must either: (a) re-derive them with updated justification, or (b) document why the condition is no longer relevant. Silent drops are not permitted — they are the direct cause of the v1.3.13 virtio regression where a previously learned requirement was lost.
 
 **After the pipeline:** The skill also generates `quality/REVIEW_REQUIREMENTS.md` (interactive review protocol) and `quality/REFINE_REQUIREMENTS.md` (refinement pass protocol). These support iterative improvement — the user can review requirements interactively, run refinement passes with different models, and keep versioned backups of each iteration. See `references/requirements_pipeline.md` for the full versioning protocol and backup structure.
 
@@ -325,7 +385,7 @@ Write the initial PROGRESS.md:
 ## Run metadata
 Started: [date/time]
 Project: [project name]
-Skill version: 1.3.13
+Skill version: 1.3.14
 With docs: [yes/no]
 
 ## Phase completion
@@ -466,6 +526,8 @@ Pass 3 catches contradictions where two individually-correct pieces of code disa
 
 **BUGS.md:** After all review and audit phases, generate `quality/BUGS.md` — a consolidated bug report with full reproduction details for each confirmed bug. For each bug, include: bug ID, source (code review or spec audit), file:line, description, severity, minimal reproduction scenario (what input or sequence triggers the bug), expected vs actual behavior, references to the regression test and any proposed fix patch, and **spec basis**.
 
+**Severity calibration:** Credential leakage, authentication bypass, and injection-class bugs are always high severity regardless of assessed likelihood. Authorization header exposure across trust boundaries (e.g., cross-domain redirects) is credential leakage. When in doubt about security-relevant severity, default to high.
+
 **Spec basis (mandatory field per bug):** Cite the specific documentation passage that establishes the expected behavior — the gathered doc filename, section/page, and the behavioral contract it defines. If no gathered doc covers the behavior, check whether the project's own comments, README, or API docs define it. If no documentation exists for the expected behavior, classify the bug as a "code inconsistency" rather than a "spec violation" and note this in the severity assessment. A spec violation is a stronger finding than a code inconsistency — it means the code contradicts an authoritative source, not just that the code looks wrong. This distinction matters when reporting upstream: maintainers respond to "your code violates section X.Y of your own spec" differently than "this looks like it might be a bug."
 
 **Patch files:** For each confirmed bug, generate:
@@ -483,6 +545,14 @@ Patches must apply cleanly against the original source tree with `git apply`. Do
 **Read `references/review_protocols.md`** for the template.
 
 Must include: safety constraints, pre-flight checks, test matrix with specific pass criteria, an execution UX section, and a structured reporting format. Cover happy path, cross-variant consistency, output correctness, and component boundaries.
+
+**Use-case traceability (mandatory).** The test matrix must include a **use-case traceability column**. Each integration test group must either:
+
+1. **Map to a use case** — Name the use case (e.g., UC-03) it validates and describe how the test exercises the user outcome from that use case. These are primary integration tests — they verify that the end-to-end behavior described in the use case actually works.
+
+2. **Be labeled as infrastructure** — Tests that don't map to a use case (build validation, race detection, compatibility checks, existing test suite regression guards) are explicitly labeled `[Infrastructure]` in the traceability column. They have value but don't count toward use-case coverage.
+
+After generating the test matrix, check: does every use case in REQUIREMENTS.md have at least one integration test mapped to it? If not, flag the uncovered use case as a gap. Integration tests mapped to use cases should test the **end-to-end behavior** described in the use case — not just run existing unit tests that happen to touch the same code paths. For example, if a use case says "Developer authenticates and follows redirects without leaking secrets," the integration test should perform a redirect across domains with auth headers and verify they're stripped — not just run `pytest -k auth`.
 
 **All commands must use relative paths.** The generated protocol should include a "Working Directory" section at the top stating that all commands run from the project root using relative paths. Never generate commands that `cd` to an absolute path — this breaks when the protocol is run from a different machine or directory. Use `./scripts/`, `./pipelines/`, `./quality/`, etc.
 
