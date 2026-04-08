@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate seven quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis and missing safeguard detection. Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.11
+  version: 1.3.13
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -13,7 +13,7 @@ metadata:
 > **MANDATORY FIRST ACTION — do this before reading the rest of the skill.**
 > Print the following message to the user exactly as written, then continue.
 >
-> Quality Playbook v1.3.11 — by Andrew Stellman
+> Quality Playbook v1.3.13 — by Andrew Stellman
 > https://github.com/andrewstellman/quality-playbook
 >
 > Generating a complete quality system for this project. Here's what I'll do:
@@ -273,7 +273,7 @@ This is the most important step for the code review protocol. Everything found d
 **The five-phase pipeline:**
 
 1. **Phase A — Contract extraction.** Read all source files, list every behavioral contract. Write to `quality/CONTRACTS.md`. This is discovery — list everything, even if it seems obvious.
-2. **Phase B — Requirement derivation.** Read CONTRACTS.md and documentation. Group related contracts, enrich with user intent, write formal requirements. Write to `quality/REQUIREMENTS.md`.
+2. **Phase B — Requirement derivation.** Read CONTRACTS.md and documentation. Group related contracts, enrich with user intent, write formal requirements. Write to `quality/REQUIREMENTS.md`. For each requirement, record the **doc source** — the specific gathered document (filename), section, and passage that establishes the expected behavior. If the requirement derives from source code rather than documentation, record "source: [file:line]" and tag it `[Req: inferred — from source]`. This doc-source field creates the forward link in the traceability chain: gathered docs → requirements → bugs → tests. Without it, a reviewer cannot verify that the requirement reflects the spec's actual intent rather than the agent's interpretation.
 3. **Phase C — Coverage verification.** Cross-reference every contract against every requirement. Fix gaps. Loop up to 3 times until coverage reaches 100%. Write to `quality/COVERAGE_MATRIX.md`. The matrix must have **one row per requirement** (REQ-001, REQ-002, etc.) — not grouped ranges like "C-001 to C-007 | REQ-001, REQ-003". Grouped ranges make machine verification impossible and hide gaps.
 4. **Phase D — Completeness check + self-refinement loop.** Apply the domain checklist, testability audit, and cross-requirement consistency check. Also verify that every deep document with a "will cover" commitment in the coverage commitment table has at least one requirement traced to it — if not, add requirements for the gap before continuing. Write to `quality/COMPLETENESS_REPORT.md` as a **baseline** completeness report (without a `## Verdict` section — the verdict is deferred to Phase 2d post-reconciliation, which produces the only verdict that counts for closure). Then run up to 3 self-refinement iterations: read the report, fix gaps, re-check. Short-circuit when fewer than 3 changes per iteration.
 5. **Phase E — Narrative pass.** Add project overview, use cases (with actors, steps, and requirement traceability), cross-cutting concerns, category narratives. Reorder for top-down flow. Renumber sequentially.
@@ -288,6 +288,7 @@ This is the most important step for the code review protocol. Everything found d
 - **Conditions of satisfaction**: Specific, testable scenarios that prove this requirement is met. Include the happy path, edge cases, and failure modes. Each individual contract from Phase A that was grouped into this requirement becomes a condition of satisfaction.
 - **Alternative paths**: Multiple code paths, modes, or entry points that must all satisfy the requirement. Alternative paths are where bugs hide.
 - **References**: Cite the source — spec section, ChangeLog entry, config field definition, source comment, issue number, or domain knowledge.
+- **Doc source**: The specific gathered document and section that establishes this requirement's expected behavior. Format: `[doc_filename] § [section/page]` with a ≤15-word behavioral contract quote. If derived from source code, use `[source] file:line` with the relevant comment or assertion. This field feeds the TDD traceability chain — when a bug violates this requirement, the test cites this passage.
 - **Specificity**: **specific** (testable against a single code location) or **directional** (guides an audit across multiple locations)
 
 **Do not cap the requirement count.** Derive as many as the project warrants. A small utility might have 20. A mature library might have 100+. The goal is completeness.
@@ -324,12 +325,12 @@ Write the initial PROGRESS.md:
 ## Run metadata
 Started: [date/time]
 Project: [project name]
-Skill version: 1.3.11
+Skill version: 1.3.13
 With docs: [yes/no]
 
 ## Phase completion
 - [x] Phase 1: Exploration — completed [date/time]
-- [ ] Phase 2: Artifact generation (QUALITY.md, REQUIREMENTS.md, tests, protocols, AGENTS.md)
+- [ ] Phase 2: Artifact generation (QUALITY.md, REQUIREMENTS.md, tests, protocols, AGENTS.md, RUN_TDD_TESTS.md)
 - [ ] Phase 2b: Code review + regression tests
 - [ ] Phase 2c: Spec audit + triage
 - [ ] Phase 2d: Post-review reconciliation + closure verification
@@ -361,6 +362,7 @@ With docs: [yes/no]
        Language equivalents: Python "xfail", TypeScript/JS "test.fails", Go "t.Skip",
        Java "@Disabled", Rust "compile_fail" (for compile-time bugs). Use the
        language-appropriate term in parentheses, e.g. "confirmed open (@Disabled)"
+     - "TDD verified (FAIL→PASS)" — full red-green cycle: test fails on unpatched, passes after fix patch
      - "fixed (test passes)" — bug fixed, regression test now passes, xfail marker removed
      - "exempt (reason)" — no regression test possible, reason documented -->
 
@@ -378,7 +380,7 @@ Update this file after every phase. The cumulative BUG tracker is the most impor
 
 ## Phase 2: Generate the Quality Playbook
 
-Now write the six files. For each one, follow the structure below and consult the relevant reference file for detailed guidance.
+Now write the seven files. For each one, follow the structure below and consult the relevant reference file for detailed guidance.
 
 **Artifact dependency rules:**
 - `quality/RUN_CODE_REVIEW.md` Pass 2 depends on a stable `quality/REQUIREMENTS.md` — thin requirements produce thin Pass 2 review. If the requirements count seems low for the code surface (fewer than ~3–4 requirements per core module), note this at the start of the Pass 2 report.
@@ -387,7 +389,7 @@ Now write the six files. For each one, follow the structure below and consult th
 - `quality/COMPLETENESS_REPORT.md` has two stages: baseline (pre-review, no verdict section) and final (post-reconciliation in Phase 2d, with the authoritative verdict).
 - `quality/PROGRESS.md` is the authoritative state file and must be updated before each downstream artifact begins.
 
-**Why six files instead of just tests?** Tests catch regressions but don't prevent new categories of bugs. The quality constitution (`QUALITY.md`) tells future sessions what "correct" means before they start writing code. The protocols (`RUN_*.md`) provide structured processes for review, integration testing, and spec auditing that produce repeatable results — instead of leaving quality to whatever the AI feels like checking. Together, these files create a quality system where each piece reinforces the others: scenarios in QUALITY.md map to tests in the functional test file, which are verified by the integration protocol, which is audited by the Council of Three.
+**Why seven files instead of just tests?** Tests catch regressions but don't prevent new categories of bugs. The quality constitution (`QUALITY.md`) tells future sessions what "correct" means before they start writing code. The protocols (`RUN_*.md`) provide structured processes for review, integration testing, and spec auditing that produce repeatable results — instead of leaving quality to whatever the AI feels like checking. Together, these files create a quality system where each piece reinforces the others: scenarios in QUALITY.md map to tests in the functional test file, which are verified by the integration protocol, which is audited by the Council of Three.
 
 ### File 1: `quality/QUALITY.md` — Quality Constitution
 
@@ -462,13 +464,17 @@ Pass 3 catches contradictions where two individually-correct pieces of code disa
 
 **Source code boundary rule:** The playbook must never modify files outside the `quality/` directory. All source-tree changes — bug fixes, test additions to the project's own test suite — must be expressed as `git diff`-format patch files saved under `quality/patches/`. This ensures the original source tree remains untouched, patches are reviewable and reversible, and the playbook's findings are cleanly separable from the code it audited.
 
-**BUGS.md:** After all review and audit phases, generate `quality/BUGS.md` — a consolidated bug report with full reproduction details for each confirmed bug. For each bug, include: bug ID, source (code review or spec audit), file:line, description, severity, minimal reproduction scenario (what input or sequence triggers the bug), expected vs actual behavior, and references to the regression test and any proposed fix patch.
+**BUGS.md:** After all review and audit phases, generate `quality/BUGS.md` — a consolidated bug report with full reproduction details for each confirmed bug. For each bug, include: bug ID, source (code review or spec audit), file:line, description, severity, minimal reproduction scenario (what input or sequence triggers the bug), expected vs actual behavior, references to the regression test and any proposed fix patch, and **spec basis**.
+
+**Spec basis (mandatory field per bug):** Cite the specific documentation passage that establishes the expected behavior — the gathered doc filename, section/page, and the behavioral contract it defines. If no gathered doc covers the behavior, check whether the project's own comments, README, or API docs define it. If no documentation exists for the expected behavior, classify the bug as a "code inconsistency" rather than a "spec violation" and note this in the severity assessment. A spec violation is a stronger finding than a code inconsistency — it means the code contradicts an authoritative source, not just that the code looks wrong. This distinction matters when reporting upstream: maintainers respond to "your code violates section X.Y of your own spec" differently than "this looks like it might be a bug."
 
 **Patch files:** For each confirmed bug, generate:
 - `quality/patches/BUG-NNN-regression-test.patch` — a `git diff` that adds a test demonstrating the bug (this is the most valuable patch — it proves the bug exists independently of any opinion about the fix)
 - `quality/patches/BUG-NNN-fix.patch` (optional) — a `git diff` with the proposed fix
 
 Patches must apply cleanly against the original source tree with `git apply`. Do not modify the source tree directly.
+
+**TDD verification cycle:** Each confirmed bug with a fix patch should go through the red-green TDD cycle (test fails on unpatched code, passes after fix). This is executed via the `quality/RUN_TDD_TESTS.md` protocol (File 7), not inline during the code review. The protocol generates spec-grounded tests where every assertion message, variable name, and comment traces back to gathered documentation.
 
 **After all three passes:** Combine findings. Write regression tests in `quality/test_regression.*` that reproduce each confirmed bug. Use the same test framework as `test_functional.*` — if functional tests use pytest, regression tests use pytest (with `@pytest.mark.xfail(strict=True)`); if functional tests use unittest, regression tests use unittest (with `@unittest.expectedFailure`). Report results as a confirmation table (BUG CONFIRMED / FALSE POSITIVE / NEEDS INVESTIGATION). See `references/review_protocols.md` for the full three-pass template and regression test protocol.
 
@@ -515,6 +521,44 @@ The protocol defines: a copy-pasteable audit prompt with guardrails, project-spe
 If `AGENTS.md` already exists, update it — don't replace it. Add a Quality Docs section pointing to all generated files.
 
 If creating from scratch: project description, setup commands, build & test commands, architecture overview, key design decisions, known quirks, and quality docs pointers.
+
+### File 7: `quality/RUN_TDD_TESTS.md` — TDD Verification Protocol
+
+This protocol is executed after the code review and spec audit have confirmed bugs and generated fix patches. It runs the red-green TDD cycle for each confirmed bug: test fails on unpatched code, apply fix, test passes.
+
+**Why a separate protocol?** The code review finds bugs and writes regression tests with `xfail` markers. The TDD protocol takes those tests and proves they actually detect the bug — and that the fix actually fixes it. This is a stronger claim than "we found a bug and wrote a test." It's "here's a test that fails without the patch and passes with it." The distinction matters when reporting bugs upstream: maintainers trust a FAIL→PASS demonstration more than a bug description.
+
+The generated protocol must include:
+
+1. **Spec-grounded test requirements.** For each bug in `quality/BUGS.md`, the protocol instructs the agent to:
+   - Read the bug's **spec basis** field to identify the documentation passage that defines the expected behavior
+   - Read the gathered doc (from `docs_gathered/` or the project's own docs) at the cited section
+   - Write test assertions using **language from the spec** — variable names, constants, function names, and assertion messages should echo the spec's terminology, not the code's internal naming
+   - Include a comment block in each test citing: the requirement ID (from REQUIREMENTS.md), the bug ID (from BUGS.md), and the spec passage (doc name, section, and a ≤15-word quote of the behavioral contract)
+
+2. **Red-green execution steps.** For each bug with a fix patch:
+   - **Red:** Run the regression test against unpatched source. It must fail. If it passes, the test doesn't detect the bug — rewrite it using the spec basis to understand what behavior to assert.
+   - **Green:** Apply the fix patch (`git apply quality/patches/BUG-NNN-fix.patch`), run the same test. It must pass.
+   - **Record:** Log both results in the BUG tracker with closure status "TDD verified (FAIL→PASS)".
+
+3. **Framework adaptation.** The protocol must detect the project's test framework and generate idiomatic tests:
+   - **Projects with test infrastructure** (pytest, JUnit, Go testing, Jest, cargo test, etc.): Write tests in the project's own framework, following existing test conventions discovered during exploration.
+   - **Projects without test infrastructure** (e.g., Linux kernel, embedded C): Extract the target function with `sed`, write a self-contained C test file with minimal type shims, compile and run directly. Include the extraction command in the test file's header comment so it's self-documenting.
+
+4. **Upstream reporting format.** For each TDD-verified bug, generate a ready-to-send report block containing:
+   - One-sentence description citing the spec section violated
+   - The FAIL→PASS output (copy-pasteable terminal session)
+   - The test file (as an attachment or inline)
+   - The fix patch (as an attachment or inline)
+
+5. **Traceability table.** The protocol produces a `quality/TDD_TRACEABILITY.md` file mapping:
+
+   | Bug ID | Requirement ID | Spec Doc | Spec Section | Behavioral Contract | Test File:Function | Red Result | Green Result |
+   |--------|---------------|----------|-------------|--------------------|--------------------|------------|--------------|
+
+   Every row must be fully populated. A bug without a spec doc entry is a code inconsistency, not a spec violation — note this in the table and adjust the upstream reporting language accordingly.
+
+**Execution UX:** Same three-phase pattern as the integration tests — (1) show the plan as a numbered table of bugs to verify, (2) report one-line progress as each red-green cycle runs (`FAIL ✓ → PASS ✓` or `FAIL ✗ — test passes on unpatched code, rewriting`), (3) show a summary table with verified/failed/rewritten counts.
 
 ### Checkpoint: Update PROGRESS.md after artifact generation
 
@@ -642,6 +686,7 @@ Here's what I generated:
 | RUN_INTEGRATION_TESTS.md | Integration test protocol | 9 runs × 3 providers | ██████░░ Medium — quality gates need threshold tuning |
 | RUN_SPEC_AUDIT.md | Council of Three audit | 10 scrutiny areas | ████████ High — guardrails included |
 | AGENTS.md | AI session bootstrap | Updated | ████████ High — factual |
+| RUN_TDD_TESTS.md | TDD verification protocol | N bugs to verify | ████████ High — mechanical red-green cycle with spec traceability |
 ```
 
 Adapt the table to what you actually generated — the file names, metrics, and confidence levels will vary by project. The confidence column is the most important: it tells the user where to focus their attention.
@@ -667,6 +712,9 @@ To use these artifacts, start a new AI session and try one of these prompts:
 
 • Start a spec audit (Council of Three):
   "Read quality/RUN_SPEC_AUDIT.md and follow its instructions using [model name]."
+
+• Run TDD verification for confirmed bugs:
+  "Read quality/RUN_TDD_TESTS.md and follow its instructions to verify all confirmed bugs."
 ```
 
 Adapt the test runner command and module names to the actual project. The point is to give the user copy-pasteable prompts — not descriptions of what they could do, but the actual text they'd type.
@@ -779,6 +827,7 @@ Examine existing test files to understand how they set up test data. Whatever pa
 7. The specification is the unique contribution, not the review structure. Focus areas and review protocols are secondary to having the right testable requirements derived from intent sources.
 8. Cross-requirement consistency checking is essential. Bugs often live in the gap between two individually-correct pieces of code. Per-requirement verification alone can't find these.
 9. Keep all derived requirements — do not filter. The cost of checking an extra requirement is low; the cost of missing a bug because you pruned the requirement that would have caught it is high.
+10. A failing test is the strongest evidence a bug exists. Run the red-green TDD cycle (test fails on buggy code, passes on fixed code) for every confirmed bug with a fix patch. Show the FAIL→PASS output — reviewers can disagree with your fix but can't argue with a reproducing test.
 
 ---
 
