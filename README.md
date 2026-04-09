@@ -2,7 +2,7 @@
 
 Point an AI coding tool at any codebase. Get a complete quality engineering infrastructure: requirements derived from the actual intent of the code, functional tests traced to those requirements, a three-pass code review protocol, and a multi-model spec audit that catches bugs no single reviewer can find alone.
 
-**Version:** 1.3.9 | **Author:** [Andrew Stellman](https://github.com/andrewstellman) | **License:** Apache 2.0
+**Version:** 1.3.14 | **Author:** [Andrew Stellman](https://github.com/andrewstellman) | **License:** Apache 2.0
 
 ## The problem
 
@@ -45,7 +45,9 @@ The playbook generates these files:
 | `test_functional.*` | `quality/` | Functional tests in the project's native language, traced to requirements rather than generated from source code. |
 | `RUN_CODE_REVIEW.md` | `quality/` | Three-pass protocol: structural review, requirement verification, cross-requirement consistency. Each pass finds bugs the others can't. |
 | `RUN_SPEC_AUDIT.md` | `quality/` | Council of Three: three independent AI models audit the code against requirements. Different models have different blind spots, and the triage uses confidence weighting, not majority vote. |
-| `RUN_INTEGRATION_TESTS.md` | `quality/` | End-to-end test protocol that a different AI session can pick up and execute cold. |
+| `RUN_INTEGRATION_TESTS.md` | `quality/` | End-to-end test protocol grounded in use cases, with a traceability column mapping each test to the user outcome it validates. |
+| `RUN_TDD_TESTS.md` | `quality/` | Red-green TDD verification protocol: for each confirmed bug, prove the regression test fails on unpatched code and passes with the fix. |
+| `BUGS.md` | `quality/` | Consolidated bug report with spec basis, severity, reproduction steps, and patch references for every confirmed finding. |
 | `AGENTS.md` | project root | Bootstrap file so every future AI session inherits the full quality infrastructure. |
 
 ## How it works
@@ -54,7 +56,7 @@ The playbook's value comes from requirement derivation. AI code reviewers are bo
 
 **Phase 1: Explore.** The AI reads source files, tests, config, specs, and commit history. If you provide community documentation (GitHub issues, user guides, API docs, forum discussions), it reads those too. The goal is to understand not just what the code does, but what it's supposed to do.
 
-**Phase 2: Generate.** A five-phase pipeline extracts behavioral contracts from the codebase, derives testable requirements, verifies coverage, checks completeness, and adds a narrative layer. The pipeline also generates functional tests, review protocols, and the quality constitution.
+**Phase 2: Generate.** A five-phase pipeline extracts behavioral contracts from the codebase, derives testable requirements, verifies coverage, checks completeness, and adds a narrative layer with validated use cases. The pipeline also generates functional tests, review protocols, a TDD verification protocol, and the quality constitution.
 
 **Phase 2b: Code review.** A three-pass code review runs against HEAD: structural review with anti-hallucination guardrails, requirement verification checking each requirement against the code, and cross-requirement consistency checking whether requirements contradict each other. About 65% of findings come from Pass 1, 35% from Passes 2 and 3. Each confirmed bug gets a regression test.
 
@@ -67,6 +69,12 @@ The playbook's value comes from requirement derivation. AI code reviewers are bo
 ### Why documentation matters
 
 Adding community documentation to the pipeline produces measurably better results. In a controlled experiment across multiple repositories, documentation-enriched runs found more bugs, different bugs, and higher-confidence bugs than code-only baselines. The documentation gives auditors spec language to check against, turning "this code looks odd" into "this code contradicts the documented behavior."
+
+### What's new in v1.3.14
+
+Version 1.3.14 addresses systemic weaknesses found through a four-way council review (Cowork, Cursor, Codex, Copilot) across 9 benchmark repositories. The key changes: project overviews are validated against real-world significance before use case derivation. Use cases must describe real user outcomes, not code features. Requirements are backed by tiered doc sources (Tier 1 canonical, Tier 2 strong secondary, Tier 3 weak). A bidirectional traceability check catches alternative-path bugs that file-level coverage misses. Integration tests are grounded in use cases with explicit traceability. And a carry-forward rule prevents previously learned requirements from being silently dropped between runs.
+
+These changes were motivated by a specific regression: v1.3.13 missed two real Linux kernel bugs that v1.3.7 had found, because requirements collapsed alternative paths into vague labels and a previously learned requirement was lost. The v1.3.14 pipeline is designed to prevent that class of regression.
 
 ## Validation
 
@@ -90,9 +98,14 @@ quality-playbook/
     ├── COVERAGE_MATRIX.md  # Contract-to-requirement traceability
     ├── COMPLETENESS_REPORT.md  # Final gate with verdict
     ├── PROGRESS.md         # Phase checkpoint log + bug tracker
+    ├── BUGS.md             # Consolidated bug report with spec basis
     ├── RUN_CODE_REVIEW.md  # Three-pass review protocol
     ├── RUN_SPEC_AUDIT.md   # Council of Three audit protocol
-    ├── RUN_INTEGRATION_TESTS.md  # Integration test protocol
+    ├── RUN_INTEGRATION_TESTS.md  # Integration test protocol (use-case traced)
+    ├── RUN_TDD_TESTS.md    # Red-green TDD verification protocol
+    ├── TDD_TRACEABILITY.md # Bug → requirement → spec → test mapping
+    ├── test_regression.*   # Regression tests for confirmed bugs
+    ├── patches/            # Fix and regression-test patches
     ├── code_reviews/       # Code review output
     └── spec_audits/        # Auditor reports + triage
 ```
@@ -111,6 +124,7 @@ The `quality/` directory contains the results of running the playbook against it
 | [COMPLETENESS_REPORT.md](quality/COMPLETENESS_REPORT.md) | Final gate report with post-reconciliation verdict. |
 | [RUN_CODE_REVIEW.md](quality/RUN_CODE_REVIEW.md) | Three-pass code review protocol ready for any AI session to execute. |
 | [RUN_SPEC_AUDIT.md](quality/RUN_SPEC_AUDIT.md) | Council of Three spec audit protocol. |
+| [RUN_TDD_TESTS.md](quality/RUN_TDD_TESTS.md) | Red-green TDD verification protocol for confirmed bugs. |
 | [PROGRESS.md](quality/PROGRESS.md) | Phase-by-phase checkpoint log with cumulative bug tracker — the external memory that prevents findings from being orphaned. |
 | [code_reviews/](quality/code_reviews/) | Actual code review output from the three-pass protocol. |
 | [spec_audits/](quality/spec_audits/) | Individual auditor reports and triage from the Council of Three. |
