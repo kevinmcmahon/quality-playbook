@@ -95,6 +95,33 @@ If any field name, count, or type is wrong, fix it before proceeding. The table 
 
 The definitive audit prompt should work when pasted into Claude Code, Cursor, and Copilot without modification (except file reference syntax).
 
+### 14. Structured Output Schemas Are Valid
+
+Verify that `RUN_TDD_TESTS.md` and `RUN_INTEGRATION_TESTS.md` both instruct the agent to produce:
+- JUnit XML output using the framework's native reporter (pytest `--junitxml`, gotestsum `--junitxml`, Maven Surefire reports, `jest-junit`, `cargo2junit`)
+- A sidecar JSON file (`tdd-results.json` or `integration-results.json`) in `quality/results/`
+
+Check that each protocol's JSON schema includes all mandatory fields: `schema_version`, `skill_version`, `date`, `project`, `summary`. Verify that verdict/result enum values use only the allowed values defined in SKILL.md (e.g., `"TDD verified"`, `"red failed"`, `"green failed"`, `"skipped"` for TDD verdicts; `"pass"`, `"fail"`, `"skipped"`, `"error"` for integration results; `"SHIP"`, `"FIX BEFORE MERGE"`, `"BLOCK"` for recommendations).
+
+### 15. Patch Validation Gate Is Executable
+
+For each confirmed bug with patches, verify:
+1. The `git apply --check` commands specified in the patch validation gate use the correct patch paths (`quality/patches/BUG-NNN-*.patch`)
+2. The compile/syntax check command matches the project's actual build system — not a generic placeholder
+3. For interpreted languages (Python, JavaScript), the gate specifies the appropriate syntax check (`python -m py_compile`, `node --check`, `pytest --collect-only`, or equivalent)
+4. The gate includes a temporary worktree or stash-and-revert instruction to comply with the source boundary rule
+
+### 16. Regression Test Skip Guards Are Present
+
+Grep `quality/test_regression.*` for the language-appropriate skip/xfail mechanism. Every test function must have a guard:
+- Python: `@pytest.mark.xfail` or `@unittest.expectedFailure`
+- Go: `t.Skip(`
+- Java: `@Disabled`
+- Rust: `#[ignore]`
+- TypeScript/JavaScript: `test.failing(`, `test.fails(`, or `it.skip(`
+
+A regression test without a skip guard will cause unexpected failures when the test suite runs on unpatched code. Every guard must reference the bug ID (BUG-NNN format) and the fix patch path.
+
 ## Quick Checklist Format
 
 Use this as a final sign-off:
@@ -114,3 +141,6 @@ Use this as a final sign-off:
 - [ ] Integration test quality gates were written from a Field Reference Table (not memory)
 - [ ] Integration tests have specific pass criteria
 - [ ] Spec audit prompt is copy-pasteable and uses `[Req: tier — source]` tag format
+- [ ] Structured output schemas include all mandatory fields and valid enum values
+- [ ] Patch validation gate uses correct commands for the project's build system
+- [ ] Every regression test has a skip/xfail guard referencing the bug ID

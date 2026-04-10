@@ -133,14 +133,25 @@ If the test doesn't exercise the cited code path, either fix the test or mark th
 
 Every confirmed BUG finding must produce a regression test in `quality/test_regression.*`. The test must be an executable source file in the project's language — not a Markdown file, not prose documentation, not a comment block describing what a test would do. If the project uses Java, write a `.java` file. If Python, a `.py` file. The test must compile (or parse) and be runnable by the project's test framework.
 
-**No language exemptions.** If introducing failing tests before fixes is a concern, use the language's expected-failure mechanism:
-- Python: `@pytest.mark.xfail(strict=True, reason="BUG: [description]")`
-- Go: `t.Skip("BUG: [description] — unskip after fix")`
-- Rust: `#[ignore] // BUG: [description] — remove ignore after fix`
-- Java: `@Disabled("BUG: [description] — enable after fix")`
-- TypeScript/JavaScript: `it.skip("BUG: [description]", ...)`
+**No language exemptions.** If introducing failing tests before fixes is a concern, use the language's expected-failure mechanism. The guard must be the **earliest syntactic guard for the framework** — a decorator or annotation where idiomatic, otherwise the first executable line in the test body:
+
+- **Python (pytest):** `@pytest.mark.xfail(strict=True, reason="BUG-NNN: [description]")` — decorator above `def test_...():`. When the bug is present: XFAIL (expected). When the bug is fixed but marker not removed: XPASS → strict mode fails, signaling the guard should be removed.
+- **Python (unittest):** `@unittest.expectedFailure` — decorator above the test method.
+- **Go:** `t.Skip("BUG-NNN: [description] — unskip after applying quality/patches/BUG-NNN-fix.patch")` — first line inside the test function. Note: Go's `t.Skip` hides the test (reports SKIP, not FAIL), which is weaker than Python's xfail.
+- **Rust:** `#[ignore]` attribute on the test function — the standard "don't run in default suite" mechanism. Use `#[should_panic]` only for panic-shaped bugs.
+- **Java (JUnit 5):** `@Disabled("BUG-NNN: [description]")` — annotation above the test method.
+- **TypeScript/JavaScript (Jest):** `test.failing("BUG-NNN: [description]", () => { ... })`
+- **TypeScript/JavaScript (Vitest):** `test.fails("BUG-NNN: [description]", () => { ... })`
+- **JavaScript (Mocha):** `it.skip("BUG-NNN: [description]", () => { ... })` or `this.skip()` inside the test body for conditional skipping.
+
+Every guard must reference the bug ID (BUG-NNN format) and the fix patch path so that someone encountering a skipped test knows how to resolve it.
 
 These patterns ensure every bug has an executable test that can be enabled when the fix lands, without polluting CI with expected failures.
+
+**TDD red/green interaction with skip guards.** During TDD verification, the red and green phases must temporarily bypass the skip guard:
+- **Red phase:** Remove or disable the guard, run against unpatched code. Must fail. Re-enable guard after recording result.
+- **Green phase:** Remove or disable the guard, apply fix patch, run. Must pass. Re-enable guard if fix will be reverted.
+- **After TDD cycle:** Guard remains in committed regression test file, removed only when fix is permanently merged.
 
 **The only acceptable exemption** is when a regression test genuinely cannot be written — for example, the bug requires multi-threaded timing that can't be reliably reproduced, or requires an external service not available in the test environment. In that case, write an explicit exemption note in the combined summary explaining why, and include a minimal code sketch showing what you would test if you could.
 

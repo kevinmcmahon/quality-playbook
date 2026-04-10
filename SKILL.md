@@ -1,9 +1,9 @@
 ---
 name: quality-playbook
-description: "Explore any codebase from scratch and generate seven quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis and missing safeguard detection. Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
+description: "Explore any codebase from scratch and generate nine quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, a consolidated bug report (BUGS.md) with patches, a TDD verification protocol (RUN_TDD_TESTS.md), an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis, missing safeguard detection, patch validation gates, and structured test output (JUnit XML + sidecar JSON). Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.14
+  version: 1.3.15
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -13,7 +13,7 @@ metadata:
 > **MANDATORY FIRST ACTION — do this before reading the rest of the skill.**
 > Print the following message to the user exactly as written, then continue.
 >
-> Quality Playbook v1.3.14 — by Andrew Stellman
+> Quality Playbook v1.3.15 — by Andrew Stellman
 > https://github.com/andrewstellman/quality-playbook
 >
 > Generating a complete quality system for this project. Here's what I'll do:
@@ -23,7 +23,10 @@ metadata:
 >   - Quality constitution (QUALITY.md)
 >   - Testable requirements via 5-phase pipeline (REQUIREMENTS.md)
 >   - Functional tests derived from specs
->   - Code review, integration test, and spec audit protocols
+>   - Code review protocol with regression tests and patch generation
+>   - Consolidated bug report (BUGS.md) with patches
+>   - TDD verification protocol (RUN_TDD_TESTS.md)
+>   - Integration test and spec audit protocols
 >   - AI bootstrap file (AGENTS.md)
 > Phase 3: Verify everything against self-check benchmarks
 >
@@ -39,7 +42,7 @@ Without a quality playbook, every new contributor (and every new AI session) sta
 
 ## What This Skill Produces
 
-Seven files that together form a repeatable quality system:
+Nine files that together form a repeatable quality system:
 
 | File | Purpose | Why It Matters | Executes Code? |
 |------|---------|----------------|----------------|
@@ -48,6 +51,8 @@ Seven files that together form a repeatable quality system:
 | `quality/test_functional.*` | Automated functional tests derived from specifications | The safety net. Tests tied to what the spec says should happen, not just what the code does. Use the project's language: `test_functional.py` (Python), `FunctionalSpec.scala` (Scala), `functional.test.ts` (TypeScript), `FunctionalTest.java` (Java), etc. | **Yes** |
 | `quality/RUN_CODE_REVIEW.md` | Three-pass code review protocol: structural review, requirement verification, cross-requirement consistency | Structural review alone misses ~35% of real defects. The three-pass pipeline adds requirement verification and consistency checking — backed by experiment evidence showing it finds bugs invisible to all structural review conditions. | No |
 | `quality/RUN_INTEGRATION_TESTS.md` | Integration test protocol — end-to-end pipeline across all variants | Unit tests pass, but does the system actually work end-to-end with real external services? | **Yes** |
+| `quality/BUGS.md` | Consolidated bug report with patches | Every confirmed bug in one place with reproduction details, spec basis, severity, and patch references. The single source of truth for what's broken and how to verify it. | No |
+| `quality/RUN_TDD_TESTS.md` | TDD red-green verification protocol | Proves each bug is real (test fails on unpatched code) and each fix works (test passes after patch). Stronger evidence than a bug report alone — maintainers trust FAIL→PASS demonstrations. | **Yes** |
 | `quality/RUN_SPEC_AUDIT.md` | Council of Three multi-model spec audit protocol | No single AI model catches everything. Three independent models with different blind spots catch defects that any one alone would miss. | No |
 | `AGENTS.md` | Bootstrap context for any AI session working on this project | The "read this first" file. Without it, AI sessions waste their first hour figuring out what's going on. | No |
 
@@ -327,7 +332,14 @@ Follow the use cases with the individual requirements.
   - **Tier 3 (Weak secondary):** Changelogs, issue summaries, troubleshooting guides, source comments, test files, migration guides.
 
   Requirements backed only by Tier 3 sources must be tagged `[Req: inferred]` with a note explaining why no stronger source exists. The completeness report must flag the ratio of Tier 1/2/3 sources across all requirements.
-- **Specificity**: **specific** (testable — must have conditions of satisfaction that a code reviewer can check against a specific code location or behavior; this is the default and counts toward coverage metrics) or **architectural-guidance** (not testable against individual code paths — covers cross-cutting properties like "remain lightweight and stdlib-compatible" or "no_std support"; informs the quality constitution but is not counted in coverage metrics; most projects should have 0–3 architectural-guidance requirements — more than 5 suggests over-broad classification). The category "directional" is retired. Any requirement that would have been "directional" must either be made specific (with testable conditions) or explicitly classified as architectural-guidance.
+- **Specificity**: **specific** (testable — must have conditions of satisfaction that a code reviewer can check against a specific code location or behavior; this is the default and counts toward coverage metrics) or **architectural-guidance** (not testable against individual code paths — covers cross-cutting properties like "remain lightweight and stdlib-compatible" or "no_std support"; informs the quality constitution but is not counted in coverage metrics; most projects should have 0–3 architectural-guidance requirements — more than 3 triggers the mandatory self-check below). The category "directional" is retired. Any requirement that would have been "directional" must either be made specific (with testable conditions) or explicitly classified as architectural-guidance.
+
+  **Architectural-guidance self-check (mandatory, runs after requirement derivation).** Count the requirements tagged `architectural-guidance`. Apply both bounds:
+
+  - **Maximum bound (>3):** If the count exceeds 3, stop and re-examine each one. For each, ask: "Can I add a testable condition of satisfaction that a code reviewer could verify against a specific code location?" If yes, reclassify it as `specific` and add the condition. Only requirements that genuinely cannot be verified against any specific code path should remain `architectural-guidance`. A final count above 3 requires an explicit justification per excess requirement explaining why it cannot be made specific.
+  - **Minimum bound (0 on 15+ requirements):** If the total requirement count is 15 or more and the `architectural-guidance` count is 0, re-examine the requirements for cross-cutting design invariants. Libraries that span protocol layers, manage resource lifecycles, enforce ordering guarantees, or maintain compatibility contracts (e.g., "remain stdlib-compatible," "preserve no_std support," "maintain wire-format backward compatibility") typically have 1–3 architectural-guidance requirements. Write one sentence in the completeness report explaining why no requirement qualified as architectural-guidance, or reclassify the appropriate requirements.
+
+  Record the count and any reclassifications in the completeness report.
 
 **Do not cap the requirement count.** Derive as many as the project warrants. A small utility might have 20. A mature library might have 100+. The goal is completeness.
 
@@ -385,12 +397,12 @@ Write the initial PROGRESS.md:
 ## Run metadata
 Started: [date/time]
 Project: [project name]
-Skill version: 1.3.14
+Skill version: 1.3.15
 With docs: [yes/no]
 
 ## Phase completion
 - [x] Phase 1: Exploration — completed [date/time]
-- [ ] Phase 2: Artifact generation (QUALITY.md, REQUIREMENTS.md, tests, protocols, AGENTS.md, RUN_TDD_TESTS.md)
+- [ ] Phase 2: Artifact generation (QUALITY.md, REQUIREMENTS.md, tests, protocols, BUGS.md, RUN_TDD_TESTS.md, AGENTS.md)
 - [ ] Phase 2b: Code review + regression tests
 - [ ] Phase 2c: Spec audit + triage
 - [ ] Phase 2d: Post-review reconciliation + closure verification
@@ -407,8 +419,12 @@ With docs: [yes/no]
 | Functional tests | pending | | |
 | RUN_CODE_REVIEW.md | pending | | |
 | RUN_INTEGRATION_TESTS.md | pending | | |
+| BUGS.md | pending | | |
+| RUN_TDD_TESTS.md | pending | | |
 | RUN_SPEC_AUDIT.md | pending | | |
 | AGENTS.md | pending | | |
+| tdd-results.json | pending | quality/results/ | Structured TDD output |
+| integration-results.json | pending | quality/results/ | Structured integration output |
 
 ## Cumulative BUG tracker
 <!-- Every confirmed BUG from code review and spec audit goes here.
@@ -440,7 +456,7 @@ Update this file after every phase. The cumulative BUG tracker is the most impor
 
 ## Phase 2: Generate the Quality Playbook
 
-Now write the seven files. For each one, follow the structure below and consult the relevant reference file for detailed guidance.
+Now write the nine files. For each one, follow the structure below and consult the relevant reference file for detailed guidance.
 
 **Artifact dependency rules:**
 - `quality/RUN_CODE_REVIEW.md` Pass 2 depends on a stable `quality/REQUIREMENTS.md` — thin requirements produce thin Pass 2 review. If the requirements count seems low for the code surface (fewer than ~3–4 requirements per core module), note this at the start of the Pass 2 report.
@@ -449,7 +465,7 @@ Now write the seven files. For each one, follow the structure below and consult 
 - `quality/COMPLETENESS_REPORT.md` has two stages: baseline (pre-review, no verdict section) and final (post-reconciliation in Phase 2d, with the authoritative verdict).
 - `quality/PROGRESS.md` is the authoritative state file and must be updated before each downstream artifact begins.
 
-**Why seven files instead of just tests?** Tests catch regressions but don't prevent new categories of bugs. The quality constitution (`QUALITY.md`) tells future sessions what "correct" means before they start writing code. The protocols (`RUN_*.md`) provide structured processes for review, integration testing, and spec auditing that produce repeatable results — instead of leaving quality to whatever the AI feels like checking. Together, these files create a quality system where each piece reinforces the others: scenarios in QUALITY.md map to tests in the functional test file, which are verified by the integration protocol, which is audited by the Council of Three.
+**Why nine files instead of just tests?** Tests catch regressions but don't prevent new categories of bugs. The quality constitution (`QUALITY.md`) tells future sessions what "correct" means before they start writing code. The protocols (`RUN_*.md`) provide structured processes for review, integration testing, and spec auditing that produce repeatable results — instead of leaving quality to whatever the AI feels like checking. Together, these files create a quality system where each piece reinforces the others: scenarios in QUALITY.md map to tests in the functional test file, which are verified by the integration protocol, which is audited by the Council of Three.
 
 ### File 1: `quality/QUALITY.md` — Quality Constitution
 
@@ -536,9 +552,66 @@ Pass 3 catches contradictions where two individually-correct pieces of code disa
 
 Patches must apply cleanly against the original source tree with `git apply`. Do not modify the source tree directly.
 
+**Patch validation gate (mandatory).** Before declaring any bug as confirmed with a fix patch, run this gate:
+
+1. **Apply test:** `git apply --check quality/patches/BUG-NNN-regression-test.patch` — must exit 0.
+2. **Apply test + fix:** `git apply --check quality/patches/BUG-NNN-fix.patch` — must exit 0 (test against clean tree, not against regression-test-applied tree, unless the fix patch depends on the regression test).
+3. **Compile check:** After applying both patches, run the project's build/compile command (e.g., `go build ./...`, `mvn compile`, `cargo check`, `tsc --noEmit`). Must succeed.
+
+**Temporary worktree for step 3.** Steps 1–2 use `--check` (non-destructive). Step 3 requires actually applying patches and compiling, which modifies the source tree. To comply with the source code boundary rule ("never modify files outside `quality/`"), run step 3 in a disposable worktree:
+
+```bash
+git worktree add /tmp/qpb-patch-check HEAD --quiet
+cd /tmp/qpb-patch-check
+git apply quality/patches/BUG-NNN-regression-test.patch quality/patches/BUG-NNN-fix.patch
+<compile command>
+cd -
+git worktree remove /tmp/qpb-patch-check --force
+```
+
+If `git worktree` is unavailable (shallow clone, detached HEAD), use `git stash && git apply ... && <compile> && git checkout . && git stash pop` as a fallback, or accept `--check`-only validation and note the limitation.
+
+**Compile check for interpreted languages.** The compile command varies by ecosystem:
+- **Go:** `go build ./...`
+- **Rust:** `cargo check`
+- **Java/Kotlin (Maven):** `mvn compile -q`
+- **Java/Kotlin (Gradle):** `./gradlew compileJava compileTestJava -q`
+- **TypeScript:** `tsc --noEmit`
+- **Python:** `python -m py_compile <changed_files>` for syntax, then `pytest --collect-only -q` for import/discovery validation
+- **JavaScript (Node.js):** `node --check <changed_files>` for syntax; if the project uses ESLint, `npx eslint <changed_files>` for structural issues
+- **JavaScript (Mocha/Jest):** Run the specific test in discovery-only mode (`mocha --dry-run` or `jest --listTests`) to verify it loads without errors
+
+If no compile/syntax check is feasible for the project's language, document this in the patch entry and rely on the TDD red phase to catch syntax errors.
+
+If any step fails, fix the patch before recording the bug as confirmed. A bug with a corrupt patch that won't apply is not a confirmed bug — it's a hypothesis with broken evidence. The TDD red-green cycle cannot run on patches that don't apply, and reporting a bug with an unapplyable patch undermines credibility with upstream maintainers. Common patch failures: truncated hunks (missing closing braces), wrong line offsets (patch generated against modified tree instead of clean tree), and syntax errors in generated test code.
+
+**Fix patch requirement.** Every confirmed bug must have either:
+- A `quality/patches/BUG-NNN-fix.patch` that passes the validation gate above, OR
+- An explicit justification in BUGS.md explaining why no fix patch is provided (e.g., "fix requires architectural change beyond patch scope," "multiple valid fix strategies — deferring to maintainer judgment," "bug is in upstream dependency").
+
+A bug with a regression test but no fix patch and no justification is incomplete. The regression test proves the bug exists; the fix patch (or justification for its absence) completes the evidence chain. Bugs without fix patches cannot achieve "TDD verified (FAIL→PASS)" status — they remain at "confirmed open (xfail)" until a fix is provided.
+
 **TDD verification cycle:** Each confirmed bug with a fix patch should go through the red-green TDD cycle (test fails on unpatched code, passes after fix). This is executed via the `quality/RUN_TDD_TESTS.md` protocol (File 7), not inline during the code review. The protocol generates spec-grounded tests where every assertion message, variable name, and comment traces back to gathered documentation.
 
 **After all three passes:** Combine findings. Write regression tests in `quality/test_regression.*` that reproduce each confirmed bug. Use the same test framework as `test_functional.*` — if functional tests use pytest, regression tests use pytest (with `@pytest.mark.xfail(strict=True)`); if functional tests use unittest, regression tests use unittest (with `@unittest.expectedFailure`). Report results as a confirmation table (BUG CONFIRMED / FALSE POSITIVE / NEEDS INVESTIGATION). See `references/review_protocols.md` for the full three-pass template and regression test protocol.
+
+**Regression test skip guards (mandatory).** Every regression test in `quality/test_regression.*` must include a skip/xfail guard so that running the full test suite on unpatched code does not produce unexpected failures. The guard must be the **earliest syntactic guard for the framework** — a decorator or annotation where idiomatic, otherwise the first executable line in the test body. Use the language-appropriate mechanism:
+
+- **Python (pytest):** `@pytest.mark.xfail(strict=True, reason="BUG-NNN: [description]")` — placed as a **decorator above** `def test_...():`, not inside the function body. When the bug is present, the test fails → XFAIL (expected). When the bug is fixed but the marker isn't removed, the test passes → XPASS → strict mode makes this a failure, signaling the guard should be removed.
+- **Python (unittest):** `@unittest.expectedFailure` — decorator above the test method.
+- **Go:** `t.Skip("BUG-NNN: [description] — unskip after applying quality/patches/BUG-NNN-fix.patch")` — first line inside the test function. Note: Go's `t.Skip` hides the test entirely (reports SKIP, not FAIL), which is weaker evidence than Python's xfail. This is a known limitation of Go's test primitives.
+- **Java (JUnit 5):** `@Disabled("BUG-NNN: [description]")` — annotation above the test method.
+- **Rust:** `#[ignore]` attribute on the test function (the standard "don't run in default suite" mechanism). Use `#[should_panic]` only for bugs that manifest as panics; use `compile_fail` doctest annotation only for compile-time bugs.
+- **TypeScript/JavaScript (Jest):** `test.failing("BUG-NNN: [description]", () => { ... })`
+- **TypeScript/JavaScript (Vitest):** `test.fails("BUG-NNN: [description]", () => { ... })`
+- **JavaScript (Mocha):** `it.skip("BUG-NNN: [description]", () => { ... })` or `this.skip()` inside the test body for conditional skipping.
+
+When a bug is fixed (fix patch applied permanently), remove the skip guard and update the BUG tracker closure status from "confirmed open" to "fixed (test passes)". The skip guard message must reference the bug ID and the fix patch path so that someone encountering a skipped test knows exactly how to resolve it.
+
+**TDD red/green interaction with skip guards.** During the TDD verification cycle, the red and green phases must temporarily bypass the skip guard to actually execute the test. The protocol should instruct the agent to:
+- **Red phase:** Remove or disable the skip/xfail guard, then run the test against unpatched code. It must fail. Re-enable the guard after recording the result.
+- **Green phase:** Remove or disable the guard, apply the fix patch, run the test. It must pass. If the fix will be reverted, re-enable the guard.
+- **After TDD cycle:** The guard remains in the committed regression test file. It is only permanently removed when the fix is merged into the source tree.
 
 ### File 4: `quality/RUN_INTEGRATION_TESTS.md`
 
@@ -554,9 +627,69 @@ Must include: safety constraints, pre-flight checks, test matrix with specific p
 
 After generating the test matrix, check: does every use case in REQUIREMENTS.md have at least one integration test mapped to it? If not, flag the uncovered use case as a gap. Integration tests mapped to use cases should test the **end-to-end behavior** described in the use case — not just run existing unit tests that happen to touch the same code paths. For example, if a use case says "Developer authenticates and follows redirects without leaking secrets," the integration test should perform a redirect across domains with auth headers and verify they're stripped — not just run `pytest -k auth`.
 
+**Per-UC group splitting (mandatory).** Each integration test group must map to at most **2 use cases**. A group that maps to 3+ UCs is too coarse — it can't distinguish which use case failed when a test breaks. If a single test command (e.g., `mvn test`, `go test ./...`) would exercise multiple use cases, split it into separate groups with targeted test selectors (`-Dtest=`, `-run`, `-k`, `--tests`, `-- test_name`, etc.) so each group isolates 1–2 UCs. Groups covering all UCs in one undifferentiated command are explicitly prohibited — they provide no diagnostic value when a failure occurs.
+
+**No-selector fallback.** If the project's test framework cannot select tests at the granularity needed for splitting (e.g., a monolithic test suite with no tag/filter support), document the limitation in the integration protocol and use the narrowest feasible command. Record which UCs the group covers and why further splitting is not possible.
+
+**Infrastructure group definition.** A single `[Infrastructure]` group may cover build validation, race detection, static analysis, and platform compatibility checks without UC mapping. Infrastructure tests verify build toolchain and platform support, not user-observable behavior. Infrastructure groups:
+- Do **not** count toward use-case coverage (the UC coverage check ignores them)
+- Must include a one-line rationale explaining what they validate
+- May **not** be used to relabel broad user-workflow commands to avoid splitting — if the tests exercise user-facing behavior described in a use case, they must be mapped to that UC regardless of how the test is organized
+
 **All commands must use relative paths.** The generated protocol should include a "Working Directory" section at the top stating that all commands run from the project root using relative paths. Never generate commands that `cd` to an absolute path — this breaks when the protocol is run from a different machine or directory. Use `./scripts/`, `./pipelines/`, `./quality/`, etc.
 
 **Include an Execution UX section.** When someone tells an AI agent to "run the integration tests," the agent needs to know how to present its work. The protocol should specify three phases: (1) show the plan as a numbered table before running anything, (2) report one-line progress updates as each test runs (`✓`/`✗`/`⧗`), (3) show a summary table with pass/fail counts and a recommendation. See `references/review_protocols.md` section "Execution UX" for the template and examples. Without this, the agent dumps raw output or stays silent — neither is useful.
+
+**Structured output (mandatory).** The protocol must instruct the agent to produce machine-readable results alongside the Markdown report, using **JUnit XML** for test execution and a **sidecar JSON** for QPB-specific metadata.
+
+**JUnit XML output:** Each test group should run with the framework's native JUnit XML reporter:
+- Python: `pytest --junitxml=quality/results/integration-group-N.xml`
+- Go: `gotestsum --junitxml quality/results/integration-group-N.xml -- -run "TestPattern"`
+- Java/Kotlin: Copy Surefire XML reports to `quality/results/`
+- TypeScript: `jest --reporters=jest-junit` with `JEST_JUNIT_OUTPUT_DIR=quality/results/`
+- Rust: `cargo test 2>&1 | cargo2junit > quality/results/integration-group-N.xml` (if available)
+
+If the JUnit XML reporter is unavailable, skip XML and note `"junit_available": false` in the sidecar JSON.
+
+**Sidecar JSON:** Generate `quality/results/integration-results.json` with this schema:
+
+```json
+{
+  "schema_version": "1.0",
+  "skill_version": "<current skill version>",
+  "date": "YYYY-MM-DD",
+  "project": "<project name>",
+  "recommendation": "SHIP",
+  "groups": [
+    {
+      "group": 1,
+      "name": "Core routing dispatch",
+      "use_cases": ["UC-01", "UC-02"],
+      "result": "pass",
+      "tests_passed": 5,
+      "tests_failed": 0,
+      "junit_file": "integration-group-1.xml",
+      "junit_available": true,
+      "notes": ""
+    }
+  ],
+  "summary": {
+    "total_groups": 9,
+    "passed": 8,
+    "failed": 1,
+    "skipped": 0
+  },
+  "uc_coverage": {
+    "UC-01": "covered_pass",
+    "UC-02": "covered_pass",
+    "UC-03": "not_mapped"
+  }
+}
+```
+
+Valid `result` values: `"pass"`, `"fail"`, `"skipped"`, `"error"`. Valid `recommendation` values: `"SHIP"` (all groups pass), `"FIX BEFORE MERGE"` (failures in non-blocking groups), `"BLOCK"` (failures in critical groups). The `uc_coverage` section maps every use case from REQUIREMENTS.md to one of: `"covered_pass"` (at least one mapped group passed), `"covered_fail"` (groups mapped but all failed), or `"not_mapped"` (no integration test group maps to this use case). The distinction between `"covered_fail"` and `"not_mapped"` matters: the first means the test exists but the code is broken; the second means the test is missing.
+
+Runner scripts and CI tools should read the sidecar JSON for results rather than grepping the Markdown report. This eliminates the class of bugs where grep-based counting produces wrong numbers from matching words in prose.
 
 **This protocol must exercise real external dependencies.** If the project talks to APIs, databases, or external services, the integration test protocol runs real end-to-end executions against those services — not just local validation checks. Design the test matrix around the project's actual execution modes and external dependencies. Look for API keys, provider abstractions, and existing integration test scripts during exploration and build on them.
 
@@ -627,6 +760,55 @@ The generated protocol must include:
    |--------|---------------|----------|-------------|--------------------|--------------------|------------|--------------|
 
    Every row must be fully populated. A bug without a spec doc entry is a code inconsistency, not a spec violation — note this in the table and adjust the upstream reporting language accordingly.
+
+6. **Structured output (mandatory).** The protocol must produce machine-readable results alongside the Markdown report. Use **JUnit XML** for test execution results and a **sidecar JSON** file for QPB-specific metadata that JUnit XML cannot represent.
+
+   **JUnit XML output:** For each red-green phase, run the test with the framework's native JUnit XML output flag:
+   - Python: `pytest --junitxml=quality/results/tdd-red-BUG-NNN.xml`
+   - Go: `gotestsum --junitxml quality/results/tdd-red-BUG-NNN.xml -- -run TestRegression_BUG_NNN`
+   - Java/Kotlin: Maven Surefire reports are generated automatically in `target/surefire-reports/`; copy relevant XML to `quality/results/`
+   - Rust: `cargo test --test regression 2>&1 | cargo2junit > quality/results/tdd-red-BUG-NNN.xml` (if cargo2junit available; otherwise skip XML for Rust)
+   - TypeScript: `jest --reporters=default --reporters=jest-junit` with `JEST_JUNIT_OUTPUT_DIR=quality/results/`
+
+   If the framework's JUnit XML reporter is not available or requires a missing dependency, skip the XML output for that language and note it in the sidecar JSON (`"junit_available": false`). Do not fail the TDD run over missing XML tooling.
+
+   **Sidecar JSON:** Generate `quality/results/tdd-results.json` with this schema:
+
+   ```json
+   {
+     "schema_version": "1.0",
+     "skill_version": "<current skill version>",
+     "date": "YYYY-MM-DD",
+     "project": "<project name>",
+     "bugs": [
+       {
+         "id": "BUG-001",
+         "requirement": "REQ-003",
+         "red_phase": "fail",
+         "green_phase": "pass",
+         "verdict": "TDD verified",
+         "regression_patch": "quality/patches/BUG-001-regression-test.patch",
+         "fix_patch": "quality/patches/BUG-001-fix.patch",
+         "fix_patch_present": true,
+         "patch_gate_passed": true,
+         "junit_red": "tdd-red-BUG-001.xml",
+         "junit_green": "tdd-green-BUG-001.xml",
+         "junit_available": true,
+         "notes": ""
+       }
+     ],
+     "summary": {
+       "total": 6,
+       "verified": 4,
+       "red_failed": 1,
+       "green_failed": 1
+     }
+   }
+   ```
+
+   Valid `verdict` values: `"TDD verified"` (FAIL→PASS), `"red failed"` (test passed on unpatched code — test doesn't detect the bug), `"green failed"` (test still fails after fix — fix is incomplete or patch is corrupt), `"skipped"` (no fix patch available, confirmed open only). A bug with `verdict: "skipped"` should have `red_phase: "fail"` (red phase ran and confirmed the bug) and `green_phase: "skipped"` (no fix to apply). Valid `red_phase`/`green_phase` values: `"fail"`, `"pass"`, `"error"` (compile/apply failure), `"skipped"`. The `patch_gate_passed` field records whether the patch validation gate (apply-check + compile) succeeded — `false` if the gate failed and the patch was repaired, `null` if no fix patch exists.
+
+   Runner scripts and CI tools should read the sidecar JSON for pass/fail counts rather than grepping the Markdown report.
 
 **Execution UX:** Same three-phase pattern as the integration tests — (1) show the plan as a numbered table of bugs to verify, (2) report one-line progress as each red-green cycle runs (`FAIL ✓ → PASS ✓` or `FAIL ✗ — test passes on unpatched code, rewriting`), (3) show a summary table with verified/failed/rewritten counts.
 
@@ -710,6 +892,9 @@ The critical checks:
 8. **All tests pass — zero failures AND zero errors.** Run the test suite using the project's test runner (Python: `pytest -v`, Scala: `sbt testOnly`, Java: `mvn test`/`gradle test`, TypeScript: `npx jest`, Go: `go test -v`, Rust: `cargo test`) and check the summary. Errors from missing fixtures, failed imports, or unresolved dependencies count as broken tests. If you see setup errors, you forgot to create the fixture/setup file or referenced undefined test helpers.
 9. **Existing tests unbroken** — The new files didn't break anything.
 10. **Integration test quality gates were written from a Field Reference Table.** Verify that you built a Field Reference Table by re-reading each schema file before writing quality gates, and that every field name in the quality gates is copied from that table — not from memory. If you skipped the table, go back and build it now.
+14. **Structured output schemas are valid.** Verify that `RUN_TDD_TESTS.md` and `RUN_INTEGRATION_TESTS.md` both instruct the agent to produce JUnit XML output (using the framework's native reporter) and a sidecar JSON file. Check that the JSON schema in each protocol includes all mandatory fields (`schema_version`, `skill_version`, `date`, `summary`). Verify that the sidecar JSON verdict/result values use only the allowed enum values defined in this skill.
+15. **Patch validation gate is executable.** For each confirmed bug with patches, verify that the `git apply --check` and compile-check commands specified in the patch validation gate would work for this project's build system. The gate commands must use the project's actual build tool, not a generic placeholder. For interpreted languages (Python, JavaScript), verify the gate specifies an appropriate syntax check.
+16. **Regression test skip guards are present.** Grep `quality/test_regression.*` for the language-appropriate skip/xfail mechanism. Every test function must have a guard referencing the bug ID and fix patch path. A regression test without a skip guard will cause unexpected failures when the test suite runs on unpatched code.
 
 If any benchmark fails, go back and fix it before proceeding.
 
@@ -911,6 +1096,6 @@ Read these as you work through each phase:
 | `references/schema_mapping.md` | Step 5b (schema types) | Field mapping format, mutation validity rules |
 | `references/constitution.md` | File 1 (QUALITY.md) | Full template with section-by-section guidance |
 | `references/functional_tests.md` | File 2 (functional tests) | Test structure, anti-patterns, cross-variant strategy |
-| `references/review_protocols.md` | Files 3–4 (code review, integration) | Templates for both protocols |
+| `references/review_protocols.md` | Files 3–4 (code review, integration) | Templates for both protocols, patch validation, skip guards |
 | `references/spec_audit.md` | File 5 (Council of Three) | Full audit protocol, triage process, fix execution |
-| `references/verification.md` | Phase 3 (verify) | Complete self-check checklist with all 13 benchmarks |
+| `references/verification.md` | Phase 3 (verify) | Complete self-check checklist (16 benchmarks) including structured output, patch gate, and skip guard validation |
