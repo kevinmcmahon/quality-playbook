@@ -72,13 +72,16 @@ Adding community documentation to the pipeline produces measurably better result
 
 ### What's new in v1.3.17
 
-**v1.3.17** adds a requirement that spec audit triage verification probes produce executable test assertions, not just prose reasoning. When triage confirms or rejects a finding, it must write a test assertion that mechanically proves its determination -- rejections need a passing assertion, confirmations need a failing one, each citing exact line numbers. This addresses a hallucination observed in v1.3.16 where triage rejected a correct finding (a missing switch/case label in the Linux kernel virtio subsystem) by claiming code existed on lines that actually contained unrelated code. The executable evidence requirement makes hallucinated rejections self-defeating: the model cannot write a passing assertion for code that isn't there. (21 self-check benchmarks.)
-
-**v1.3.16** adds council-reviewed changes from a three-way review (Codex, Cursor, Copilot): verbatim JSON template enforcement for TDD results with anti-pattern examples, schema version bump to 1.1, pre-flight command validation with framework-specific dry-run commands, per-bug writeup generation with adaptive depth, version/attribution stamps with file-type exemptions, and post-write JSON validation. Also adds an enumeration completeness guardrail for switch/case and whitelist analysis. (20 self-check benchmarks.)
-
-**v1.3.15** adds per-use-case group splitting for integration tests, a patch validation gate with build-system-aware commands, structured output schemas (JUnit XML + sidecar JSON) for TDD results, and regression test skip guards with bug ID references. (18 self-check benchmarks.)
-
-**v1.3.14** addresses systemic weaknesses found through a four-way council review (Cowork, Cursor, Codex, Copilot) across 9 benchmark repositories. Project overviews are validated against real-world significance before use case derivation. Use cases must describe real user outcomes, not code features. Requirements are backed by tiered doc sources (Tier 1 canonical, Tier 2 strong secondary, Tier 3 weak). A bidirectional traceability check catches alternative-path bugs that file-level coverage misses. Integration tests are grounded in use cases with explicit traceability. A carry-forward rule prevents previously learned requirements from being silently dropped between runs.
+- **Executable evidence for triage probes.** Spec audit triage verification probes must now produce test assertions, not just prose reasoning. Rejections need a passing assertion proving the finding is wrong; confirmations need a failing assertion proving the bug exists. Each must cite exact line numbers. This prevents a hallucination mode where triage rejects a correct finding by claiming code exists on lines that actually contain unrelated code.
+- **Enumeration completeness guardrail.** Switch/case and whitelist analyses require a mechanical two-list check: list every constant from the header, list every case label from the code, diff. Addresses a repeated failure where the model asserted coverage of constants absent from the dispatch.
+- **Council-reviewed TDD schema.** Verbatim JSON template enforcement with anti-pattern examples, schema version 1.1, and post-write validation. Pre-flight command validation with framework-specific dry-run commands.
+- **Per-bug writeups.** Adaptive depth heuristic generates writeups for TDD-verified bugs with spec reference, code citation, fix diff, and test description.
+- **Version stamps and exemptions.** Every generated file carries a version/attribution stamp, with exemptions for JSON sidecars, JUnit XML, patch files, and shebang-first files.
+- **Patch validation gate.** Build-system-aware commands verify patches apply cleanly before TDD runs.
+- **Structured output.** JUnit XML + sidecar JSON for TDD results. Regression test skip guards with bug ID references.
+- **Use-case-grounded integration tests.** Per-use-case group splitting with traceability columns mapping each test to the user outcome it validates.
+- **Bidirectional traceability.** Catches alternative-path bugs that file-level coverage misses. Carry-forward rule prevents previously learned requirements from being silently dropped between runs.
+- **21 self-check benchmarks.**
 
 ## Validation
 
