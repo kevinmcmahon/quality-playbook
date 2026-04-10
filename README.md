@@ -2,7 +2,7 @@
 
 Point an AI coding tool at any codebase. Get a complete quality engineering infrastructure: requirements derived from the actual intent of the code, functional tests traced to those requirements, a three-pass code review protocol, and a multi-model spec audit that catches bugs no single reviewer can find alone.
 
-**Version:** 1.3.14 | **Author:** [Andrew Stellman](https://github.com/andrewstellman) | **License:** Apache 2.0
+**Version:** 1.3.17 | **Author:** [Andrew Stellman](https://github.com/andrewstellman) | **License:** Apache 2.0
 
 ## The problem
 
@@ -60,21 +60,25 @@ The playbook's value comes from requirement derivation. AI code reviewers are bo
 
 **Phase 2b: Code review.** A three-pass code review runs against HEAD: structural review with anti-hallucination guardrails, requirement verification checking each requirement against the code, and cross-requirement consistency checking whether requirements contradict each other. About 65% of findings come from Pass 1, 35% from Passes 2 and 3. Each confirmed bug gets a regression test.
 
-**Phase 2c: Spec audit.** Three independent AI models audit the code against the requirements. The triage process uses verification probes -- targeted checks that ask "is this actually true?" -- rather than dismissing single-model findings. The most valuable findings are often the ones only one model catches.
+**Phase 2c: Spec audit.** Three independent AI models audit the code against the requirements. The triage process uses verification probes -- targeted checks that ask "is this actually true?" -- rather than dismissing single-model findings. As of v1.3.17, verification probes must produce executable test assertions (not just prose reasoning) to confirm or reject findings, which prevents the triage from hallucinating code compliance. The most valuable findings are often the ones only one model catches.
 
 **Phase 2d: Reconciliation.** Post-review reconciliation closes the loop: every bug from code review and spec audit is tracked, regression-tested or explicitly exempted, and the completeness report is finalized with one authoritative verdict.
 
-**Phase 3: Verify.** Self-check benchmarks validate the generated artifacts against internal consistency rules -- requirement counts match across all surfaces, no stale text remains, and every finding has a closure status.
+**Phase 3: Verify.** 21 self-check benchmarks validate the generated artifacts against internal consistency rules -- requirement counts match across all surfaces, no stale text remains, every finding has a closure status, and triage probes include executable evidence.
 
 ### Why documentation matters
 
 Adding community documentation to the pipeline produces measurably better results. In a controlled experiment across multiple repositories, documentation-enriched runs found more bugs, different bugs, and higher-confidence bugs than code-only baselines. The documentation gives auditors spec language to check against, turning "this code looks odd" into "this code contradicts the documented behavior."
 
-### What's new in v1.3.14
+### What's new in v1.3.17
 
-Version 1.3.14 addresses systemic weaknesses found through a four-way council review (Cowork, Cursor, Codex, Copilot) across 9 benchmark repositories. The key changes: project overviews are validated against real-world significance before use case derivation. Use cases must describe real user outcomes, not code features. Requirements are backed by tiered doc sources (Tier 1 canonical, Tier 2 strong secondary, Tier 3 weak). A bidirectional traceability check catches alternative-path bugs that file-level coverage misses. Integration tests are grounded in use cases with explicit traceability. And a carry-forward rule prevents previously learned requirements from being silently dropped between runs.
+**v1.3.17** adds a requirement that spec audit triage verification probes produce executable test assertions, not just prose reasoning. When triage confirms or rejects a finding, it must write a test assertion that mechanically proves its determination -- rejections need a passing assertion, confirmations need a failing one, each citing exact line numbers. This addresses a hallucination observed in v1.3.16 where triage rejected a correct finding (a missing switch/case label in the Linux kernel virtio subsystem) by claiming code existed on lines that actually contained unrelated code. The executable evidence requirement makes hallucinated rejections self-defeating: the model cannot write a passing assertion for code that isn't there. (21 self-check benchmarks.)
 
-These changes were motivated by a specific regression: v1.3.13 missed two real Linux kernel bugs that v1.3.7 had found, because requirements collapsed alternative paths into vague labels and a previously learned requirement was lost. The v1.3.14 pipeline is designed to prevent that class of regression.
+**v1.3.16** adds council-reviewed changes from a three-way review (Codex, Cursor, Copilot): verbatim JSON template enforcement for TDD results with anti-pattern examples, schema version bump to 1.1, pre-flight command validation with framework-specific dry-run commands, per-bug writeup generation with adaptive depth, version/attribution stamps with file-type exemptions, and post-write JSON validation. Also adds an enumeration completeness guardrail for switch/case and whitelist analysis. (20 self-check benchmarks.)
+
+**v1.3.15** adds per-use-case group splitting for integration tests, a patch validation gate with build-system-aware commands, structured output schemas (JUnit XML + sidecar JSON) for TDD results, and regression test skip guards with bug ID references. (18 self-check benchmarks.)
+
+**v1.3.14** addresses systemic weaknesses found through a four-way council review (Cowork, Cursor, Codex, Copilot) across 9 benchmark repositories. Project overviews are validated against real-world significance before use case derivation. Use cases must describe real user outcomes, not code features. Requirements are backed by tiered doc sources (Tier 1 canonical, Tier 2 strong secondary, Tier 3 weak). A bidirectional traceability check catches alternative-path bugs that file-level coverage misses. Integration tests are grounded in use cases with explicit traceability. A carry-forward rule prevents previously learned requirements from being silently dropped between runs.
 
 ## Validation
 
