@@ -115,6 +115,26 @@ In the triage summary table, add a column for auditor agreement: "2/2 present", 
 
 When models disagree on factual claims, deploy a read-only probe: give one model the disputed claim and ask it to read the code and report ground truth. Never resolve factual disputes by majority vote — the majority can be wrong about what code actually does.
 
+**Verification probes must produce executable evidence.** Prose reasoning is not sufficient for either confirmations or rejections. Every verification probe must produce a test assertion that mechanically proves the determination:
+
+**For rejections** (finding is false positive): Write an assertion that PASSES, proving the auditor's claim is wrong:
+```python
+# Rejection proof: function X does check for null at line 247
+assert "if (ptr == NULL)" in source_of("X"), "X has null check at line 247"
+```
+If you cannot write a passing assertion, **do not reject the finding**. The inability to produce mechanical proof is itself evidence that the finding may be real.
+
+**For confirmations** (finding is a real bug): Write an assertion that FAILS (expected-failure), proving the bug exists:
+```python
+# Confirmation proof: RING_RESET is not a case label in the whitelist
+assert "case VIRTIO_F_RING_RESET:" in source_of("vring_transport_features"), \
+    "RING_RESET should be in the switch but is not — cleared by default at line 3527"
+```
+
+**Every assertion must cite an exact line number** for the evidence it references. Not "lines 3527-3528" but "line 3527: `default:`" — showing what the line actually contains.
+
+**Why this rule exists:** In v1.3.16 virtio testing, the triage received a correct minority finding that VIRTIO_F_RING_RESET was missing from a switch/case whitelist. The triage performed a verification probe that claimed lines 3527-3528 "explicitly preserve VIRTIO_F_RING_RESET" — but those lines contained the `default:` branch. The probe hallucinated compliance. Had it been required to write `assert "case VIRTIO_F_RING_RESET:" in source`, the assertion would have failed, exposing the hallucination. Requiring executable evidence makes hallucinated rejections self-defeating.
+
 ### Categorize Each Confirmed Finding
 
 - **Spec bug** — Spec is wrong, code is fine → update spec

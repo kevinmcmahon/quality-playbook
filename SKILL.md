@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate nine quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, a consolidated bug report (BUGS.md) with patches, a TDD verification protocol (RUN_TDD_TESTS.md), an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis, missing safeguard detection, patch validation gates, and structured test output (JUnit XML + sidecar JSON). Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.16
+  version: 1.3.17
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -546,14 +546,17 @@ The code review protocol has three passes. Each pass runs independently — a fr
 2. **Resource lifecycle** — allocation, refcount management, error-path cleanup, lock release on failure, file descriptor/handle lifetime. Every function that acquires a reference or resource must release it on every early-exit path, or must complete all validation before acquiring the resource.
 3. **Concurrency and state management** — lock ordering, atomic operation correctness (every atomic modification of a shared state word must use read-modify-write semantics and preserve bits outside the intended modification), state machine completeness (all states handled at all consumers).
 4. **Unit and encoding correctness** — every field read from hardware, protocol structures, or user input that has defined units must be converted correctly before use in calculations or comparisons.
+5. **Enumeration and whitelist completeness** — when a function uses a `switch`/`case`, `match`, if-else chain, or any branching construct to handle a set of named constants (feature bits, enum values, event types, command codes, permission flags), perform a **mechanical enumeration check**: (a) list every branch/case label actually present in the code, (b) list every constant defined in the relevant header, enum, or spec that *should* be handled, (c) diff the two lists and report any constants that are defined but not handled. **Do not assert that a whitelist "covers all values" or "preserves supported bits" without performing this two-list comparison.** AI models reliably hallucinate completeness for switch/case constructs — the model sees the function, sees the constants defined elsewhere, and assumes coverage without checking each case label. This is the single most common false-negative in code review. The mechanical check is the fix: enumerate, diff, report.
 
-These four areas must appear as labeled subsections in the Pass 1 report. If a project has no meaningful concurrency, say so explicitly and document why rather than omitting the section. Add project-specific scrutiny areas beyond these four as warranted.
+These five areas must appear as labeled subsections in the Pass 1 report. If a project has no meaningful concurrency, say so explicitly and document why rather than omitting the section. Add project-specific scrutiny areas beyond these four as warranted.
 
 Pass 1 catches ~65% of real defects: race conditions, null pointer hazards, resource leaks, off-by-one errors, type mismatches — structural problems visible in the code.
 
 **Pass 2 — Requirement Verification.** For each testable requirement derived in Step 7 of Phase 1, check whether the code satisfies it. For each requirement, either show the code that satisfies it or explain specifically why it doesn't. This is a pure verification pass — the reviewer's only job is "does the code satisfy this requirement?" Not a general review. Not looking for other bugs. Just verification.
 
 **Minimum evidence rule:** Pass 2 must cite at least one code location (file:line or file:function) **per requirement**. Blanket satisfaction claims like "REQ-003 through REQ-012 — satisfied by the client paths reviewed during the pass" without per-requirement code citations do not satisfy Pass 2. If two or three requirements are satisfied by the same function, cite the function once and list those specific requirements — but each requirement must appear individually with its own SATISFIED/VIOLATED verdict, not as part of an unverified range. A group of more than three requirements under a single citation is a sign that the verification was superficial. The point is traceability — a reviewer reading Pass 2 should be able to follow the evidence chain from any single requirement to the code that satisfies it without re-reading the entire codebase.
+
+**Enumeration completeness claims require mechanical proof.** When evaluating a requirement that involves a whitelist, lookup table, feature-bit set, handler registry, or any claim of the form "all X are covered by Y," the reviewer must perform the two-list enumeration check from Pass 1 scrutiny area 5: list every item that should be covered (from the spec, header, or enum), list every item that is covered (from the code), and diff. Do not mark such a requirement SATISFIED based on reading the function and believing it handles everything — that is the specific hallucination pattern this rule prevents. Example: a requirement says "the transport feature whitelist must preserve all supported ring features." The reviewer reads `vring_transport_features()` and sees it has a switch/case. The correct check: list every `VIRTIO_F_*` constant from the header, list every case label in the switch, diff. The hallucination: "the whitelist preserves supported bits including VIRTIO_F_RING_RESET" without checking that RING_RESET actually appears as a case label. This exact failure mode has been observed in practice — the model asserted coverage of a constant that was absent from the switch.
 
 Pass 2 catches violations of individual requirements — cases where the code doesn't do what the specification says it should. This finds bugs that structural review misses because the code that IS there is correct; the bug is what's missing or what doesn't match the spec.
 
@@ -765,6 +768,16 @@ The protocol defines: a copy-pasteable audit prompt with guardrails, project-spe
 
 **Code review vs spec audit conflicts:** If the code review and spec audit disagree on the same finding, the spec audit finding is not automatically correct. Deploy a verification probe — read the specific code location and determine which assessment is accurate. Record the resolution in the BUG tracker. A code review BUG not flagged by any spec auditor is still confirmed but should be verified with a targeted probe before closure.
 
+**Verification probes must produce executable evidence.** When the triage step confirms OR rejects a finding via verification probe, prose reasoning alone is not sufficient. The probe must produce a test assertion that mechanically proves the determination:
+
+- **For rejections** (finding is false positive): Write an assertion that PASSES, proving the finding is wrong. Example: if rejecting "function X is missing null check," write `assert "if (ptr == NULL)" in source_of("X"), "X has null check at line NNN"`. If you cannot write a passing assertion that proves your rejection, **do not reject the finding** — escalate it to confirmed or flag it for manual review.
+
+- **For confirmations** (finding is a real bug): Write an assertion that FAILS (expected-failure), proving the bug exists. Example: if confirming "RING_RESET missing from switch," write `assert "case VIRTIO_F_RING_RESET:" in source_of("vring_transport_features"), "RING_RESET should be in the switch but is not"`.
+
+- **Every assertion must cite an exact line number** for the evidence it references. Not "lines 3527-3528" but "line 3527: `default:`" — showing what the line actually contains. Assertions without line-number citations are insufficient.
+
+**Why this rule exists:** In v1.3.16 virtio testing, the triage correctly received a minority finding that `VIRTIO_F_RING_RESET` was missing from a switch/case whitelist. The triage performed a "verification probe" that claimed lines 3527-3528 "explicitly preserve VIRTIO_F_RING_RESET" — but those lines actually contained the `default:` branch. The triage hallucinated compliance with the code. Had it been required to write `assert "case VIRTIO_F_RING_RESET:" in source`, the assertion would have failed, exposing the hallucination. Requiring executable evidence for rejections makes hallucinated rejections self-defeating: the model cannot write a passing assertion for something that isn't in the code.
+
 ### File 6: `AGENTS.md`
 
 If `AGENTS.md` already exists, update it — don't replace it. Add a Quality Docs section pointing to all generated files.
@@ -904,7 +917,7 @@ Run the code review protocol (all three passes) as described in File 3. After pr
 
 ### Phase 2c: Spec Audit and Triage
 
-Run the spec audit protocol as described in File 5. The triage report **must** include a `## Pre-audit docs validation` section (see `references/spec_audit.md` for the full template). This section is required even if `docs_gathered/` is empty — in that case, note what baseline the auditors used instead. After triage, categorize each confirmed finding.
+Run the spec audit protocol as described in File 5. The triage report **must** include a `## Pre-audit docs validation` section (see `references/spec_audit.md` for the full template). This section is required even if `docs_gathered/` is empty — in that case, note what baseline the auditors used instead. Every verification probe in the triage must produce executable evidence (test assertions with line-number citations) per the "Verification probes must produce executable evidence" rule above. After triage, categorize each confirmed finding.
 
 **Update PROGRESS.md:** Add every confirmed **code bug** from the spec audit to the cumulative BUG tracker with source "Spec Audit". This is critical — spec-audit bugs are systematically orphaned if they aren't added to the same tracker that the closure verification reads.
 
@@ -1173,4 +1186,4 @@ Read these as you work through each phase:
 | `references/functional_tests.md` | File 2 (functional tests) | Test structure, anti-patterns, cross-variant strategy |
 | `references/review_protocols.md` | Files 3–4 (code review, integration) | Templates for both protocols, patch validation, skip guards |
 | `references/spec_audit.md` | File 5 (Council of Three) | Full audit protocol, triage process, fix execution |
-| `references/verification.md` | Phase 3 (verify) | Complete self-check checklist (19 benchmarks) including structured output, patch gate, skip guard validation, pre-flight discovery, version stamps, and bug writeups |
+| `references/verification.md` | Phase 3 (verify) | Complete self-check checklist (21 benchmarks) including structured output, patch gate, skip guard validation, pre-flight discovery, version stamps, bug writeups, enumeration completeness, and triage executable evidence |

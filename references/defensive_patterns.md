@@ -155,6 +155,20 @@ State machines are a special category of defensive pattern. When you find status
 3. Look for states you can enter but never leave (terminal state without cleanup)
 4. Look for operations that should be available in a state but are blocked by an incomplete guard
 
+## Enumeration and Whitelist Completeness
+
+When a function uses `switch`/`case`, `match`, if-else chains, or any dispatch construct to handle a set of named constants (feature bits, enum values, command codes, event types, permission flags), perform the **two-list enumeration check**:
+
+1. **List A (defined):** Extract every constant from the relevant header, enum, or spec that the code should handle. Use grep — do not list from memory.
+2. **List B (handled):** Extract every case label, branch condition, or map key from the dispatch code. Use grep or line-by-line read — do not summarize.
+3. **Diff:** Compare the two lists. Any constant in A but not in B is a potential gap. Any constant in B but not in A is a potential dead case.
+
+**Why this exists:** AI models reliably hallucinate completeness for switch/case constructs. The model sees a function with many case labels, sees constants defined elsewhere, and concludes all constants are handled without actually checking. In one observed case, the model asserted that a kernel feature-bit whitelist "preserves supported ring transport bits including VIRTIO_F_RING_RESET" when that constant was entirely absent from the switch — the model hallucinated coverage because the constant existed in a header the function's callers used. The mechanical two-list check is the only reliable countermeasure.
+
+**Triage verification probes must produce executable evidence.** When triage confirms or rejects an enumeration finding via verification probe, prose reasoning alone is insufficient. The probe must produce a test assertion for each constant: `assert "case VIRTIO_F_RING_RESET:" in source_of("vring_transport_features"), "RING_RESET at line NNN"`. This rule exists because in v1.3.16, the triage correctly received a minority finding about RING_RESET but rejected it with a hallucinated claim that "lines 3527-3528 explicitly preserve RING_RESET" — those lines were actually the `default:` branch. Had the triage been forced to write an assertion, it would have failed, exposing the hallucination.
+
+**Where to apply:** Feature-bit negotiation functions, protocol message dispatchers, permission check switches, configuration option handlers, codec/format registration tables, HTTP method/status code handlers, and any function where a `default:` or `else` clause silently drops unrecognized values.
+
 **Converting state machine gaps to scenarios:**
 
 ```markdown
