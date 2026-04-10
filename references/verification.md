@@ -148,6 +148,10 @@ For each bug with `verdict: "TDD verified"` in `tdd-results.json`, verify that a
 
 Open the triage report (`quality/spec_audits/YYYY-MM-DD-triage.md`). For every finding that was confirmed or rejected via a verification probe, verify that the triage entry includes a test assertion (not just prose reasoning). Rejections must include a PASSING assertion proving the finding is wrong. Confirmations must include a FAILING assertion proving the bug exists. Every assertion must cite an exact line number. A triage decision based on prose reasoning alone ("lines 3527-3528 explicitly preserve X") without a mechanical assertion is non-conformant.
 
+### 22. Enumeration Lists Extracted From Code, Not Copied From Requirements
+
+When the code review includes an enumeration check (e.g., "case labels present in function X"), verify that the code-side list includes per-item line numbers from the actual source. If the list matches the requirements list word-for-word without line numbers, the enumeration was likely copied rather than extracted and must be redone. Also verify that the triage pre-audit spot-checks report the actual contents of cited lines ("line 3527 contains `default:`") rather than merely confirming claims ("line 3527 preserves RING_RESET").
+
 ## Quick Checklist Format
 
 Use this as a final sign-off:
@@ -175,3 +179,4 @@ Use this as a final sign-off:
 - [ ] Enumeration completeness checks show two-list comparisons (not just assertions of coverage)
 - [ ] Every TDD-verified bug has a writeup at `quality/writeups/BUG-NNN.md`
 - [ ] Triage verification probes include test assertions (not just prose) for confirmations and rejections
+- [ ] Enumeration code-side lists include per-item line numbers (not copied from requirements)

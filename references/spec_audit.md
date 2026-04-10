@@ -76,6 +76,16 @@ The triage report must include a `## Pre-audit docs validation` section regardle
 2. Grep the source code for the cited behavior. Does the code match the docs?
 3. If any claim is wrong, note it in the triage header: "docs_gathered/ contains N known inaccuracies: [list]. Findings that rely on these claims are downgraded to NEEDS REVIEW."
 
+**Spot-check claims about code contents must extract, not assert.** When the spec audit prompt or pre-validation includes claims like "function X handles constant Y at line Z," the triage must read the cited lines and report what they actually contain. Do not confirm a claim by checking that the function exists or that the constant is defined somewhere — confirm it by showing the exact text at the cited lines. Format each spot-check result as:
+
+```
+Claim: "vring_transport_features() preserves VIRTIO_F_RING_RESET at line 3527"
+Actual line 3527: `default:`
+Result: CLAIM IS FALSE — line 3527 is the default branch, not a RING_RESET case label
+```
+
+Spot-check claims derived from generated requirements or gathered docs (rather than from the code) are **hypotheses to test**, not facts to confirm. This rule prevents the contamination chain observed in v1.3.17 where a false spot-check claim was accepted as "accurate" without reading the actual lines, causing three auditors to inherit a hallucinated code-presence claim.
+
 **If `docs_gathered/` does not exist:** State this explicitly: "No supplemental docs provided. Auditors relied on in-repo specs and code only." This confirms the absence is intentional, not an oversight.
 
 This section fires in every triage, not just when docs are present. In v1.3.5 cross-repo testing, it only fired in 1/8 repos because it was conditional — making it required ensures the audit trail always documents the factual baseline.
