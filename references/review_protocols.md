@@ -149,8 +149,9 @@ Every guard must reference the bug ID (BUG-NNN format) and the fix patch path so
 These patterns ensure every bug has an executable test that can be enabled when the fix lands, without polluting CI with expected failures.
 
 **TDD red/green interaction with skip guards.** During TDD verification, the red and green phases must temporarily bypass the skip guard:
-- **Red phase:** Remove or disable the guard, run against unpatched code. Must fail. Re-enable guard after recording result.
-- **Green phase:** Remove or disable the guard, apply fix patch, run. Must pass. Re-enable guard if fix will be reverted.
+- **Red phase (NEVER SKIPPED):** Remove or disable the guard, run against unpatched code. Must fail. Re-enable guard after recording result. **The red phase is mandatory for every confirmed bug, even when no fix patch exists.** Record `verdict: "confirmed open"` with `red_phase: "fail"` and `green_phase: "skipped"`. Do not use `verdict: "skipped"` — that value is deprecated.
+- **Green phase:** Remove or disable the guard, apply fix patch, run. Must pass. Re-enable guard if fix will be reverted. If no fix patch exists, record `green_phase: "skipped"`.
+- **After successful red→green:** Generate a per-bug writeup at `quality/writeups/BUG-NNN.md` (see SKILL.md File 7, "Bug writeup generation"). Record the path in `tdd-results.json` as `writeup_path`. After writing `tdd-results.json`, reopen it and verify all required fields, enum values, and no extra undocumented root keys (see SKILL.md post-write validation step). Both sidecar JSON files must use `schema_version: "1.1"`.
 - **After TDD cycle:** Guard remains in committed regression test file, removed only when fix is permanently merged.
 
 **The only acceptable exemption** is when a regression test genuinely cannot be written — for example, the bug requires multi-threaded timing that can't be reliably reproduced, or requires an external service not available in the test environment. In that case, write an explicit exemption note in the combined summary explaining why, and include a minimal code sketch showing what you would test if you could.
