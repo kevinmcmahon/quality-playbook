@@ -223,6 +223,10 @@ If Phase 2c (spec audit) ran, verify that individual auditor report files exist 
 
 Every confirmed bug in BUGS.md must use the heading level `### BUG-NNN`. Grep for `^### BUG-` and count; grep for other bug heading patterns (`^## BUG-`, `^\*\*BUG-`, `^- BUG-`) and verify zero matches. Inconsistent heading levels cause machine-readable counts to disagree with the document.
 
+### 40. Artifact File-Existence Gate Passed
+
+Before Phase 2d is marked complete, verify that all required artifacts exist as files on disk — not just referenced in PROGRESS.md. Required files: BUGS.md, REQUIREMENTS.md, QUALITY.md, PROGRESS.md, COVERAGE_MATRIX.md, COMPLETENESS_REPORT.md. If Phase 2b ran: at least one file in code_reviews/. If Phase 2c ran: at least one auditor file and a triage file in spec_audits/. If Phase 0 or 0b ran: SEED_CHECKS.md as a standalone file. If confirmed bugs exist: tdd-results.json in results/. This benchmark exists because v1.3.24 benchmarking showed express writing a terminal gate section to PROGRESS.md claiming 1 confirmed bug, but BUGS.md, code review files, and spec audit files were never written to disk.
+
 ## Quick Checklist Format
 
 Use this as a final sign-off:
@@ -268,5 +272,6 @@ Use this as a final sign-off:
 - [ ] Individual auditor reports exist at `quality/spec_audits/*-auditor-N.md` (not just triage)
 - [ ] All BUGS.md bug headings use `### BUG-NNN` format
 - [ ] quality/BUGS.md exists (zero-bug runs include a summary of candidates evaluated and eliminated)
+- [ ] All required artifact files exist on disk before Phase 2d marked complete (not just referenced in PROGRESS.md)
 - [ ] (Continuation mode) PROGRESS.md contains `## Convergence` section with net-new count and verdict
 - [ ] `quality/BUGS.md` exists (zero-bug runs include a summary of candidates evaluated and eliminated)
