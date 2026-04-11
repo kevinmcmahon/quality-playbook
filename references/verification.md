@@ -227,6 +227,18 @@ Every confirmed bug in BUGS.md must use the heading level `### BUG-NNN`. Grep fo
 
 Before Phase 2d is marked complete, verify that all required artifacts exist as files on disk — not just referenced in PROGRESS.md. Required files: BUGS.md, REQUIREMENTS.md, QUALITY.md, PROGRESS.md, COVERAGE_MATRIX.md, COMPLETENESS_REPORT.md. If Phase 2b ran: at least one file in code_reviews/. If Phase 2c ran: at least one auditor file and a triage file in spec_audits/. If Phase 0 or 0b ran: SEED_CHECKS.md as a standalone file. If confirmed bugs exist: tdd-results.json in results/. This benchmark exists because v1.3.24 benchmarking showed express writing a terminal gate section to PROGRESS.md claiming 1 confirmed bug, but BUGS.md, code review files, and spec audit files were never written to disk.
 
+### 41. Sidecar JSON Post-Write Validation
+
+After `tdd-results.json` and/or `integration-results.json` are written, verify that each file contains all required keys with conformant values. For `tdd-results.json`: required root keys are `schema_version`, `skill_version`, `date`, `project`, `bugs`, `summary`. Each `bugs` entry must have `id`, `requirement`, `red_phase`, `green_phase`, `verdict`, `fix_patch_present`, `writeup_path`. The `summary` must include `confirmed_open`. For `integration-results.json`: required root keys are `schema_version`, `skill_version`, `date`, `project`, `recommendation`, `groups`, `summary`, `uc_coverage`. Both must have `schema_version: "1.1"`. A sidecar JSON with missing required keys, non-standard root keys, or invalid enum values is non-conformant. This benchmark exists because v1.3.25 benchmarking showed 6 of 8 repos with non-conformant sidecar JSON — httpx invented an alternate schema, serde used legacy shape, javalin omitted `summary` and per-bug fields, express used invalid phase values, and others used invalid verdict/result enum values.
+
+### 42. Script-Verified Closure Gate Passed
+
+Before Phase 2d is marked complete, `quality_gate.sh` must be executed from the project root and must exit 0. The script's full output must be saved to `quality/results/quality-gate.log`. A Phase 2d completion with no `quality-gate.log` or with a log showing FAIL results is non-conformant. This benchmark exists because v1.3.21–v1.3.25 relied entirely on model self-attestation for artifact conformance checks, and benchmarking showed persistent non-compliance (heading format, sidecar schema, use case identifiers, version stamps) that a script catches mechanically.
+
+### 43. Canonical Use Case Identifiers Present
+
+REQUIREMENTS.md must contain use cases labeled with canonical identifiers in the format `UC-01`, `UC-02`, etc. Grep for `UC-[0-9]` and count matches. A repo with use case content but no canonical identifiers is non-conformant. This benchmark exists because v1.3.25 benchmarking showed 7 of 8 repos with use case sections but no machine-readable identifiers — downstream tooling cannot count or cross-reference use cases without a canonical format.
+
 ## Quick Checklist Format
 
 Use this as a final sign-off:
@@ -275,3 +287,6 @@ Use this as a final sign-off:
 - [ ] All required artifact files exist on disk before Phase 2d marked complete (not just referenced in PROGRESS.md)
 - [ ] (Continuation mode) PROGRESS.md contains `## Convergence` section with net-new count and verdict
 - [ ] `quality/BUGS.md` exists (zero-bug runs include a summary of candidates evaluated and eliminated)
+- [ ] Sidecar JSON files (`tdd-results.json`, `integration-results.json`) contain all required keys with `schema_version: "1.1"`
+- [ ] `quality_gate.sh` was executed and exited 0; output saved to `quality/results/quality-gate.log`
+- [ ] REQUIREMENTS.md contains canonical use case identifiers (`UC-01`, `UC-02`, etc.)
