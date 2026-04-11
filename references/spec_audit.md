@@ -121,6 +121,8 @@ When the effective council is 2/3, downgrade the confidence tier: "All three" be
 
 In the triage summary table, add a column for auditor agreement: "2/2 present", "1/2 present", etc. This makes the confidence tier visible and auditable.
 
+**Incomplete council gate for enumeration/dispatch checks.** If the effective council is less than 3/3 and the run includes whitelist/enumeration/dispatch-function checks (claims about which constants a function handles), the audit may not conclude "no confirmed defects" for those checks without executed mechanical proof. Check whether `quality/mechanical/<function>_cases.txt` exists for each relevant function. If it does and shows the constant is present, the claim is confirmed. If it does and shows the constant is absent, the claim is false regardless of what any auditor wrote. If no mechanical artifact exists, generate one before closing the enumeration check. This rule exists because v1.3.18 had an effective council of 1/3, and the single model's triage fabricated line contents for enumeration claims — a mechanical artifact would have caught the contradiction.
+
 ### The Verification Probe
 
 When models disagree on factual claims, deploy a read-only probe: give one model the disputed claim and ask it to read the code and report ground truth. Never resolve factual disputes by majority vote — the majority can be wrong about what code actually does.

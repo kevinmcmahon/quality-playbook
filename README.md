@@ -2,7 +2,7 @@
 
 Point an AI coding tool at any codebase. Get a complete quality engineering infrastructure: requirements derived from the actual intent of the code, functional tests traced to those requirements, a three-pass code review protocol, and a multi-model spec audit that catches bugs no single reviewer can find alone.
 
-**Version:** 1.3.17 | **Author:** [Andrew Stellman](https://github.com/andrewstellman) | **License:** Apache 2.0
+**Version:** 1.3.20 | **Author:** [Andrew Stellman](https://github.com/andrewstellman) | **License:** Apache 2.0
 
 ## The problem
 
@@ -64,24 +64,21 @@ The playbook's value comes from requirement derivation. AI code reviewers are bo
 
 **Phase 2d: Reconciliation.** Post-review reconciliation closes the loop: every bug from code review and spec audit is tracked, regression-tested or explicitly exempted, and the completeness report is finalized with one authoritative verdict.
 
-**Phase 3: Verify.** 21 self-check benchmarks validate the generated artifacts against internal consistency rules -- requirement counts match across all surfaces, no stale text remains, every finding has a closure status, and triage probes include executable evidence.
+**Phase 3: Verify.** 27 self-check benchmarks validate the generated artifacts against internal consistency rules -- requirement counts match across all surfaces, no stale text remains, every finding has a closure status, and triage probes include executable evidence.
 
 ### Why documentation matters
 
 Adding community documentation to the pipeline produces measurably better results. In a controlled experiment across multiple repositories, documentation-enriched runs found more bugs, different bugs, and higher-confidence bugs than code-only baselines. The documentation gives auditors spec language to check against, turning "this code looks odd" into "this code contradicts the documented behavior."
 
-### What's new in v1.3.17
+### What's new in v1.3.20
 
-- **Executable evidence for triage probes.** Spec audit triage verification probes must now produce test assertions, not just prose reasoning. Rejections need a passing assertion proving the finding is wrong; confirmations need a failing assertion proving the bug exists. Each must cite exact line numbers. This prevents a hallucination mode where triage rejects a correct finding by claiming code exists on lines that actually contain unrelated code.
-- **Enumeration completeness guardrail.** Switch/case and whitelist analyses require a mechanical two-list check: list every constant from the header, list every case label from the code, diff. Addresses a repeated failure where the model asserted coverage of constants absent from the dispatch.
-- **Council-reviewed TDD schema.** Verbatim JSON template enforcement with anti-pattern examples, schema version 1.1, and post-write validation. Pre-flight command validation with framework-specific dry-run commands.
-- **Per-bug writeups.** Adaptive depth heuristic generates writeups for TDD-verified bugs with spec reference, code citation, fix diff, and test description.
-- **Version stamps and exemptions.** Every generated file carries a version/attribution stamp, with exemptions for JSON sidecars, JUnit XML, patch files, and shebang-first files.
-- **Patch validation gate.** Build-system-aware commands verify patches apply cleanly before TDD runs.
-- **Structured output.** JUnit XML + sidecar JSON for TDD results. Regression test skip guards with bug ID references.
-- **Use-case-grounded integration tests.** Per-use-case group splitting with traceability columns mapping each test to the user outcome it validates.
-- **Bidirectional traceability.** Catches alternative-path bugs that file-level coverage misses. Carry-forward rule prevents previously learned requirements from being silently dropped between runs.
-- **21 self-check benchmarks.**
+- **Mechanical verification artifacts with integrity check (council-recommended).** Before CONTRACTS.md can assert that a dispatch function handles specific constants, you must generate and execute a shell pipeline (awk/grep) that extracts actual case labels from the function body, saving to `quality/mechanical/<function>_cases.txt`. Each extraction command is also appended to `quality/mechanical/verify.sh`, which re-runs the same commands and diffs against saved files. Phase 3 must execute `verify.sh` — if any diff is non-empty, the artifact was tampered with. This integrity check was added because v1.3.19 testing showed the model can execute the correct command but write fabricated output to the file instead of letting the shell redirect capture it.
+- **Source-inspection tests must execute (no `run=False`).** Regression tests that verify source structure (string presence, case label existence) are safe, deterministic, and must run. The `run=False` flag is banned for these tests. In v1.3.18, the correct assertion existed but never fired because `run=False` made it inert.
+- **Contradiction gate.** Before closure, executed evidence (mechanical artifacts, regression test results, TDD red-phase failures) is compared against prose artifacts (requirements, contracts, triage, BUGS.md). If they contradict, the executed result wins — the prose artifact must be corrected before proceeding.
+- **Effective council gating for enumeration checks.** If the council is incomplete (<3/3) and the run includes whitelist/dispatch checks, the audit cannot close those checks without mechanical proof artifacts.
+- **Normative vs. descriptive contract language.** Requirements use "must preserve" (normative) unless a mechanical artifact confirms the claim, in which case "preserves" (descriptive) is allowed.
+- **Self-contained iterative convergence.** New Phase 0 (Prior Run Analysis) builds a seed list from prior runs' confirmed bugs and mechanically re-checks each seed against the current source tree. After Phase 3, a convergence check compares net-new bugs against the seed list. When net-new bugs = 0, bug discovery has converged. When not converged, the skill automatically archives the current run to `previous_runs/` and re-iterates from Phase 0 — up to 5 iterations by default (configurable). No external scripts needed; the skill handles the full iteration loop internally with context-window awareness. A `run_iterate.sh` script is also available for shell-level orchestration.
+- **27 self-check benchmarks** (up from 22).
 
 ## Validation
 
@@ -112,6 +109,9 @@ quality-playbook/
     ├── RUN_TDD_TESTS.md    # Red-green TDD verification protocol
     ├── TDD_TRACEABILITY.md # Bug → requirement → spec → test mapping
     ├── test_regression.*   # Regression tests for confirmed bugs
+    ├── SEED_CHECKS.md     # Prior-run seed list (continuation mode)
+    ├── mechanical/         # Shell-extracted verification artifacts + verify.sh
+    ├── writeups/           # Per-bug detailed writeups (BUG-NNN.md)
     ├── patches/            # Fix and regression-test patches
     ├── code_reviews/       # Code review output
     └── spec_audits/        # Auditor reports + triage

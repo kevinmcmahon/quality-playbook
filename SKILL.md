@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate nine quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, a consolidated bug report (BUGS.md) with patches, a TDD verification protocol (RUN_TDD_TESTS.md), an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis, missing safeguard detection, patch validation gates, and structured test output (JUnit XML + sidecar JSON). Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.18
+  version: 1.3.21
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -18,6 +18,7 @@ metadata:
 >
 > Generating a complete quality system for this project. Here's what I'll do:
 >
+> Phase 0: (If prior runs exist) Load seed bugs, verify mechanically, inject into downstream phases
 > Phase 1: Explore the codebase — architecture, specs, defensive patterns, state machines
 > Phase 2: Generate quality artifacts:
 >   - Quality constitution (QUALITY.md)
@@ -28,7 +29,8 @@ metadata:
 >   - TDD verification protocol (RUN_TDD_TESTS.md)
 >   - Integration test and spec audit protocols
 >   - AI bootstrap file (AGENTS.md)
-> Phase 3: Verify everything against self-check benchmarks
+> Phase 3: Verify everything against self-check benchmarks, check convergence
+> (If not converged, archive and re-iterate from Phase 0 — up to 5 iterations)
 >
 > This takes a while — I'm reading the entire codebase before writing anything.
 
@@ -70,7 +72,9 @@ Point this skill at any codebase:
 Execute the quality playbook for this project.
 ```
 
-This is the full pipeline end to end: explore the codebase → generate all quality artifacts → run the code review with regression tests → run the spec audit with triage → run post-review reconciliation and closure verification → finalize PROGRESS.md. Every phase described below, nothing skipped. This is the default when someone says "execute," "run," or "generate and execute" the playbook.
+This is the full pipeline end to end: explore the codebase → generate all quality artifacts → run the code review with regression tests → run the spec audit with triage → run post-review reconciliation and closure verification → finalize PROGRESS.md → check convergence and re-iterate if needed. Every phase described below, nothing skipped. This is the default when someone says "execute," "run," or "generate and execute" the playbook.
+
+If `previous_runs/` exists from earlier sessions, Phase 0 automatically loads confirmed bugs as seeds before exploration begins. After Phase 3, the convergence check determines whether to archive and re-iterate or proceed to Phase 4.
 
 Other entry points for partial runs:
 
@@ -88,6 +92,34 @@ Run the spec audit protocol.
 ```
 
 If a quality playbook already exists (`quality/QUALITY.md`, functional tests, etc.), read the existing files first, then evaluate them against the self-check benchmarks in the verification phase. Don't assume existing files are complete — treat them as a starting point.
+
+---
+
+## Phase 0: Prior Run Analysis (Automatic)
+
+**This phase runs only if `previous_runs/` exists and contains prior quality artifacts.** If there are no prior runs, skip to Phase 1.
+
+When prior runs exist, the playbook enters **continuation mode**. This enables iterative bug discovery: each run inherits confirmed findings from prior runs, verifies them mechanically, and explores for additional bugs. The iteration converges when a run finds zero net-new bugs.
+
+**Step 0a: Build the seed list.** Read `previous_runs/*/quality/BUGS.md` from all prior runs. For each confirmed bug, extract: bug ID, file:line, summary, and the regression test assertion. Deduplicate by file:line (the same bug found in multiple runs counts once). Write the merged seed list to `quality/SEED_CHECKS.md` with this format:
+
+```markdown
+## Seed Checks (from N prior runs)
+
+| Seed | Origin Run | File:Line | Summary | Assertion |
+|------|-----------|-----------|---------|-----------|
+| SEED-001 | run-1 | virtio_ring.c:3509-3529 | RING_RESET dropped | `"case VIRTIO_F_RING_RESET:" in func` |
+```
+
+**Step 0b: Execute seed checks mechanically.** For each seed, run the assertion against the current source tree. Record PASS (bug was fixed since last run) or FAIL (bug still present). A failing seed is a confirmed carry-forward bug — it must appear in this run's BUGS.md regardless of whether any auditor independently finds it. A passing seed means the bug was fixed — note it in PROGRESS.md as "SEED-NNN: resolved since prior run."
+
+**Step 0c: Identify prior-run scope.** Read `previous_runs/*/quality/PROGRESS.md` for scope declarations. Note which subsystems were covered in prior runs. During Phase 1 exploration, prioritize areas NOT covered by prior runs to maximize the chance of finding new bugs. If all subsystems were covered in prior runs, explore the same scope but with different emphasis (e.g., different scrutiny areas, different entry points).
+
+**Step 0d: Inject seeds into downstream phases.** The seed list becomes input to:
+- **Phase 2b (code review):** Add to the code review prompt: "Prior runs confirmed these bugs — verify they are still present and look for additional findings in the same subsystems."
+- **Phase 2c (spec audit):** Add to `RUN_SPEC_AUDIT.md`: "Known open issues from prior runs: [seed list]. Expect auditors to find these. If an auditor does NOT flag a known seed bug, that is a coverage gap in their review, not evidence the bug was fixed."
+
+**Why this exists:** Non-deterministic scope exploration means different runs notice different bugs. In cross-version testing, 4/8 repos had bugs found in some versions but not others — not because the bugs were fixed, but because the model explored different parts of the codebase. Iterating with seed injection solves this: confirmed bugs carry forward mechanically (no re-discovery needed), and each new run can focus exploration on uncovered territory.
 
 ---
 
@@ -281,6 +313,41 @@ This is the most important step for the code review protocol. Everything found d
 2. **Phase B — Requirement derivation.** Read CONTRACTS.md and documentation. Group related contracts, enrich with user intent, write formal requirements. Write to `quality/REQUIREMENTS.md`. For each requirement, record the **doc source** with its authority tier — the specific gathered document (filename), section, and passage that establishes the expected behavior, prefixed with `[Tier N]`. If the requirement derives from source code rather than documentation, record `[Tier 3] [source] file:line` and tag it `[Req: inferred — from source]`. This doc-source field creates the forward link in the traceability chain: gathered docs → requirements → bugs → tests. Without it, a reviewer cannot verify that the requirement reflects the spec's actual intent rather than the agent's interpretation.
 
    **Primary-source extraction rule for code-presence claims.** When writing a requirement that asserts specific constants, values, or labels are handled by a specific function (e.g., "the whitelist must preserve X, Y, and Z"), the requirement must distinguish between what the **spec says should be there** and what the **code actually contains**. Extract the actual contents from the code (case labels, map keys, if-else branches) and compare to the spec's list. If a constant appears in the spec but NOT in the code, write the requirement as "must handle X — **[NOT IN CODE]**: defined in header.h:NN but absent from function() at file.c:NN-NN." Do not write "must preserve X" without verifying X is actually preserved. This prevents a contamination chain where a requirement asserts code presence, the code review copies the assertion, the spec audit inherits it, and the triage accepts it — all without anyone reading the actual code. This exact chain was observed in v1.3.17 virtio testing: REQUIREMENTS.md asserted RING_RESET was preserved in a switch, the code review copied the list, three spec auditors inherited the claim, and the bug went undetected.
+   **Mechanical verification artifact for dispatch functions (mandatory).** When a contract asserts that a function handles, preserves, or dispatches a set of named constants (feature bits, enum values, opcode tables, event types, handler registries), you must generate and execute a shell command or script that mechanically extracts the actual case labels/branches from the function body **before writing the contract line**. Save the raw output to `quality/mechanical/<function>_cases.txt`. The command must be a non-interactive pipeline (e.g., `awk` + `grep`) that cannot hallucinate — it reads file bytes and prints matches. Example:
+
+   ```bash
+   awk '/void vring_transport_features/,/^}$/' drivers/virtio/virtio_ring.c \
+     | grep -E '^\s*case\s+' > quality/mechanical/vring_transport_features_cases.txt
+   ```
+
+   After execution, read the output file and use it as the sole source of truth for what the function handles. A contract line asserting "function preserves constant X" is **forbidden** unless `quality/mechanical/<function>_cases.txt` contains a matching `case X:` line. If a constant appears in a spec or header but NOT in the mechanical output, the contract must record it as absent: `"must handle X — **[NOT IN CODE]**: defined in header.h:NN but absent from function() per mechanical check."` Downstream artifacts (`REQUIREMENTS.md`, `RUN_SPEC_AUDIT.md`, code review) must cite the mechanical file path when referencing dispatch-function coverage — they may not replace the mechanical output with a hand-written list.
+
+   **Mechanical artifact integrity check (mandatory).** For each mechanical extraction command, also append it to `quality/mechanical/verify.sh` as a verification step. The script must re-run the same extraction pipeline and diff the result against the saved file. Generate `verify.sh` with this structure:
+
+   ```bash
+   #!/bin/bash
+   # Auto-generated: re-run mechanical extraction commands and verify saved artifacts
+   set -euo pipefail
+   FAIL=0
+   
+   # Verify <function>
+   ACTUAL=$(awk '/void vring_transport_features/,/^}$/' drivers/virtio/virtio_ring.c | grep -nE '^\s*case\s+')
+   SAVED=$(cat quality/mechanical/vring_transport_features_cases.txt)
+   if [ "$ACTUAL" != "$SAVED" ]; then
+     echo "MISMATCH: vring_transport_features_cases.txt"
+     diff <(echo "$ACTUAL") <(echo "$SAVED") || true
+     FAIL=1
+   else
+     echo "OK: vring_transport_features_cases.txt"
+   fi
+   
+   exit $FAIL
+   ```
+
+   **Phase 3 must execute `bash quality/mechanical/verify.sh`** and the benchmark fails if any artifact mismatches. This catches a failure mode observed in v1.3.19: the model executed the extraction command but wrote its own expected output to the file instead of letting the shell redirect capture it, inserting a hallucinated `case VIRTIO_F_RING_RESET:` line that the real command does not produce. Re-running the same command in a separate step and diffing against the file detects this tampering.
+
+   **Normative vs. descriptive split.** Requirements and contracts must use normative language ("must preserve," "should handle") for expected behavior. They may only use descriptive language ("preserves," "handles") when the mechanical verification artifact confirms the claim. A requirement that says "the implementation preserves VIRTIO_F_RING_RESET" without a confirming mechanical artifact is non-conformant — write "the implementation **must** preserve VIRTIO_F_RING_RESET" and cite the mechanical check result showing whether the constant is currently present or absent.
+
 3. **Phase C — Coverage verification.** Cross-reference every contract against every requirement. Fix gaps. Loop up to 3 times until coverage reaches 100%. Write to `quality/COVERAGE_MATRIX.md`. The matrix must have **one row per requirement** (REQ-001, REQ-002, etc.) — not grouped ranges like "C-001 to C-007 | REQ-001, REQ-003". Grouped ranges make machine verification impossible and hide gaps.
 4. **Phase D — Completeness check + self-refinement loop.** Apply the domain checklist, testability audit, and cross-requirement consistency check. Also verify that every deep document with a "will cover" commitment in the coverage commitment table has at least one requirement traced to it — if not, add requirements for the gap before continuing.
 
@@ -550,7 +617,7 @@ The code review protocol has three passes. Each pass runs independently — a fr
 4. **Unit and encoding correctness** — every field read from hardware, protocol structures, or user input that has defined units must be converted correctly before use in calculations or comparisons.
 5. **Enumeration and whitelist completeness** — when a function uses a `switch`/`case`, `match`, if-else chain, or any branching construct to handle a set of named constants (feature bits, enum values, event types, command codes, permission flags), perform a **mechanical enumeration check**:
 
-   (a) **List A (code extraction):** Extract every branch/case label actually present in the code. List each with its exact line number: "line 3511: `case VIRTIO_RING_F_INDIRECT_DESC`", "line 3513: `case VIRTIO_RING_F_EVENT_IDX`", etc. **Extract this list from the code only — do not copy from REQUIREMENTS.md, CONTRACTS.md, or any other generated artifact.** If you cannot cite a line number for a case label, it is not present.
+   (a) **List A (code extraction):** If a `quality/mechanical/<function>_cases.txt` artifact exists for this function, use it as the authoritative code-side list — do not re-extract manually. If no mechanical artifact exists, extract every branch/case label actually present in the code. List each with its exact line number: "line 3511: `case VIRTIO_RING_F_INDIRECT_DESC`", "line 3513: `case VIRTIO_RING_F_EVENT_IDX`", etc. **Extract this list from the code only — do not copy from REQUIREMENTS.md, CONTRACTS.md, or any other generated artifact.** If you cannot cite a line number for a case label, it is not present.
 
    (b) **List B (spec extraction):** List every constant defined in the relevant header, enum, or spec that *should* be handled.
 
@@ -645,6 +712,8 @@ A bug with a regression test but no fix patch and no justification is incomplete
 - **JavaScript (Mocha):** `it.skip("BUG-NNN: [description]", () => { ... })` or `this.skip()` inside the test body for conditional skipping.
 
 When a bug is fixed (fix patch applied permanently), remove the skip guard and update the BUG tracker closure status from "confirmed open" to "fixed (test passes)". The skip guard message must reference the bug ID and the fix patch path so that someone encountering a skipped test knows exactly how to resolve it.
+
+**Source-inspection tests must execute (no `run=False`).** Regression tests that verify source-file structure — string presence in function bodies, case label existence, enum extraction, generated-code shape checks — are safe, deterministic, and fast. They read repository files and perform string matches. For these tests, use `@pytest.mark.xfail(strict=True)` with execution enabled. **Do not use `run=False`** unless the test would mutate external state, hang, or require unavailable infrastructure. A source-inspection test with `run=False` is the worst possible state: the correct check exists but is inert. In v1.3.18, the regression test for BUG-004 (`test_bug_004_transport_feature_whitelist_keeps_ring_reset`) contained the correct assertion `assert "case VIRTIO_F_RING_RESET:" in func` but was marked `run=False` — so the test never executed, the assertion never fired, and the bug remained undetected despite the test suite "passing." When an `xfail(strict=True)` test actually executes and fails, the test suite reports it as XFAIL (expected failure) — this is correct behavior, not a suite failure.
 
 **TDD red/green interaction with skip guards.** During the TDD verification cycle, the red and green phases must temporarily bypass the skip guard to actually execute the test. The protocol should instruct the agent to:
 - **Red phase (NEVER SKIPPED):** Remove or disable the skip/xfail guard, then run the test against unpatched code. It must fail. Re-enable the guard after recording the result. **The red phase is mandatory for every confirmed bug, even when no fix patch exists.** A bug without red-phase evidence is unverified — do not record `verdict: "skipped"` without a failing red run. If the red phase cannot execute for a documented reason (compilation failure, environment unavailable), record `red_phase: "error"` with an explanation in `notes`.
@@ -931,6 +1000,8 @@ Run the code review protocol (all three passes) as described in File 3. After pr
 
 Run the spec audit protocol as described in File 5. The triage report **must** include a `## Pre-audit docs validation` section (see `references/spec_audit.md` for the full template). This section is required even if `docs_gathered/` is empty — in that case, note what baseline the auditors used instead. Every verification probe in the triage must produce executable evidence (test assertions with line-number citations) per the "Verification probes must produce executable evidence" rule above. After triage, categorize each confirmed finding.
 
+**Effective council gating for enumeration checks.** If the effective council is less than 3/3 (fewer than three auditors returned usable reports) and the run includes any whitelist/enumeration/dispatch-function checks or any carried-forward seed checks, the audit may not conclude "no confirmed defects" for those checks without executed mechanical proof artifacts. An incomplete council with mechanical verification is acceptable. An incomplete council relying on prose-only validation for code-presence claims is not — escalate to "NEEDS VERIFICATION" and run the mechanical check before closing.
+
 **Pre-audit spot-checks must extract from code, not assert from docs.** When the spec audit prompt includes spot-check claims for pre-validation (e.g., "verify that function X handles constant Y at line Z"), the triage must validate each claim by extracting the actual code at the cited lines — not by confirming that the claim sounds plausible. For each spot-check claim about code contents, the pre-validation must report what the cited lines actually contain: "Line 3527 contains `default:` — NOT `case VIRTIO_F_RING_RESET:` as claimed." If the spot-check was generated from requirements or gathered docs rather than from the code itself, treat it as a hypothesis to test, not a fact to confirm. This rule prevents the contamination chain observed in v1.3.17 where a false spot-check claim ("RING_RESET at 3527-3528") was accepted as "accurate" without reading the actual lines, then propagated through the triage and into every downstream artifact.
 
 **Update PROGRESS.md:** Add every confirmed **code bug** from the spec audit to the cumulative BUG tracker with source "Spec Audit". This is critical — spec-audit bugs are systematically orphaned if they aren't added to the same tracker that the closure verification reads.
@@ -951,6 +1022,8 @@ Re-read `quality/PROGRESS.md` — specifically the cumulative BUG tracker. This 
 2. **Run closure verification:** For every row in the BUG tracker, verify it has either a regression test reference or an explicit exemption. If any BUG lacks both, write the test or exemption now.
 3. **Clean up after spec-audit reversals:** If the spec audit reclassified any code review BUG as a design choice or false positive, remove or relocate the corresponding regression test per `references/review_protocols.md`.
 4. **Resolve CR vs spec-audit conflicts:** If the code review and spec audit disagree on the same finding (one says BUG, the other says design choice), deploy a verification probe per `references/spec_audit.md` and record the resolution in the BUG tracker.
+
+**Executed evidence outranks narrative artifacts (contradiction gate).** Before running the terminal gate, check for contradictions between executed evidence and prose artifacts. Executed evidence includes: mechanical verification artifacts (`quality/mechanical/*`), regression test results (`test_regression.*` with `xfail` outcomes), TDD traceability red-phase results, and any shell command output saved during the pipeline. Prose artifacts include: `REQUIREMENTS.md`, `CONTRACTS.md`, code reviews, spec audit triage, and `BUGS.md`. If an executed artifact shows a constant is absent (mechanical check), a test fails (regression test), or a red-phase confirms a bug (TDD traceability) — but a prose artifact claims the constant is present, the bug is fixed, or the code is compliant — the executed result wins. Re-open and correct the contradictory prose artifact before proceeding. In v1.3.18, the triage claimed RING_RESET was preserved (`spec_audits/triage.md`), BUGS.md claimed "fixed in working tree," but TDD traceability showed the assertion `assert "case VIRTIO_F_RING_RESET:" in func` failed on the current source. Those three cannot all be true — the executed failure is the ground truth. This gate would have caught that contradiction.
 
 **Terminal gate (mandatory before marking Phase 2d complete):**
 
@@ -1018,6 +1091,49 @@ Re-read `quality/PROGRESS.md`. Update:
 - Add a final summary line: "Run complete. N BUGs found (N from code review, N from spec audit). N regression tests written. N exemptions granted."
 
 The completed PROGRESS.md is a permanent audit trail. It documents what the skill did, what it found, and how it resolved each finding. Users can read it to understand the run, debug failures, and compare across runs.
+
+### Convergence Check (continuation mode only)
+
+**This step runs only if Phase 0 executed** (i.e., `quality/SEED_CHECKS.md` exists from prior-run analysis). If this is a first run with no prior history, skip to Phase 4.
+
+Compare this run's bug list against the seed list:
+
+1. **Count net-new bugs:** bugs in this run's BUGS.md that do NOT match any seed (by file:line). A bug is "net-new" if it was not found in any prior run.
+2. **Count seed carryovers:** seeds that were re-confirmed in this run (FAIL result in Step 0b).
+3. **Count seed resolutions:** seeds that are now passing (bug was fixed since prior run).
+
+Write a `## Convergence` section to PROGRESS.md:
+
+```markdown
+## Convergence
+
+Run number: N (N prior runs in previous_runs/)
+Seeds from prior runs: S (S confirmed, R resolved)
+Net-new bugs this run: K
+Convergence: [CONVERGED | NOT CONVERGED]
+
+Net-new bugs:
+- BUG-NNN: [summary] (file:line) — not in any prior run
+```
+
+**Convergence criterion:** The run is converged if **net-new bugs = 0** — every bug found in this run was already known from a prior run. This means further runs are unlikely to find additional bugs in the declared scope.
+
+**If CONVERGED:** Print to the user: "This run found no new bugs beyond the N already known from prior runs. Bug discovery has converged for this scope. Total confirmed bugs across all runs: T." Then proceed to Phase 4.
+
+**If NOT converged — automatic re-iteration.** When the convergence check shows net-new bugs > 0 and the iteration count has not reached the maximum (default: 5), the skill re-iterates automatically:
+
+1. Record the iteration number and net-new count in PROGRESS.md.
+2. Archive the current `quality/` directory: `cp -a quality/ previous_runs/<timestamp>/quality/` then `rm -rf quality/ control_prompts/`.
+3. Restart from **Phase 0** (which will now find the newly archived run in `previous_runs/`).
+4. Print to the user: "Iteration N found K net-new bugs. Archiving and starting iteration N+1 (max M)."
+
+The iteration counter starts at 1 for the first run. Each archive-and-restart increments it. When the counter reaches the maximum, stop iterating even if not converged and print: "Reached maximum iterations (M) without convergence. K net-new bugs found in the last run. Total confirmed bugs across all runs: T."
+
+**Iteration limits.** The default maximum is 5 iterations. If the user's prompt includes an explicit limit (e.g., "run the playbook with 3 iterations"), use that limit instead. If the user's prompt says "single run" or "no iteration," skip re-iteration entirely and treat NOT CONVERGED the same as the pre-iteration behavior: print the net-new count and suggest re-running.
+
+**Context window awareness.** If at any point during re-iteration you detect that your context window is substantially consumed (e.g., you are producing noticeably shorter or lower-quality output than earlier iterations), stop iterating, write the current state to PROGRESS.md, and print: "Stopping iteration due to context constraints. Completed N of M iterations. Re-run the playbook to continue — Phase 0 will pick up the seed list from previous_runs/." This is a safety valve, not a target — most codebases converge in 2-3 iterations.
+
+**Why this matters:** A single playbook run explores a subset of the codebase non-deterministically. The first run on virtio might find BUG-001 and BUG-004 but miss BUG-005. The second run might find BUG-005 and BUG-006. By the third run, if no net-new bugs appear, the exploration has likely covered the high-value territory. The seed list ensures previously found bugs are never lost between runs, and the convergence check tells the user when additional runs have diminishing returns. Automatic re-iteration means the skill is self-contained — callers don't need external scripts or manual re-runs to achieve convergence.
 
 ---
 
@@ -1200,4 +1316,4 @@ Read these as you work through each phase:
 | `references/functional_tests.md` | File 2 (functional tests) | Test structure, anti-patterns, cross-variant strategy |
 | `references/review_protocols.md` | Files 3–4 (code review, integration) | Templates for both protocols, patch validation, skip guards |
 | `references/spec_audit.md` | File 5 (Council of Three) | Full audit protocol, triage process, fix execution |
-| `references/verification.md` | Phase 3 (verify) | Complete self-check checklist (22 benchmarks) including structured output, patch gate, skip guard validation, pre-flight discovery, version stamps, bug writeups, enumeration completeness, triage executable evidence, and code-extracted enumeration lists |
+| `references/verification.md` | Phase 3 (verify) | Complete self-check checklist (27 benchmarks) including structured output, patch gate, skip guard validation, pre-flight discovery, version stamps, bug writeups, enumeration completeness, triage executable evidence, code-extracted enumeration lists, mechanical verification artifacts, source-inspection test execution, contradiction gate, seed check execution, and convergence tracking |
