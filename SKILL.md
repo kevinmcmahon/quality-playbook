@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate nine quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, a consolidated bug report (BUGS.md) with patches, a TDD verification protocol (RUN_TDD_TESTS.md), an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis, missing safeguard detection, patch validation gates, and structured test output (JUnit XML + sidecar JSON). Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.23
+  version: 1.3.24
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -13,7 +13,7 @@ metadata:
 > **MANDATORY FIRST ACTION — do this before reading the rest of the skill.**
 > Print the following message to the user exactly as written, then continue.
 >
-> Quality Playbook v1.3.23 — by Andrew Stellman
+> Quality Playbook v1.3.24 — by Andrew Stellman
 > https://github.com/andrewstellman/quality-playbook
 >
 > Generating a complete quality system for this project. Here's what I'll do:
@@ -120,6 +120,19 @@ When prior runs exist, the playbook enters **continuation mode**. This enables i
 - **Phase 2c (spec audit):** Add to `RUN_SPEC_AUDIT.md`: "Known open issues from prior runs: [seed list]. Expect auditors to find these. If an auditor does NOT flag a known seed bug, that is a coverage gap in their review, not evidence the bug was fixed."
 
 **Why this exists:** Non-deterministic scope exploration means different runs notice different bugs. In cross-version testing, 4/8 repos had bugs found in some versions but not others — not because the bugs were fixed, but because the model explored different parts of the codebase. Iterating with seed injection solves this: confirmed bugs carry forward mechanically (no re-discovery needed), and each new run can focus exploration on uncovered territory.
+
+### Phase 0b: Sibling-Run Seed Discovery (Automatic)
+
+**This step runs only if `previous_runs/` does not exist** (i.e., Phase 0a has nothing to work with) **and** the project directory is versioned (e.g., `httpx-1.3.23/` sits alongside `httpx-1.3.21/`). If `previous_runs/` exists, Phase 0a already handles seed injection — skip this step.
+
+When no `previous_runs/` directory exists but sibling versioned directories do, look for prior quality artifacts in those siblings:
+
+1. **Discover siblings.** List directories matching the pattern `<project-name>-<version>/quality/BUGS.md` relative to the parent directory. Exclude the current directory. Sort by version descending (most recent first).
+2. **Import confirmed bugs as seeds.** For each sibling with a `quality/BUGS.md`, extract confirmed bugs using the same format as Step 0a. Write them to `quality/SEED_CHECKS.md` with origin noted as the sibling directory name.
+3. **Execute seed checks mechanically** (same as Step 0b in Phase 0a). For each imported seed, run the assertion against the current source tree and record PASS/FAIL.
+4. **Inject into downstream phases** (same as Step 0d in Phase 0a).
+
+**Why this exists:** In v1.3.23 benchmarking, httpx produced a zero-bug result despite httpx-1.3.21 having found the `Headers.__setitem__` non-ASCII encoding bug. The model simply explored different code paths and never examined the Headers area. Sibling-run seeding ensures that bugs confirmed in prior versioned runs carry forward even without an explicit `previous_runs/` archive. This is a different failure class than mechanical tampering — it addresses **exploration non-determinism**, not evidence corruption.
 
 ---
 
@@ -346,6 +359,12 @@ This is the most important step for the code review protocol. Everything found d
 
    **Phase 3 must execute `bash quality/mechanical/verify.sh`** and the benchmark fails if any artifact mismatches. This catches a failure mode observed in v1.3.19: the model executed the extraction command but wrote its own expected output to the file instead of letting the shell redirect capture it, inserting a hallucinated `case VIRTIO_F_RING_RESET:` line that the real command does not produce. Re-running the same command in a separate step and diffing against the file detects this tampering.
 
+   **Immediate integrity gate (mandatory, Phase 2a).** Run `bash quality/mechanical/verify.sh` **immediately** after writing each `*_cases.txt` file and **before** writing any contract, requirement, or prose artifact that cites the extraction. If exit code ≠ 0: stop, delete the failed `*_cases.txt`, re-run the extraction command with a fresh shell redirect (do not hand-edit the output), and re-verify. Do not advance to Phase 2b/2c until verify.sh exits 0. Save verify.sh stdout and exit code to `quality/results/mechanical-verify.log` and `quality/results/mechanical-verify.exit` as durable receipt files. This gate exists because v1.3.23 showed that deferring verification to Phase 3 allows downstream artifacts (CONTRACTS.md, REQUIREMENTS.md, triage probes) to build on a forged extraction — the model reconciles a discrepancy between requirements and the artifact by corrupting the artifact instead of correcting the requirement.
+
+   **Mechanical artifacts are immutable after extraction.** Once a `*_cases.txt` file has been written by the shell redirect and verified by `verify.sh`, it must not be modified, overwritten, or regenerated for the remainder of the run. If a downstream step discovers a discrepancy between the mechanical artifact and a requirement or contract, the requirement or contract is wrong — not the artifact. Fix the prose, not the extraction. This rule prevents the v1.3.23 failure mode where the model overwrote a correct extraction with fabricated content to match its own narrative.
+
+   **Forbidden probe pattern (triage and verification).** Triage probes, verification probes, and audit assertions must not use `open('quality/mechanical/...')` or `cat quality/mechanical/...` as sole evidence for what a source file contains at a given line. To verify that function F handles constant C at line N, the probe must either: (a) read the source file directly (`open('drivers/virtio/virtio_ring.c')` with line-anchored assertions), or (b) re-execute the same extraction pipeline used by `verify.sh` and check its output. Reading the saved artifact proves only what the artifact says, not what the code says — this is circular verification. In v1.3.23, Probe C validated the forged artifact instead of the source code, passing with fabricated data.
+
    **Do not create an empty mechanical/ directory.** Only create `quality/mechanical/` if the project's contracts include dispatch functions, registries, or enumeration checks that require mechanical extraction. If no such contracts exist, skip the directory entirely and record in PROGRESS.md: `Mechanical verification: NOT APPLICABLE — no dispatch/registry/enumeration contracts in scope.` Creating an empty mechanical/ directory (or one without verify.sh) is non-conformant — it signals that extraction was attempted and abandoned. Decide before creating the directory: does this project have dispatch-function contracts? If no, don't `mkdir`. If yes, populate it fully.
 
    **Normative vs. descriptive split.** Requirements and contracts must use normative language ("must preserve," "should handle") for expected behavior. They may only use descriptive language ("preserves," "handles") when the mechanical verification artifact confirms the claim. A requirement that says "the implementation preserves VIRTIO_F_RING_RESET" without a confirming mechanical artifact is non-conformant — write "the implementation **must** preserve VIRTIO_F_RING_RESET" and cite the mechanical check result showing whether the constant is currently present or absent.
@@ -533,14 +552,14 @@ Now write the nine files. For each one, follow the structure below and consult t
 **Version stamp (mandatory on every generated file).** Every Markdown file the playbook generates must begin with the following attribution line immediately after the file's title heading:
 
 ```
-> Generated by [Quality Playbook](https://github.com/andrewstellman/quality-playbook) v1.3.23 — Andrew Stellman
+> Generated by [Quality Playbook](https://github.com/andrewstellman/quality-playbook) v1.3.24 — Andrew Stellman
 > Date: YYYY-MM-DD · Project: <project name>
 ```
 
 Every generated code file (test files, scripts) must begin with a comment header:
 
 ```
-# Generated by Quality Playbook v1.3.23 — https://github.com/andrewstellman/quality-playbook
+# Generated by Quality Playbook v1.3.24 — https://github.com/andrewstellman/quality-playbook
 # Author: Andrew Stellman · Date: YYYY-MM-DD · Project: <project name>
 ```
 
@@ -914,7 +933,7 @@ The generated protocol must include:
 
    If the framework's JUnit XML reporter is not available or requires a missing dependency, skip the XML output for that language and note it in the sidecar JSON (`"junit_available": false`). Do not fail the TDD run over missing XML tooling.
 
-   **Sidecar JSON:** Generate `quality/results/tdd-results.json` by copying the template below verbatim and filling in only the values. Do not invent fields, rename keys, or restructure the schema.
+   **Sidecar JSON (strict schema enforcement):** Generate `quality/results/tdd-results.json` by copying the template below **verbatim** and filling in only the values. Do not invent fields, rename keys, or restructure the schema. The template is the schema — any deviation (extra keys, missing keys, renamed keys, restructured nesting) makes the output non-conformant. Copy-paste the template into your editor first, then fill in the values. Do not write the JSON from memory.
 
    ```json
    {
@@ -1016,7 +1035,9 @@ After the spec audit triage, check the cumulative BUG tracker in PROGRESS.md. An
 
 **Why this step exists:** Code review bugs get regression tests immediately because tests are written right after the review. Spec audit runs after the tests are written, so its confirmed bugs are orphaned — they appear in the triage report but never get tests. This step closes that gap.
 
-**Phase 2c completion gate.** Phase 2c is not complete until a triage file exists at `quality/spec_audits/YYYY-MM-DD-triage.md`. If only auditor reports exist with no triage synthesis, mark Phase 2c as "partial — triage pending" in PROGRESS.md and complete the triage before proceeding. The PROGRESS.md checkbox must not be set until the triage file is confirmed present.
+**Individual auditor artifacts (mandatory).** The spec audit must produce individual auditor report files at `quality/spec_audits/YYYY-MM-DD-auditor-N.md` (one per auditor), not just the triage synthesis. Each auditor report records what that auditor found independently before triage reconciliation. If only the triage file exists with no individual auditor artifacts, the audit is incomplete — the triage cannot be verified because there is no record of pre-reconciliation findings. This requirement exists because a single triage file conflates discovery with reconciliation, making it impossible to tell whether a finding was independently confirmed or synthesized from a single source.
+
+**Phase 2c completion gate.** Phase 2c is not complete until a triage file exists at `quality/spec_audits/YYYY-MM-DD-triage.md` **and** individual auditor reports exist. If only auditor reports exist with no triage synthesis, mark Phase 2c as "partial — triage pending" in PROGRESS.md and complete the triage before proceeding. If only the triage exists with no individual reports, mark Phase 2c as "partial — auditor artifacts missing" and regenerate them. The PROGRESS.md checkbox must not be set until both the triage file and auditor reports are confirmed present.
 
 Update the BUG tracker entries with regression test references. Mark Phase 2c (Spec audit + triage) complete.
 
@@ -1030,17 +1051,25 @@ Re-read `quality/PROGRESS.md` — specifically the cumulative BUG tracker. This 
 4. **Clean up after spec-audit reversals:** If the spec audit reclassified any code review BUG as a design choice or false positive, remove or relocate the corresponding regression test per `references/review_protocols.md`.
 5. **Resolve CR vs spec-audit conflicts:** If the code review and spec audit disagree on the same finding (one says BUG, the other says design choice), deploy a verification probe per `references/spec_audit.md` and record the resolution in the BUG tracker.
 
-**Executed evidence outranks narrative artifacts (contradiction gate).** Before running the terminal gate, check for contradictions between executed evidence and prose artifacts. Executed evidence includes: mechanical verification artifacts (`quality/mechanical/*`), regression test results (`test_regression.*` with `xfail` outcomes), TDD traceability red-phase results, and any shell command output saved during the pipeline. Prose artifacts include: `REQUIREMENTS.md`, `CONTRACTS.md`, code reviews, spec audit triage, and `BUGS.md`. If an executed artifact shows a constant is absent (mechanical check), a test fails (regression test), or a red-phase confirms a bug (TDD traceability) — but a prose artifact claims the constant is present, the bug is fixed, or the code is compliant — the executed result wins. Re-open and correct the contradictory prose artifact before proceeding. In v1.3.18, the triage claimed RING_RESET was preserved (`spec_audits/triage.md`), BUGS.md claimed "fixed in working tree," but TDD traceability showed the assertion `assert "case VIRTIO_F_RING_RESET:" in func` failed on the current source. Those three cannot all be true — the executed failure is the ground truth. This gate would have caught that contradiction.
+**Executed evidence outranks narrative artifacts (contradiction gate).** Before running the terminal gate, check for contradictions between executed evidence and prose artifacts. Executed evidence includes: mechanical verification artifacts (`quality/mechanical/*`), verification receipt files (`quality/results/mechanical-verify.log`, `quality/results/mechanical-verify.exit`), regression test results (`test_regression.*` with `xfail` outcomes), TDD traceability red-phase results, and any shell command output saved during the pipeline. Prose artifacts include: `REQUIREMENTS.md`, `CONTRACTS.md`, code reviews, spec audit triage, and `BUGS.md`. If an executed artifact shows a constant is absent (mechanical check), a test fails (regression test), or a red-phase confirms a bug (TDD traceability) — but a prose artifact claims the constant is present, the bug is fixed, or the code is compliant — the executed result wins. Re-open and correct the contradictory prose artifact before proceeding. Specifically: if `mechanical-verify.exit` contains a non-zero value, PROGRESS.md may not claim "Mechanical verification: passed" and the terminal gate may not pass — regardless of what any other artifact says. In v1.3.18, the triage claimed RING_RESET was preserved (`spec_audits/triage.md`), BUGS.md claimed "fixed in working tree," but TDD traceability showed the assertion `assert "case VIRTIO_F_RING_RESET:" in func` failed on the current source. Those three cannot all be true — the executed failure is the ground truth. This gate would have caught that contradiction.
 
 **Version stamp consistency check (mandatory).** Read the `version:` field from the SKILL.md metadata (in `.github/skills/SKILL.md`). Then check every generated artifact: PROGRESS.md's `Skill version:` field, every `> Generated by` attribution line, every code file header stamp, and every sidecar JSON `skill_version` field. Every version stamp must match the SKILL.md metadata exactly. A single mismatch is a benchmark failure — fix the stamp before proceeding. This check exists because in v1.3.21 benchmarking, 5 of 9 repos had version stamps from older skill versions (v1.3.16 or v1.3.20) because the PROGRESS.md template contained a hardcoded version number.
 
 **Mechanical directory conformance check.** If `quality/mechanical/` exists, it must contain at minimum a `verify.sh` file. An empty `quality/mechanical/` directory is non-conformant — it implies the step was attempted but abandoned. If no dispatch-function contracts exist in this project's scope, do not create a `mechanical/` directory at all. Instead, record in PROGRESS.md: `Mechanical verification: NOT APPLICABLE — no dispatch/registry/enumeration contracts in scope.` If dispatch contracts do exist, `verify.sh` must include one verification block per saved extraction file under `quality/mechanical/` (not just one). A verify.sh that checks only one artifact when multiple exist is incomplete.
+
+**Verification receipt gate (mandatory before terminal gate).** If `quality/mechanical/` exists, the following receipt files must also exist before the terminal gate may run:
+- `quality/results/mechanical-verify.log` — full stdout/stderr from `bash quality/mechanical/verify.sh`
+- `quality/results/mechanical-verify.exit` — a single line containing the exit code (e.g., `0`)
+
+If either file is missing, run `bash quality/mechanical/verify.sh > quality/results/mechanical-verify.log 2>&1; echo $? > quality/results/mechanical-verify.exit` now. If the exit code is not `0`, the terminal gate fails — do not proceed until the mechanical mismatch is resolved (by fixing the extraction, not by editing verify.sh or the receipt). PROGRESS.md may not claim "Mechanical verification: passed" unless `mechanical-verify.exit` contains `0`. This gate exists because v1.3.23 PROGRESS.md claimed all verification passed when verify.sh actually returned exit 1 — the receipt file makes this claim auditable.
 
 **Terminal gate (mandatory before marking Phase 2d complete):**
 
 **Prerequisite check:** The terminal gate may run only if Phase 2b (code review) and Phase 2c (spec audit) are both complete, or explicitly marked skipped with rationale in PROGRESS.md. A zero-bug outcome is valid only if code review and spec audit artifacts exist (i.e., `quality/code_reviews/` and `quality/spec_audits/` directories contain report files). If these artifacts are missing and the phases are not explicitly skipped, the terminal gate fails — do not mark Phase 2d complete.
 
 **BUGS.md is always required.** Every completed run must produce `quality/BUGS.md`, regardless of whether bugs were found. If code review and spec audit confirmed zero source-code bugs, create BUGS.md with a `## Summary` stating "No confirmed source-code bugs found" and listing how many candidates were evaluated and eliminated (e.g., "Code review evaluated N candidates; spec audit evaluated M candidates; all were reclassified as design choices, test-only issues, or false positives"). This provides a positive assertion of a clean outcome rather than ambiguous file absence. A completed run with no BUGS.md is non-conformant.
+
+**BUGS.md heading format.** Each confirmed bug must use the heading level `### BUG-NNN` (e.g., `### BUG-001`). This is the canonical heading format — not `## BUG-001`, not `**BUG-001**`, not a bullet point. The `### BUG-NNN` heading is what downstream tools grep for when counting bugs, and what the tdd-results.json `id` field must match. Inconsistent heading levels cause machine-readable counts to disagree with the document.
 
 Re-read `quality/PROGRESS.md`. Count the BUG tracker entries. Then:
 
@@ -1063,6 +1092,25 @@ Update PROGRESS.md: mark Phase 2d complete. The BUG tracker should now show clos
 ## Phase 3: Verify
 
 **Why a verification phase?** AI-generated output can look polished and be subtly wrong. Tests that reference undefined fixtures report 0 failures but 16 errors — and "0 failures" sounds like success. Integration protocols can list field names that don't exist in the actual schemas. The verification phase catches these problems before the user discovers them, which is important because trust in a generated quality playbook is fragile — one wrong field name undermines confidence in everything else.
+
+### Mechanical Verification Closure (mandatory first step of Phase 3)
+
+If `quality/mechanical/` exists, the **literal first action** of Phase 3 is:
+
+```bash
+bash quality/mechanical/verify.sh
+```
+
+Execute this command in the shell. Do not substitute a Python script, do not read the artifact file and assert on its contents, do not skip this step. The command must be `bash quality/mechanical/verify.sh` — not `python3 -c "..."`, not `cat quality/mechanical/... | grep ...`, not any other equivalent. Record the full stdout and exit code in PROGRESS.md under a `## Phase 3 Mechanical Closure` heading, and update the receipt files:
+
+```bash
+bash quality/mechanical/verify.sh > quality/results/mechanical-verify.log 2>&1
+echo $? > quality/results/mechanical-verify.exit
+```
+
+If the exit code is not 0, **Phase 3 fails immediately.** Do not proceed to self-check benchmarks. Go back to the extraction step: delete the mismatched `*_cases.txt`, re-run the extraction command with a fresh shell redirect, re-verify, and update all downstream artifacts that cited the old extraction.
+
+**Why this is non-substitutable:** In v1.3.23, the model replaced `bash verify.sh` with `python3 -c "from pathlib import Path; ..."` that read the (forged) artifact file and asserted on its contents — a circular check that passed despite the artifact being fabricated. The only trustworthy verification is re-running the same shell pipeline that produced the artifact and diffing the results. Any other method can be fooled by a corrupted intermediate file.
 
 ### Self-Check Benchmarks
 

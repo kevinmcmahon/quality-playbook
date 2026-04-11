@@ -203,6 +203,26 @@ When Phase 0 runs, verify that PROGRESS.md contains a `## Convergence` section w
 
 Every completed run must produce `quality/BUGS.md`. If the run confirmed source-code bugs, BUGS.md must list them. If the run found zero source-code bugs, BUGS.md must contain a `## Summary` with a positive assertion: "No confirmed source-code bugs found" with counts of candidates evaluated and eliminated. A completed run (Phase 2d marked complete) with no BUGS.md is non-conformant. This benchmark exists because in v1.3.22 benchmarking, express completed all phases with zero source bugs but produced no BUGS.md, making it ambiguous whether the file was intentionally omitted or accidentally skipped.
 
+### 35. Immediate Mechanical Integrity Gate (Phase 2a)
+
+If `quality/mechanical/` exists, verify that `bash quality/mechanical/verify.sh` was executed immediately after each `*_cases.txt` was written — before any contract, requirement, or triage artifact cites the extraction. Evidence: `quality/results/mechanical-verify.log` and `quality/results/mechanical-verify.exit` exist, and the exit file contains `0`. If these receipt files are missing or the exit code is non-zero, the mechanical extraction was not verified at the point of creation. This benchmark exists because v1.3.23 deferred verification to Phase 3, allowing downstream artifacts (CONTRACTS.md, REQUIREMENTS.md, triage probes) to build on a forged extraction for the entire run before the mismatch was (not) caught.
+
+### 36. Mechanical Artifacts Not Used as Evidence in Triage Probes
+
+Grep all triage and verification probe files (`quality/spec_audits/*`) for `open('quality/mechanical/` or `cat quality/mechanical/`. If any probe reads a `quality/mechanical/*.txt` file as sole evidence for what a source file contains, it is circular verification and the benchmark fails. Probes must read the source file directly or re-execute the extraction pipeline. This benchmark exists because v1.3.23 Probe C validated the forged mechanical artifact instead of the source code, passing with fabricated data.
+
+### 37. Phase 3 Mechanical Closure Uses Bash (Not Python Substitution)
+
+If `quality/mechanical/` exists, verify that Phase 3 ran `bash quality/mechanical/verify.sh` as a literal shell command — not a Python script reading the artifact file. Evidence: `quality/results/mechanical-verify.log` contains output from the bash script (lines like "OK: ..." or "MISMATCH: ..."), not Python tracebacks or `pathlib` output. PROGRESS.md must include a `## Phase 3 Mechanical Closure` heading with the recorded stdout and exit code. This benchmark exists because v1.3.23 substituted Python `Path.read_text()` for `bash verify.sh`, creating a circular check that passed despite the artifact being fabricated.
+
+### 38. Individual Auditor Report Artifacts Exist
+
+If Phase 2c (spec audit) ran, verify that individual auditor report files exist at `quality/spec_audits/YYYY-MM-DD-auditor-N.md` (one per auditor), not just the triage synthesis. A single triage file without individual reports conflates discovery with reconciliation. This benchmark exists to ensure pre-reconciliation findings are preserved for independent verification.
+
+### 39. BUGS.md Uses Canonical Heading Format
+
+Every confirmed bug in BUGS.md must use the heading level `### BUG-NNN`. Grep for `^### BUG-` and count; grep for other bug heading patterns (`^## BUG-`, `^\*\*BUG-`, `^- BUG-`) and verify zero matches. Inconsistent heading levels cause machine-readable counts to disagree with the document.
+
 ## Quick Checklist Format
 
 Use this as a final sign-off:
@@ -242,5 +262,11 @@ Use this as a final sign-off:
 - [ ] Every confirmed bug (TDD-verified or confirmed-open) has a writeup at `quality/writeups/BUG-NNN.md`
 - [ ] Phase 2c has a triage file at `quality/spec_audits/YYYY-MM-DD-triage.md`
 - [ ] (Continuation mode) Seed checks in `SEED_CHECKS.md` were executed mechanically, not inferred from prose
+- [ ] Mechanical verification receipt files exist (`mechanical-verify.log` + `mechanical-verify.exit`) when `quality/mechanical/` exists
+- [ ] No triage probe reads `quality/mechanical/*.txt` as sole evidence for source code contents
+- [ ] Phase 3 mechanical closure used `bash verify.sh` (not Python substitution)
+- [ ] Individual auditor reports exist at `quality/spec_audits/*-auditor-N.md` (not just triage)
+- [ ] All BUGS.md bug headings use `### BUG-NNN` format
+- [ ] quality/BUGS.md exists (zero-bug runs include a summary of candidates evaluated and eliminated)
 - [ ] (Continuation mode) PROGRESS.md contains `## Convergence` section with net-new count and verdict
 - [ ] `quality/BUGS.md` exists (zero-bug runs include a summary of candidates evaluated and eliminated)
