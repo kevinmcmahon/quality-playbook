@@ -199,6 +199,10 @@ When `previous_runs/` exists and Phase 0 runs, verify that `quality/SEED_CHECKS.
 
 When Phase 0 runs, verify that PROGRESS.md contains a `## Convergence` section with: run number, seed count, net-new bug count, and a CONVERGED/NOT CONVERGED verdict. The net-new count must equal the number of bugs in BUGS.md that don't match any seed by file:line. A missing convergence section when `SEED_CHECKS.md` exists is non-conformant. This benchmark only applies when continuation mode is active.
 
+### 34. BUGS.md Always Exists
+
+Every completed run must produce `quality/BUGS.md`. If the run confirmed source-code bugs, BUGS.md must list them. If the run found zero source-code bugs, BUGS.md must contain a `## Summary` with a positive assertion: "No confirmed source-code bugs found" with counts of candidates evaluated and eliminated. A completed run (Phase 2d marked complete) with no BUGS.md is non-conformant. This benchmark exists because in v1.3.22 benchmarking, express completed all phases with zero source bugs but produced no BUGS.md, making it ambiguous whether the file was intentionally omitted or accidentally skipped.
+
 ## Quick Checklist Format
 
 Use this as a final sign-off:
@@ -239,3 +243,4 @@ Use this as a final sign-off:
 - [ ] Phase 2c has a triage file at `quality/spec_audits/YYYY-MM-DD-triage.md`
 - [ ] (Continuation mode) Seed checks in `SEED_CHECKS.md` were executed mechanically, not inferred from prose
 - [ ] (Continuation mode) PROGRESS.md contains `## Convergence` section with net-new count and verdict
+- [ ] `quality/BUGS.md` exists (zero-bug runs include a summary of candidates evaluated and eliminated)
