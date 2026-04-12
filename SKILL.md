@@ -1011,13 +1011,22 @@ The generated protocol must include:
    3. **The code** — The buggy code with file:line citation. Explain why it's wrong in terms of the spec, not just "it looks weird."
    4. **Observable consequence** — What actually breaks. Not "could theoretically fail" — what does fail, under what conditions, with what symptoms.
    5. **Depth judgment** *(include only when expansion is warranted)* — After drafting sections 1–4, assess: is the consequence self-evident from the code and test alone? If a reader would reasonably ask "why hasn't anyone noticed this?" or "does this affect all configurations equally?", expand the analysis. Trace the buggy function's callers. Show which code paths expose the bug and which mask it. Concrete expansion triggers: transport/config-dependent behavior, feature flags that mask the bug on some paths, indirect dispatch hiding callers, bugs in negotiation/initialization code that only manifest under specific runtime conditions. If the consequence is obvious from the immediate code (e.g., a null dereference, an off-by-one), keep sections 1–4 tight and omit this section.
-   6. **The fix** — The diff, with a brief explanation of why this is the right fix.
+   6. **The fix** — A proposed fix as an inline diff (unified diff format), with a brief explanation of why this is the right fix. **Always include a concrete diff** — even for confirmed-open bugs without a separate `.patch` file. If the fix is a one-line change (adding a case label, fixing an argument), write the diff. If the fix requires broader changes, write the minimal diff that addresses the core defect and note what additional changes a full fix would need. The inline diff in the writeup is what makes the writeup actionable — a writeup that says "No fix patch is included" is incomplete and not useful to a maintainer. Example format:
+      ```diff
+      --- a/drivers/virtio/virtio_ring.c
+      +++ b/drivers/virtio/virtio_ring.c
+      @@ -3527,6 +3527,7 @@ void vring_transport_features(...)
+       	case VIRTIO_F_ORDER_PLATFORM:
+       	case VIRTIO_F_IN_ORDER:
+      +	case VIRTIO_F_RING_RESET:
+       	default:
+      ```
    7. **The test** — What the test proves, how to run it, and what output to expect on unpatched vs patched code.
    8. **Related issues** *(include only when related bugs exist)* — Other bugs in the same class, if any. Flag them even if they're not confirmed yet. Omit this section if no related issues were identified.
 
    **Include the version stamp** at the top of the writeup file (same format as all other generated files).
 
-   **Writeup generation for all confirmed bugs (mandatory).** Generate a writeup at `quality/writeups/BUG-NNN.md` for every confirmed bug — both TDD-verified and confirmed-open. For confirmed-open bugs without fix patches, follow the same template but note in sections 6–7 that no fix or green-phase evidence exists yet. The writeup threshold is bug confirmation, not TDD completion. This ensures every confirmed bug has a self-contained document suitable for upstream reporting, regardless of whether a fix patch is available. A run with confirmed bugs and no writeups directory is incomplete.
+   **Writeup generation for all confirmed bugs (mandatory).** Generate a writeup at `quality/writeups/BUG-NNN.md` for every confirmed bug — both TDD-verified and confirmed-open. For confirmed-open bugs, follow the same template including a proposed fix diff in section 6 (the diff is always required even without a separate `.patch` file). The writeup threshold is bug confirmation, not TDD completion. A run with confirmed bugs and no writeups directory is incomplete.
 
 ### Checkpoint: Update PROGRESS.md after artifact generation
 
