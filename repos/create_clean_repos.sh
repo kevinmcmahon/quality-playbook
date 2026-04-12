@@ -1,18 +1,17 @@
 #!/bin/bash
-# Create pristine shallow clones of all benchmark repos in clean/.
+# Create pristine shallow clones of repos listed in repos.json.
 #
-# Each clone contains only upstream source code — no quality/, no docs_gathered/,
-# no control_prompts/, no AGENTS.md. The docs_gathered/ directory is maintained
-# separately in repos/docs_gathered/<repo>/ and copied in by setup_repos.sh.
-#
-# Pin to exact commits so benchmark runs are reproducible. These are the same
-# commits used since the earliest benchmark versions.
+# Reads the "repos" section of repos.json (GitHub repos only — kernel subsystems
+# are handled by create_clean_kernel.sh). Each clone contains only upstream source
+# code — no quality/, no docs_gathered/, no control_prompts/, no AGENTS.md.
 #
 # Usage:
-#   ./create_clean_repos.sh              # All repos
+#   ./create_clean_repos.sh              # All repos in repos.json
 #   ./create_clean_repos.sh chi httpx    # Specific repos
+#   ./create_clean_repos.sh --benchmark  # Only repos with in_benchmark=true
+#   ./create_clean_repos.sh --force chi  # Re-clone even if clean/chi exists
 #
-# Requires: git
+# Requires: git, jq
 #
 # After this, run:
 #   ./setup_repos.sh chi httpx    # Creates versioned copies from clean/
@@ -21,59 +20,89 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CLEAN_DIR="${SCRIPT_DIR}/clean"
+MANIFEST="${SCRIPT_DIR}/repos.json"
 
-# --- Repo definitions ---
-# Format: name|url|commit|branch|special_handling
-REPO_DEFS=(
-    "chi|https://github.com/go-chi/chi.git||main|"
-    "cobra|https://github.com/spf13/cobra.git|61968e893eee2f27696c2fbc8e34fa5c4afaf7c4|main|"
-    "express|https://github.com/expressjs/express.git||master|strip_node_modules"
-    "gson|https://github.com/google/gson.git||main|"
-    "httpx|https://github.com/encode/httpx.git|b5addb64f0161ff6bfe94c124ef76f6a1fba5254|master|"
-    "javalin|https://github.com/javalin/javalin.git||main|"
-    "serde|https://github.com/serde-rs/serde.git|fa7da4a93567ed347ad0735c28e439fca688ef26|master|"
-    "virtio|https://github.com/torvalds/linux.git|bfe62a454542cfad3379f6ef5680b125f41e20f4|master|linux_virtio_extract"
-)
+if [ ! -f "$MANIFEST" ]; then
+    echo "ERROR: repos.json not found at $MANIFEST"
+    exit 1
+fi
 
-# Parse a repo definition string
-parse_def() {
-    local def="$1"
-    REPO_NAME=$(echo "$def" | cut -d'|' -f1)
-    REPO_URL=$(echo "$def" | cut -d'|' -f2)
-    REPO_COMMIT=$(echo "$def" | cut -d'|' -f3)
-    REPO_BRANCH=$(echo "$def" | cut -d'|' -f4)
-    REPO_SPECIAL=$(echo "$def" | cut -d'|' -f5)
-}
+if ! command -v jq &>/dev/null; then
+    echo "ERROR: jq is required. Install with: brew install jq"
+    exit 1
+fi
+
+FORCE=false
+BENCHMARK_ONLY=false
+POSITIONAL=()
+
+for arg in "$@"; do
+    case "$arg" in
+        --force) FORCE=true ;;
+        --benchmark) BENCHMARK_ONLY=true ;;
+        --help|-h)
+            echo "Usage: $0 [--benchmark] [--force] [repo1 repo2 ...]"
+            echo "  --benchmark: only clone repos with in_benchmark=true"
+            echo "  --force: re-clone even if clean/<repo> already exists"
+            echo "  repo names: only clone these specific repos"
+            exit 0
+            ;;
+        *) POSITIONAL+=("$arg") ;;
+    esac
+done
 
 log() { echo "$(date +%H:%M:%S) $1"; }
 
+# Build the list of repos to process
+if [ ${#POSITIONAL[@]} -gt 0 ]; then
+    REPOS=("${POSITIONAL[@]}")
+else
+    if [ "$BENCHMARK_ONLY" = true ]; then
+        IFS=$'\n' read -r -d '' -a REPOS < <(jq -r '.repos | to_entries[] | select(.value.in_benchmark == true) | .key' "$MANIFEST" && printf '\0') || true
+    else
+        IFS=$'\n' read -r -d '' -a REPOS < <(jq -r '.repos | keys[]' "$MANIFEST" | grep -v '^_' && printf '\0') || true
+    fi
+fi
+
 clone_repo() {
-    local name="$1" url="$2" commit="$3" branch="$4" special="$5"
+    local name="$1"
     local dest="${CLEAN_DIR}/${name}"
 
-    if [ -d "$dest" ]; then
-        log "EXISTS: ${name} — remove clean/${name} to re-clone"
+    # Read repo config from manifest
+    local url branch pin_commit special_handling
+    url=$(jq -r ".repos[\"$name\"].github_url // empty" "$MANIFEST")
+    branch=$(jq -r ".repos[\"$name\"].branch // \"main\"" "$MANIFEST")
+    pin_commit=$(jq -r ".repos[\"$name\"].pin_commit // empty" "$MANIFEST")
+    special_handling=$(jq -r ".repos[\"$name\"].special_handling // empty" "$MANIFEST")
+
+    if [ -z "$url" ] || [ "$url" = "null" ]; then
+        log "SKIP $name — no github_url in repos.json"
         return
     fi
 
-    log "Cloning ${name} from ${url}..."
-
-    if [ "$special" = "linux_virtio_extract" ]; then
-        clone_virtio "$name" "$url" "$commit" "$branch" "$dest"
+    if [ -d "$dest" ] && [ "$FORCE" = false ]; then
+        log "EXISTS: $name — use --force to re-clone"
         return
     fi
 
-    # Standard shallow clone
-    if [ -n "$commit" ]; then
+    if [ -d "$dest" ] && [ "$FORCE" = true ]; then
+        log "  Removing existing clean/$name for re-clone..."
+        rm -rf "$dest"
+    fi
+
+    log "Cloning $name from $url..."
+
+    # Clone
+    if [ -n "$pin_commit" ]; then
         # Clone at specific commit — need full fetch then checkout
         git clone --filter=blob:none --no-checkout "$url" "$dest" 2>&1 | tail -1
-        git -C "$dest" checkout "$commit" 2>&1 | tail -1
+        git -C "$dest" checkout "$pin_commit" 2>&1 | tail -1
     else
         # Shallow clone of default branch
         git clone --depth 1 --branch "$branch" "$url" "$dest" 2>&1 | tail -1
     fi
 
-    # Remove .git to save space — we have the commit SHA recorded above
+    # Record the SHA before removing .git
     local sha
     sha=$(git -C "$dest" rev-parse HEAD)
     rm -rf "$dest/.git"
@@ -89,110 +118,43 @@ script: create_clean_repos.sh
 PROV
 
     # Special handling
-    if [ "$special" = "strip_node_modules" ]; then
+    if [ "$special_handling" = "strip_node_modules" ]; then
         rm -rf "$dest/node_modules"
         log "  Stripped node_modules"
     fi
 
     local size
     size=$(du -sh "$dest" | cut -f1)
-    log "  ✓ ${name} ready (${sha:0:12}, ${size})"
-}
-
-clone_virtio() {
-    local name="$1" url="$2" commit="$3" branch="$4" dest="$5"
-
-    # Sparse checkout of just the virtio-related files from the Linux kernel
-    local tmpdir="${CLEAN_DIR}/.virtio_tmp"
-    rm -rf "$tmpdir"
-
-    log "  Sparse checkout of Linux kernel virtio subsystem..."
-    git clone --filter=blob:none --no-checkout --sparse "$url" "$tmpdir" 2>&1 | tail -1
-
-    cd "$tmpdir"
-    git sparse-checkout set drivers/virtio include/linux/virtio*.h include/uapi/linux/virtio*.h
-    if [ -n "$commit" ]; then
-        git checkout "$commit" 2>&1 | tail -1
-    else
-        git checkout "$branch" 2>&1 | tail -1
-    fi
-
-    local sha
-    sha=$(git rev-parse HEAD)
-    cd "$SCRIPT_DIR"
-
-    # Extract just the virtio files into clean destination
-    mkdir -p "$dest"
-    cp -a "$tmpdir/drivers" "$dest/"
-    cp -a "$tmpdir/include" "$dest/"
-
-    # Strip large files that blow up the context window
-    rm -f "$dest/drivers/virtio/MAINTAINERS" 2>/dev/null
-    rm -f "$dest/CREDITS" "$dest/.mailmap" "$dest/Makefile" 2>/dev/null
-    rm -rf "$dest/Documentation" 2>/dev/null
-
-    # Remove .git and temp
-    rm -rf "$tmpdir"
-
-    # Write provenance file
-    cat > "$dest/.clean_checkout" <<PROV
-repo: ${name}
-url: ${url}
-commit: ${sha}
-branch: ${branch}
-cloned: $(date -u +%Y-%m-%dT%H:%M:%SZ)
-script: create_clean_repos.sh
-note: Sparse checkout of drivers/virtio/ + include/linux/virtio*.h + include/uapi/linux/virtio*.h
-      Large files stripped: MAINTAINERS, CREDITS, .mailmap, Makefile, Documentation/
-PROV
-
-    local size
-    size=$(du -sh "$dest" | cut -f1)
-    log "  ✓ ${name} ready (${sha:0:12}, ${size}, kernel virtio extract)"
+    log "  done: $name (${sha:0:12}, ${size})"
 }
 
 # --- Main ---
-
-ALL_NAMES=()
-for def in "${REPO_DEFS[@]}"; do
-    parse_def "$def"
-    ALL_NAMES+=("$REPO_NAME")
-done
-
-if [ $# -gt 0 ]; then
-    REQUESTED=("$@")
-else
-    REQUESTED=("${ALL_NAMES[@]}")
-fi
 
 mkdir -p "$CLEAN_DIR"
 
 echo "=== Quality Playbook — Clean Repo Setup ==="
 echo "Destination: ${CLEAN_DIR}/"
-echo "Repos:       ${REQUESTED[*]}"
+echo "Repos: ${#REPOS[@]} total"
+if [ "$BENCHMARK_ONLY" = true ]; then
+    echo "Filter: benchmark repos only"
+fi
 echo ""
 
-for req in "${REQUESTED[@]}"; do
-    found=false
-    for def in "${REPO_DEFS[@]}"; do
-        parse_def "$def"
-        if [ "$REPO_NAME" = "$req" ]; then
-            clone_repo "$REPO_NAME" "$REPO_URL" "$REPO_COMMIT" "$REPO_BRANCH" "$REPO_SPECIAL"
-            found=true
-            break
-        fi
-    done
-    if [ "$found" = false ]; then
-        log "WARNING: Unknown repo '${req}' — add it to REPO_DEFS in this script"
+# Check for kernel subsystems in the requested list and warn
+for name in "${REPOS[@]}"; do
+    is_kernel=$(jq -r ".kernel_subsystems[\"$name\"] // empty" "$MANIFEST")
+    if [ -n "$is_kernel" ]; then
+        log "SKIP $name — kernel subsystem (use create_clean_kernel.sh instead)"
+        continue
     fi
+
+    clone_repo "$name"
 done
 
 echo ""
 echo "=== Clean repos ready in ${CLEAN_DIR}/ ==="
 echo ""
 echo "Sizes:"
-for req in "${REQUESTED[@]}"; do
-    [ -d "${CLEAN_DIR}/${req}" ] && echo "  ${req}: $(du -sh "${CLEAN_DIR}/${req}" | cut -f1)"
+for name in "${REPOS[@]}"; do
+    [ -d "${CLEAN_DIR}/${name}" ] && echo "  ${name}: $(du -sh "${CLEAN_DIR}/${name}" | cut -f1)"
 done
-echo ""
-echo "Next: ./setup_repos.sh ${REQUESTED[*]}"

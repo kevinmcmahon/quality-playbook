@@ -10,9 +10,12 @@
 # contamination detection (version mismatch between directory and SKILL.md).
 # v1.3.32 adds test file extension validation, minimum UC count (5+),
 # and triage executable evidence check.
+# v1.3.33 fixes language detection (find-based, not ls-glob), adds --benchmark
+# vs --general strictness modes, and makes UC threshold size-aware.
 #
 # Usage:
-#   ./quality_gate.sh .                          # Check current directory
+#   ./quality_gate.sh .                          # Check current directory (benchmark mode)
+#   ./quality_gate.sh --general .                # Check with relaxed thresholds
 #   ./quality_gate.sh virtio                     # Check named repo (from repos/)
 #   ./quality_gate.sh --all                      # Check all current-version repos
 #   ./quality_gate.sh --version 1.3.27 virtio    # Check specific version
@@ -22,7 +25,7 @@
 #   1 — one or more checks failed
 #
 # This script is also copied into each repo at .github/skills/quality_gate.sh
-# so the playbook agent can run it as its final Phase 2d step.
+# so the playbook agent can run it as its final Phase 3 verification step.
 
 set -uo pipefail
 
@@ -32,6 +35,7 @@ WARN=0
 REPO_DIRS=()
 VERSION=""
 CHECK_ALL=false
+STRICTNESS="benchmark"   # "benchmark" (default) or "general"
 
 # Parse args
 EXPECT_VERSION=false
@@ -42,9 +46,11 @@ for arg in "$@"; do
         continue
     fi
     case "$arg" in
-        --version) EXPECT_VERSION=true ;;
-        --all)     CHECK_ALL=true ;;
-        *)         REPO_DIRS+=("$arg") ;;
+        --version)   EXPECT_VERSION=true ;;
+        --all)       CHECK_ALL=true ;;
+        --benchmark) STRICTNESS="benchmark" ;;
+        --general)   STRICTNESS="general" ;;
+        *)           REPO_DIRS+=("$arg") ;;
     esac
 done
 
@@ -130,7 +136,11 @@ check_repo() {
                 pass "verify.sh contains triage probe assertions"
             fi
             if [ "$has_probes" = false ]; then
-                warn "No executable triage evidence found (expected spec_audits/triage_probes.sh or probe assertions in mechanical/verify.sh)"
+                if [ "$STRICTNESS" = "benchmark" ]; then
+                    fail "No executable triage evidence found (expected spec_audits/triage_probes.sh or probe assertions in mechanical/verify.sh)"
+                else
+                    warn "No executable triage evidence found (expected spec_audits/triage_probes.sh or probe assertions in mechanical/verify.sh)"
+                fi
             fi
         fi
     else
@@ -278,7 +288,11 @@ check_repo() {
             *) [ -n "$rec" ] && fail "recommendation '${rec}' is non-canonical (must be SHIP/FIX BEFORE MERGE/BLOCK)" || fail "recommendation missing" ;;
         esac
     else
-        warn "integration-results.json not present"
+        if [ "$STRICTNESS" = "benchmark" ]; then
+            warn "integration-results.json not present"
+        else
+            info "integration-results.json not present (optional in general mode)"
+        fi
     fi
 
     # --- Use cases in REQUIREMENTS.md (benchmark 43, 48) ---
@@ -289,10 +303,29 @@ check_repo() {
         uc_ids=${uc_ids:-0}
         uc_unique=$(grep -oE 'UC-[0-9]+' "${q}/REQUIREMENTS.md" 2>/dev/null | sort -u | wc -l | tr -d ' ')
         uc_unique=${uc_unique:-0}
-        if [ "$uc_unique" -ge 5 ]; then
-            pass "Found ${uc_unique} distinct UC identifiers (${uc_ids} total references)"
+        # Size-aware UC threshold: count source files to calibrate expectation
+        local src_count=0
+        if [ -d "$repo_dir" ]; then
+            src_count=$(find "$repo_dir" -maxdepth 4 -type f \
+                -not -path '*/vendor/*' -not -path '*/node_modules/*' \
+                -not -path '*/.git/*' -not -path '*/quality/*' \
+                \( -name '*.go' -o -name '*.py' -o -name '*.java' -o -name '*.kt' \
+                   -o -name '*.rs' -o -name '*.ts' -o -name '*.js' -o -name '*.scala' \
+                   -o -name '*.c' -o -name '*.h' -o -name '*.agc' \) 2>/dev/null | wc -l | tr -d ' ')
+        fi
+        local min_uc=5
+        if [ "$src_count" -lt 5 ]; then
+            min_uc=3   # Small projects: 3 UCs acceptable
+        fi
+
+        if [ "$uc_unique" -ge "$min_uc" ]; then
+            pass "Found ${uc_unique} distinct UC identifiers (${uc_ids} total references, ${src_count} source files)"
         elif [ "$uc_unique" -gt 0 ]; then
-            fail "Only ${uc_unique} distinct UC identifiers (minimum 5 required)"
+            if [ "$STRICTNESS" = "general" ]; then
+                warn "Only ${uc_unique} distinct UC identifiers (minimum ${min_uc} for ${src_count} source files)"
+            else
+                fail "Only ${uc_unique} distinct UC identifiers (minimum ${min_uc} required for ${src_count} source files)"
+            fi
         else
             fail "No canonical UC-NN identifiers in REQUIREMENTS.md"
         fi
@@ -307,17 +340,20 @@ check_repo() {
     reg_test=$(ls ${q}/test_regression.* 2>/dev/null | head -1)
     if [ -n "$func_test" ]; then
         local ext="${func_test##*.}"
-        # Detect project language from common indicators
+        # Detect project language using find (portable, no globstar needed).
+        # Exclude vendor/, node_modules/, .git/, and quality/ to avoid false positives.
         local detected_lang=""
-        if ls "${repo_dir}"/*.go "${repo_dir}"/**/*.go 2>/dev/null | head -1 | grep -q .; then detected_lang="go"
-        elif ls "${repo_dir}"/*.py "${repo_dir}"/**/*.py 2>/dev/null | head -1 | grep -q .; then detected_lang="py"
-        elif ls "${repo_dir}"/*.java "${repo_dir}"/**/*.java 2>/dev/null | head -1 | grep -q .; then detected_lang="java"
-        elif ls "${repo_dir}"/*.kt "${repo_dir}"/**/*.kt 2>/dev/null | head -1 | grep -q .; then detected_lang="kt"
-        elif ls "${repo_dir}"/*.rs "${repo_dir}"/**/*.rs 2>/dev/null | head -1 | grep -q .; then detected_lang="rs"
-        elif ls "${repo_dir}"/*.ts "${repo_dir}"/**/*.ts 2>/dev/null | head -1 | grep -q .; then detected_lang="ts"
-        elif ls "${repo_dir}"/*.js "${repo_dir}"/**/*.js 2>/dev/null | head -1 | grep -q .; then detected_lang="js"
-        elif ls "${repo_dir}"/*.scala "${repo_dir}"/**/*.scala 2>/dev/null | head -1 | grep -q .; then detected_lang="scala"
-        elif ls "${repo_dir}"/*.c "${repo_dir}"/**/*.c 2>/dev/null | head -1 | grep -q .; then detected_lang="c"
+        local find_exclude="-not -path '*/vendor/*' -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/quality/*'"
+        if eval "find '${repo_dir}' -maxdepth 3 ${find_exclude} -name '*.go' -print -quit" 2>/dev/null | grep -q .; then detected_lang="go"
+        elif eval "find '${repo_dir}' -maxdepth 3 ${find_exclude} -name '*.py' -print -quit" 2>/dev/null | grep -q .; then detected_lang="py"
+        elif eval "find '${repo_dir}' -maxdepth 3 ${find_exclude} -name '*.java' -print -quit" 2>/dev/null | grep -q .; then detected_lang="java"
+        elif eval "find '${repo_dir}' -maxdepth 3 ${find_exclude} -name '*.kt' -print -quit" 2>/dev/null | grep -q .; then detected_lang="kt"
+        elif eval "find '${repo_dir}' -maxdepth 3 ${find_exclude} -name '*.rs' -print -quit" 2>/dev/null | grep -q .; then detected_lang="rs"
+        elif eval "find '${repo_dir}' -maxdepth 3 ${find_exclude} -name '*.ts' -print -quit" 2>/dev/null | grep -q .; then detected_lang="ts"
+        elif eval "find '${repo_dir}' -maxdepth 3 ${find_exclude} -name '*.js' -print -quit" 2>/dev/null | grep -q .; then detected_lang="js"
+        elif eval "find '${repo_dir}' -maxdepth 3 ${find_exclude} -name '*.scala' -print -quit" 2>/dev/null | grep -q .; then detected_lang="scala"
+        elif eval "find '${repo_dir}' -maxdepth 3 ${find_exclude} -name '*.c' -print -quit" 2>/dev/null | grep -q .; then detected_lang="c"
+        elif eval "find '${repo_dir}' -maxdepth 3 ${find_exclude} -name '*.agc' -print -quit" 2>/dev/null | grep -q .; then detected_lang="agc"
         fi
 
         if [ -n "$detected_lang" ]; then
@@ -333,11 +369,22 @@ check_repo() {
                 js) valid_ext="js ts" ;;
                 scala) valid_ext="scala" ;;
                 c) valid_ext="c py sh" ;;  # C projects may use Python/shell test harnesses
+                agc) valid_ext="py sh" ;;  # AGC assembly projects use external test harnesses
             esac
             if echo "$valid_ext" | grep -qw "$ext"; then
                 pass "test_functional.${ext} matches project language (${detected_lang})"
             else
                 fail "test_functional.${ext} does not match project language (${detected_lang}) — expected .${valid_ext%% *}"
+            fi
+
+            # Also validate regression test extension if present
+            if [ -n "$reg_test" ]; then
+                local reg_ext="${reg_test##*.}"
+                if echo "$valid_ext" | grep -qw "$reg_ext"; then
+                    pass "test_regression.${reg_ext} matches project language (${detected_lang})"
+                else
+                    fail "test_regression.${reg_ext} does not match project language (${detected_lang}) — expected .${valid_ext%% *}"
+                fi
             fi
         else
             info "Cannot detect project language — skipping extension check (test_functional.${ext})"
@@ -516,8 +563,9 @@ if [ ${#REPO_DIRS[@]} -eq 0 ]; then
 fi
 
 echo "=== Quality Gate — Post-Run Validation ==="
-echo "Version: ${VERSION:-unknown}"
-echo "Repos:   ${#REPO_DIRS[@]}"
+echo "Version:    ${VERSION:-unknown}"
+echo "Strictness: ${STRICTNESS}"
+echo "Repos:      ${#REPO_DIRS[@]}"
 
 for repo_dir in "${REPO_DIRS[@]}"; do
     check_repo "$repo_dir"
