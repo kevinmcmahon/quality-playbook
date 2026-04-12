@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate nine quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, a consolidated bug report (BUGS.md) with patches, a TDD verification protocol (RUN_TDD_TESTS.md), an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis, missing safeguard detection, patch validation gates, and structured test output (JUnit XML + sidecar JSON). Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.33
+  version: 1.3.35
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -13,7 +13,7 @@ metadata:
 > **MANDATORY FIRST ACTION — do this before reading the rest of the skill.**
 > Print the following message to the user exactly as written, then continue.
 >
-> Quality Playbook v1.3.33 — by Andrew Stellman
+> Quality Playbook v1.3.35 — by Andrew Stellman
 > https://github.com/andrewstellman/quality-playbook
 >
 > Generating a complete quality system for this project. Here's what I'll do:
@@ -104,7 +104,7 @@ The quality gate (`quality_gate.sh`) validates these artifacts. If the gate chec
 ```json
 {
   "schema_version": "1.1",
-  "skill_version": "1.3.33",
+  "skill_version": "1.3.35",
   "date": "2026-04-12",
   "project": "repo-name",
   "bugs": [
@@ -131,7 +131,7 @@ The quality gate (`quality_gate.sh`) validates these artifacts. If the gate chec
 ```json
 {
   "schema_version": "1.1",
-  "skill_version": "1.3.33",
+  "skill_version": "1.3.35",
   "date": "2026-04-12",
   "project": "repo-name",
   "recommendation": "SHIP",
@@ -184,9 +184,9 @@ Between phases, write your findings and artifacts to disk, then read them back w
 
 The pattern for each phase boundary: finish the current phase, write everything to disk, then explicitly read back the files you need before starting the next phase. This "write then read" cycle is the pass boundary — it lets you drop exploration context from working memory before loading review context, for example.
 
-When running in multi-pass mode, write your Phase 1 exploration findings to `quality/EXPLORATION.md` before proceeding to Phase 2. This file is the handoff artifact — Phase 2 reads it instead of re-exploring the codebase. Make it thorough: domain identification, architecture map, existing tests, specification summary, quality risks, skeleton/dispatch analysis, derived requirements (REQ-NNN), and derived use cases (UC-NN). Everything Phase 2 needs to generate artifacts must be in this file.
+Write your Phase 1 exploration findings to `quality/EXPLORATION.md` before proceeding to Phase 2. This file is mandatory in all modes — single-pass, multi-pass, and interactive. Make it thorough: domain identification, architecture map, existing tests, specification summary, quality risks, skeleton/dispatch analysis, derived requirements (REQ-NNN), and derived use cases (UC-NN). Everything Phase 2 needs to generate artifacts must be in this file.
 
-In single-pass mode (the default when a human runs the skill interactively), EXPLORATION.md is optional — you can keep exploration context in working memory and proceed directly to Phase 2.
+The discipline of writing exploration findings to disk is what forces thorough analysis. Without it, the model keeps vague impressions in working memory and produces broad, abstract requirements that miss function-level defects. Writing forces specificity: file paths, line numbers, exact function names, concrete behavioral rules. That specificity is what makes requirements precise enough to catch bugs during code review.
 
 ---
 
@@ -238,6 +238,10 @@ Spend the first phase understanding the project. The quality playbook must be gr
 **Why explore first?** The most common failure in AI-generated quality playbooks is producing generic content — coverage targets that could apply to any project, scenarios that describe theoretical failures, tests that exercise language builtins instead of project code. Exploration prevents this by forcing every output to reference something real: a specific function, a specific schema, a specific defensive code pattern. If you can't point to where something lives in the code, you're guessing — and guesses produce quality playbooks nobody trusts.
 
 **Scaling for large codebases:** For projects with more than ~50 source files, don't try to read everything. Focus exploration on the 3–5 core modules (the ones that handle the primary data flow, the most complex logic, and the most failure-prone operations). Read representative tests from each subsystem rather than every test file. The goal is depth on what matters, not breadth across everything.
+
+**Depth over breadth (critical).** A narrow scope with function-level detail finds more bugs than a broad scope with subsystem-level summaries. For each core module you explore, identify the specific functions that implement critical behavior and document them by name, file path, and line number. Requirements derived from "the reset subsystem should handle errors" will not catch bugs. Requirements derived from "`vm_reset()` at `virtio_mmio.c:256` must poll the status register after writing zero" will. The difference between a useful exploration and a useless one is specificity — file paths, function names, line numbers, exact behavioral rules.
+
+**Bug-finding exploration patterns (mandatory).** Read `.github/skills/references/exploration_patterns.md` and apply every pattern in it to each core module you explore. The patterns target bug classes that broad architectural summaries consistently miss: fallback path parity, dispatcher return-value correctness, and cross-implementation contract consistency. Each pattern has a definition, diverse examples, and an output format for EXPLORATION.md. The patterns are the most important part of exploration — they are what turns a subsystem summary into a list of requirements specific enough to catch bugs.
 
 **Pre-flight: Scope declaration for large repositories**
 
@@ -550,9 +554,9 @@ This operates at **path/branch/helper granularity**, not file level. File-level 
 
 **Scoped to four categories** (not an open-ended branch audit):
 
-1. **Alternative paths already named in requirements.** If a requirement mentions fallback or alternative paths (e.g., "MSI-X vs INTx fallback," "admin queue present vs absent," "sync vs async"), each alternative must have an explicit **symmetry condition** — a statement of what invariant must hold across both paths. A requirement that says "the system handles both X and Y" without specifying what "handles" means for each is incomplete.
+1. **Alternative paths already named in requirements.** If a requirement mentions fallback or alternative paths (e.g., "primary vs. degraded mode," "negotiated vs. default configuration," "sync vs. async"), each alternative must have an explicit **symmetry condition** — a statement of what invariant must hold across both paths. A requirement that says "the system handles both X and Y" without specifying what "handles" means for each is incomplete.
 
-2. **Helpers that translate public constants into runtime behavior.** If a helper function whitelists, filters, or translates between UAPI-defined constants and runtime behavior (e.g., `vring_transport_features()` whitelisting feature bits, codec registry lookups, feature flag gates), it must have a helper-specific requirement enumerating the expected preserved/translated values.
+2. **Helpers that translate public constants into runtime behavior.** If a helper function whitelists, filters, or translates between defined constants and runtime behavior (e.g., feature flag gates, codec registry lookups, capability whitelist helpers), it must have a helper-specific requirement enumerating the expected preserved/translated values.
 
 3. **Capability-negotiation and fallback logic.** Code paths where the system negotiates capabilities with an external peer (protocol version negotiation, feature detection, graceful degradation) must have requirements covering both the negotiated-up and negotiated-down paths.
 
@@ -560,7 +564,7 @@ This operates at **path/branch/helper granularity**, not file level. File-level 
 
 For each category, check whether the requirements contain specific conditions covering the identified paths. Orphaned paths — significant code paths without requirement coverage — trigger a "coverage gap" marker in the completeness report. These gaps must be resolved (by adding requirement conditions or by providing explicit justification) before the completeness report can declare requirements sufficient.
 
-**Carry-forward rule:** When a prior run's REQUIREMENTS.md exists in the quality directory, the pipeline must read it and check whether any conditions from the prior version were dropped. If conditions were dropped, the pipeline must either: (a) re-derive them with updated justification, or (b) document why the condition is no longer relevant. Silent drops are not permitted — they are the direct cause of the v1.3.13 virtio regression where a previously learned requirement was lost.
+**Carry-forward rule:** When a prior run's REQUIREMENTS.md exists in the quality directory, the pipeline must read it and check whether any conditions from the prior version were dropped. If conditions were dropped, the pipeline must either: (a) re-derive them with updated justification, or (b) document why the condition is no longer relevant. Silent drops are not permitted — they are a direct cause of regressions where previously learned requirements are lost between runs.
 
 **After the pipeline:** The skill also generates `quality/REVIEW_REQUIREMENTS.md` (interactive review protocol) and `quality/REFINE_REQUIREMENTS.md` (refinement pass protocol). These support iterative improvement — the user can review requirements interactively, run refinement passes with different models, and keep versioned backups of each iteration. See `references/requirements_pipeline.md` for the full versioning protocol and backup structure.
 
@@ -665,6 +669,21 @@ After initializing PROGRESS.md, write your full exploration findings to `quality
 ## Skeletons and Dispatch
 [State machines, dispatch tables, feature registries — with file:line citations]
 
+## Fallback Path Analysis
+[For each cascade/degradation strategy found: list the primary path and each fallback,
+note which operations each path performs, flag any behavioral differences between them.
+Each difference is a candidate requirement.]
+
+## Dispatcher Return-Value Analysis
+[For each dispatcher function: enumerate input combinations, document the return value
+for each combination, flag any combination where the return value may be incorrect.
+Each flag is a candidate requirement.]
+
+## Cross-Implementation Consistency
+[For each operation implemented by multiple functions (e.g., reset in MMIO vs. PCI):
+list the implementations side by side, note which mandatory steps each performs,
+flag any step present in one but missing in another. Each gap is a candidate requirement.]
+
 ## Derived Requirements
 [REQ-001 through REQ-NNN, each with spec basis and tier]
 
@@ -679,25 +698,36 @@ After initializing PROGRESS.md, write your full exploration findings to `quality
 
 **Re-read after writing (mandatory).** After writing EXPLORATION.md, explicitly read the file back from disk before proceeding to Phase 2. This serves two purposes: (1) it confirms the file was written correctly, and (2) it loads the structured findings into working memory for artifact generation. Do not skip this step and rely on what you remember writing — the "write then read" cycle is the context bridge.
 
-In single-pass mode this file is a useful backup. In multi-pass mode it is essential — the artifact generation pass reads it instead of re-exploring.
+This file is essential in all modes. In single-pass mode it forces the model to articulate specific findings (file paths, function names, line numbers) before generating artifacts. In multi-pass mode it is also the handoff artifact between passes. Either way, the write-then-read cycle is the quality gate for exploration depth.
+
+**Phase 1 completion gate (mandatory).** Before proceeding to Phase 2, verify:
+1. `quality/EXPLORATION.md` exists on disk and contains at least 60 lines of substantive content.
+2. `quality/PROGRESS.md` exists and marks Phase 1 complete.
+3. You have re-read EXPLORATION.md from disk (not from memory).
+4. The Derived Requirements section contains at least one REQ-NNN with specific file paths and function names — not abstract subsystem descriptions.
+5. The Fallback Path Analysis, Dispatcher Return-Value Analysis, and Cross-Implementation Consistency sections each contain at least one finding, or an explicit "none found" with rationale. Empty sections are not acceptable — if you found zero fallback cascades, zero dispatchers, and zero cross-implementation pairs in the entire codebase, explain why.
+
+Do not begin Phase 2 until all five checks pass. Phase 1 is your only chance to understand the codebase deeply. Every requirement you miss here is a bug you will not find in Phase 2b. Invest the time.
 
 ---
 
 ## Phase 2: Generate the Quality Playbook
+
+Use `quality/EXPLORATION.md` as your primary source for this phase — do not re-explore the codebase from scratch. The exploration findings contain the architecture map, derived requirements, use cases, and risk analysis that drive every artifact below. If you find yourself reading source files to figure out what the project does, go back to EXPLORATION.md instead. Re-exploration wastes context and produces inconsistencies between what Phase 1 found and what Phase 2 generates.
 
 Now write the nine files. For each one, follow the structure below and consult the relevant reference file for detailed guidance.
 
 **Version stamp (mandatory on every generated file).** Every Markdown file the playbook generates must begin with the following attribution line immediately after the file's title heading:
 
 ```
-> Generated by [Quality Playbook](https://github.com/andrewstellman/quality-playbook) v1.3.33 — Andrew Stellman
+> Generated by [Quality Playbook](https://github.com/andrewstellman/quality-playbook) v1.3.35 — Andrew Stellman
 > Date: YYYY-MM-DD · Project: <project name>
 ```
 
 Every generated code file (test files, scripts) must begin with a comment header:
 
 ```
-# Generated by Quality Playbook v1.3.33 — https://github.com/andrewstellman/quality-playbook
+# Generated by Quality Playbook v1.3.35 — https://github.com/andrewstellman/quality-playbook
 # Author: Andrew Stellman · Date: YYYY-MM-DD · Project: <project name>
 ```
 
@@ -820,7 +850,7 @@ Pass 3 catches contradictions where two individually-correct pieces of code disa
 --- /dev/null
 +++ b/quality/test_regression_virtio.c
 @@ -0,0 +1,15 @@
-+// Generated by Quality Playbook v1.3.33
++// Generated by Quality Playbook v1.3.35
 +// Regression test for BUG-004: VIRTIO_F_RING_RESET missing from vring_transport_features()
 +#include <assert.h>
 +#include <string.h>
@@ -1183,7 +1213,13 @@ Re-read `quality/PROGRESS.md`. Update:
 - Update the artifact inventory: set each generated artifact to "generated" with its file path
 - Add exploration summary notes if not already present
 
-Then proceed to the code review. **Before starting the code review, re-read PROGRESS.md** to refresh your context on what was generated and what the exploration found.
+**Phase 2 completion gate (mandatory).** Before proceeding to Phase 2b, verify:
+1. All nine core artifacts exist on disk (`QUALITY.md`, `CONTRACTS.md`, `REQUIREMENTS.md`, `COVERAGE_MATRIX.md`, `test_functional.*`, `RUN_CODE_REVIEW.md`, `RUN_INTEGRATION_TESTS.md`, `RUN_SPEC_AUDIT.md`, `RUN_TDD_TESTS.md`).
+2. `REQUIREMENTS.md` contains requirements with specific conditions of satisfaction referencing actual code (file paths, function names, line numbers) — not abstract behavioral descriptions.
+3. If dispatch/enumeration contracts exist: `quality/mechanical/verify.sh` exists and has been executed.
+4. PROGRESS.md marks Phase 2 complete with timestamp.
+
+Re-read `quality/PROGRESS.md` and `quality/REQUIREMENTS.md` before starting Phase 2b. The requirements are the target list for the code review — every requirement is a potential bug if the code doesn't satisfy its conditions.
 
 ### Phase 2b: Code Review and Regression Tests
 
