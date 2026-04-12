@@ -3,7 +3,8 @@
 #
 # Mechanically checks artifact conformance issues that model self-attestation
 # persistently misses. v1.3.27 adds deep JSON field validation, enum checks,
-# summary consistency, and mandatory regression-test patches.
+# summary consistency, and mandatory regression-test patches. v1.3.28 adds
+# writeup inline diff validation (every writeup must contain a ```diff block).
 #
 # Usage:
 #   ./quality_gate.sh .                          # Check current directory
@@ -308,9 +309,16 @@ check_repo() {
     # --- Writeups for confirmed bugs (benchmark 30) ---
     echo "[Bug Writeups]"
     if [ "$bug_count" -gt 0 ]; then
-        local writeup_count=0
+        local writeup_count=0 writeup_diff_count=0
         if [ -d "${q}/writeups" ]; then
             writeup_count=$(ls ${q}/writeups/BUG-*.md 2>/dev/null | wc -l | tr -d ' ')
+            # Check each writeup for inline diff (section 6 requirement)
+            for wf in ${q}/writeups/BUG-*.md; do
+                [ -f "$wf" ] || continue
+                if grep -q '```diff' "$wf" 2>/dev/null; then
+                    writeup_diff_count=$((writeup_diff_count + 1))
+                fi
+            done
         fi
         if [ "$writeup_count" -ge "$bug_count" ]; then
             pass "${writeup_count} writeup(s) for ${bug_count} bug(s)"
@@ -318,6 +326,17 @@ check_repo() {
             warn "${writeup_count} writeup(s) for ${bug_count} bug(s) — incomplete"
         else
             fail "No writeups for ${bug_count} confirmed bug(s)"
+        fi
+
+        # Inline diff check — every writeup must have a ```diff block (section 6 "The fix")
+        if [ "$writeup_count" -gt 0 ]; then
+            if [ "$writeup_diff_count" -ge "$writeup_count" ]; then
+                pass "All ${writeup_diff_count} writeup(s) have inline fix diffs"
+            elif [ "$writeup_diff_count" -gt 0 ]; then
+                fail "Only ${writeup_diff_count}/${writeup_count} writeup(s) have inline fix diffs (all require section 6 diff)"
+            else
+                fail "No writeups have inline fix diffs (section 6 'The fix' must include a \`\`\`diff block)"
+            fi
         fi
     fi
 

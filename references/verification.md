@@ -243,6 +243,10 @@ REQUIREMENTS.md must contain use cases labeled with canonical identifiers in the
 
 For every confirmed bug (any BUG-NNN entry in BUGS.md), verify that `quality/patches/BUG-NNN-regression-test.patch` exists. A confirmed bug without a regression-test patch is incomplete — the patch is the strongest independent evidence that the bug exists. Fix patches (`BUG-NNN-fix.patch`) are optional but strongly encouraged for simple fixes. This benchmark exists because v1.3.25 and v1.3.26 benchmarking showed 4/8 repos with 0 patch files despite having confirmed bugs, and the writeups described what fixes should look like without generating actual patch files.
 
+### 45. Writeup Inline Fix Diffs
+
+Every writeup at `quality/writeups/BUG-NNN.md` must contain a ` ```diff ` fenced code block with the proposed fix in unified diff format. This is section 6 ("The fix") of the writeup template. A writeup that says "see patch file" or "no fix patch included" without an inline diff is incomplete — the inline diff is what makes the writeup actionable for a maintainer reading just the writeup without access to the patch directory. This benchmark exists because v1.3.27 benchmarking showed virtio producing 4 writeups with 0 inline diffs despite having fix patches in `quality/patches/`. The model wrote prose descriptions of the fix instead of pasting the actual diff.
+
 ## Quick Checklist Format
 
 Use this as a final sign-off:
@@ -295,3 +299,4 @@ Use this as a final sign-off:
 - [ ] `quality_gate.sh` was executed and exited 0; output saved to `quality/results/quality-gate.log`
 - [ ] REQUIREMENTS.md contains canonical use case identifiers (`UC-01`, `UC-02`, etc.)
 - [ ] Every confirmed bug has `quality/patches/BUG-NNN-regression-test.patch`
+- [ ] Every writeup has an inline fix diff (` ```diff ` block in section 6)
