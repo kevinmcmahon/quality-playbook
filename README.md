@@ -2,7 +2,7 @@
 
 Point an AI coding tool at any codebase. Get a complete quality engineering infrastructure: requirements derived from the actual intent of the code, functional tests traced to those requirements, a three-pass code review protocol, and a multi-model spec audit that catches bugs no single reviewer can find alone.
 
-**Version:** 1.3.28 | **Author:** [Andrew Stellman](https://github.com/andrewstellman) | **License:** Apache 2.0
+**Version:** 1.3.29 | **Author:** [Andrew Stellman](https://github.com/andrewstellman) | **License:** Apache 2.0
 
 ## The problem
 
