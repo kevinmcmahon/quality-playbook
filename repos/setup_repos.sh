@@ -15,7 +15,7 @@
 # Prerequisites:
 #   ./create_clean_repos.sh       # Populate clean/ (one-time)
 #
-# After setup, run:
+# After setup, run (defaults: Copilot, gpt-5.4, parallel, single-pass, no seeds):
 #   ./run_playbook.sh chi httpx
 
 set -euo pipefail

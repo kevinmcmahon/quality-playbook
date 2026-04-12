@@ -1,41 +1,45 @@
 #!/bin/bash
-# Generate quality artifacts for benchmark repos using multi-pass architecture.
+# Generate quality artifacts for benchmark repos.
 #
-# Each repo is processed in 4 sequential passes, each with a focused prompt.
-# Intermediate results persist on disk between passes, so the model never needs
-# the entire skill in working memory at once.
+# Default (simulates a fresh VS Code + Copilot run: one prompt, full playbook):
+#   Copilot, QPB_MODEL or gpt-5.4, parallel repos, single-pass, no Phase 0/0b seeds.
 #
-#   Pass 1 (Explore):   Read Phase 1, explore codebase, write findings to disk
-#   Pass 2 (Generate):  Read Phase 2 + exploration output, generate all artifacts
-#   Pass 3 (Review):    Read Phase 2b-2d + artifacts, run code review + spec audit + TDD + reconciliation
-#   Pass 4 (Gate):      Run quality_gate.sh, fix FAILs, finalize
+#   ./run_playbook.sh virtio chi httpx gson
+#
+# Opt-in multi-pass mode splits each repo into 4 CLI passes (smaller context per step):
+#   Pass 1 (Explore) → Pass 2 (Generate) → Pass 3 (Review/Audit) → Pass 4 (Gate)
 #
 # Usage:
-#   ./run_playbook.sh chi cobra httpx                    # Sequential, copilot
-#   ./run_playbook.sh --parallel chi cobra httpx         # Parallel, copilot
-#   ./run_playbook.sh --claude --parallel chi cobra httpx # Parallel, claude
+#   ./run_playbook.sh virtio chi httpx gson              # defaults (see above)
+#   ./run_playbook.sh --sequential virtio chi            # one repo at a time
+#   ./run_playbook.sh --multi-pass virtio chi            # 4-pass per repo
+#   ./run_playbook.sh --claude --model opus virtio       # Claude CLI instead of Copilot
 #
 # Options:
-#   --parallel       Run all repos concurrently
-#   --claude         Use claude -p instead of gh copilot (no --yolo needed)
+#   --parallel       Run all repos concurrently (default: on)
+#   --sequential     Run repos one after another
+#   --claude         Use claude -p instead of gh copilot
 #   --copilot        Use gh copilot (default)
-#   --no-seeds       Skip Phase 0/0b (seed injection) for clean benchmark runs
-#   --model MODEL    Model to use (claude: opus, sonnet, haiku; copilot: gpt-5.4, etc.)
-#   --kill           Kill all processes from the current/last parallel run
-#   --single-pass    Legacy mode: one prompt for the entire pipeline (pre-v1.3.29)
+#   --no-seeds       Skip Phase 0/0b (default: on — clean benchmark)
+#   --with-seeds     Allow Phase 0/0b seed injection from prior/sibling runs
+#   --single-pass    One prompt for the entire pipeline (default: on)
+#   --multi-pass     Four passes per repo (explore → generate → review → gate)
+#   --model MODEL    Model (claude: opus, sonnet, …; copilot: gpt-5.4, …)
+#   --kill           Kill processes from the current/last parallel run
 #
 # Environment:
-#   QPB_MODEL — model for gh copilot (default: gpt-5.4; overridden by --model)
+#   QPB_MODEL — Copilot model (default: gpt-5.4; overridden by --model)
 
 set -uo pipefail
 source "$(dirname "$0")/_benchmark_lib.sh"
 
 PID_FILE="${SCRIPT_DIR}/.run_pids"
 
-PARALLEL=false
+# Defaults: match a typical “open repo in VS Code, one Copilot prompt, full playbook” run.
+PARALLEL=true
 RUNNER="copilot"  # "copilot" or "claude"
-NO_SEEDS=false
-SINGLE_PASS=false
+NO_SEEDS=true     # clean benchmark — skip Phase 0 / sibling seeds
+SINGLE_PASS=true  # one CLI invocation per repo with the full skill
 CLAUDE_MODEL=""
 REPO_NAMES=()
 EXPECT_MODEL=false
@@ -47,10 +51,13 @@ for arg in "$@"; do
     fi
     case "$arg" in
         --parallel)     PARALLEL=true ;;
+        --sequential)   PARALLEL=false ;;
         --claude)       RUNNER="claude" ;;
         --copilot)      RUNNER="copilot" ;;
         --no-seeds)     NO_SEEDS=true ;;
+        --with-seeds)   NO_SEEDS=false ;;
         --single-pass)  SINGLE_PASS=true ;;
+        --multi-pass)   SINGLE_PASS=false ;;
         --model)        EXPECT_MODEL=true ;;
         --kill)
             if [ -f "$PID_FILE" ]; then
@@ -97,6 +104,9 @@ while IFS= read -r line; do
 done < <(resolve_repos "$VERSION" "${REPO_NAMES[@]}")
 [ ${#REPO_DIRS[@]} -eq 0 ] && echo "ERROR: No repos found." && exit 1
 
+# One timestamp per script invocation so parallel children agree on log paths with the parent.
+export RUN_TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
+
 echo "=== Quality Playbook — Artifact Generation ==="
 echo "Version:  ${VERSION}"
 echo "Runner:   ${RUNNER}"
@@ -107,15 +117,81 @@ elif [ -n "$CLAUDE_MODEL" ]; then
 else
     echo "Model:    (default)"
 fi
-echo "No seeds: ${NO_SEEDS}"
+echo "No seeds: ${NO_SEEDS}  (Phase 0/0b skipped when true)"
 echo "Parallel: ${PARALLEL}"
-echo "Mode:     $([ "$SINGLE_PASS" = true ] && echo "single-pass (legacy)" || echo "multi-pass (4 passes)")"
+echo "Mode:     $([ "$SINGLE_PASS" = true ] && echo "single-pass (one prompt)" || echo "multi-pass (4 CLI passes)")"
 echo "Repos:    ${REPO_DIRS[*]##*/}"
+echo ""
+echo "=== Runner logs (one file per repo — names include this run's RUN_TIMESTAMP) ==="
+echo "Each file gets the full prompt and exact shell command before the tool runs. With this script version,"
+echo "Copilot stdout is also streamed into the runner log (tee). On older runs, live Copilot output was only in the repo transcript below."
+_screen_logs=()
+for repo_dir in "${REPO_DIRS[@]}"; do
+    _tail_name=$(basename "$repo_dir")
+    _log_path="${SCRIPT_DIR}/${_tail_name}-playbook-${RUN_TIMESTAMP}.log"
+    _screen_logs+=("$_log_path")
+    echo "tail -f $(printf '%q' "$_log_path")"
+done
+if [ "$SINGLE_PASS" = true ] && [ "$RUNNER" = "copilot" ]; then
+    echo ""
+    echo "=== Single-pass Copilot raw transcript per repo (canonical live stream before tee-to-runner-log; still written for reference) ==="
+    for repo_dir in "${REPO_DIRS[@]}"; do
+        echo "tail -f $(printf '%q' "${repo_dir}/control_prompts/playbook_run.output.txt")"
+    done
+fi
+_screen_session="qpb-${RUN_TIMESTAMP}"
+# macOS /usr/bin/screen errors with "$TERM too long - sorry." when TERM exceeds a small limit
+# (e.g. some IDE terminals). Force a short TERM for the whole chain.
+_qpb_screen_term="${QPB_SCREEN_TERM:-xterm}"
+_screen_one="( export TERM=$(printf '%q' "$_qpb_screen_term"); "
+_screen_one+=$(printf 'screen -dmS %q tail -f %q' "$_screen_session" "${_screen_logs[0]}")
+for ((i = 1; i < ${#_screen_logs[@]}; i++)); do
+    _screen_one+=$(printf ' && screen -S %q -X screen tail -f %q' "$_screen_session" "${_screen_logs[$i]}")
+done
+_screen_one+=$(printf ' && screen -r %q' "$_screen_session")
+_screen_one+=" )"
+echo ""
+echo "=== One command: Screen (one window per repo — Ctrl-a n / Ctrl-a p to cycle; Ctrl-a d to detach) ==="
+echo "${_screen_one}"
+echo "Override TERM for Screen only: QPB_SCREEN_TERM=xterm-256color ./run_playbook.sh ..."
+echo "If that session name is already in use: screen -S $(printf '%q' "$_screen_session") -X quit"
+echo "Fewer panes: run fewer repo names, or remove one or more \"&& screen -S ... -X screen ...\" segments from the line above."
+echo "Interleaved in one terminal (no Screen): tail -f $(printf '%q ' "${_screen_logs[@]}")"
 echo ""
 
 # ── Run a single prompt against a repo ──
+# log_file: repo-level runner log (append command + full prompt before each exec)
 run_prompt() {
-    local repo_dir="$1" prompt="$2" pass_name="$3" output_file="$4"
+    local repo_dir="$1" prompt="$2" pass_name="$3" output_file="$4" log_file="$5"
+
+    {
+        echo ""
+        echo "================================================================================"
+        echo "PLAYBOOK RUNNER — pass: ${pass_name}"
+        echo "Working directory: ${repo_dir}"
+        echo "Tool transcript (raw stdout/stderr): ${output_file}"
+        echo "(Copilot output is also appended to this runner log below so one tail -f shows everything.)"
+        echo "================================================================================"
+        if [ "$RUNNER" = "claude" ]; then
+            echo "SHELL COMMAND (exact invocation — cwd is repo root):"
+            if [ -n "$CLAUDE_MODEL" ]; then
+                echo "  script -q $(printf '%q' "$output_file") claude --model $(printf '%q' "$CLAUDE_MODEL") -p $(printf '%q' "$prompt") --dangerously-skip-permissions"
+            else
+                echo "  script -q $(printf '%q' "$output_file") claude -p $(printf '%q' "$prompt") --dangerously-skip-permissions"
+            fi
+        else
+            echo "SHELL COMMAND (exact invocation — cwd is repo root):"
+            echo "  $(printf '%q' "$COPILOT") -p $(printf '%q' "$prompt") --model $(printf '%q' "$MODEL") --yolo"
+            echo ""
+            echo "Readable form (prompt may be long):"
+            echo "  ${COPILOT} -p <PROMPT> --model ${MODEL} --yolo"
+        fi
+        echo ""
+        echo "--- BEGIN PROMPT (${#prompt} bytes) ---"
+        printf '%s\n' "$prompt"
+        echo "--- END PROMPT ---"
+        echo ""
+    } >>"$log_file"
 
     cd "$repo_dir"
     if [ "$RUNNER" = "claude" ]; then
@@ -123,7 +199,16 @@ run_prompt() {
         [ -n "$CLAUDE_MODEL" ] && claude_args=(--model "$CLAUDE_MODEL" "${claude_args[@]}")
         script -q "$output_file" claude "${claude_args[@]}" 2>&1
     else
-        $COPILOT -p "$prompt" --model "$MODEL" --yolo > "$output_file" 2>&1
+        # Tee: same stream → control_prompts transcript (canonical) + runner log (so tail -f *.log shows live output)
+        {
+            echo ""
+            echo "--- BEGIN gh copilot stdout/stderr (streaming) ---"
+        } >>"$log_file"
+        $COPILOT -p "$prompt" --model "$MODEL" --yolo 2>&1 | tee "$output_file" | tee -a "$log_file" >/dev/null
+        {
+            echo ""
+            echo "--- END gh copilot stdout/stderr ---"
+        } >>"$log_file"
     fi
     cd "$SCRIPT_DIR"
 }
@@ -245,7 +330,7 @@ Then read .github/skills/references/verification.md and spot-check 5 benchmarks 
 PROMPT
 }
 
-# ── Legacy single-pass prompt ──
+# ── Single-pass prompt (default: one invocation ≈ user running full playbook in Copilot) ──
 
 single_pass_prompt() {
     local seed_instruction=""
@@ -260,10 +345,10 @@ single_pass_prompt() {
 
 run_one_multipass() {
     local repo_dir="$1"
-    local repo_name timestamp log_file
+    local repo_name ts log_file
     repo_name=$(basename "$repo_dir")
-    timestamp=$(date '+%Y%m%d-%H%M%S')
-    log_file="${SCRIPT_DIR}/${repo_name}-playbook-${timestamp}.log"
+    ts="${RUN_TIMESTAMP:-$(date '+%Y%m%d-%H%M%S')}"
+    log_file="${SCRIPT_DIR}/${repo_name}-playbook-${ts}.log"
 
     # Docs gate
     if [ ! -d "${repo_dir}/docs_gathered" ] || [ -z "$(ls -A "${repo_dir}/docs_gathered" 2>/dev/null)" ]; then
@@ -273,7 +358,7 @@ run_one_multipass() {
 
     # Archive previous run
     if [ -d "${repo_dir}/quality" ]; then
-        local archive_dir="${repo_dir}/previous_runs/${timestamp}"
+        local archive_dir="${repo_dir}/previous_runs/${ts}"
         mkdir -p "$archive_dir"
         cp -a "${repo_dir}/quality" "$archive_dir/quality"
         rm -rf "${repo_dir}/quality" "${repo_dir}/control_prompts"
@@ -288,7 +373,7 @@ run_one_multipass() {
     local p1_prompt p1_output
     p1_prompt=$(pass1_prompt)
     p1_output="${repo_dir}/control_prompts/pass1_explore.output.txt"
-    run_prompt "$repo_dir" "$p1_prompt" "explore" "$p1_output"
+    run_prompt "$repo_dir" "$p1_prompt" "explore" "$p1_output" "$log_file"
 
     if [ ! -f "${repo_dir}/quality/EXPLORATION.md" ] && [ ! -f "${repo_dir}/quality/PROGRESS.md" ]; then
         logboth "$log_file" "$(log "  FAIL Pass 1: no exploration output — aborting ${repo_name}")"
@@ -301,7 +386,7 @@ run_one_multipass() {
     local p2_prompt p2_output
     p2_prompt=$(pass2_prompt)
     p2_output="${repo_dir}/control_prompts/pass2_generate.output.txt"
-    run_prompt "$repo_dir" "$p2_prompt" "generate" "$p2_output"
+    run_prompt "$repo_dir" "$p2_prompt" "generate" "$p2_output" "$log_file"
 
     local p2_missing=()
     for artifact in quality/REQUIREMENTS.md quality/QUALITY.md quality/PROGRESS.md; do
@@ -318,7 +403,7 @@ run_one_multipass() {
     local p3_prompt p3_output
     p3_prompt=$(pass3_prompt)
     p3_output="${repo_dir}/control_prompts/pass3_review.output.txt"
-    run_prompt "$repo_dir" "$p3_prompt" "review" "$p3_output"
+    run_prompt "$repo_dir" "$p3_prompt" "review" "$p3_output" "$log_file"
 
     logboth "$log_file" "$(log "  Pass 3 complete: $(ls "${repo_dir}/quality/writeups/" 2>/dev/null | wc -l | tr -d ' ') writeups, $(ls "${repo_dir}/quality/patches/" 2>/dev/null | wc -l | tr -d ' ') patches")"
 
@@ -327,7 +412,7 @@ run_one_multipass() {
     local p4_prompt p4_output
     p4_prompt=$(pass4_prompt)
     p4_output="${repo_dir}/control_prompts/pass4_gate.output.txt"
-    run_prompt "$repo_dir" "$p4_prompt" "gate" "$p4_output"
+    run_prompt "$repo_dir" "$p4_prompt" "gate" "$p4_output" "$log_file"
 
     local gate_result="unknown"
     if [ -f "${repo_dir}/quality/results/quality-gate.log" ]; then
@@ -360,10 +445,10 @@ run_one_multipass() {
 
 run_one_singlepass() {
     local repo_dir="$1"
-    local repo_name timestamp log_file output_file
+    local repo_name ts log_file output_file
     repo_name=$(basename "$repo_dir")
-    timestamp=$(date '+%Y%m%d-%H%M%S')
-    log_file="${SCRIPT_DIR}/${repo_name}-playbook-${timestamp}.log"
+    ts="${RUN_TIMESTAMP:-$(date '+%Y%m%d-%H%M%S')}"
+    log_file="${SCRIPT_DIR}/${repo_name}-playbook-${ts}.log"
 
     # Docs gate
     if [ ! -d "${repo_dir}/docs_gathered" ] || [ -z "$(ls -A "${repo_dir}/docs_gathered" 2>/dev/null)" ]; then
@@ -373,7 +458,7 @@ run_one_singlepass() {
 
     # Archive previous run
     if [ -d "${repo_dir}/quality" ]; then
-        local archive_dir="${repo_dir}/previous_runs/${timestamp}"
+        local archive_dir="${repo_dir}/previous_runs/${ts}"
         mkdir -p "$archive_dir"
         cp -a "${repo_dir}/quality" "$archive_dir/quality"
         rm -rf "${repo_dir}/quality" "${repo_dir}/control_prompts"
@@ -387,7 +472,7 @@ run_one_singlepass() {
 
     logboth "$log_file" "$(log "Starting playbook (single-pass): ${repo_name} (runner=${RUNNER})")"
 
-    run_prompt "$repo_dir" "$prompt" "full" "$output_file"
+    run_prompt "$repo_dir" "$prompt" "full" "$output_file" "$log_file"
 
     logboth "$log_file" "$(log "Playbook complete: ${repo_name}")"
 
