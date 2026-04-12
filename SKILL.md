@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate nine quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, a consolidated bug report (BUGS.md) with patches, a TDD verification protocol (RUN_TDD_TESTS.md), an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis, missing safeguard detection, patch validation gates, and structured test output (JUnit XML + sidecar JSON). Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.32
+  version: 1.3.33
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -13,7 +13,7 @@ metadata:
 > **MANDATORY FIRST ACTION — do this before reading the rest of the skill.**
 > Print the following message to the user exactly as written, then continue.
 >
-> Quality Playbook v1.3.32 — by Andrew Stellman
+> Quality Playbook v1.3.33 — by Andrew Stellman
 > https://github.com/andrewstellman/quality-playbook
 >
 > Generating a complete quality system for this project. Here's what I'll do:
@@ -63,6 +63,85 @@ Plus output directories: `quality/code_reviews/`, `quality/spec_audits/`, `quali
 The pipeline also generates supporting artifacts: `quality/PROGRESS.md` (phase-by-phase checkpoint log with cumulative BUG tracker), `quality/CONTRACTS.md` (behavioral contracts), `quality/COVERAGE_MATRIX.md` (traceability), `quality/COMPLETENESS_REPORT.md` (final gate), `quality/VERSION_HISTORY.md` (review log), `quality/REVIEW_REQUIREMENTS.md` (interactive review protocol), and `quality/REFINE_REQUIREMENTS.md` (refinement pass protocol).
 
 The two critical deliverables are the requirements file and the functional test file. The requirements file (`quality/REQUIREMENTS.md`) feeds the code review protocol's verification and consistency passes — it's what makes the code review catch more than structural anomalies. The functional test file (named for the project's language and test framework conventions) is the automated safety net. The Markdown protocols are documentation for humans and AI agents.
+
+### Complete Artifact Contract
+
+The quality gate (`quality_gate.sh`) validates these artifacts. If the gate checks for it, this skill must instruct its creation. This is the canonical list — any artifact not listed here should not be gate-enforced, and any gate check should trace to an artifact listed here.
+
+| Artifact | Location | Required? | Created In |
+|----------|----------|-----------|------------|
+| Quality constitution | `quality/QUALITY.md` | Yes | Phase 2 |
+| Requirements (UC identifiers) | `quality/REQUIREMENTS.md` | Yes | Phase 2 |
+| Behavioral contracts | `quality/CONTRACTS.md` | Yes | Phase 2 |
+| Functional tests | `quality/test_functional.*` | Yes | Phase 2 |
+| Regression tests | `quality/test_regression.*` | If bugs found | Phase 2b |
+| Code review protocol | `quality/RUN_CODE_REVIEW.md` | Yes | Phase 2 |
+| Integration test protocol | `quality/RUN_INTEGRATION_TESTS.md` | Yes | Phase 2 |
+| Spec audit protocol | `quality/RUN_SPEC_AUDIT.md` | Yes | Phase 2 |
+| TDD verification protocol | `quality/RUN_TDD_TESTS.md` | Yes | Phase 2 |
+| Bug tracker | `quality/BUGS.md` | Yes | Phase 2b |
+| Coverage matrix | `quality/COVERAGE_MATRIX.md` | Yes | Phase 2 |
+| Completeness report | `quality/COMPLETENESS_REPORT.md` | Yes | Phase 2d |
+| Progress tracker | `quality/PROGRESS.md` | Yes | Throughout |
+| AI bootstrap | `AGENTS.md` | Yes | Phase 2 |
+| Bug writeups | `quality/writeups/BUG-NNN.md` | If bugs found | Phase 2d |
+| Regression patches | `quality/patches/BUG-NNN-regression-test.patch` | If bugs found | Phase 2b |
+| Fix patches | `quality/patches/BUG-NNN-fix.patch` | Optional | Phase 2b |
+| TDD sidecar | `quality/results/tdd-results.json` | If bugs found | Phase 2d |
+| Integration sidecar | `quality/results/integration-results.json` | When integration tests run | Phase 2d |
+| Mechanical verify script | `quality/mechanical/verify.sh` | Yes (benchmark) | Phase 2d |
+| Verify receipt | `quality/results/mechanical-verify.log` + `.exit` | Yes (benchmark) | Phase 2d |
+| Triage probes | `quality/spec_audits/triage_probes.sh` | When triage runs | Phase 2c |
+| Code review reports | `quality/code_reviews/*.md` | Yes | Phase 2b |
+| Spec audit reports | `quality/spec_audits/*auditor*.md` + `*triage*` | Yes | Phase 2c |
+
+**Sidecar JSON lifecycle:** Write all bug writeups *before* finalizing `tdd-results.json` — the sidecar's `writeup_path` field must point to an existing file, not a placeholder. Similarly, run integration tests and collect results before writing `integration-results.json`.
+
+### Sidecar JSON Canonical Examples
+
+**`quality/results/tdd-results.json`** — the gate validates field names, not just presence:
+
+```json
+{
+  "schema_version": "1.1",
+  "skill_version": "1.3.33",
+  "date": "2026-04-12",
+  "project": "repo-name",
+  "bugs": [
+    {
+      "id": "BUG-001",
+      "requirement": "UC-03: Description of the requirement violated",
+      "red_phase": "Regression test fails on unpatched code, confirming the bug",
+      "green_phase": "After applying fix patch, regression test passes",
+      "verdict": "TDD verified",
+      "fix_patch_present": true,
+      "writeup_path": "quality/writeups/BUG-001.md"
+    }
+  ],
+  "summary": {
+    "total": 3, "confirmed_open": 1, "red_failed": 0, "green_failed": 0, "tdd_verified": 2
+  }
+}
+```
+
+`verdict` must be one of: `"TDD verified"`, `"red failed"`, `"green failed"`, `"confirmed open"`, `"deferred"`. `date` must be ISO 8601 (YYYY-MM-DD), not a placeholder, not in the future.
+
+**`quality/results/integration-results.json`:**
+
+```json
+{
+  "schema_version": "1.1",
+  "skill_version": "1.3.33",
+  "date": "2026-04-12",
+  "project": "repo-name",
+  "recommendation": "SHIP",
+  "groups": [{ "name": "Group 1", "tests": [{ "name": "happy path", "status": "pass" }] }],
+  "summary": { "total": 12, "passed": 11, "failed": 1, "skipped": 0 },
+  "uc_coverage": { "UC-01": "covered", "UC-02": "not covered — no API key" }
+}
+```
+
+`recommendation` must be one of: `"SHIP"`, `"FIX BEFORE MERGE"`, `"BLOCK"`. `uc_coverage` maps UC identifiers from REQUIREMENTS.md to coverage status.
 
 ## How to Use
 
@@ -188,6 +267,8 @@ If the user provides a chat history folder:
 This context is gold. A chat history where the developer discussed "why we chose this concurrency model" or "the time we lost 1,693 records in production" transforms generic scenarios into authoritative ones.
 
 If the user doesn't have chat history, proceed normally — the skill works without it, just with less context.
+
+**Autonomous fallback:** When running in benchmark mode, via `run_playbook.sh`, or without user interaction (e.g., `--single-pass`), skip Step 0's question and proceed directly to Step 1. If chat history folders are visible in the project tree (e.g., `AI Chat History/`, `.chat_exports/`), scan them without asking. If no chat history is found, proceed — do not block waiting for a response that won't come.
 
 ### Step 1: Identify Domain, Stack, and Specifications
 
@@ -609,14 +690,14 @@ Now write the nine files. For each one, follow the structure below and consult t
 **Version stamp (mandatory on every generated file).** Every Markdown file the playbook generates must begin with the following attribution line immediately after the file's title heading:
 
 ```
-> Generated by [Quality Playbook](https://github.com/andrewstellman/quality-playbook) v1.3.32 — Andrew Stellman
+> Generated by [Quality Playbook](https://github.com/andrewstellman/quality-playbook) v1.3.33 — Andrew Stellman
 > Date: YYYY-MM-DD · Project: <project name>
 ```
 
 Every generated code file (test files, scripts) must begin with a comment header:
 
 ```
-# Generated by Quality Playbook v1.3.32 — https://github.com/andrewstellman/quality-playbook
+# Generated by Quality Playbook v1.3.33 — https://github.com/andrewstellman/quality-playbook
 # Author: Andrew Stellman · Date: YYYY-MM-DD · Project: <project name>
 ```
 
@@ -739,7 +820,7 @@ Pass 3 catches contradictions where two individually-correct pieces of code disa
 --- /dev/null
 +++ b/quality/test_regression_virtio.c
 @@ -0,0 +1,15 @@
-+// Generated by Quality Playbook v1.3.32
++// Generated by Quality Playbook v1.3.33
 +// Regression test for BUG-004: VIRTIO_F_RING_RESET missing from vring_transport_features()
 +#include <assert.h>
 +#include <string.h>
@@ -1244,7 +1325,7 @@ The critical checks:
 15. **Patch validation gate is executable.** For each confirmed bug with patches, verify that the `git apply --check` and compile-check commands specified in the patch validation gate would work for this project's build system. The gate commands must use the project's actual build tool, not a generic placeholder. For interpreted languages (Python, JavaScript), verify the gate specifies an appropriate syntax check.
 16. **Regression test skip guards are present.** Grep `quality/test_regression.*` for the language-appropriate skip/xfail mechanism. Every test function must have a guard referencing the bug ID and fix patch path. A regression test without a skip guard will cause unexpected failures when the test suite runs on unpatched code.
 17. **Test file extension matches project language.** Verify that `quality/test_functional.*` and `quality/test_regression.*` use the correct file extension for the project's language: `.py` (Python), `.java` (Java), `.scala` (Scala), `.ts` (TypeScript), `.js` (JavaScript), `.go` (Go), `.rs` (Rust), `.kt` (Kotlin). A Go project with `test_functional.py` or a Rust project with `test_functional.java` is a hard fail — it means the test file was generated from a template without adapting to the actual language. Also verify the test file uses the correct test framework import for that language (e.g., `pytest` not `unittest` if the project's existing tests use pytest).
-18. **Minimum use case count.** REQUIREMENTS.md must derive at least 5 use cases (UC-01 through UC-05 minimum). Fewer than 5 indicates the use case derivation step was superficial — real projects have at least 5 distinct user outcomes. If the count is below 5, go back to the use case derivation step and re-derive from the overview and gathered documentation.
+18. **Minimum use case count (size-aware).** REQUIREMENTS.md must derive at least 5 use cases (UC-01 through UC-05 minimum) for typical projects. For small projects with fewer than 5 source files, 3 use cases is acceptable — document the rationale in the REQUIREMENTS.md header. Fewer than the threshold indicates the use case derivation step was superficial. If below threshold, go back to the use case derivation step and re-derive from the overview and gathered documentation.
 
 If any benchmark fails, go back and fix it before proceeding.
 
