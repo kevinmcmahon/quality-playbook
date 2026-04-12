@@ -5,6 +5,9 @@
 # persistently misses. v1.3.27 adds deep JSON field validation, enum checks,
 # summary consistency, and mandatory regression-test patches. v1.3.28 adds
 # writeup inline diff validation (every writeup must contain a ```diff block).
+# v1.3.31 adds TDD summary shape validation (red_failed, green_failed),
+# date validation (reject placeholders/future dates), and cross-run
+# contamination detection (version mismatch between directory and SKILL.md).
 #
 # Usage:
 #   ./quality_gate.sh .                          # Check current directory
@@ -193,11 +196,38 @@ check_repo() {
                 fi
             done
 
-            # Summary must include confirmed_open
-            if json_has_key "$json_file" "confirmed_open"; then
-                pass "summary has 'confirmed_open'"
+            # Summary must include confirmed_open, red_failed, green_failed
+            for skey in confirmed_open red_failed green_failed; do
+                if json_has_key "$json_file" "$skey"; then
+                    pass "summary has '${skey}'"
+                else
+                    fail "summary missing '${skey}' count"
+                fi
+            done
+
+            # Date validation — must be real ISO 8601, not placeholder
+            local tdd_date
+            tdd_date=$(json_str_val "$json_file" "date")
+            if [ -n "$tdd_date" ]; then
+                if echo "$tdd_date" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+                    # Check for placeholder
+                    if [ "$tdd_date" = "YYYY-MM-DD" ] || [ "$tdd_date" = "0000-00-00" ]; then
+                        fail "tdd-results.json date is placeholder '${tdd_date}'"
+                    else
+                        # Check not in the future
+                        local today
+                        today=$(date +%Y-%m-%d)
+                        if [[ "$tdd_date" > "$today" ]]; then
+                            fail "tdd-results.json date '${tdd_date}' is in the future"
+                        else
+                            pass "tdd-results.json date '${tdd_date}' is valid"
+                        fi
+                    fi
+                else
+                    fail "tdd-results.json date '${tdd_date}' is not ISO 8601 (YYYY-MM-DD)"
+                fi
             else
-                fail "summary missing 'confirmed_open' count"
+                fail "tdd-results.json date field missing or empty"
             fi
 
             # Verdict enum validation — allowed: "TDD verified", "red failed", "green failed", "confirmed open"
@@ -364,6 +394,28 @@ check_repo() {
         fi
     else
         warn "Cannot detect skill version from SKILL.md"
+    fi
+
+    # --- Cross-run contamination detection ---
+    echo "[Cross-Run Contamination]"
+    if [ -n "$skill_version" ] && [ -n "$VERSION" ]; then
+        # Check if the repo directory name contains a version that doesn't match the skill
+        local dir_version
+        dir_version=$(echo "$repo_name" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | tail -1)
+        if [ -n "$dir_version" ] && [ "$dir_version" != "$skill_version" ]; then
+            fail "Directory version '${dir_version}' != skill version '${skill_version}' — possible cross-run contamination"
+        else
+            pass "No version mismatch detected"
+        fi
+    fi
+
+    # Check for artifacts referencing a different version in gate log or tdd-results
+    if [ -f "${q}/results/tdd-results.json" ] && [ -n "$skill_version" ]; then
+        local json_sv
+        json_sv=$(json_str_val "${q}/results/tdd-results.json" "skill_version")
+        if [ -n "$json_sv" ] && [ "$json_sv" != "$skill_version" ]; then
+            fail "tdd-results.json skill_version '${json_sv}' != SKILL.md '${skill_version}' — stale artifacts from prior run?"
+        fi
     fi
 
     echo ""
