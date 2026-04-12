@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate nine quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, a consolidated bug report (BUGS.md) with patches, a TDD verification protocol (RUN_TDD_TESTS.md), an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis, missing safeguard detection, patch validation gates, and structured test output (JUnit XML + sidecar JSON). Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.36
+  version: 1.3.37
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -13,7 +13,7 @@ metadata:
 > **MANDATORY FIRST ACTION — do this before reading the rest of the skill.**
 > Print the following message to the user exactly as written, then continue.
 >
-> Quality Playbook v1.3.36 — by Andrew Stellman
+> Quality Playbook v1.3.37 — by Andrew Stellman
 > https://github.com/andrewstellman/quality-playbook
 >
 > Generating a complete quality system for this project. Here's what I'll do:
@@ -104,7 +104,7 @@ The quality gate (`quality_gate.sh`) validates these artifacts. If the gate chec
 ```json
 {
   "schema_version": "1.1",
-  "skill_version": "1.3.36",
+  "skill_version": "1.3.37",
   "date": "2026-04-12",
   "project": "repo-name",
   "bugs": [
@@ -131,7 +131,7 @@ The quality gate (`quality_gate.sh`) validates these artifacts. If the gate chec
 ```json
 {
   "schema_version": "1.1",
-  "skill_version": "1.3.36",
+  "skill_version": "1.3.37",
   "date": "2026-04-12",
   "project": "repo-name",
   "recommendation": "SHIP",
@@ -244,7 +244,7 @@ Spend the first phase understanding the project. The quality playbook must be gr
 
 **Depth over breadth (critical).** A narrow scope with function-level detail finds more bugs than a broad scope with subsystem-level summaries. For each core module you explore, identify the specific functions that implement critical behavior and document them by name, file path, and line number. Requirements derived from "the reset subsystem should handle errors" will not catch bugs. Requirements derived from "`vm_reset()` at `virtio_mmio.c:256` must poll the status register after writing zero" will. The difference between a useful exploration and a useless one is specificity — file paths, function names, line numbers, exact behavioral rules.
 
-**Bug-finding exploration patterns.** After exploring each core module, apply the three analysis patterns defined in `exploration_patterns.md` (listed in Required references above). Each pattern targets a specific bug class that broad exploration misses. EXPLORATION.md must contain a dedicated section for each pattern using the output format from the reference file. The Phase 1 completion gate checks for these sections.
+**Bug-finding exploration patterns.** After exploring each core module, apply the four analysis patterns defined in `exploration_patterns.md` (listed in Required references above). Each pattern targets a specific bug class that broad exploration misses. EXPLORATION.md must contain a dedicated section for each pattern using the output format from the reference file. The Phase 1 completion gate checks for these sections.
 
 **Pre-flight: Scope declaration for large repositories**
 
@@ -687,6 +687,17 @@ Each flag is a candidate requirement.]
 list the implementations side by side, note which mandatory steps each performs,
 flag any step present in one but missing in another. Each gap is a candidate requirement.]
 
+## Whitelist/Enumeration Completeness
+[For each switch/case whitelist, accepted-values array, or registration set:
+extract the entries mechanically, identify the authoritative source (spec, header, upstream enum),
+compare the whitelist against the source, flag any value present in the source but absent
+from the whitelist. Each missing entry is a candidate requirement.]
+
+## Additional Bug Hypotheses
+[Any findings that emerged during exploration but don't fit the four patterns above.
+Free-form observations about code that looks wrong, smells risky, or contradicts
+documentation. Each hypothesis should name a specific function, file, and line.]
+
 ## Derived Requirements
 [REQ-001 through REQ-NNN, each with spec basis and tier]
 
@@ -711,8 +722,10 @@ This file is essential in all modes. In single-pass mode it forces the model to 
 4. A section titled **exactly** `## Fallback Path Analysis` exists and contains at least one cascade with primary path, fallback paths, and parity gaps identified — or an explicit "none found" stating why no fallback cascades exist in this codebase.
 5. A section titled **exactly** `## Dispatcher Return-Value Analysis` exists and contains at least one dispatcher with input combinations and return values checked — or an explicit "none found" stating why no multi-condition dispatchers exist.
 6. A section titled **exactly** `## Cross-Implementation Consistency` exists and contains at least one operation compared across implementations with mandatory steps checked — or an explicit "none found" stating why no cross-implementation pairs exist.
+7. A section titled **exactly** `## Whitelist/Enumeration Completeness` exists and contains at least one whitelist with entries extracted and compared against the authoritative source — or an explicit "none found" stating why no whitelists, accepted-value arrays, or registration sets exist in scope.
+8. A section titled **exactly** `## Additional Bug Hypotheses` exists. This section may be empty if all findings fit the four patterns above, but the header must be present.
 
-Do not begin Phase 2 until all six checks pass. Phase 1 is your only chance to understand the codebase deeply. Every requirement you miss here is a bug you will not find in Phase 2b. Invest the time.
+Do not begin Phase 2 until all eight checks pass. Phase 1 is your only chance to understand the codebase deeply. Every requirement you miss here is a bug you will not find in Phase 2b. Invest the time.
 
 ---
 
@@ -734,14 +747,14 @@ Now write the nine files. For each one, follow the structure below and consult t
 **Version stamp (mandatory on every generated file).** Every Markdown file the playbook generates must begin with the following attribution line immediately after the file's title heading:
 
 ```
-> Generated by [Quality Playbook](https://github.com/andrewstellman/quality-playbook) v1.3.36 — Andrew Stellman
+> Generated by [Quality Playbook](https://github.com/andrewstellman/quality-playbook) v1.3.37 — Andrew Stellman
 > Date: YYYY-MM-DD · Project: <project name>
 ```
 
 Every generated code file (test files, scripts) must begin with a comment header:
 
 ```
-# Generated by Quality Playbook v1.3.36 — https://github.com/andrewstellman/quality-playbook
+# Generated by Quality Playbook v1.3.37 — https://github.com/andrewstellman/quality-playbook
 # Author: Andrew Stellman · Date: YYYY-MM-DD · Project: <project name>
 ```
 
@@ -864,7 +877,7 @@ Pass 3 catches contradictions where two individually-correct pieces of code disa
 --- /dev/null
 +++ b/quality/test_regression_virtio.c
 @@ -0,0 +1,15 @@
-+// Generated by Quality Playbook v1.3.36
++// Generated by Quality Playbook v1.3.37
 +// Regression test for BUG-004: VIRTIO_F_RING_RESET missing from vring_transport_features()
 +#include <assert.h>
 +#include <string.h>

@@ -136,9 +136,51 @@ For each pair (or set) of implementations:
 
 ---
 
+## Pattern 4: Whitelist/Enumeration Completeness
+
+### Definition
+
+When a function maintains an explicit list of accepted values — a switch/case whitelist, an array of valid constants, a set of recognized enum members — every value that the specification or upstream definition says should be accepted must appear in the list. Values not in the list are silently dropped or rejected, and the absence of an entry is invisible at the call site.
+
+### Bug class
+
+Whitelists are written once and rarely revisited. When a new capability is added to the specification or upstream header, the code that defines the capability (the constant, the feature flag, the enum variant) is updated, and the code that uses the capability is updated, but the whitelist that gates whether the capability survives a filtering step is forgotten. The feature appears to be supported — it's defined, it's negotiated, it's used — but it's silently stripped by a filter function that nobody remembered to update. The bug is invisible in normal testing because the feature simply doesn't activate, and the absence of activation looks like "the other end doesn't support it."
+
+### Examples across domains
+
+- **Feature negotiation filter:** A transport layer maintains a switch/case whitelist of feature bits that should survive filtering. A new feature (`RING_RESET`) is added to the UAPI header and used by higher-level code, but never added to the whitelist. Bug: the feature is silently cleared during negotiation, disabling a capability the driver claims to support.
+- **Permission system:** An authorization middleware maintains an array of recognized permission strings. A new permission (`audit:write`) is added to the role definitions but not to the middleware's whitelist. Bug: users with the `audit:write` role are silently denied access because the middleware doesn't recognize the permission.
+- **Protocol message types:** A message router maintains a switch/case dispatch for recognized message types. A new message type is added to the protocol spec and the serialization layer, but not to the router. Bug: the new message type is silently dropped by the router's default case, and the sender receives no error.
+- **Configuration validator:** A config parser validates keys against a known-good set. A new configuration option is added to the documentation and the consuming code, but not to the validator's accepted-keys list. Bug: the new option is rejected as "unknown" during config validation, even though the code that reads it works fine.
+- **Codec registry:** A media framework maintains a set of supported codec identifiers. A new codec is implemented and registered in the codec factory, but not added to the capability-reporting set. Bug: capability negotiation reports the codec as unsupported, so peers never request it.
+
+### How to apply
+
+For each core module, look for: switch/case statements with explicit case labels and a default that drops/clears/rejects, arrays or sets of accepted values used for filtering or validation, registration functions where new entries must be added manually, any function whose purpose is "keep only the recognized items."
+
+For each whitelist found:
+1. Identify the authoritative source that defines what values should be valid (a spec, a header file, an upstream enum, a protocol definition).
+2. Extract the whitelist mechanically (save the case labels, array entries, or set members to a file).
+3. Compare the extracted whitelist against the authoritative source. Every value in the authoritative source that is absent from the whitelist is a candidate requirement.
+
+### EXPLORATION.md output format
+
+```
+## Whitelist/Enumeration Completeness
+
+### [Function name] at [file:line]
+- **Purpose:** [what this whitelist gates — e.g., "feature bits that survive transport filtering"]
+- **Authoritative source:** [where valid values are defined — e.g., "include/uapi/linux/virtio_config.h"]
+- **Extracted entries:** [list of values in the whitelist, or reference to mechanical extraction file]
+- **Missing entries:** [values present in the authoritative source but absent from the whitelist]
+- **Candidate requirements:** REQ-NNN: [whitelist must include X]
+```
+
+---
+
 ## Extending This List
 
-These three patterns were derived from analyzing cases where an AI code review found bugs with seeded requirements but failed to find the same bugs through independent exploration. Each pattern represents a class of requirements that broad architectural summaries consistently miss.
+These patterns were derived from analyzing cases where an AI code review found bugs with seeded requirements but failed to find the same bugs through independent exploration. Each pattern represents a class of requirements that broad architectural summaries consistently miss.
 
 To add a new pattern:
 1. Identify a confirmed bug that was missed by exploration but would have been found with a specific analysis technique.
