@@ -1,13 +1,15 @@
 #!/bin/bash
 # Post-run validation gate — script-verified closure for benchmark runs.
 #
-# Checks every quality artifact for mechanical conformance issues that
-# v1.3.21–v1.3.25 relied on model self-attestation to catch.
+# Mechanically checks artifact conformance issues that model self-attestation
+# persistently misses. v1.3.27 adds deep JSON field validation, enum checks,
+# summary consistency, and mandatory regression-test patches.
 #
 # Usage:
-#   ./quality_gate.sh virtio                    # Check current version
-#   ./quality_gate.sh --all                     # Check all current-version repos
-#   ./quality_gate.sh --version 1.3.26 virtio   # Check specific version
+#   ./quality_gate.sh .                          # Check current directory
+#   ./quality_gate.sh virtio                     # Check named repo (from repos/)
+#   ./quality_gate.sh --all                      # Check all current-version repos
+#   ./quality_gate.sh --version 1.3.27 virtio    # Check specific version
 #
 # Exit codes:
 #   0 — all checks passed
@@ -40,10 +42,14 @@ for arg in "$@"; do
     esac
 done
 
-# Detect version from SKILL.md if not specified
+# Detect version from SKILL.md — try multiple locations
 if [ -z "$VERSION" ]; then
-    VERSION=$(grep -m1 'version:' "${SCRIPT_DIR}/../SKILL.md" 2>/dev/null | sed 's/.*version: *//' | tr -d ' ')
-    [ -z "$VERSION" ] && VERSION=$(grep -m1 'version:' "${SCRIPT_DIR}/../SKILL.md" 2>/dev/null | awk '{print $2}')
+    for loc in "${SCRIPT_DIR}/../SKILL.md" "${SCRIPT_DIR}/SKILL.md" ".github/skills/SKILL.md"; do
+        if [ -f "$loc" ]; then
+            VERSION=$(grep -m1 'version:' "$loc" 2>/dev/null | sed 's/.*version: *//' | tr -d ' ')
+            [ -n "$VERSION" ] && break
+        fi
+    done
 fi
 
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); }
@@ -51,11 +57,33 @@ pass() { echo "  PASS: $1"; }
 warn() { echo "  WARN: $1"; WARN=$((WARN + 1)); }
 info() { echo "  INFO: $1"; }
 
+# Helper: check if a JSON file contains a key at any nesting level
+json_has_key() {
+    local file="$1" key="$2"
+    grep -q "\"${key}\"" "$file" 2>/dev/null
+}
+
+# Helper: extract a string value for a key (first occurrence)
+json_str_val() {
+    local file="$1" key="$2"
+    grep -o "\"${key}\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" "$file" 2>/dev/null \
+        | head -1 | sed 's/.*: *"\([^"]*\)"/\1/'
+}
+
+# Helper: count occurrences of a key in JSON
+json_key_count() {
+    local file="$1" key="$2"
+    grep -c "\"${key}\"" "$file" 2>/dev/null || echo 0
+}
+
 check_repo() {
     local repo_dir="$1"
     local repo_name
     repo_name=$(basename "$repo_dir")
     local q="${repo_dir}/quality"
+
+    # Handle "." as current directory
+    [ "$repo_dir" = "." ] && repo_dir="$(pwd)" && repo_name=$(basename "$repo_dir") && q="${repo_dir}/quality"
 
     echo ""
     echo "=== ${repo_name} ==="
@@ -82,28 +110,20 @@ check_repo() {
         local triage_count auditor_count
         triage_count=$(ls ${q}/spec_audits/*triage* 2>/dev/null | wc -l | tr -d ' ')
         auditor_count=$(ls ${q}/spec_audits/*auditor* 2>/dev/null | wc -l | tr -d ' ')
-        if [ "$triage_count" -gt 0 ]; then
-            pass "spec_audits/ has triage file (${triage_count})"
-        else
-            fail "spec_audits/ missing triage file"
-        fi
-        if [ "$auditor_count" -gt 0 ]; then
-            pass "spec_audits/ has auditor files (${auditor_count})"
-        else
-            fail "spec_audits/ missing individual auditor files"
-        fi
+        [ "$triage_count" -gt 0 ] && pass "spec_audits/ has triage file" || fail "spec_audits/ missing triage file"
+        [ "$auditor_count" -gt 0 ] && pass "spec_audits/ has ${auditor_count} auditor file(s)" || fail "spec_audits/ missing individual auditor files"
     else
         fail "spec_audits/ directory missing"
     fi
 
     # --- BUGS.md heading format (benchmark 39) ---
     echo "[BUGS.md Heading Format]"
+    local bug_count=0
     if [ -f "${q}/BUGS.md" ]; then
         local correct_headings wrong_headings
         correct_headings=$(grep -cE '^### BUG-[0-9]+' "${q}/BUGS.md" || true)
         correct_headings=${correct_headings:-0}
-        # Match "## BUG-" but NOT "### BUG-" (exclude triple-hash)
-        wrong_headings=$(grep -E '^## BUG-[0-9]+' "${q}/BUGS.md" | grep -cvE '^### BUG-' || true)
+        wrong_headings=$(grep -E '^## BUG-[0-9]+' "${q}/BUGS.md" 2>/dev/null | grep -cvE '^### BUG-' || true)
         wrong_headings=${wrong_headings:-0}
         local bold_headings bullet_headings
         bold_headings=$(grep -cE '^\*\*BUG-[0-9]+' "${q}/BUGS.md" || true)
@@ -111,94 +131,120 @@ check_repo() {
         bullet_headings=$(grep -cE '^- BUG-[0-9]+' "${q}/BUGS.md" || true)
         bullet_headings=${bullet_headings:-0}
 
+        bug_count=$correct_headings
+
         if [ "$correct_headings" -gt 0 ] && [ "$wrong_headings" -eq 0 ] && [ "$bold_headings" -eq 0 ] && [ "$bullet_headings" -eq 0 ]; then
             pass "All ${correct_headings} bug headings use ### BUG-NNN format"
         else
-            if [ "$wrong_headings" -gt 0 ]; then
-                fail "${wrong_headings} bug heading(s) use ## instead of ### (benchmark 39)"
-            fi
-            if [ "$bold_headings" -gt 0 ]; then
-                fail "${bold_headings} bug heading(s) use **BUG- format"
-            fi
-            if [ "$bullet_headings" -gt 0 ]; then
-                fail "${bullet_headings} bug heading(s) use - BUG- format"
-            fi
+            [ "$wrong_headings" -gt 0 ] && fail "${wrong_headings} heading(s) use ## instead of ###"
+            [ "$bold_headings" -gt 0 ] && fail "${bold_headings} heading(s) use **BUG- format"
+            [ "$bullet_headings" -gt 0 ] && fail "${bullet_headings} heading(s) use - BUG- format"
             if [ "$correct_headings" -eq 0 ] && [ "$wrong_headings" -eq 0 ]; then
-                # Could be a zero-bug run
                 if grep -qE '(No confirmed|zero|0 confirmed)' "${q}/BUGS.md" 2>/dev/null; then
                     pass "Zero-bug run — no headings expected"
                 else
-                    warn "No BUG-NNN headings found in BUGS.md"
+                    # Count wrong-format headings as bugs for patch check
+                    bug_count=$((wrong_headings + bold_headings + bullet_headings))
+                    warn "No ### BUG-NNN headings found in BUGS.md"
                 fi
+            else
+                bug_count=$((correct_headings + wrong_headings + bold_headings + bullet_headings))
             fi
         fi
     else
-        fail "BUGS.md missing — cannot check heading format"
+        fail "BUGS.md missing"
     fi
 
-    # --- TDD sidecar JSON schema (benchmark 14) ---
-    echo "[TDD Sidecar JSON Schema]"
-    local bug_count=0
-    if [ -f "${q}/BUGS.md" ]; then
-        bug_count=$(grep -cE '^###? BUG-[0-9]+' "${q}/BUGS.md" 2>/dev/null || echo 0)
-    fi
-
+    # --- TDD sidecar JSON — deep validation (benchmarks 14, 41) ---
+    echo "[TDD Sidecar JSON]"
     if [ "$bug_count" -gt 0 ]; then
-        if [ -f "${q}/results/tdd-results.json" ]; then
+        local json_file="${q}/results/tdd-results.json"
+        if [ -f "$json_file" ]; then
             pass "tdd-results.json exists (${bug_count} bugs)"
-            # Check required root keys
-            local json_file="${q}/results/tdd-results.json"
+
+            # Required root keys
             for key in schema_version skill_version date project bugs summary; do
-                if grep -q "\"${key}\"" "$json_file" 2>/dev/null; then
-                    pass "tdd-results.json has '${key}'"
+                json_has_key "$json_file" "$key" && pass "has '${key}'" || fail "missing root key '${key}'"
+            done
+
+            # schema_version value
+            local sv
+            sv=$(json_str_val "$json_file" "schema_version")
+            [ "$sv" = "1.1" ] && pass "schema_version is '1.1'" || fail "schema_version is '${sv:-missing}', expected '1.1'"
+
+            # Per-bug required fields — check that canonical field names exist
+            for field in id requirement red_phase green_phase verdict fix_patch_present writeup_path; do
+                local fcount
+                fcount=$(json_key_count "$json_file" "$field")
+                if [ "$fcount" -ge "$bug_count" ]; then
+                    pass "per-bug field '${field}' present (${fcount}x)"
+                elif [ "$fcount" -gt 0 ]; then
+                    warn "per-bug field '${field}' found ${fcount}x, expected ${bug_count}"
                 else
-                    fail "tdd-results.json missing required key '${key}'"
+                    fail "per-bug field '${field}' missing entirely"
                 fi
             done
-            # Check schema_version value
-            local sv
-            sv=$(grep -o '"schema_version"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_file" 2>/dev/null | head -1 | sed 's/.*"\([^"]*\)"/\1/')
-            if [ "$sv" = "1.1" ]; then
-                pass "schema_version is '1.1'"
-            elif [ -n "$sv" ]; then
-                fail "schema_version is '${sv}', expected '1.1'"
+
+            # Check for wrong field names (common model errors)
+            for bad_field in bug_id bug_name status phase result; do
+                if json_has_key "$json_file" "$bad_field"; then
+                    fail "non-canonical field '${bad_field}' found (use standard field names)"
+                fi
+            done
+
+            # Summary must include confirmed_open
+            if json_has_key "$json_file" "confirmed_open"; then
+                pass "summary has 'confirmed_open'"
+            else
+                fail "summary missing 'confirmed_open' count"
             fi
+
+            # Verdict enum validation — allowed: "TDD verified", "red failed", "green failed", "confirmed open"
+            local bad_verdicts
+            bad_verdicts=$(grep -oE '"verdict"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_file" 2>/dev/null \
+                | sed 's/.*: *"\(.*\)"/\1/' \
+                | grep -cvE '^(TDD verified|red failed|green failed|confirmed open|deferred)$' || true)
+            bad_verdicts=${bad_verdicts:-0}
+            [ "$bad_verdicts" -eq 0 ] && pass "all verdict values are canonical" || fail "${bad_verdicts} non-canonical verdict value(s)"
+
         else
-            fail "tdd-results.json missing (${bug_count} bugs require it, benchmark 28)"
+            fail "tdd-results.json missing (${bug_count} bugs require it)"
         fi
     else
         info "Zero bugs — tdd-results.json not required"
     fi
 
-    # Integration sidecar
-    if [ -f "${q}/results/integration-results.json" ]; then
-        local ij="${q}/results/integration-results.json"
-        for key in schema_version skill_version date project recommendation groups summary; do
-            if grep -q "\"${key}\"" "$ij" 2>/dev/null; then
-                pass "integration-results.json has '${key}'"
-            else
-                fail "integration-results.json missing required key '${key}'"
-            fi
+    # --- Integration sidecar JSON — deep validation ---
+    echo "[Integration Sidecar JSON]"
+    local ij="${q}/results/integration-results.json"
+    if [ -f "$ij" ]; then
+        for key in schema_version skill_version date project recommendation groups summary uc_coverage; do
+            json_has_key "$ij" "$key" && pass "has '${key}'" || fail "missing key '${key}'"
         done
+
+        # Recommendation enum
+        local rec
+        rec=$(json_str_val "$ij" "recommendation")
+        case "$rec" in
+            SHIP|"FIX BEFORE MERGE"|BLOCK) pass "recommendation '${rec}' is canonical" ;;
+            *) [ -n "$rec" ] && fail "recommendation '${rec}' is non-canonical (must be SHIP/FIX BEFORE MERGE/BLOCK)" || fail "recommendation missing" ;;
+        esac
+    else
+        warn "integration-results.json not present"
     fi
 
-    # --- Use cases in REQUIREMENTS.md ---
+    # --- Use cases in REQUIREMENTS.md (benchmark 43) ---
     echo "[Use Cases]"
     if [ -f "${q}/REQUIREMENTS.md" ]; then
-        local uc_section uc_ids
-        uc_section=$(grep -ciE '(use case|fitness.to.purpose|UC-[0-9])' "${q}/REQUIREMENTS.md" || true)
-        uc_section=${uc_section:-0}
+        local uc_ids
         uc_ids=$(grep -cE 'UC-[0-9]+' "${q}/REQUIREMENTS.md" || true)
         uc_ids=${uc_ids:-0}
-        if [ "$uc_section" -gt 0 ]; then
-            pass "REQUIREMENTS.md has use case content (${uc_section} lines)"
-            if [ "$uc_ids" -gt 0 ]; then
-                pass "Found ${uc_ids} canonical UC-NN identifiers"
-            else
-                warn "No canonical UC-NN identifiers (use case content exists but not in UC-01 format)"
-            fi
+        if [ "$uc_ids" -ge 5 ]; then
+            pass "Found ${uc_ids} canonical UC-NN references"
+        elif [ "$uc_ids" -gt 0 ]; then
+            warn "Only ${uc_ids} UC-NN references (expected 5+)"
         else
-            fail "REQUIREMENTS.md has no use case content"
+            fail "No canonical UC-NN identifiers in REQUIREMENTS.md"
         fi
     else
         fail "REQUIREMENTS.md missing"
@@ -207,11 +253,9 @@ check_repo() {
     # --- Terminal Gate in PROGRESS.md ---
     echo "[Terminal Gate]"
     if [ -f "${q}/PROGRESS.md" ]; then
-        if grep -qiE '^##? Terminal [Gg]ate' "${q}/PROGRESS.md" 2>/dev/null; then
-            pass "PROGRESS.md has Terminal Gate section"
-        else
-            fail "PROGRESS.md missing Terminal Gate section"
-        fi
+        grep -qiE '^#+ *Terminal' "${q}/PROGRESS.md" 2>/dev/null \
+            && pass "PROGRESS.md has Terminal Gate section" \
+            || fail "PROGRESS.md missing Terminal Gate section"
     fi
 
     # --- Mechanical verification (if applicable) ---
@@ -222,33 +266,43 @@ check_repo() {
             if [ -f "${q}/results/mechanical-verify.log" ] && [ -f "${q}/results/mechanical-verify.exit" ]; then
                 local exit_code
                 exit_code=$(cat "${q}/results/mechanical-verify.exit" 2>/dev/null | tr -d '[:space:]')
-                if [ "$exit_code" = "0" ]; then
-                    pass "mechanical-verify.exit is 0"
-                else
-                    fail "mechanical-verify.exit is '${exit_code}', expected 0"
-                fi
+                [ "$exit_code" = "0" ] && pass "mechanical-verify.exit is 0" || fail "mechanical-verify.exit is '${exit_code}', expected 0"
             else
-                fail "Verification receipt files missing (mechanical-verify.log and/or mechanical-verify.exit)"
+                fail "Verification receipt files missing"
             fi
         else
-            fail "mechanical/ directory exists but verify.sh missing (benchmark 27)"
+            fail "mechanical/ exists but verify.sh missing"
         fi
     else
-        info "No mechanical/ directory (not applicable for this project)"
+        info "No mechanical/ directory"
     fi
 
-    # --- Fix patches for confirmed bugs ---
-    echo "[Fix Patches]"
+    # --- Patches for confirmed bugs (benchmark 44) ---
+    echo "[Patches]"
     if [ "$bug_count" -gt 0 ]; then
-        local patch_count=0
+        local reg_patch_count=0 fix_patch_count=0
         if [ -d "${q}/patches" ]; then
-            patch_count=$(ls ${q}/patches/*.patch 2>/dev/null | wc -l | tr -d ' ')
+            reg_patch_count=$(ls ${q}/patches/BUG-*-regression*.patch 2>/dev/null | wc -l | tr -d ' ')
+            fix_patch_count=$(ls ${q}/patches/BUG-*-fix*.patch 2>/dev/null | wc -l | tr -d ' ')
         fi
-        if [ "$patch_count" -gt 0 ]; then
-            pass "${patch_count} fix patch(es) for ${bug_count} bug(s)"
+
+        if [ "$reg_patch_count" -ge "$bug_count" ]; then
+            pass "${reg_patch_count} regression-test patch(es) for ${bug_count} bug(s)"
+        elif [ "$reg_patch_count" -gt 0 ]; then
+            fail "Only ${reg_patch_count} regression-test patch(es) for ${bug_count} bug(s)"
         else
-            warn "0 fix patches for ${bug_count} confirmed bug(s)"
+            fail "No regression-test patches (quality/patches/BUG-NNN-regression-test.patch required for each bug)"
         fi
+
+        if [ "$fix_patch_count" -gt 0 ]; then
+            pass "${fix_patch_count} fix patch(es)"
+        else
+            warn "0 fix patches (fix patches are optional but strongly encouraged)"
+        fi
+
+        # Total patch count for summary
+        local total_patches=$((reg_patch_count + fix_patch_count))
+        info "Total: ${total_patches} patch file(s) in quality/patches/"
     fi
 
     # --- Writeups for confirmed bugs (benchmark 30) ---
@@ -263,38 +317,34 @@ check_repo() {
         elif [ "$writeup_count" -gt 0 ]; then
             warn "${writeup_count} writeup(s) for ${bug_count} bug(s) — incomplete"
         else
-            fail "No writeups for ${bug_count} confirmed bug(s) (benchmark 30)"
+            fail "No writeups for ${bug_count} confirmed bug(s)"
         fi
     fi
 
     # --- Version stamp consistency (benchmark 26) ---
     echo "[Version Stamps]"
     local skill_version=""
-    if [ -f "${repo_dir}/.github/skills/SKILL.md" ]; then
-        skill_version=$(grep -m1 'version:' "${repo_dir}/.github/skills/SKILL.md" 2>/dev/null | sed 's/.*version: *//' | tr -d ' ')
-    fi
+    for loc in "${repo_dir}/.github/skills/SKILL.md" "${repo_dir}/SKILL.md"; do
+        if [ -f "$loc" ]; then
+            skill_version=$(grep -m1 'version:' "$loc" 2>/dev/null | sed 's/.*version: *//' | tr -d ' ')
+            [ -n "$skill_version" ] && break
+        fi
+    done
     if [ -n "$skill_version" ]; then
         if [ -f "${q}/PROGRESS.md" ]; then
             local pv
             pv=$(grep -m1 'Skill version:' "${q}/PROGRESS.md" 2>/dev/null | sed 's/.*Skill version: *//' | tr -d ' ')
-            if [ "$pv" = "$skill_version" ]; then
-                pass "PROGRESS.md version stamp matches (${skill_version})"
-            elif [ -n "$pv" ]; then
-                fail "PROGRESS.md version '${pv}' != SKILL.md '${skill_version}'"
-            else
-                warn "PROGRESS.md missing 'Skill version:' field"
-            fi
+            [ "$pv" = "$skill_version" ] && pass "PROGRESS.md version matches (${skill_version})" \
+                || { [ -n "$pv" ] && fail "PROGRESS.md version '${pv}' != '${skill_version}'" || warn "PROGRESS.md missing Skill version field"; }
         fi
-        # Check tdd-results.json skill_version
         if [ -f "${q}/results/tdd-results.json" ]; then
             local tv
-            tv=$(grep -o '"skill_version"[[:space:]]*:[[:space:]]*"[^"]*"' "${q}/results/tdd-results.json" 2>/dev/null | head -1 | sed 's/.*"\([^"]*\)"/\1/')
-            if [ "$tv" = "$skill_version" ]; then
-                pass "tdd-results.json skill_version matches (${skill_version})"
-            elif [ -n "$tv" ]; then
-                fail "tdd-results.json skill_version '${tv}' != SKILL.md '${skill_version}'"
-            fi
+            tv=$(json_str_val "${q}/results/tdd-results.json" "skill_version")
+            [ "$tv" = "$skill_version" ] && pass "tdd-results.json skill_version matches" \
+                || { [ -n "$tv" ] && fail "tdd-results.json skill_version '${tv}' != '${skill_version}'"; }
         fi
+    else
+        warn "Cannot detect skill version from SKILL.md"
     fi
 
     echo ""
@@ -305,11 +355,13 @@ if [ "$CHECK_ALL" = true ]; then
     for dir in "${SCRIPT_DIR}/"*-"${VERSION}"/; do
         [ -d "$dir/quality" ] && REPO_DIRS+=("$dir")
     done
+elif [ ${#REPO_DIRS[@]} -eq 1 ] && [ "${REPO_DIRS[0]}" = "." ]; then
+    # Running from inside a repo
+    REPO_DIRS=("$(pwd)")
 else
-    # Resolve short names to dirs
     resolved=()
     for name in "${REPO_DIRS[@]}"; do
-        if [ -d "$name" ]; then
+        if [ -d "$name/quality" ]; then
             resolved+=("$name")
         elif [ -d "${SCRIPT_DIR}/${name}-${VERSION}" ]; then
             resolved+=("${SCRIPT_DIR}/${name}-${VERSION}")
@@ -323,12 +375,12 @@ else
 fi
 
 if [ ${#REPO_DIRS[@]} -eq 0 ]; then
-    echo "Usage: $0 [--version V] [--all | repo1 repo2 ...]"
+    echo "Usage: $0 [--version V] [--all | repo1 repo2 ... | .]"
     exit 1
 fi
 
 echo "=== Quality Gate — Post-Run Validation ==="
-echo "Version: ${VERSION}"
+echo "Version: ${VERSION:-unknown}"
 echo "Repos:   ${#REPO_DIRS[@]}"
 
 for repo_dir in "${REPO_DIRS[@]}"; do

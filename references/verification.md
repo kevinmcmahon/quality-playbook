@@ -239,6 +239,10 @@ Before Phase 2d is marked complete, `quality_gate.sh` must be executed from the 
 
 REQUIREMENTS.md must contain use cases labeled with canonical identifiers in the format `UC-01`, `UC-02`, etc. Grep for `UC-[0-9]` and count matches. A repo with use case content but no canonical identifiers is non-conformant. This benchmark exists because v1.3.25 benchmarking showed 7 of 8 repos with use case sections but no machine-readable identifiers — downstream tooling cannot count or cross-reference use cases without a canonical format.
 
+### 44. Regression-Test Patches Exist for Every Confirmed Bug
+
+For every confirmed bug (any BUG-NNN entry in BUGS.md), verify that `quality/patches/BUG-NNN-regression-test.patch` exists. A confirmed bug without a regression-test patch is incomplete — the patch is the strongest independent evidence that the bug exists. Fix patches (`BUG-NNN-fix.patch`) are optional but strongly encouraged for simple fixes. This benchmark exists because v1.3.25 and v1.3.26 benchmarking showed 4/8 repos with 0 patch files despite having confirmed bugs, and the writeups described what fixes should look like without generating actual patch files.
+
 ## Quick Checklist Format
 
 Use this as a final sign-off:
@@ -290,3 +294,4 @@ Use this as a final sign-off:
 - [ ] Sidecar JSON files (`tdd-results.json`, `integration-results.json`) contain all required keys with `schema_version: "1.1"`
 - [ ] `quality_gate.sh` was executed and exited 0; output saved to `quality/results/quality-gate.log`
 - [ ] REQUIREMENTS.md contains canonical use case identifiers (`UC-01`, `UC-02`, etc.)
+- [ ] Every confirmed bug has `quality/patches/BUG-NNN-regression-test.patch`
