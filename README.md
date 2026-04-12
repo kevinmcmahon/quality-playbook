@@ -2,7 +2,53 @@
 
 Point an AI coding tool at any codebase. Get a complete quality engineering infrastructure: requirements derived from the actual intent of the code, functional tests traced to those requirements, a three-pass code review protocol, and a multi-model spec audit that catches bugs no single reviewer can find alone.
 
-**Version:** 1.3.29 | **Author:** [Andrew Stellman](https://github.com/andrewstellman) | **License:** Apache 2.0
+**Version:** 1.3.33 | **Author:** [Andrew Stellman](https://github.com/andrewstellman) | **License:** Apache 2.0
+
+## Reproduce the benchmark: Linux virtio bug discovery
+
+These commands clone the Linux kernel's virtio subsystem, install the playbook skill, and run a single GitHub Copilot prompt that independently discovers a confirmed kernel bug — a missing `VIRTIO_F_RING_RESET` case label in `vring_transport_features()` that silently drops queue-reset support on MMIO and vDPA transports.
+
+The entire run takes about 17 minutes with GPT-5.4 and costs one Copilot Premium request. No seeds, no prior run data, no human guidance — the model reads the skill, explores the code, derives requirements, and finds the bug on its own.
+
+**Prerequisites:** [GitHub Copilot CLI](https://docs.github.com/en/copilot/github-copilot-in-the-cli) with a model that supports `--yolo` mode (GPT-5.4 or later).
+
+```bash
+# 1. Clone the playbook skill
+git clone https://github.com/andrewstellman/quality-playbook.git
+SKILL_DIR="$(pwd)/quality-playbook"
+
+# 2. Shallow-clone the Linux kernel virtio subsystem (66 files, ~1 MB)
+git clone --filter=blob:none --no-checkout --sparse \
+  https://github.com/torvalds/linux.git virtio-benchmark
+cd virtio-benchmark
+git sparse-checkout set drivers/virtio include/linux include/uapi/linux
+git checkout bfe62a454542cfad3379f6ef5680b125f41e20f4
+
+# 3. Strip to just the virtio files
+mkdir -p ../virtio-clean/drivers ../virtio-clean/include/linux ../virtio-clean/include/uapi/linux
+cp -a drivers/virtio ../virtio-clean/drivers/
+cp include/linux/virtio*.h ../virtio-clean/include/linux/
+cp include/uapi/linux/virtio*.h ../virtio-clean/include/uapi/linux/
+cd .. && rm -rf virtio-benchmark && cd virtio-clean
+
+# 4. Install the skill
+mkdir -p .github/skills/references
+cp "$SKILL_DIR/SKILL.md" .github/skills/SKILL.md
+cp "$SKILL_DIR/LICENSE.txt" .github/skills/LICENSE.txt
+cp "$SKILL_DIR/references/"* .github/skills/references/
+
+# 5. Run the playbook (single prompt, ~17 minutes)
+gh copilot -p "Read the quality playbook skill at .github/skills/SKILL.md \
+and its reference files in .github/skills/references/. Execute the quality \
+playbook for this project. IMPORTANT: Skip Phase 0 and Phase 0b entirely — \
+do not look for previous_runs/ or sibling versioned directories. This is a \
+clean benchmark run testing independent bug discovery. Start directly at \
+Phase 1." --model gpt-5.4 --yolo
+```
+
+When it finishes, check `quality/BUGS.md` for confirmed findings with file locations, regression tests, and fix patches. The run also produces a full quality system in `quality/` — requirements, functional tests, code review protocols, and a spec audit.
+
+**What this demonstrates:** The playbook derives behavioral requirements from the code and virtio specification, then uses those requirements to drive a three-pass code review and multi-model spec audit. The bug it finds is a real intent violation: the transport-feature whitelist is *structurally correct* (valid C, no crashes, no warnings) but *behaviorally wrong* (it silently drops a feature the spec says it should preserve). This is the class of bug that structural code review alone cannot catch.
 
 ## The problem
 
