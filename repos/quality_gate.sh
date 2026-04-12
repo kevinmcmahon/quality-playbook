@@ -8,6 +8,8 @@
 # v1.3.31 adds TDD summary shape validation (red_failed, green_failed),
 # date validation (reject placeholders/future dates), and cross-run
 # contamination detection (version mismatch between directory and SKILL.md).
+# v1.3.32 adds test file extension validation, minimum UC count (5+),
+# and triage executable evidence check.
 #
 # Usage:
 #   ./quality_gate.sh .                          # Check current directory
@@ -116,6 +118,21 @@ check_repo() {
         auditor_count=$(ls ${q}/spec_audits/*auditor* 2>/dev/null | wc -l | tr -d ' ')
         [ "$triage_count" -gt 0 ] && pass "spec_audits/ has triage file" || fail "spec_audits/ missing triage file"
         [ "$auditor_count" -gt 0 ] && pass "spec_audits/ has ${auditor_count} auditor file(s)" || fail "spec_audits/ missing individual auditor files"
+
+        # Triage executable evidence — probe assertions must exist on disk
+        if [ "$triage_count" -gt 0 ]; then
+            local has_probes=false
+            if [ -f "${q}/spec_audits/triage_probes.sh" ]; then
+                has_probes=true
+                pass "triage_probes.sh exists (executable triage evidence)"
+            elif [ -f "${q}/mechanical/verify.sh" ] && grep -q 'probe\|triage\|auditor' "${q}/mechanical/verify.sh" 2>/dev/null; then
+                has_probes=true
+                pass "verify.sh contains triage probe assertions"
+            fi
+            if [ "$has_probes" = false ]; then
+                warn "No executable triage evidence found (expected spec_audits/triage_probes.sh or probe assertions in mechanical/verify.sh)"
+            fi
+        fi
     else
         fail "spec_audits/ directory missing"
     fi
@@ -264,21 +281,69 @@ check_repo() {
         warn "integration-results.json not present"
     fi
 
-    # --- Use cases in REQUIREMENTS.md (benchmark 43) ---
+    # --- Use cases in REQUIREMENTS.md (benchmark 43, 48) ---
     echo "[Use Cases]"
     if [ -f "${q}/REQUIREMENTS.md" ]; then
-        local uc_ids
+        local uc_ids uc_unique
         uc_ids=$(grep -cE 'UC-[0-9]+' "${q}/REQUIREMENTS.md" || true)
         uc_ids=${uc_ids:-0}
-        if [ "$uc_ids" -ge 5 ]; then
-            pass "Found ${uc_ids} canonical UC-NN references"
-        elif [ "$uc_ids" -gt 0 ]; then
-            warn "Only ${uc_ids} UC-NN references (expected 5+)"
+        uc_unique=$(grep -oE 'UC-[0-9]+' "${q}/REQUIREMENTS.md" 2>/dev/null | sort -u | wc -l | tr -d ' ')
+        uc_unique=${uc_unique:-0}
+        if [ "$uc_unique" -ge 5 ]; then
+            pass "Found ${uc_unique} distinct UC identifiers (${uc_ids} total references)"
+        elif [ "$uc_unique" -gt 0 ]; then
+            fail "Only ${uc_unique} distinct UC identifiers (minimum 5 required)"
         else
             fail "No canonical UC-NN identifiers in REQUIREMENTS.md"
         fi
     else
         fail "REQUIREMENTS.md missing"
+    fi
+
+    # --- Test file extension matches project language (benchmark 47) ---
+    echo "[Test File Extension]"
+    local func_test reg_test
+    func_test=$(ls ${q}/test_functional.* 2>/dev/null | head -1)
+    reg_test=$(ls ${q}/test_regression.* 2>/dev/null | head -1)
+    if [ -n "$func_test" ]; then
+        local ext="${func_test##*.}"
+        # Detect project language from common indicators
+        local detected_lang=""
+        if ls "${repo_dir}"/*.go "${repo_dir}"/**/*.go 2>/dev/null | head -1 | grep -q .; then detected_lang="go"
+        elif ls "${repo_dir}"/*.py "${repo_dir}"/**/*.py 2>/dev/null | head -1 | grep -q .; then detected_lang="py"
+        elif ls "${repo_dir}"/*.java "${repo_dir}"/**/*.java 2>/dev/null | head -1 | grep -q .; then detected_lang="java"
+        elif ls "${repo_dir}"/*.kt "${repo_dir}"/**/*.kt 2>/dev/null | head -1 | grep -q .; then detected_lang="kt"
+        elif ls "${repo_dir}"/*.rs "${repo_dir}"/**/*.rs 2>/dev/null | head -1 | grep -q .; then detected_lang="rs"
+        elif ls "${repo_dir}"/*.ts "${repo_dir}"/**/*.ts 2>/dev/null | head -1 | grep -q .; then detected_lang="ts"
+        elif ls "${repo_dir}"/*.js "${repo_dir}"/**/*.js 2>/dev/null | head -1 | grep -q .; then detected_lang="js"
+        elif ls "${repo_dir}"/*.scala "${repo_dir}"/**/*.scala 2>/dev/null | head -1 | grep -q .; then detected_lang="scala"
+        elif ls "${repo_dir}"/*.c "${repo_dir}"/**/*.c 2>/dev/null | head -1 | grep -q .; then detected_lang="c"
+        fi
+
+        if [ -n "$detected_lang" ]; then
+            # Map detected language to valid test extensions
+            local valid_ext=""
+            case "$detected_lang" in
+                go) valid_ext="go" ;;
+                py) valid_ext="py" ;;
+                java) valid_ext="java" ;;
+                kt) valid_ext="kt java" ;;
+                rs) valid_ext="rs" ;;
+                ts) valid_ext="ts" ;;
+                js) valid_ext="js ts" ;;
+                scala) valid_ext="scala" ;;
+                c) valid_ext="c py sh" ;;  # C projects may use Python/shell test harnesses
+            esac
+            if echo "$valid_ext" | grep -qw "$ext"; then
+                pass "test_functional.${ext} matches project language (${detected_lang})"
+            else
+                fail "test_functional.${ext} does not match project language (${detected_lang}) — expected .${valid_ext%% *}"
+            fi
+        else
+            info "Cannot detect project language — skipping extension check (test_functional.${ext})"
+        fi
+    else
+        warn "No test_functional.* found"
     fi
 
     # --- Terminal Gate in PROGRESS.md ---
