@@ -193,9 +193,9 @@ Use this when a previous playbook run exists and you want to find additional bug
 
 3. **Targeted deep-read.** For only the 2–3 thinnest or most gap-rich sections, read the full section content from the previous EXPLORATION.md. This gives you specific context about what was already found without consuming your entire context budget on previous findings.
 
-4. **Gap exploration.** Run a focused Phase 1 exploration targeting only the identified gaps. Use the same three-stage approach (open exploration → quality risks → selected patterns) but scoped to the uncovered areas. Write findings to `quality/EXPLORATION_ITER2.md` using the same template structure.
+4. **Gap exploration.** Run a focused Phase 1 exploration targeting only the identified gaps. Use the same three-stage approach (open exploration → quality risks → selected patterns) but scoped to the uncovered areas. Write findings to `quality/EXPLORATION_ITER{N}.md` (e.g., `EXPLORATION_ITER2.md` for the first iteration, `EXPLORATION_ITER3.md` for the second, etc.) using the same template structure. Check which iteration files already exist and use the next number.
 
-5. **Merge.** After gap exploration is complete, create a merged `quality/EXPLORATION_MERGED.md` that combines findings from both iterations. For each section, concatenate the findings with clear attribution (`[Iteration 1]` / `[Iteration 2]`). The Candidate Bugs section should be re-consolidated from all findings across both iterations.
+5. **Merge.** After gap exploration is complete, create or update `quality/EXPLORATION_MERGED.md` that combines findings from ALL iterations. For each section, concatenate the findings with clear attribution (`[Iteration 1]` / `[Iteration 2]` / etc.). The Candidate Bugs section should be re-consolidated from all findings across all iterations. If `EXPLORATION_MERGED.md` already exists from a previous iteration, merge the new iteration's findings into it rather than starting from scratch.
 
 6. **Continue with Phases 2–3.** Use `EXPLORATION_MERGED.md` as the primary input for Phase 2 artifact generation. All downstream artifacts (REQUIREMENTS.md, code review, spec audit) should reference the merged exploration.
 
@@ -203,8 +203,8 @@ Use this when a previous playbook run exists and you want to find additional bug
 
 **Iteration mode completion gate.** Before proceeding to Phase 2:
 - `quality/ITERATION_PLAN.md` exists and lists at least 3 coverage gaps from the previous run
-- `quality/EXPLORATION_ITER2.md` exists with at least 80 lines of substantive content
-- `quality/EXPLORATION_MERGED.md` exists and contains findings from both iterations
+- `quality/EXPLORATION_ITER{N}.md` exists for this iteration with at least 80 lines of substantive content
+- `quality/EXPLORATION_MERGED.md` exists and contains findings from all iterations
 - The merged Candidate Bugs section has at least 2 new candidates not present in the first iteration
 - At least 1 gap-exploration finding covers a subsystem or module not explored in the first iteration
 

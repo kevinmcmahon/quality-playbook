@@ -14,6 +14,7 @@
 #   ./run_playbook.sh --sequential virtio chi            # one repo at a time
 #   ./run_playbook.sh --multi-pass virtio chi            # 4-pass per repo
 #   ./run_playbook.sh --claude --model opus virtio       # Claude CLI instead of Copilot
+#   ./run_playbook.sh --next-iteration virtio chi        # iterate on existing quality/ run
 #
 # Options:
 #   --parallel       Run all repos concurrently (default: on)
@@ -24,6 +25,7 @@
 #   --with-seeds     Allow Phase 0/0b seed injection from prior/sibling runs
 #   --single-pass    One prompt for the entire pipeline (default: on)
 #   --multi-pass     Four passes per repo (explore → generate → review → gate)
+#   --next-iteration Iterate on an existing quality/ run (no archive, builds on it)
 #   --model MODEL    Model (claude: opus, sonnet, …; copilot: gpt-5.4, …)
 #   --kill           Kill processes from the current/last parallel run
 #
@@ -40,6 +42,7 @@ PARALLEL=true
 RUNNER="copilot"  # "copilot" or "claude"
 NO_SEEDS=true     # clean benchmark — skip Phase 0 / sibling seeds
 SINGLE_PASS=true  # one CLI invocation per repo with the full skill
+NEXT_ITERATION=false  # iterate on existing quality/ run
 CLAUDE_MODEL=""
 REPO_NAMES=()
 EXPECT_MODEL=false
@@ -50,15 +53,15 @@ for arg in "$@"; do
         continue
     fi
     case "$arg" in
-        --parallel)     PARALLEL=true ;;
-        --sequential)   PARALLEL=false ;;
-        --claude)       RUNNER="claude" ;;
-        --copilot)      RUNNER="copilot" ;;
-        --no-seeds)     NO_SEEDS=true ;;
-        --with-seeds)   NO_SEEDS=false ;;
-        --single-pass)  SINGLE_PASS=true ;;
-        --multi-pass)   SINGLE_PASS=false ;;
-        --model)        EXPECT_MODEL=true ;;
+        --parallel)         PARALLEL=true ;;
+        --sequential)       PARALLEL=false ;;
+        --claude)           RUNNER="claude" ;;
+        --copilot)          RUNNER="copilot" ;;
+        --no-seeds)         NO_SEEDS=true ;;
+        --with-seeds)       NO_SEEDS=false ;;
+        --single-pass)      SINGLE_PASS=true ;;
+        --multi-pass)       SINGLE_PASS=false ;;
+        --next-iteration)   NEXT_ITERATION=true ;;
         --kill)
             if [ -f "$PID_FILE" ]; then
                 echo "Killing PIDs from $PID_FILE:"
@@ -85,6 +88,12 @@ done
 
 # --model overrides QPB_MODEL for copilot
 [ -n "$CLAUDE_MODEL" ] && [ "$RUNNER" = "copilot" ] && MODEL="$CLAUDE_MODEL"
+
+# --next-iteration implies single-pass; multi-pass iteration is not supported
+if [ "$NEXT_ITERATION" = true ] && [ "$SINGLE_PASS" = false ]; then
+    echo "ERROR: --next-iteration is not compatible with --multi-pass. Iteration uses a single prompt."
+    exit 1
+fi
 
 VERSION=$(detect_skill_version)
 [ -z "$VERSION" ] && echo "ERROR: Can't detect version from SKILL.md" && exit 1
@@ -119,7 +128,13 @@ else
 fi
 echo "No seeds: ${NO_SEEDS}  (Phase 0/0b skipped when true)"
 echo "Parallel: ${PARALLEL}"
-echo "Mode:     $([ "$SINGLE_PASS" = true ] && echo "single-pass (one prompt)" || echo "multi-pass (4 CLI passes)")"
+if [ "$NEXT_ITERATION" = true ]; then
+    echo "Mode:     next-iteration (builds on existing quality/)"
+elif [ "$SINGLE_PASS" = true ]; then
+    echo "Mode:     single-pass (one prompt)"
+else
+    echo "Mode:     multi-pass (4 CLI passes)"
+fi
 echo "Repos:    ${REPO_DIRS[*]##*/}"
 echo ""
 echo "=== Runner logs (one file per repo — names include this run's RUN_TIMESTAMP) ==="
@@ -341,6 +356,12 @@ single_pass_prompt() {
     echo "Read the quality playbook skill at .github/skills/SKILL.md and its reference files in .github/skills/references/. Execute the quality playbook for this project. Additional documentation for this project has been gathered in docs_gathered/ — read it during Phase 1 exploration to supplement the codebase and improve the quality of requirements, scenarios, and tests. IMPORTANT: Before marking Phase 2d complete, run 'bash .github/skills/quality_gate.sh .' and fix any FAIL results. Save the output to quality/results/quality-gate.log.${seed_instruction}"
 }
 
+# ── Iteration prompt (builds on an existing quality/ run) ──
+
+iteration_prompt() {
+    echo "Read the quality playbook skill at .github/skills/SKILL.md — specifically the 'Iteration mode' section. A previous quality playbook run exists in quality/ with findings in quality/EXPLORATION.md. Run the next iteration of the quality playbook to improve on the previous run. Follow the iteration mode instructions: scan previous coverage, identify gaps, explore those gaps, write EXPLORATION_ITER2.md (or EXPLORATION_ITER3.md etc. for subsequent iterations), merge into EXPLORATION_MERGED.md, then run Phases 2–3 against the merged findings. Additional documentation for this project has been gathered in docs_gathered/ — use it during gap exploration. IMPORTANT: Before marking Phase 2d complete, run 'bash .github/skills/quality_gate.sh .' and fix any FAIL results. Save the output to quality/results/quality-gate.log. IMPORTANT: Do NOT archive or delete the existing quality/ directory — you are building on it, not replacing it."
+}
+
 # ── Run one repo (multi-pass) ──
 
 run_one_multipass() {
@@ -456,23 +477,33 @@ run_one_singlepass() {
         return 1
     fi
 
-    # Archive previous run
-    if [ -d "${repo_dir}/quality" ]; then
-        local archive_dir="${repo_dir}/previous_runs/${ts}"
-        mkdir -p "$archive_dir"
-        cp -a "${repo_dir}/quality" "$archive_dir/quality"
-        rm -rf "${repo_dir}/quality" "${repo_dir}/control_prompts"
+    local prompt pass_label
+    if [ "$NEXT_ITERATION" = true ]; then
+        # Iteration mode: require existing quality/ directory, don't archive
+        if [ ! -f "${repo_dir}/quality/EXPLORATION.md" ]; then
+            log "SKIP: ${repo_name} — no quality/EXPLORATION.md to iterate on"
+            return 1
+        fi
+        prompt=$(iteration_prompt)
+        pass_label="iteration"
+        logboth "$log_file" "$(log "Starting iteration: ${repo_name} (runner=${RUNNER}, building on existing quality/)")"
+    else
+        # Fresh run: archive previous quality/ and start clean
+        if [ -d "${repo_dir}/quality" ]; then
+            local archive_dir="${repo_dir}/previous_runs/${ts}"
+            mkdir -p "$archive_dir"
+            cp -a "${repo_dir}/quality" "$archive_dir/quality"
+            rm -rf "${repo_dir}/quality" "${repo_dir}/control_prompts"
+        fi
+        prompt=$(single_pass_prompt)
+        pass_label="full"
+        logboth "$log_file" "$(log "Starting playbook (single-pass): ${repo_name} (runner=${RUNNER})")"
     fi
 
     mkdir -p "${repo_dir}/control_prompts"
     output_file="${repo_dir}/control_prompts/playbook_run.output.txt"
 
-    local prompt
-    prompt=$(single_pass_prompt)
-
-    logboth "$log_file" "$(log "Starting playbook (single-pass): ${repo_name} (runner=${RUNNER})")"
-
-    run_prompt "$repo_dir" "$prompt" "full" "$output_file" "$log_file"
+    run_prompt "$repo_dir" "$prompt" "$pass_label" "$output_file" "$log_file"
 
     logboth "$log_file" "$(log "Playbook complete: ${repo_name}")"
 
