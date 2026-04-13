@@ -122,6 +122,8 @@ For each pair (or set) of implementations:
 3. Check each implementation for each step.
 4. Any step present in one but missing in another is a candidate requirement.
 
+**Check every cross-transport operation, not just the most obvious one.** If a codebase has multiple transports (PCI, MMIO, vDPA) or backends (PostgreSQL, MySQL), enumerate all operations that have cross-implementation equivalents — reset, interrupt handling, feature negotiation, queue setup, configuration access — and check each one. The first cross-implementation gap you find is rarely the only one. A common failure mode is analyzing reset thoroughly and then skipping interrupt dispatch, which has the same cross-transport structure.
+
 ### EXPLORATION.md output format
 
 ```
@@ -162,6 +164,8 @@ For each whitelist found:
 1. Identify the authoritative source that defines what values should be valid (a spec, a header file, an upstream enum, a protocol definition).
 2. Extract the whitelist mechanically (save the case labels, array entries, or set members to a file).
 3. Compare the extracted whitelist against the authoritative source. Every value in the authoritative source that is absent from the whitelist is a candidate requirement.
+
+**Caller compensation does not excuse a missing entry.** If a whitelist in a shared/generic function is missing an entry, that is a bug in the whitelist — even if specific callers compensate by restoring the value after the whitelist runs. The compensation is a workaround, not a fix. Any new caller that doesn't know to compensate silently inherits the bug. Report each missing entry as a finding and note which callers (if any) compensate, but do not dismiss the finding because of compensation.
 
 ### EXPLORATION.md output format
 
