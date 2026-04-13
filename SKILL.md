@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate nine quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, a consolidated bug report (BUGS.md) with patches, a TDD verification protocol (RUN_TDD_TESTS.md), an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis, missing safeguard detection, patch validation gates, and structured test output (JUnit XML + sidecar JSON). Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.41
+  version: 1.3.42
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -26,7 +26,7 @@ Before reading any other section of this skill, understand the plan and its depe
 
 **MANDATORY FIRST ACTION:** After reading and understanding the plan above, print the following message to the user, then explain the plan in your own words — what you'll do, what each phase produces, and why the exploration phase matters most. Emphasize that exploration starts with open-ended domain-driven investigation, supplemented by structured patterns. Do not copy the plan verbatim; paraphrase it to demonstrate understanding.
 
-> Quality Playbook v1.3.41 — by Andrew Stellman
+> Quality Playbook v1.3.42 — by Andrew Stellman
 > https://github.com/andrewstellman/quality-playbook
 
 Generate a complete quality system tailored to a specific codebase. Unlike test stub generators that work mechanically from source code, this skill explores the project first — understanding its domain, architecture, specifications, and failure history — then produces a quality playbook grounded in what it finds.
@@ -226,7 +226,7 @@ When no `previous_runs/` directory exists but sibling versioned directories do, 
 
 ---
 
-## Phase 1: Explore the Codebase (Do Not Write Yet)
+## Phase 1: Explore the Codebase (Write As You Go)
 
 > **Required references for this phase** — read these before proceeding:
 > - `.github/skills/references/exploration_patterns.md` — six bug-finding patterns to apply after open exploration
@@ -246,6 +246,16 @@ Spend the first phase understanding the project. The quality playbook must be gr
 2. **Pattern-driven exploration.** After open exploration, apply the six analysis patterns defined in `exploration_patterns.md` (listed in Required references above). Each pattern targets a specific bug class that open exploration alone tends to miss. EXPLORATION.md must contain a dedicated section for each pattern using the output format from the reference file. Not every pattern will be applicable to every codebase — if a pattern doesn't apply (e.g., no cross-implementation pairs exist), write a brief "not applicable" note explaining why.
 
 The Phase 1 completion gate checks for both stages. The open exploration section and the pattern sections must all be present.
+
+**Write incrementally — do not hold findings in memory.** This is the single most important execution rule in Phase 1. After you explore each subsystem or apply each pattern, **immediately append your findings to `quality/EXPLORATION.md` on disk before moving to the next subsystem or pattern.** Do not try to hold findings in working memory across multiple subsystems. The write-as-you-go discipline serves two purposes:
+
+1. **Depth recovery.** If you explore the PCI interrupt routing subsystem and find suspicious code at `vp_find_vqs_intx()`, write that finding to EXPLORATION.md immediately. Then when you move to the admin queue subsystem, your working memory is free to go deep there. Without incremental writes, findings from the first subsystem compete with findings from the second, and both end up shallow.
+
+2. **Nothing gets lost.** In v1.3.42 benchmarking, the model explored 8 pattern sections but wrote only 5–7 lines per section — perfectly uniform, perfectly shallow. Every section passed the gate but none went deep enough to find bugs that require tracing code paths across multiple functions. The model was trying to compose the entire EXPLORATION.md at the end, after reading everything, and could only recall the surface-level findings. Incremental writes prevent this.
+
+**The rhythm is: read a subsystem → write findings to disk → read the next subsystem → append findings → repeat.** Each append should include specific function names, file paths, line numbers, and concrete bug hypotheses. A 5-line section that says "checked cross-implementation consistency, found one gap" is a gate-passing placeholder, not an exploration finding. A useful section traces a code path: "function A at file:line calls function B at file:line, which does X but not Y; compare with function C at file:line which does both X and Y."
+
+**Mandatory consolidation step.** After all subsystems and patterns are explored and written to EXPLORATION.md, add a final section: `## Candidate Bugs for Phase 2`. This section consolidates the strongest bug hypotheses from all earlier sections into a prioritized handoff list. For each candidate, include: the hypothesis, the specific file:line references, which pattern or open-exploration finding surfaced it, and what the code review should look for. This section is the bridge between exploration and artifact generation — it tells Phase 2b exactly where to focus. Minimum: 3 candidate bugs with file:line references. There is no maximum.
 
 **Pre-flight: Scope declaration for large repositories**
 
@@ -717,7 +727,7 @@ This file is essential in all modes. In single-pass mode it forces the model to 
 
 **Phase 1 completion gate (mandatory).** Before proceeding to Phase 2, re-read `quality/EXPLORATION.md` from disk and verify all of the following. If any check fails, fix EXPLORATION.md before proceeding.
 
-1. The file exists on disk and contains at least 80 lines of substantive content.
+1. The file exists on disk and contains at least 120 lines of substantive content.
 2. `quality/PROGRESS.md` exists and marks Phase 1 complete.
 3. The Derived Requirements section contains at least one REQ-NNN with specific file paths and function names — not abstract subsystem descriptions.
 4. A section titled **exactly** `## Open Exploration Findings` exists and contains at least 5 concrete bug hypotheses or suspicious findings, each with a file path and line number. These must come from domain-driven investigation, not just from applying patterns. At least 3 must reference different subsystems or modules.
@@ -728,8 +738,10 @@ This file is essential in all modes. In single-pass mode it forces the model to 
 9. A section titled **exactly** `## API Surface Consistency` exists and contains at least one pair of API surfaces compared for behavioral equivalence — or an explicit "not applicable" stating why no dual-surface APIs exist in scope.
 10. A section titled **exactly** `## Spec-Structured Parsing` exists and contains at least one parser checked against its spec grammar — or an explicit "not applicable" stating why no spec-structured parsing occurs in scope.
 11. **Pillar diversity check:** At least 3 of the 6 pattern sections (checks 5–10) must contain substantive findings (not just "not applicable"). If fewer than 3 have findings, revisit the codebase — most projects have at least 3 applicable patterns. This prevents tunnel vision on a single bug class.
+12. **Depth check:** At least 2 of the pattern sections with substantive findings must trace a code path across 2 or more functions (not just name a single function). A section that says "function X at file:line has a gap" is a surface finding. A section that says "function X at file:line calls function Y at file:line, which does A but not B; compare with function Z which does both" is a depth finding. Depth findings are what produce bugs in Phase 2b.
+13. A section titled **exactly** `## Candidate Bugs for Phase 2` exists and contains at least 3 prioritized bug hypotheses with file:line references, the pattern or open-exploration finding that surfaced each one, and what the code review should look for. This is the handoff from exploration to artifact generation.
 
-Do not begin Phase 2 until all eleven checks pass. Phase 1 is your only chance to understand the codebase deeply. Every requirement you miss here is a bug you will not find in Phase 2b. Invest the time.
+Do not begin Phase 2 until all thirteen checks pass. Phase 1 is your only chance to understand the codebase deeply. Every requirement you miss here is a bug you will not find in Phase 2b. Invest the time.
 
 ---
 
@@ -744,7 +756,7 @@ Do not begin Phase 2 until all eleven checks pass. Phase 1 is your only chance t
 > - `.github/skills/references/functional_tests.md` — test structure and anti-patterns
 > - `.github/skills/references/review_protocols.md` — code review and integration test templates
 
-**Phase 2 entry gate (mandatory).** Before generating any artifacts, read `quality/EXPLORATION.md` from disk. If the file does not exist, has fewer than 80 lines, or is missing any of the sections required by the Phase 1 completion gate (Open Exploration Findings, Fallback Path Analysis, Dispatcher Return-Value Analysis, Cross-Implementation Consistency, Enumeration/Representation Completeness, API Surface Consistency, Spec-Structured Parsing, Derived Requirements), stop and go back to Phase 1. Write EXPLORATION.md now, starting with open exploration driven by domain knowledge, then applying all six exploration patterns from `.github/skills/references/exploration_patterns.md`. Do not proceed with Phase 2 until EXPLORATION.md passes the Phase 1 completion gate. This check exists because single-pass execution can skip the Phase 1 gate — this is the backstop.
+**Phase 2 entry gate (mandatory).** Before generating any artifacts, read `quality/EXPLORATION.md` from disk. If the file does not exist, has fewer than 120 lines, or is missing any of the sections required by the Phase 1 completion gate (Open Exploration Findings, Fallback Path Analysis, Dispatcher Return-Value Analysis, Cross-Implementation Consistency, Enumeration/Representation Completeness, API Surface Consistency, Spec-Structured Parsing, Candidate Bugs for Phase 2, Derived Requirements), stop and go back to Phase 1. Write EXPLORATION.md now, starting with open exploration driven by domain knowledge, then applying all six exploration patterns from `.github/skills/references/exploration_patterns.md`. Do not proceed with Phase 2 until EXPLORATION.md passes the Phase 1 completion gate. This check exists because single-pass execution can skip the Phase 1 gate — this is the backstop.
 
 Use `quality/EXPLORATION.md` as your primary source for this phase — do not re-explore the codebase from scratch. The exploration findings contain the architecture map, derived requirements, use cases, and risk analysis that drive every artifact below. If you find yourself reading source files to figure out what the project does, go back to EXPLORATION.md instead. Re-exploration wastes context and produces inconsistencies between what Phase 1 found and what Phase 2 generates.
 
@@ -753,14 +765,14 @@ Now write the nine files. For each one, follow the structure below and consult t
 **Version stamp (mandatory on every generated file).** Every Markdown file the playbook generates must begin with the following attribution line immediately after the file's title heading:
 
 ```
-> Generated by [Quality Playbook](https://github.com/andrewstellman/quality-playbook) v1.3.41 — Andrew Stellman
+> Generated by [Quality Playbook](https://github.com/andrewstellman/quality-playbook) v1.3.42 — Andrew Stellman
 > Date: YYYY-MM-DD · Project: <project name>
 ```
 
 Every generated code file (test files, scripts) must begin with a comment header:
 
 ```
-# Generated by Quality Playbook v1.3.41 — https://github.com/andrewstellman/quality-playbook
+# Generated by Quality Playbook v1.3.42 — https://github.com/andrewstellman/quality-playbook
 # Author: Andrew Stellman · Date: YYYY-MM-DD · Project: <project name>
 ```
 
@@ -883,7 +895,7 @@ Pass 3 catches contradictions where two individually-correct pieces of code disa
 --- /dev/null
 +++ b/quality/test_regression_virtio.c
 @@ -0,0 +1,15 @@
-+// Generated by Quality Playbook v1.3.41
++// Generated by Quality Playbook v1.3.42
 +// Regression test for BUG-004: VIRTIO_F_RING_RESET missing from vring_transport_features()
 +#include <assert.h>
 +#include <string.h>
