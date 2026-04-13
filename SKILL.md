@@ -3,36 +3,31 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate nine quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, a consolidated bug report (BUGS.md) with patches, a TDD verification protocol (RUN_TDD_TESTS.md), an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis, missing safeguard detection, patch validation gates, and structured test output (JUnit XML + sidecar JSON). Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.38
+  version: 1.3.39
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
 
 # Quality Playbook Generator
 
-> **MANDATORY FIRST ACTION — do this before reading the rest of the skill.**
-> Print the following message to the user exactly as written, then continue.
->
-> Quality Playbook v1.3.38 — by Andrew Stellman
+## Plan Overview — read this first, then explain it to the user
+
+Before reading any other section of this skill, understand the plan and its dependencies. Each phase produces artifacts that the next phase depends on. Skipping or rushing a phase means every downstream phase works from incomplete information.
+
+**Phase 0 (Prior Run Analysis):** If previous quality runs exist, load their findings as seed data. This is automatic and only applies to re-runs.
+
+**Phase 1 (Explore):** Read the codebase, specifications, and documentation. Apply four systematic exploration patterns (fallback path parity, dispatcher return-value correctness, cross-implementation consistency, whitelist/enumeration completeness). Write all findings to `quality/EXPLORATION.md`. This file is the foundation — Phase 2 reads it as its primary input. If EXPLORATION.md is missing or incomplete, Phase 2 cannot produce good artifacts.
+
+**Phase 2 (Generate):** Read EXPLORATION.md and produce the quality artifacts: requirements, constitution, functional tests, code review protocol, integration tests, spec audit protocol, TDD protocol, AGENTS.md. Then execute the code review (Phase 2b), spec audit (Phase 2c), and reconciliation (Phase 2d). Every bug found traces back to a requirement, and every requirement traces back to an exploration finding.
+
+**Phase 3 (Verify):** Run self-check benchmarks against all generated artifacts. Check for internal consistency, version stamp correctness, and convergence.
+
+**The critical dependency chain:** Exploration findings → EXPLORATION.md → Requirements → Code review + Spec audit → Bug discovery. A shallow exploration produces abstract requirements. Abstract requirements miss bugs. The exploration phase is where bugs are won or lost.
+
+**MANDATORY FIRST ACTION:** After reading and understanding the plan above, print the following message to the user, then explain the plan in your own words — what you'll do, what each phase produces, and why the exploration phase matters most. Do not copy the plan verbatim; paraphrase it to demonstrate understanding.
+
+> Quality Playbook v1.3.39 — by Andrew Stellman
 > https://github.com/andrewstellman/quality-playbook
->
-> Generating a complete quality system for this project. Here's what I'll do:
->
-> Phase 0: (If prior runs exist) Load seed bugs, verify mechanically, inject into downstream phases
-> Phase 1: Explore the codebase — architecture, specs, defensive patterns, state machines
-> Phase 2: Generate quality artifacts:
->   - Quality constitution (QUALITY.md)
->   - Testable requirements via 5-phase pipeline (REQUIREMENTS.md)
->   - Functional tests derived from specs
->   - Code review protocol with regression tests and patch generation
->   - Consolidated bug report (BUGS.md) with patches
->   - TDD verification protocol (RUN_TDD_TESTS.md)
->   - Integration test and spec audit protocols
->   - AI bootstrap file (AGENTS.md)
-> Phase 3: Verify everything against self-check benchmarks, check convergence
-> (If not converged, archive and re-iterate from Phase 0 — up to 5 iterations)
->
-> This takes a while — I'm reading the entire codebase before writing anything.
 
 Generate a complete quality system tailored to a specific codebase. Unlike test stub generators that work mechanically from source code, this skill explores the project first — understanding its domain, architecture, specifications, and failure history — then produces a quality playbook grounded in what it finds.
 
@@ -104,7 +99,7 @@ The quality gate (`quality_gate.sh`) validates these artifacts. If the gate chec
 ```json
 {
   "schema_version": "1.1",
-  "skill_version": "1.3.38",
+  "skill_version": "1.3.39",
   "date": "2026-04-12",
   "project": "repo-name",
   "bugs": [
@@ -131,7 +126,7 @@ The quality gate (`quality_gate.sh`) validates these artifacts. If the gate chec
 ```json
 {
   "schema_version": "1.1",
-  "skill_version": "1.3.38",
+  "skill_version": "1.3.39",
   "date": "2026-04-12",
   "project": "repo-name",
   "recommendation": "SHIP",
@@ -749,14 +744,14 @@ Now write the nine files. For each one, follow the structure below and consult t
 **Version stamp (mandatory on every generated file).** Every Markdown file the playbook generates must begin with the following attribution line immediately after the file's title heading:
 
 ```
-> Generated by [Quality Playbook](https://github.com/andrewstellman/quality-playbook) v1.3.38 — Andrew Stellman
+> Generated by [Quality Playbook](https://github.com/andrewstellman/quality-playbook) v1.3.39 — Andrew Stellman
 > Date: YYYY-MM-DD · Project: <project name>
 ```
 
 Every generated code file (test files, scripts) must begin with a comment header:
 
 ```
-# Generated by Quality Playbook v1.3.38 — https://github.com/andrewstellman/quality-playbook
+# Generated by Quality Playbook v1.3.39 — https://github.com/andrewstellman/quality-playbook
 # Author: Andrew Stellman · Date: YYYY-MM-DD · Project: <project name>
 ```
 
@@ -879,7 +874,7 @@ Pass 3 catches contradictions where two individually-correct pieces of code disa
 --- /dev/null
 +++ b/quality/test_regression_virtio.c
 @@ -0,0 +1,15 @@
-+// Generated by Quality Playbook v1.3.38
++// Generated by Quality Playbook v1.3.39
 +// Regression test for BUG-004: VIRTIO_F_RING_RESET missing from vring_transport_features()
 +#include <assert.h>
 +#include <string.h>
