@@ -17,3 +17,9 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Council review artifacts (prompts, responses, briefings)
+council-reviews/
+
+# Pattern discovery working files
+pattern-discovery/
