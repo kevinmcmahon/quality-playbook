@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate nine quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, a consolidated bug report (BUGS.md) with patches, a TDD verification protocol (RUN_TDD_TESTS.md), an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis, missing safeguard detection, patch validation gates, and structured test output (JUnit XML + sidecar JSON). Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.44
+  version: 1.3.45
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -169,114 +169,29 @@ If a quality playbook already exists (`quality/QUALITY.md`, functional tests, et
 
 ### Iteration mode — improve on a previous run
 
-Use this when a previous playbook run exists and you want to find additional bugs. Iteration mode replaces Phase 1's from-scratch exploration with a targeted exploration using one of three strategies, then merges findings with the previous run and re-runs Phases 2–3 against the combined results.
+Use this when a previous playbook run exists and you want to find additional bugs. Iteration mode replaces Phase 1's from-scratch exploration with a targeted exploration using one of five strategies, then merges findings with the previous run and re-runs Phases 2–3 against the combined results.
 
 **When to use iteration mode:** After a complete playbook run, when you believe the codebase has more bugs than the first run found. This is especially effective for large codebases where a single run can only cover 3–5 subsystems, and for library/framework codebases where different exploration paths find different bug classes.
 
-**Iteration strategies.** Each strategy explores differently but they all share the same merge and continue steps. The user selects a strategy by naming it in the prompt:
+**Read `.github/skills/ITERATION.md` for detailed strategy instructions.** That file contains the full operational detail for each strategy, shared rules, merge steps, and the completion gate. The summary below describes when to use each strategy.
+
+**Iteration strategies.** The user selects a strategy by naming it in the prompt. If no strategy is named, default to `gap`.
 
 ```
 Run the next iteration of the quality playbook.                          # default: gap strategy
 Run the next iteration of the quality playbook using the gap strategy.
 Run the next iteration using the unfiltered strategy.
+Run the next iteration using the parity strategy.
 Run an iteration using the adversarial strategy.
 ```
 
-If no strategy is named, default to `gap`.
+**Recommended cycle:** gap → unfiltered → parity → adversarial. Each strategy finds different bug classes:
 
----
-
-#### Strategy: `gap` (default) — find what the previous run missed
-
-Scan the previous run's coverage and deliberately explore elsewhere. Best when the first run was structurally sound but only covered a subset of the codebase.
-
-1. **Coverage scan (lightweight).** Read the previous `quality/EXPLORATION.md` using a divide-and-conquer strategy — do NOT load the entire file into context at once. Instead:
-   - Read just the section headers and first 2–3 lines of each section to build a coverage map
-   - For each section, record: section name, subsystems covered, number of findings, depth level (shallow = single-function mentions, deep = multi-function traces)
-   - Write the coverage map to `quality/ITERATION_PLAN.md`
-
-2. **Gap identification.** From the coverage map, identify:
-   - Subsystems or modules that were not explored at all
-   - Sections with shallow findings (few lines, single-function mentions, no code-path traces)
-   - Quality Risks scenarios that were listed but never traced to specific code
-   - Pattern deep dives that could apply but weren't selected (from the applicability matrix)
-   - Domain-knowledge questions from Step 6 that weren't addressed
-
-3. **Targeted deep-read.** For only the 2–3 thinnest or most gap-rich sections, read the full section content from the previous EXPLORATION.md. This gives you specific context about what was already found without consuming your entire context budget on previous findings.
-
-4. **Gap exploration.** Run a focused Phase 1 exploration targeting only the identified gaps. Use the same three-stage approach (open exploration → quality risks → selected patterns) but scoped to the uncovered areas. Write findings to `quality/EXPLORATION_ITER{N}.md` (e.g., `EXPLORATION_ITER2.md` for the first iteration, `EXPLORATION_ITER3.md` for the second, etc.) using the same template structure. Check which iteration files already exist and use the next number.
-
----
-
-#### Strategy: `unfiltered` — pure domain-driven exploration without structural constraints
-
-Ignore the three-stage gated structure entirely. Explore the codebase the way an experienced developer would — reading code, following hunches, tracing suspicious paths — with no pattern templates, applicability matrices, or section format requirements. This strategy deliberately removes the structural scaffolding to let domain expertise drive discovery without constraint.
-
-**Why this strategy exists:** In benchmarking, the unfiltered domain-driven approach used in skill versions v1.3.25–v1.3.26 found bugs that the structured three-stage approach consistently missed, particularly in web frameworks (javalin: 5 bugs) and HTTP libraries (express: 2 bugs). The structured approach excels at systematic coverage but can over-constrain exploration, causing the model to spend context on format compliance rather than deep code reading. The unfiltered strategy recovers that lost discovery power.
-
-1. **Lightweight previous-run scan.** Read just the `## Candidate Bugs for Phase 2` section and `quality/BUGS.md` from the previous run to know what was already found. Do NOT read the full EXPLORATION.md — you want a fresh perspective, not to be anchored by previous exploration paths. Write a brief note to `quality/ITERATION_PLAN.md` listing what the previous run found and confirming you are using the unfiltered strategy.
-
-2. **Unfiltered exploration.** Explore the codebase from scratch using pure domain knowledge. No required sections, no pattern applicability matrix, no gate self-check. Instead:
-   - Read source code deeply — entry points, hot paths, error handling, edge cases
-   - Follow your domain expertise: "What would an expert in [this domain] find suspicious?"
-   - For each suspicious finding, trace the code path across 2+ functions with file:line citations
-   - Generate bug hypotheses directly — not "areas to investigate" but "this specific code at file:line produces wrong behavior because [reason]"
-   - Write findings to `quality/EXPLORATION_ITER{N}.md` as a flat list of findings, each with file:line references and a bug hypothesis. No structural template required — depth and specificity matter, not section formatting.
-   - Minimum: 10 concrete findings with file:line references, at least 5 of which trace code paths across 2+ functions
-
-3. **Domain-knowledge questions (from Step 6).** Complete these questions using the code you just explored AND your domain knowledge. These are the same questions from Step 6 but applied without structural constraint — write your answers inline with your findings, not in a separate gated section:
-   - What API surface inconsistencies exist between similar methods?
-   - Where does the code do ad-hoc string parsing of structured formats?
-   - What inputs would a domain expert try that a developer might not test?
-   - What metadata or configuration values could be silently wrong?
-
----
-
-#### Strategy: `adversarial` — challenge the previous run's conclusions
-
-Re-investigate what the previous run dismissed, demoted, or marked SATISFIED. This strategy assumes the previous run made Type II errors (missed real bugs by being too conservative) and systematically challenges those decisions.
-
-**Why this strategy exists:** In benchmarking, the triage step reliably demotes legitimate findings by demanding excessive evidence, marking ambiguous cases as "design choice," or accepting code-review SATISFIED verdicts without deep verification. The adversarial strategy specifically targets these failure modes.
-
-1. **Load previous decisions.** Read these files from the previous run (use divide-and-conquer — section headers first, then targeted deep reads):
-   - `quality/BUGS.md` — what was confirmed (to avoid re-finding the same bugs)
-   - `quality/spec_audits/*triage*` — what was dismissed or demoted during triage, and why
-   - `quality/code_reviews/*.md` — Pass 2 SATISFIED/VIOLATED verdicts
-   - `quality/EXPLORATION.md` — just the `## Candidate Bugs for Phase 2` section to see which candidates didn't become confirmed bugs
-   - Write a summary to `quality/ITERATION_PLAN.md` listing: (a) demoted/dismissed triage findings, (b) candidates that weren't promoted, (c) requirements marked SATISFIED that had thin evidence
-
-2. **Re-investigate dismissed findings.** For each demoted or dismissed finding from the triage:
-   - Read the specific code location cited in the finding
-   - Trace the code path independently — do not rely on the previous run's analysis
-   - Make an explicit CONFIRMED/FALSE-POSITIVE determination with fresh evidence
-   - If the previous triage said "needs runtime evidence" or "ambiguous design choice," check whether a code-path trace can resolve it (per the evidentiary standard in "What counts as sufficient evidence to confirm a bug")
-
-3. **Challenge SATISFIED verdicts.** For each requirement the code review marked SATISFIED with thin evidence (single-line citation, no code-path trace, or grouped with 3+ other requirements under one citation):
-   - Re-verify the requirement by reading the cited code and tracing the behavior
-   - Check whether the requirement is actually satisfied or whether the review took a shallow pass
-
-4. **Explore adjacent code.** For each re-confirmed or newly confirmed finding, explore the surrounding code for related bugs — bugs cluster. If a function has one bug, its callers and siblings likely have related issues.
-
-5. Write all findings to `quality/EXPLORATION_ITER{N}.md`. Each finding must include: the original source (triage dismissal, candidate demotion, or SATISFIED challenge), the fresh evidence, and the new determination.
-
----
-
-#### Shared steps for all strategies: merge and continue
-
-After completing the strategy-specific exploration steps above:
-
-**Merge.** Create or update `quality/EXPLORATION_MERGED.md` that combines findings from ALL iterations. For each section, concatenate the findings with clear attribution (`[Iteration 1]` / `[Iteration 2: gap]` / `[Iteration 3: unfiltered]` / etc.). Include the strategy name in the attribution so downstream phases can see which approach surfaced each finding. The Candidate Bugs section should be re-consolidated from all findings across all iterations. If `EXPLORATION_MERGED.md` already exists from a previous iteration, merge the new iteration's findings into it rather than starting from scratch.
-
-**Continue with Phases 2–3.** Use `EXPLORATION_MERGED.md` as the primary input for Phase 2 artifact generation. All downstream artifacts (REQUIREMENTS.md, code review, spec audit) should reference the merged exploration.
-
-**Context budget discipline for iteration mode.** The divide-and-conquer strategy is critical. A first-run EXPLORATION.md can be 200–400 lines. Loading it all into context before starting your own exploration leaves too little room for deep investigation. The previous-run scan should consume ~20–30 lines of context. Targeted deep-reads should consume ~40–60 lines total. This leaves the bulk of your context budget for new exploration.
-
-**Iteration mode completion gate.** Before proceeding to Phase 2 (applies to all strategies):
-- `quality/ITERATION_PLAN.md` exists and names the strategy used
-- `quality/EXPLORATION_ITER{N}.md` exists for this iteration with at least 80 lines of substantive content
-- `quality/EXPLORATION_MERGED.md` exists and contains findings from all iterations
-- The merged Candidate Bugs section has at least 2 new candidates not present in previous iterations
-- At least 1 finding covers a code area not explored in previous iterations OR re-confirms a previously dismissed finding with fresh evidence
+- **`gap`** (default) — Scan previous coverage, explore uncovered subsystems and thin sections. Best when the first run was structurally sound but only covered a subset of the codebase.
+- **`unfiltered`** — Pure domain-driven exploration with no structural constraints. No pattern templates, no applicability matrices, no section format requirements. Recovers bugs that structured exploration suppresses.
+- **`parity`** — Systematically enumerate parallel implementations of the same contract (transport variants, fallback chains, setup-vs-reset paths) and diff them for inconsistencies. Finds bugs that only emerge from cross-path comparison.
+- **`adversarial`** — Re-investigate dismissed/demoted triage findings and challenge thin SATISFIED verdicts. Recovers Type II errors from conservative triage.
+- **`all`** — Runner-level convenience: executes gap → unfiltered → parity → adversarial in sequence, each as a separate agent session. Stops early if a strategy finds zero new bugs.
 
 ### Multi-pass execution
 
@@ -1615,6 +1530,17 @@ Re-read `quality/PROGRESS.md`. Update:
 - Add a final summary line: "Run complete. N BUGs found (N from code review, N from spec audit). N regression tests written. N exemptions granted."
 
 The completed PROGRESS.md is a permanent audit trail. It documents what the skill did, what it found, and how it resolved each finding. Users can read it to understand the run, debug failures, and compare across runs.
+
+### Suggested Next Iteration
+
+After finalizing PROGRESS.md, print a suggested prompt for the next iteration strategy. This helps the user discover the iteration cycle without needing to memorize strategy names. See `.github/skills/ITERATION.md` "Suggested next iteration" for the mapping. For a baseline (non-iteration) run, suggest:
+
+```
+────────────────────────────────────────────────────────
+Next iteration suggestion:
+"Run the next iteration of the quality playbook using the gap strategy."
+────────────────────────────────────────────────────────
+```
 
 ### Convergence Check (continuation mode only)
 

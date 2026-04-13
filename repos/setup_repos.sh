@@ -141,6 +141,7 @@ for short in "${REPOS[@]}"; do
     # Install skill files
     mkdir -p "${dst}/.github/skills/references"
     cp "${QPB_DIR}/SKILL.md" "${dst}/.github/skills/SKILL.md"
+    cp "${QPB_DIR}/ITERATION.md" "${dst}/.github/skills/ITERATION.md" 2>/dev/null || true
     cp "${QPB_DIR}/references/"* "${dst}/.github/skills/references/" 2>/dev/null || true
     cp "${QPB_DIR}/LICENSE.txt" "${dst}/.github/skills/LICENSE.txt" 2>/dev/null || true
     cp "${SCRIPT_DIR}/quality_gate.sh" "${dst}/.github/skills/quality_gate.sh" 2>/dev/null || true

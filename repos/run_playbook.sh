@@ -27,7 +27,7 @@
 #   --single-pass    One prompt for the entire pipeline (default: on)
 #   --multi-pass     Four passes per repo (explore → generate → review → gate)
 #   --next-iteration Iterate on an existing quality/ run (no archive, builds on it)
-#   --strategy STR   Iteration strategy: gap (default), unfiltered, adversarial
+#   --strategy STR   Iteration strategy: gap (default), unfiltered, parity, adversarial, all
 #   --model MODEL    Model (claude: opus, sonnet, …; copilot: gpt-5.4, …)
 #   --kill           Kill processes from the current/last parallel run
 #
@@ -45,7 +45,7 @@ RUNNER="copilot"  # "copilot" or "claude"
 NO_SEEDS=true     # clean benchmark — skip Phase 0 / sibling seeds
 SINGLE_PASS=true  # one CLI invocation per repo with the full skill
 NEXT_ITERATION=false  # iterate on existing quality/ run
-ITER_STRATEGY="gap"   # iteration strategy: gap, unfiltered, adversarial
+ITER_STRATEGY="gap"   # iteration strategy: gap, unfiltered, parity, adversarial, all
 CLAUDE_MODEL=""
 REPO_NAMES=()
 EXPECT_MODEL=false
@@ -107,8 +107,8 @@ fi
 
 # Validate --strategy
 case "$ITER_STRATEGY" in
-    gap|unfiltered|adversarial) ;;
-    *) echo "ERROR: Unknown strategy '${ITER_STRATEGY}'. Must be one of: gap, unfiltered, adversarial"; exit 1 ;;
+    gap|unfiltered|parity|adversarial|all) ;;
+    *) echo "ERROR: Unknown strategy '${ITER_STRATEGY}'. Must be one of: gap, unfiltered, parity, adversarial, all"; exit 1 ;;
 esac
 
 # --strategy without --next-iteration is a no-op but warn
@@ -381,21 +381,23 @@ single_pass_prompt() {
 
 iteration_prompt() {
     local strategy="$1"
-    local strategy_instruction=""
-    case "$strategy" in
-        gap)
-            strategy_instruction="Use the gap strategy: scan previous coverage, identify gaps, explore those gaps."
-            ;;
-        unfiltered)
-            strategy_instruction="Use the unfiltered strategy: ignore the three-stage gated structure entirely. Do a pure domain-driven exploration — read code as an expert, follow hunches, trace suspicious paths. No pattern templates, no applicability matrices, no section format requirements. Let domain expertise drive discovery without structural constraint."
-            ;;
-        adversarial)
-            strategy_instruction="Use the adversarial strategy: re-investigate what the previous run dismissed, demoted, or marked SATISFIED. Challenge the previous run's triage decisions, re-verify thin SATISFIED verdicts, and trace dismissed findings with fresh evidence."
-            ;;
-    esac
 
-    echo "Read the quality playbook skill at .github/skills/SKILL.md — specifically the 'Iteration mode' section and the '${strategy}' strategy. A previous quality playbook run exists in quality/ with findings in quality/EXPLORATION.md. Run the next iteration of the quality playbook using the ${strategy} strategy. ${strategy_instruction} Write findings to EXPLORATION_ITER{N}.md (check which iteration files already exist and use the next number), merge into EXPLORATION_MERGED.md, then run Phases 2–3 against the merged findings. Additional documentation for this project has been gathered in docs_gathered/ — use it during exploration. IMPORTANT: Before marking Phase 2d complete, run 'bash .github/skills/quality_gate.sh .' and fix any FAIL results. Save the output to quality/results/quality-gate.log. IMPORTANT: Do NOT archive or delete the existing quality/ directory — you are building on it, not replacing it."
+    echo "Read the quality playbook skill at .github/skills/SKILL.md and the iteration reference at .github/skills/ITERATION.md. A previous quality playbook run exists in quality/. Run the next iteration of the quality playbook using the ${strategy} strategy. Additional documentation for this project has been gathered in docs_gathered/ — use it during exploration. IMPORTANT: Before marking Phase 2d complete, run 'bash .github/skills/quality_gate.sh .' and fix any FAIL results. Save the output to quality/results/quality-gate.log."
 }
+
+# ── Next-strategy cycle ──
+
+next_strategy() {
+    case "$1" in
+        gap)          echo "unfiltered" ;;
+        unfiltered)   echo "parity" ;;
+        parity)       echo "adversarial" ;;
+        adversarial)  echo "" ;;  # cycle complete
+        *)            echo "gap" ;;
+    esac
+}
+
+ALL_STRATEGIES=(gap unfiltered parity adversarial)
 
 # ── Run one repo (multi-pass) ──
 
@@ -571,6 +573,58 @@ run_one() {
     fi
 }
 
+# ── Strategy: all — loop through gap → unfiltered → parity → adversarial ──
+
+if [ "$ITER_STRATEGY" = "all" ] && [ "$NEXT_ITERATION" = true ]; then
+    repo_args=""
+    for repo_dir in "${REPO_DIRS[@]}"; do
+        repo_args="${repo_args} $(basename "$repo_dir" | sed 's/-[0-9].*//')"
+    done
+    repo_args=$(echo "$repo_args" | xargs)
+
+    echo "=== Running all iteration strategies: gap → unfiltered → parity → adversarial ==="
+    echo ""
+
+    for strategy in "${ALL_STRATEGIES[@]}"; do
+        echo "══════════════════════════════════════════════════════════"
+        echo "  Strategy: ${strategy}"
+        echo "══════════════════════════════════════════════════════════"
+        echo ""
+
+        # Count bugs before this strategy
+        before_bugs=0
+        for repo_dir in "${REPO_DIRS[@]}"; do
+            n=$(ls "${repo_dir}/quality/writeups/BUG-"*.md 2>/dev/null | wc -l)
+            before_bugs=$((before_bugs + n))
+        done
+
+        # Re-invoke ourselves for this single strategy
+        _ALL_RUNNING=true "$0" --next-iteration --strategy "$strategy" $repo_args
+
+        # Count bugs after
+        after_bugs=0
+        for repo_dir in "${REPO_DIRS[@]}"; do
+            n=$(ls "${repo_dir}/quality/writeups/BUG-"*.md 2>/dev/null | wc -l)
+            after_bugs=$((after_bugs + n))
+        done
+
+        gained=$((after_bugs - before_bugs))
+        echo ""
+        echo "  Strategy ${strategy}: ${before_bugs} → ${after_bugs} bugs (+${gained})"
+
+        if [ "$gained" -eq 0 ]; then
+            echo "  No new bugs found — stopping early (diminishing returns)."
+            break
+        fi
+        echo ""
+    done
+
+    echo ""
+    echo "=== All-strategy run complete ==="
+    print_summary "${REPO_DIRS[@]}"
+    exit 0
+fi
+
 if [ "$PARALLEL" = true ]; then
     PIDS=()
     : > "$PID_FILE"  # truncate
@@ -597,3 +651,39 @@ else
 fi
 
 print_summary "${REPO_DIRS[@]}"
+
+# ── Suggested next command ──
+
+suggest_next_command() {
+    local repo_names=""
+    for repo_dir in "${REPO_DIRS[@]}"; do
+        repo_names="${repo_names} $(basename "$repo_dir" | sed 's/-[0-9].*//')"
+    done
+    repo_names=$(echo "$repo_names" | xargs)  # trim
+
+    if [ "$NEXT_ITERATION" = true ]; then
+        local next
+        next=$(next_strategy "$ITER_STRATEGY")
+        if [ -n "$next" ]; then
+            echo "────────────────────────────────────────────────────────"
+            echo "Next iteration suggestion:"
+            echo "  ./run_playbook.sh --next-iteration --strategy ${next} ${repo_names}"
+            echo "────────────────────────────────────────────────────────"
+        else
+            echo "────────────────────────────────────────────────────────"
+            echo "Iteration cycle complete (gap → unfiltered → parity → adversarial)."
+            echo "To start fresh:  ./run_playbook.sh ${repo_names}"
+            echo "────────────────────────────────────────────────────────"
+        fi
+    else
+        echo "────────────────────────────────────────────────────────"
+        echo "Next iteration suggestion:"
+        echo "  ./run_playbook.sh --next-iteration --strategy gap ${repo_names}"
+        echo "────────────────────────────────────────────────────────"
+    fi
+}
+
+# Don't print suggestion for individual strategies within an 'all' run
+if [ "${_ALL_RUNNING:-false}" != true ]; then
+    suggest_next_command
+fi
