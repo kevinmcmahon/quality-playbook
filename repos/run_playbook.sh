@@ -15,6 +15,7 @@
 #   ./run_playbook.sh --multi-pass virtio chi            # 4-pass per repo
 #   ./run_playbook.sh --claude --model opus virtio       # Claude CLI instead of Copilot
 #   ./run_playbook.sh --next-iteration virtio chi        # iterate on existing quality/ run
+#   ./run_playbook.sh --next-iteration --strategy unfiltered virtio  # unfiltered iteration
 #
 # Options:
 #   --parallel       Run all repos concurrently (default: on)
@@ -26,6 +27,7 @@
 #   --single-pass    One prompt for the entire pipeline (default: on)
 #   --multi-pass     Four passes per repo (explore → generate → review → gate)
 #   --next-iteration Iterate on an existing quality/ run (no archive, builds on it)
+#   --strategy STR   Iteration strategy: gap (default), unfiltered, adversarial
 #   --model MODEL    Model (claude: opus, sonnet, …; copilot: gpt-5.4, …)
 #   --kill           Kill processes from the current/last parallel run
 #
@@ -43,13 +45,20 @@ RUNNER="copilot"  # "copilot" or "claude"
 NO_SEEDS=true     # clean benchmark — skip Phase 0 / sibling seeds
 SINGLE_PASS=true  # one CLI invocation per repo with the full skill
 NEXT_ITERATION=false  # iterate on existing quality/ run
+ITER_STRATEGY="gap"   # iteration strategy: gap, unfiltered, adversarial
 CLAUDE_MODEL=""
 REPO_NAMES=()
 EXPECT_MODEL=false
+EXPECT_STRATEGY=false
 for arg in "$@"; do
     if [ "$EXPECT_MODEL" = true ]; then
         CLAUDE_MODEL="$arg"
         EXPECT_MODEL=false
+        continue
+    fi
+    if [ "$EXPECT_STRATEGY" = true ]; then
+        ITER_STRATEGY="$arg"
+        EXPECT_STRATEGY=false
         continue
     fi
     case "$arg" in
@@ -62,6 +71,7 @@ for arg in "$@"; do
         --single-pass)      SINGLE_PASS=true ;;
         --multi-pass)       SINGLE_PASS=false ;;
         --next-iteration)   NEXT_ITERATION=true ;;
+        --strategy)         EXPECT_STRATEGY=true ;;
         --kill)
             if [ -f "$PID_FILE" ]; then
                 echo "Killing PIDs from $PID_FILE:"
@@ -93,6 +103,17 @@ done
 if [ "$NEXT_ITERATION" = true ] && [ "$SINGLE_PASS" = false ]; then
     echo "ERROR: --next-iteration is not compatible with --multi-pass. Iteration uses a single prompt."
     exit 1
+fi
+
+# Validate --strategy
+case "$ITER_STRATEGY" in
+    gap|unfiltered|adversarial) ;;
+    *) echo "ERROR: Unknown strategy '${ITER_STRATEGY}'. Must be one of: gap, unfiltered, adversarial"; exit 1 ;;
+esac
+
+# --strategy without --next-iteration is a no-op but warn
+if [ "$NEXT_ITERATION" = false ] && [ "$ITER_STRATEGY" != "gap" ]; then
+    echo "WARNING: --strategy is ignored without --next-iteration"
 fi
 
 VERSION=$(detect_skill_version)
@@ -129,7 +150,7 @@ fi
 echo "No seeds: ${NO_SEEDS}  (Phase 0/0b skipped when true)"
 echo "Parallel: ${PARALLEL}"
 if [ "$NEXT_ITERATION" = true ]; then
-    echo "Mode:     next-iteration (builds on existing quality/)"
+    echo "Mode:     next-iteration (strategy: ${ITER_STRATEGY}, builds on existing quality/)"
 elif [ "$SINGLE_PASS" = true ]; then
     echo "Mode:     single-pass (one prompt)"
 else
@@ -359,7 +380,21 @@ single_pass_prompt() {
 # ── Iteration prompt (builds on an existing quality/ run) ──
 
 iteration_prompt() {
-    echo "Read the quality playbook skill at .github/skills/SKILL.md — specifically the 'Iteration mode' section. A previous quality playbook run exists in quality/ with findings in quality/EXPLORATION.md. Run the next iteration of the quality playbook to improve on the previous run. Follow the iteration mode instructions: scan previous coverage, identify gaps, explore those gaps, write EXPLORATION_ITER2.md (or EXPLORATION_ITER3.md etc. for subsequent iterations), merge into EXPLORATION_MERGED.md, then run Phases 2–3 against the merged findings. Additional documentation for this project has been gathered in docs_gathered/ — use it during gap exploration. IMPORTANT: Before marking Phase 2d complete, run 'bash .github/skills/quality_gate.sh .' and fix any FAIL results. Save the output to quality/results/quality-gate.log. IMPORTANT: Do NOT archive or delete the existing quality/ directory — you are building on it, not replacing it."
+    local strategy="$1"
+    local strategy_instruction=""
+    case "$strategy" in
+        gap)
+            strategy_instruction="Use the gap strategy: scan previous coverage, identify gaps, explore those gaps."
+            ;;
+        unfiltered)
+            strategy_instruction="Use the unfiltered strategy: ignore the three-stage gated structure entirely. Do a pure domain-driven exploration — read code as an expert, follow hunches, trace suspicious paths. No pattern templates, no applicability matrices, no section format requirements. Let domain expertise drive discovery without structural constraint."
+            ;;
+        adversarial)
+            strategy_instruction="Use the adversarial strategy: re-investigate what the previous run dismissed, demoted, or marked SATISFIED. Challenge the previous run's triage decisions, re-verify thin SATISFIED verdicts, and trace dismissed findings with fresh evidence."
+            ;;
+    esac
+
+    echo "Read the quality playbook skill at .github/skills/SKILL.md — specifically the 'Iteration mode' section and the '${strategy}' strategy. A previous quality playbook run exists in quality/ with findings in quality/EXPLORATION.md. Run the next iteration of the quality playbook using the ${strategy} strategy. ${strategy_instruction} Write findings to EXPLORATION_ITER{N}.md (check which iteration files already exist and use the next number), merge into EXPLORATION_MERGED.md, then run Phases 2–3 against the merged findings. Additional documentation for this project has been gathered in docs_gathered/ — use it during exploration. IMPORTANT: Before marking Phase 2d complete, run 'bash .github/skills/quality_gate.sh .' and fix any FAIL results. Save the output to quality/results/quality-gate.log. IMPORTANT: Do NOT archive or delete the existing quality/ directory — you are building on it, not replacing it."
 }
 
 # ── Run one repo (multi-pass) ──
@@ -484,9 +519,9 @@ run_one_singlepass() {
             log "SKIP: ${repo_name} — no quality/EXPLORATION.md to iterate on"
             return 1
         fi
-        prompt=$(iteration_prompt)
-        pass_label="iteration"
-        logboth "$log_file" "$(log "Starting iteration: ${repo_name} (runner=${RUNNER}, building on existing quality/)")"
+        prompt=$(iteration_prompt "$ITER_STRATEGY")
+        pass_label="iteration-${ITER_STRATEGY}"
+        logboth "$log_file" "$(log "Starting iteration (${ITER_STRATEGY}): ${repo_name} (runner=${RUNNER}, building on existing quality/)")"
     else
         # Fresh run: archive previous quality/ and start clean
         if [ -d "${repo_dir}/quality" ]; then
