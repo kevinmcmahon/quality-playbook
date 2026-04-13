@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate nine quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, a consolidated bug report (BUGS.md) with patches, a TDD verification protocol (RUN_TDD_TESTS.md), an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis, missing safeguard detection, patch validation gates, and structured test output (JUnit XML + sidecar JSON). Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.43
+  version: 1.3.44
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -26,7 +26,7 @@ Before reading any other section of this skill, understand the plan and its depe
 
 **MANDATORY FIRST ACTION:** After reading and understanding the plan above, print the following message to the user, then explain the plan in your own words — what you'll do, what each phase produces, and why the exploration phase matters most. Emphasize that exploration starts with open-ended domain-driven investigation, followed by domain-knowledge risk analysis that reasons about what goes wrong in systems like this, then supplemented by selected structured patterns. Do not copy the plan verbatim; paraphrase it to demonstrate understanding.
 
-> Quality Playbook v1.3.43 — by Andrew Stellman
+> Quality Playbook v1.3.44 — by Andrew Stellman
 > https://github.com/andrewstellman/quality-playbook
 
 Generate a complete quality system tailored to a specific codebase. Unlike test stub generators that work mechanically from source code, this skill explores the project first — understanding its domain, architecture, specifications, and failure history — then produces a quality playbook grounded in what it finds.
@@ -167,6 +167,47 @@ Run the spec audit protocol.
 
 If a quality playbook already exists (`quality/QUALITY.md`, functional tests, etc.), read the existing files first, then evaluate them against the self-check benchmarks in the verification phase. Don't assume existing files are complete — treat them as a starting point.
 
+### Iteration mode — improve on a previous run
+
+```
+Run another iteration of the quality playbook to improve on the previous iteration.
+```
+
+Use this when a previous playbook run exists and you want to find additional bugs by exploring areas the first run missed. Iteration mode replaces Phase 1's from-scratch exploration with a gap-targeted exploration that reads the previous run's coverage and deliberately looks elsewhere. It produces a supplemental EXPLORATION.md that gets merged with the original, then runs Phases 2–3 against the combined findings.
+
+**When to use iteration mode:** After a complete playbook run, when you believe the codebase has more bugs than the first run found. This is especially effective for large codebases where a single run can only cover 3–5 subsystems, and for library/framework codebases where different exploration paths find different bug classes.
+
+**How iteration mode works:**
+
+1. **Coverage scan (lightweight).** Read the previous `quality/EXPLORATION.md` using a divide-and-conquer strategy — do NOT load the entire file into context at once. Instead:
+   - Read just the section headers and first 2–3 lines of each section to build a coverage map
+   - For each section, record: section name, subsystems covered, number of findings, depth level (shallow = single-function mentions, deep = multi-function traces)
+   - Write the coverage map to `quality/ITERATION_PLAN.md`
+
+2. **Gap identification.** From the coverage map, identify:
+   - Subsystems or modules that were not explored at all
+   - Sections with shallow findings (few lines, single-function mentions, no code-path traces)
+   - Quality Risks scenarios that were listed but never traced to specific code
+   - Pattern deep dives that could apply but weren't selected (from the applicability matrix)
+   - Domain-knowledge questions from Step 6 that weren't addressed
+
+3. **Targeted deep-read.** For only the 2–3 thinnest or most gap-rich sections, read the full section content from the previous EXPLORATION.md. This gives you specific context about what was already found without consuming your entire context budget on previous findings.
+
+4. **Gap exploration.** Run a focused Phase 1 exploration targeting only the identified gaps. Use the same three-stage approach (open exploration → quality risks → selected patterns) but scoped to the uncovered areas. Write findings to `quality/EXPLORATION_ITER2.md` using the same template structure.
+
+5. **Merge.** After gap exploration is complete, create a merged `quality/EXPLORATION_MERGED.md` that combines findings from both iterations. For each section, concatenate the findings with clear attribution (`[Iteration 1]` / `[Iteration 2]`). The Candidate Bugs section should be re-consolidated from all findings across both iterations.
+
+6. **Continue with Phases 2–3.** Use `EXPLORATION_MERGED.md` as the primary input for Phase 2 artifact generation. All downstream artifacts (REQUIREMENTS.md, code review, spec audit) should reference the merged exploration.
+
+**Context budget discipline for iteration mode.** The divide-and-conquer strategy is critical. A first-run EXPLORATION.md can be 200–400 lines. Loading it all into context before starting your own exploration leaves too little room for deep investigation. The coverage scan (step 1) should consume ~20–30 lines of context. The targeted deep-reads (step 3) should consume ~40–60 lines total. This leaves the bulk of your context budget for new exploration.
+
+**Iteration mode completion gate.** Before proceeding to Phase 2:
+- `quality/ITERATION_PLAN.md` exists and lists at least 3 coverage gaps from the previous run
+- `quality/EXPLORATION_ITER2.md` exists with at least 80 lines of substantive content
+- `quality/EXPLORATION_MERGED.md` exists and contains findings from both iterations
+- The merged Candidate Bugs section has at least 2 new candidates not present in the first iteration
+- At least 1 gap-exploration finding covers a subsystem or module not explored in the first iteration
+
 ### Multi-pass execution
 
 The playbook handles multi-pass execution internally — you run all phases yourself in a single session, using files on disk as the context bridge between phases. Do not use external shell scripts, separate `claude -p` invocations, or any other external orchestration to split the work across multiple sessions. The skill is self-contained: one session, one invocation, all phases.
@@ -247,7 +288,7 @@ Spend the first phase understanding the project. The quality playbook must be gr
 
    **What this stage must NOT produce:** A section that lists defensive patterns the code already has (things the code does RIGHT) is not a risk analysis. A section that lists risky modules without specific failure scenarios is not a risk analysis. A section that concludes "this is a mature, well-tested library so basic bugs are unlikely" is actively harmful — mature libraries have the most subtle bugs, precisely because the obvious ones were found years ago. The test: could a code reviewer read each scenario and immediately know what to check? If not, the scenario is too abstract.
 
-3. **Pattern-driven exploration (selected, not exhaustive).** After open exploration and domain-risk analysis are written to disk, evaluate all six analysis patterns from `exploration_patterns.md` using a pattern applicability matrix. For each pattern, assess whether it applies to this codebase and what it would target. Then select exactly 3 patterns for deep-dive treatment — the 3 highest-yield patterns for this specific codebase. The remaining patterns get a brief "not applicable" or "deferred" note with codebase-specific rationale. Do not produce deep sections for all six patterns — depth on 3 beats shallow coverage of 6.
+3. **Pattern-driven exploration (selected, not exhaustive).** After open exploration and domain-risk analysis are written to disk, evaluate all six analysis patterns from `exploration_patterns.md` using a pattern applicability matrix. For each pattern, assess whether it applies to this codebase and what it would target. Then select 3 to 4 patterns for deep-dive treatment — the highest-yield patterns for this specific codebase. The remaining patterns get a brief "not applicable" or "deferred" note with codebase-specific rationale. Do not produce deep sections for all six patterns — depth on 3–4 beats shallow coverage of 6. Select 4 when a fourth pattern has clear applicability and would cover code areas not reached by the other three; default to 3 when in doubt.
 
    For each selected pattern deep dive, use the output format from the reference file and trace code paths across 2+ functions. The deep dives should pressure-test, refine, or extend the findings from the open exploration and risk analysis — not repeat them.
 
@@ -719,7 +760,7 @@ A section that lists defensive patterns the code already has does NOT belong her
 | API Surface Consistency | | | |
 | Spec-Structured Parsing Fidelity | | | |
 
-[Exactly 3 patterns must be marked FULL. The rest are SKIP with codebase-specific rationale.]
+[3 to 4 patterns must be marked FULL. The rest are SKIP with codebase-specific rationale. Select 4 when a fourth pattern clearly applies and covers different code areas.]
 
 ## Pattern Deep Dive — [Pattern Name]
 [Use the output format from `exploration_patterns.md`.
@@ -728,7 +769,7 @@ Each deep dive should pressure-test, refine, or extend findings from the open
 exploration and quality risks stages.]
 
 ## Pattern Deep Dive — [Pattern Name]
-[Repeat for each selected FULL pattern. Exactly 3 deep-dive sections total.]
+[Repeat for each selected FULL pattern. 3 to 4 deep-dive sections total.]
 
 ## Pattern Deep Dive — [Pattern Name]
 [Third and final deep dive.]
@@ -747,6 +788,11 @@ source stage and what the Phase 2 code review should inspect.]
 
 ## Notes for Artifact Generation
 [Anything the next phase needs to know — naming conventions, test patterns, framework quirks]
+
+## Gate Self-Check
+[Written by the Phase 1 gate. Each check 1–12 with PASS/FAIL and one-line evidence.
+This section proves the gate was executed. Do not write this section until you have
+actually verified each check against the file contents.]
 ```
 
 **Minimum depth expectation:** EXPLORATION.md must contain at least 120 lines of substantive content — not padding or boilerplate headers, but actual findings (file paths, behavioral rules, derived requirements, architecture observations). A skeleton that lists section headers with one-line placeholders is not a valid handoff artifact. If the file is thinner than this, go back and add the detail Phase 2 will need.
@@ -755,7 +801,9 @@ source stage and what the Phase 2 code review should inspect.]
 
 This file is essential in all modes. In single-pass mode it forces the model to articulate specific findings (file paths, function names, line numbers) before generating artifacts. In multi-pass mode it is also the handoff artifact between passes. Either way, the write-then-read cycle is the quality gate for exploration depth.
 
-**Phase 1 completion gate (mandatory).** Before proceeding to Phase 2, re-read `quality/EXPLORATION.md` from disk and verify all of the following. If any check fails, fix EXPLORATION.md before proceeding.
+**Phase 1 completion gate (mandatory — STOP HERE before Phase 2).** You MUST execute this gate before proceeding to Phase 2. This is not optional. Re-read `quality/EXPLORATION.md` from disk and run every check below. After checking, append a `## Gate Self-Check` section to the bottom of EXPLORATION.md that lists each check number (1–12) with PASS or FAIL and a one-line evidence note. If any check fails, fix EXPLORATION.md and re-run the gate. Do not proceed to Phase 2 until all checks pass AND the Gate Self-Check section is written to disk.
+
+**Common gate-bypass failure mode:** In v1.3.43 benchmarking, two repos (chi, zod) produced EXPLORATION.md files with completely wrong section structure — sections like "Architecture summary", "Behavioral contracts", "Repository and architecture map" instead of the required sections. The model never ran the gate checks and proceeded directly to Phase 2, producing zero bugs. If your EXPLORATION.md does not contain sections with the EXACT titles listed below, it is non-conformant and must be rewritten before proceeding.
 
 1. The file exists on disk and contains at least 120 lines of substantive content.
 2. `quality/PROGRESS.md` exists and marks Phase 1 complete.
@@ -764,13 +812,15 @@ This file is essential in all modes. In single-pass mode it forces the model to 
 5. **Open-exploration depth check:** At least 3 findings in `## Open Exploration Findings` must trace a behavior across 2 or more functions or 2 concrete code locations. A list of isolated single-function suspicions is not sufficient depth.
 6. A section titled **exactly** `## Quality Risks` exists and contains at least 5 domain-driven failure scenarios ranked by priority. Each scenario must: (a) name a specific function, file, and line, (b) describe a domain-specific edge case or failure mode, and (c) explain why the code produces wrong behavior. These must come from domain knowledge about what goes wrong in systems like this one — not from structural analysis of the code alone. A section that lists defensive patterns the code already has (things the code does RIGHT) does not satisfy this gate. A section that lists risky modules without specific failure scenarios does not satisfy this gate. A section that concludes the library is mature and unlikely to have basic bugs does not satisfy this gate.
 7. A section titled **exactly** `## Pattern Applicability Matrix` exists and evaluates all six patterns from `exploration_patterns.md`, marking each as `FULL` or `SKIP` with target modules and codebase-specific rationale.
-8. Exactly 3 patterns are marked `FULL` in the applicability matrix.
-9. There are exactly 3 sections whose titles begin with `## Pattern Deep Dive — `. Each must contain concrete file:line evidence, not just pattern-name placeholders.
-10. **Pattern depth check:** At least 2 of the 3 pattern deep-dive sections must trace a code path across 2 or more functions. A section that says "function X at file:line has a gap" is a surface finding. A section that says "function X at file:line calls function Y at file:line, which does A but not B; compare with function Z which does both" is a depth finding.
+8. Between 3 and 4 patterns (inclusive) are marked `FULL` in the applicability matrix.
+9. There are between 3 and 4 sections (inclusive) whose titles begin with `## Pattern Deep Dive — `. Each must contain concrete file:line evidence, not just pattern-name placeholders. The count must match the number of `FULL` patterns in the matrix.
+10. **Pattern depth check:** At least 2 of the pattern deep-dive sections must trace a code path across 2 or more functions. A section that says "function X at file:line has a gap" is a surface finding. A section that says "function X at file:line calls function Y at file:line, which does A but not B; compare with function Z which does both" is a depth finding.
 11. A section titled **exactly** `## Candidate Bugs for Phase 2` exists and contains at least 4 prioritized bug hypotheses with file:line references, the stage that surfaced each one (open exploration, quality risks, or pattern), and what the code review should look for.
 12. **Ensemble balance check:** At least 2 candidate bugs must originate from open exploration or quality risks, and at least 1 must originate from or be materially strengthened by a pattern deep dive. This ensures both domain-knowledge and structural-analysis findings flow into Phase 2.
 
-Do not begin Phase 2 until all twelve checks pass. Phase 1 is your only chance to understand the codebase deeply. Every requirement you miss here is a bug you will not find in Phase 2b. Invest the time.
+Do not begin Phase 2 until all twelve checks pass AND the `## Gate Self-Check` section is written to EXPLORATION.md on disk. Phase 1 is your only chance to understand the codebase deeply. Every requirement you miss here is a bug you will not find in Phase 2b. Invest the time.
+
+**If you find yourself about to start Phase 2 without having written a Gate Self-Check section, STOP.** Go back and run the gate. This instruction exists because models reliably skip the gate when they feel confident about their exploration — and that confidence is precisely when bugs are missed.
 
 ---
 
@@ -785,7 +835,16 @@ Do not begin Phase 2 until all twelve checks pass. Phase 1 is your only chance t
 > - `.github/skills/references/functional_tests.md` — test structure and anti-patterns
 > - `.github/skills/references/review_protocols.md` — code review and integration test templates
 
-**Phase 2 entry gate (mandatory).** Before generating any artifacts, read `quality/EXPLORATION.md` from disk. If the file does not exist, has fewer than 120 lines, or is missing any of the sections required by the Phase 1 completion gate (Open Exploration Findings, Quality Risks, Pattern Applicability Matrix, three Pattern Deep Dive sections, Candidate Bugs for Phase 2, Derived Requirements), stop and go back to Phase 1. Write EXPLORATION.md now, starting with domain-driven open exploration, then domain-knowledge risk analysis, then selecting 3 patterns from `.github/skills/references/exploration_patterns.md` for deep dives. Do not proceed with Phase 2 until EXPLORATION.md passes the Phase 1 completion gate. This check exists because single-pass execution can skip the Phase 1 gate — this is the backstop.
+**Phase 2 entry gate (mandatory — HARD STOP).** Before generating any artifacts, read `quality/EXPLORATION.md` from disk and verify ALL of the following exact section titles exist (grep or search — do not rely on memory):
+
+1. `## Open Exploration Findings` — must exist verbatim
+2. `## Quality Risks` — must exist verbatim
+3. `## Pattern Applicability Matrix` — must exist verbatim
+4. At least 3 sections starting with `## Pattern Deep Dive — ` — must exist verbatim
+5. `## Candidate Bugs for Phase 2` — must exist verbatim
+6. `## Gate Self-Check` — must exist (proves the Phase 1 gate was run)
+
+If the file does not exist, has fewer than 120 lines, or is **missing ANY of these exact section titles**, STOP and go back to Phase 1. Do not attempt to proceed with "equivalent" sections under different names — the exact titles above are required. Write EXPLORATION.md now, starting with domain-driven open exploration, then domain-knowledge risk analysis, then selecting 3–4 patterns from `.github/skills/references/exploration_patterns.md` for deep dives. Do not proceed with Phase 2 until EXPLORATION.md passes the Phase 1 completion gate. This check exists because single-pass execution can skip the Phase 1 gate — this is the backstop. In v1.3.43, two repos bypassed both gates and produced zero bugs.
 
 Use `quality/EXPLORATION.md` as your primary source for this phase — do not re-explore the codebase from scratch. The exploration findings contain the architecture map, derived requirements, use cases, and risk analysis that drive every artifact below. If you find yourself reading source files to figure out what the project does, go back to EXPLORATION.md instead. Re-exploration wastes context and produces inconsistencies between what Phase 1 found and what Phase 2 generates.
 
@@ -794,14 +853,14 @@ Now write the nine files. For each one, follow the structure below and consult t
 **Version stamp (mandatory on every generated file).** Every Markdown file the playbook generates must begin with the following attribution line immediately after the file's title heading:
 
 ```
-> Generated by [Quality Playbook](https://github.com/andrewstellman/quality-playbook) v1.3.43 — Andrew Stellman
+> Generated by [Quality Playbook](https://github.com/andrewstellman/quality-playbook) v1.3.44 — Andrew Stellman
 > Date: YYYY-MM-DD · Project: <project name>
 ```
 
 Every generated code file (test files, scripts) must begin with a comment header:
 
 ```
-# Generated by Quality Playbook v1.3.43 — https://github.com/andrewstellman/quality-playbook
+# Generated by Quality Playbook v1.3.44 — https://github.com/andrewstellman/quality-playbook
 # Author: Andrew Stellman · Date: YYYY-MM-DD · Project: <project name>
 ```
 
@@ -910,6 +969,17 @@ Pass 3 catches contradictions where two individually-correct pieces of code disa
 
 **BUGS.md:** After all review and audit phases, generate `quality/BUGS.md` — a consolidated bug report with full reproduction details for each confirmed bug. For each bug, include: bug ID, source (code review or spec audit), file:line, description, severity, minimal reproduction scenario (what input or sequence triggers the bug), expected vs actual behavior, references to the regression test and any proposed fix patch, and **spec basis**.
 
+**What counts as sufficient evidence to confirm a bug (critical).** A code-path trace that demonstrates a specific behavioral violation IS sufficient evidence to confirm a bug. You do NOT need executed request-level evidence, a running test, or an integration-level reproduction to promote a finding from candidate to confirmed. Specifically:
+
+- A code-path trace showing function A calls function B which does X but should do Y, with file:line references — **sufficient to confirm**.
+- A missing case/branch identified by enumeration comparison (spec says X should be handled, code has no handler for X) — **sufficient to confirm**.
+- A requirement violation identified in Pass 2 where the code demonstrably does not implement the specified behavior — **sufficient to confirm**.
+- A domain-knowledge finding where you can trace from input through specific code to wrong output — **sufficient to confirm**.
+
+Do NOT demand "executed request-level evidence" or defer findings because "they require runtime testing to distinguish implementation choice from spec gap." If the spec or documentation says the behavior should be X, and the code demonstrably produces Y (traceable through the code path), that is a confirmed bug — not a candidate awaiting runtime validation. The regression test and TDD protocol exist to provide runtime evidence AFTER confirmation, not as a prerequisite FOR confirmation.
+
+**Why this rule exists:** In v1.3.43 javalin benchmarking, the code review and triage both identified 4 legitimate candidate bugs with code-path traces and requirement violations, then demoted all of them because "the highest-confidence items still require executed request-level evidence." This produced zero confirmed bugs from a codebase where previous versions found 5. The evidentiary bar was set at runtime-proof-before-confirmation, which is backwards — the playbook's design is confirm-then-prove-with-TDD.
+
 **Severity calibration:** Credential leakage, authentication bypass, and injection-class bugs are always high severity regardless of assessed likelihood. Authorization header exposure across trust boundaries (e.g., cross-domain redirects) is credential leakage. When in doubt about security-relevant severity, default to high.
 
 **Spec basis (mandatory field per bug):** Cite the specific documentation passage that establishes the expected behavior — the gathered doc filename, section/page, and the behavioral contract it defines. If no gathered doc covers the behavior, check whether the project's own comments, README, or API docs define it. If no documentation exists for the expected behavior, classify the bug as a "code inconsistency" rather than a "spec violation" and note this in the severity assessment. A spec violation is a stronger finding than a code inconsistency — it means the code contradicts an authoritative source, not just that the code looks wrong. This distinction matters when reporting upstream: maintainers respond to "your code violates section X.Y of your own spec" differently than "this looks like it might be a bug."
@@ -924,7 +994,7 @@ Pass 3 catches contradictions where two individually-correct pieces of code disa
 --- /dev/null
 +++ b/quality/test_regression_virtio.c
 @@ -0,0 +1,15 @@
-+// Generated by Quality Playbook v1.3.43
++// Generated by Quality Playbook v1.3.44
 +// Regression test for BUG-004: VIRTIO_F_RING_RESET missing from vring_transport_features()
 +#include <assert.h>
 +#include <string.h>
@@ -1124,6 +1194,8 @@ The protocol defines: a copy-pasteable audit prompt with guardrails, project-spe
 **Secondary emphasis lenses:** Optionally assign each audit model a secondary emphasis — for example, one starts with input validation, one with resource lifecycle, one with concurrency. Each model still performs a full independent audit; the emphasis biases attention without restricting coverage. Do not split models into disjoint ownership by bug class.
 
 **Minority finding rule:** During triage, any finding where only one of three auditors flags it (a minority finding) requires a re-investigation — read the specific code location and make an explicit CONFIRMED/FALSE-POSITIVE determination rather than discarding by default. Minority findings are disproportionately likely to be real bugs that two models missed.
+
+**Triage must not raise the evidentiary bar above code-path analysis.** The triage step confirms or rejects findings — it does not defer them pending runtime evidence. If a finding includes a code-path trace showing a behavioral violation (function calls, missing branches, wrong return values with file:line references), the triage should confirm it. Do not demote code-path-traced findings to "candidate" or "needs runtime verification." The TDD protocol (Phase 2d) provides runtime evidence AFTER confirmation. See "What counts as sufficient evidence to confirm a bug" in the BUGS.md section for the full evidentiary standard.
 
 **Code review vs spec audit conflicts:** If the code review and spec audit disagree on the same finding, the spec audit finding is not automatically correct. Deploy a verification probe — read the specific code location and determine which assessment is accurate. Record the resolution in the BUG tracker. A code review BUG not flagged by any spec auditor is still confirmed but should be verified with a targeted probe before closure.
 
