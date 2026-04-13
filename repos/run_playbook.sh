@@ -371,10 +371,10 @@ PROMPT
 single_pass_prompt() {
     local seed_instruction=""
     if [ "$NO_SEEDS" = true ]; then
-        seed_instruction=" IMPORTANT: Skip Phase 0 and Phase 0b entirely — do not look for previous_runs/ or sibling versioned directories. This is a clean benchmark run testing independent bug discovery. Start directly at Phase 1."
+        seed_instruction=" Skip Phase 0 and Phase 0b — start directly at Phase 1."
     fi
 
-    echo "Read the quality playbook skill at .github/skills/SKILL.md and its reference files in .github/skills/references/. Execute the quality playbook for this project. Additional documentation for this project has been gathered in docs_gathered/ — read it during Phase 1 exploration to supplement the codebase and improve the quality of requirements, scenarios, and tests. IMPORTANT: Before marking Phase 2d complete, run 'bash .github/skills/quality_gate.sh .' and fix any FAIL results. Save the output to quality/results/quality-gate.log.${seed_instruction}"
+    echo "Read the quality playbook skill at .github/skills/SKILL.md and execute the quality playbook for this project.${seed_instruction}"
 }
 
 # ── Iteration prompt (builds on an existing quality/ run) ──
@@ -382,7 +382,7 @@ single_pass_prompt() {
 iteration_prompt() {
     local strategy="$1"
 
-    echo "Read the quality playbook skill at .github/skills/SKILL.md and the iteration reference at .github/skills/ITERATION.md. A previous quality playbook run exists in quality/. Run the next iteration of the quality playbook using the ${strategy} strategy. Additional documentation for this project has been gathered in docs_gathered/ — use it during exploration. IMPORTANT: Before marking Phase 2d complete, run 'bash .github/skills/quality_gate.sh .' and fix any FAIL results. Save the output to quality/results/quality-gate.log."
+    echo "Read the quality playbook skill at .github/skills/SKILL.md and run the next iteration using the ${strategy} strategy."
 }
 
 # ── Next-strategy cycle ──
