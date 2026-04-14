@@ -195,7 +195,7 @@ The requirements are what make the three-pass code review and spec audit effecti
 
 Tests traced to requirements, not generated from source code. Organized into three groups: spec requirements (one test per testable spec section), fitness scenarios (one per QUALITY.md scenario), and boundaries/edge cases (one per defensive pattern from exploration). Every test cites the requirement it verifies.
 
-### Phase 2b: Three-pass code review
+### Phase 3: Three-pass code review
 
 The code review runs in three passes, each finding different classes of bugs:
 
@@ -211,7 +211,7 @@ Pass 2 catches intent violations — cases where the code doesn't do what the sp
 
 Pass 3 catches contradictions where two individually-correct pieces of code disagree about a shared constraint. These bugs are invisible to both structural review and per-requirement verification because each requirement IS satisfied individually — the bug only appears when you compare them.
 
-### Phase 2c: Council of Three (multi-model spec audit)
+### Phase 4: Council of Three (multi-model spec audit)
 
 Three independent AI model passes audit the code against the requirements. Why three? Because each model has different blind spots. In practice, different models catch different issues, and the most valuable findings are often the ones only one model catches.
 
@@ -221,7 +221,7 @@ The protocol defines a copy-pasteable audit prompt with guardrails, project-spec
 
 **Verification probes must produce executable evidence.** When the triage confirms or rejects a finding, it must write a test assertion that mechanically proves the determination — not just prose reasoning. For rejections: an assertion that PASSES, proving the finding is wrong. For confirmations: an assertion that FAILS, proving the bug exists. This exists because in practice, the triage step hallucinated compliance with code — it claimed lines 3527-3528 "explicitly preserve VIRTIO_F_RING_RESET" when those lines actually contained the `default:` branch. Had it been required to write an assertion, the assertion would have failed, exposing the hallucination.
 
-### Phase 2d: Reconciliation and TDD
+### Phase 5: Reconciliation and TDD
 
 Post-review reconciliation closes the loop: every bug from code review and spec audit is tracked, regression-tested, and closed. Every confirmed bug gets:
 
@@ -234,7 +234,7 @@ The TDD cycle is the strongest evidence a bug is real. A reviewer can disagree w
 
 **TDD enforcement applies to all runs including iterations (v1.3.49).** Every newly confirmed bug in every run must produce red-phase and green-phase logs. `quality_gate.sh` checks for these files and FAILs if they're missing. If the test runner is not available for the project's language, the log file is still created with `NOT_RUN` on the first line and an explanation — the obligation is acknowledged, not silently skipped.
 
-### Phase 3: Self-verification
+### Phase 6: Self-verification
 
 45 self-check benchmarks validate the generated artifacts against internal consistency rules: requirement counts match across all surfaces, no stale text remains, every finding has a closure status, version stamps are consistent, triage probes include executable evidence, mechanical verification artifacts haven't been tampered with, and every confirmed bug has TDD log files.
 

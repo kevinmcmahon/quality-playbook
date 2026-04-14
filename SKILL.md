@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate nine quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, a consolidated bug report (BUGS.md) with patches, a TDD verification protocol (RUN_TDD_TESTS.md), an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis, missing safeguard detection, patch validation gates, and structured test output (JUnit XML + sidecar JSON). Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.49
+  version: 1.3.50
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -18,9 +18,17 @@ Before reading any other section of this skill, understand the plan and its depe
 
 **Phase 1 (Explore):** Explore the codebase thoroughly in three stages. First, open exploration driven by domain knowledge — understand the architecture, risks, and failure modes the way an experienced developer would. Second, domain-knowledge risk analysis — step back and reason about what goes wrong in systems like this one, generating specific failure scenarios grounded in the code you just explored. Third, apply structured exploration patterns (selected for this codebase, not all six exhaustively) to catch specific bug classes that free exploration misses. Write all findings to `quality/EXPLORATION.md`. This file is the foundation — Phase 2 reads it as its primary input.
 
-**Phase 2 (Generate):** Read EXPLORATION.md and produce the quality artifacts: requirements, constitution, functional tests, code review protocol, integration tests, spec audit protocol, TDD protocol, AGENTS.md. Then execute the code review (Phase 2b), spec audit (Phase 2c), and reconciliation (Phase 2d). Every bug found traces back to a requirement, and every requirement traces back to an exploration finding.
+**Phase 2 (Generate):** Read EXPLORATION.md and produce the quality artifacts: requirements, constitution, functional tests, code review protocol, integration tests, spec audit protocol, TDD protocol, AGENTS.md.
 
-**Phase 3 (Verify):** Run self-check benchmarks against all generated artifacts. Check for internal consistency, version stamp correctness, and convergence.
+**Phase 3 (Code Review):** Run the three-pass code review against HEAD. Write regression tests for every confirmed bug. Generate patches.
+
+**Phase 4 (Spec Audit):** Three independent AI auditors review the code against requirements. Triage with verification probes. Write regression tests for net-new findings.
+
+**Phase 5 (Reconciliation):** Close the loop — every bug from code review and spec audit is tracked, regression-tested or explicitly exempted. Run TDD red-green cycle. Finalize the completeness report.
+
+**Phase 6 (Verify):** Run self-check benchmarks against all generated artifacts. Check for internal consistency, version stamp correctness, and convergence.
+
+Every bug found traces back to a requirement, and every requirement traces back to an exploration finding.
 
 **The critical dependency chain:** Exploration findings → EXPLORATION.md → Requirements → Code review + Spec audit → Bug discovery. A shallow exploration produces abstract requirements. Abstract requirements miss bugs. The exploration phase is where bugs are won or lost.
 
@@ -69,28 +77,28 @@ The quality gate (`quality_gate.sh`) validates these artifacts. If the gate chec
 | Requirements (UC identifiers) | `quality/REQUIREMENTS.md` | Yes | Phase 2 |
 | Behavioral contracts | `quality/CONTRACTS.md` | Yes | Phase 2 |
 | Functional tests | `quality/test_functional.*` | Yes | Phase 2 |
-| Regression tests | `quality/test_regression.*` | If bugs found | Phase 2b |
+| Regression tests | `quality/test_regression.*` | If bugs found | Phase 3 |
 | Code review protocol | `quality/RUN_CODE_REVIEW.md` | Yes | Phase 2 |
 | Integration test protocol | `quality/RUN_INTEGRATION_TESTS.md` | Yes | Phase 2 |
 | Spec audit protocol | `quality/RUN_SPEC_AUDIT.md` | Yes | Phase 2 |
 | TDD verification protocol | `quality/RUN_TDD_TESTS.md` | Yes | Phase 2 |
-| Bug tracker | `quality/BUGS.md` | Yes | Phase 2b |
+| Bug tracker | `quality/BUGS.md` | Yes | Phase 3 |
 | Coverage matrix | `quality/COVERAGE_MATRIX.md` | Yes | Phase 2 |
-| Completeness report | `quality/COMPLETENESS_REPORT.md` | Yes | Phase 2d |
+| Completeness report | `quality/COMPLETENESS_REPORT.md` | Yes | Phase 5 |
 | Progress tracker | `quality/PROGRESS.md` | Yes | Throughout |
 | AI bootstrap | `AGENTS.md` | Yes | Phase 2 |
-| Bug writeups | `quality/writeups/BUG-NNN.md` | If bugs found | Phase 2d |
-| Regression patches | `quality/patches/BUG-NNN-regression-test.patch` | If bugs found | Phase 2b |
-| Fix patches | `quality/patches/BUG-NNN-fix.patch` | Optional | Phase 2b |
-| TDD sidecar | `quality/results/tdd-results.json` | If bugs found | Phase 2d |
-| TDD red-phase logs | `quality/results/BUG-NNN.red.log` | If bugs found | Phase 2d |
-| TDD green-phase logs | `quality/results/BUG-NNN.green.log` | If fix patch exists | Phase 2d |
-| Integration sidecar | `quality/results/integration-results.json` | When integration tests run | Phase 2d |
-| Mechanical verify script | `quality/mechanical/verify.sh` | Yes (benchmark) | Phase 2d |
-| Verify receipt | `quality/results/mechanical-verify.log` + `.exit` | Yes (benchmark) | Phase 2d |
-| Triage probes | `quality/spec_audits/triage_probes.sh` | When triage runs | Phase 2c |
-| Code review reports | `quality/code_reviews/*.md` | Yes | Phase 2b |
-| Spec audit reports | `quality/spec_audits/*auditor*.md` + `*triage*` | Yes | Phase 2c |
+| Bug writeups | `quality/writeups/BUG-NNN.md` | If bugs found | Phase 5 |
+| Regression patches | `quality/patches/BUG-NNN-regression-test.patch` | If bugs found | Phase 3 |
+| Fix patches | `quality/patches/BUG-NNN-fix.patch` | Optional | Phase 3 |
+| TDD sidecar | `quality/results/tdd-results.json` | If bugs found | Phase 5 |
+| TDD red-phase logs | `quality/results/BUG-NNN.red.log` | If bugs found | Phase 5 |
+| TDD green-phase logs | `quality/results/BUG-NNN.green.log` | If fix patch exists | Phase 5 |
+| Integration sidecar | `quality/results/integration-results.json` | When integration tests run | Phase 5 |
+| Mechanical verify script | `quality/mechanical/verify.sh` | Yes (benchmark) | Phase 5 |
+| Verify receipt | `quality/results/mechanical-verify.log` + `.exit` | Yes (benchmark) | Phase 5 |
+| Triage probes | `quality/spec_audits/triage_probes.sh` | When triage runs | Phase 4 |
+| Code review reports | `quality/code_reviews/*.md` | Yes | Phase 3 |
+| Spec audit reports | `quality/spec_audits/*auditor*.md` + `*triage*` | Yes | Phase 4 |
 
 **Sidecar JSON lifecycle:** Write all bug writeups *before* finalizing `tdd-results.json` — the sidecar's `writeup_path` field must point to an existing file, not a placeholder. Similarly, run integration tests and collect results before writing `integration-results.json`.
 
@@ -150,7 +158,7 @@ Execute the quality playbook for this project.
 
 This is the full pipeline end to end: explore the codebase → generate all quality artifacts → run the code review with regression tests → run the spec audit with triage → run post-review reconciliation and closure verification → finalize PROGRESS.md → check convergence and re-iterate if needed. Every phase described below, nothing skipped. This is the default when someone says "execute," "run," or "generate and execute" the playbook.
 
-If `previous_runs/` exists from earlier sessions, Phase 0 automatically loads confirmed bugs as seeds before exploration begins. After Phase 3, the convergence check determines whether to archive and re-iterate or proceed to Phase 4.
+If `previous_runs/` exists from earlier sessions, Phase 0 automatically loads confirmed bugs as seeds before exploration begins. After Phase 6, the convergence check determines whether to archive and re-iterate or proceed to Phase 7.
 
 Other entry points for partial runs:
 
@@ -171,13 +179,13 @@ If a quality playbook already exists (`quality/QUALITY.md`, functional tests, et
 
 ### Iteration mode — improve on a previous run
 
-Use this when a previous playbook run exists and you want to find additional bugs. Iteration mode replaces Phase 1's from-scratch exploration with a targeted exploration using one of five strategies, then merges findings with the previous run and re-runs Phases 2–3 against the combined results.
+Use this when a previous playbook run exists and you want to find additional bugs. Iteration mode replaces Phase 1's from-scratch exploration with a targeted exploration using one of five strategies, then merges findings with the previous run and re-runs Phases 2–6 against the combined results.
 
 **When to use iteration mode:** After a complete playbook run, when you believe the codebase has more bugs than the first run found. This is especially effective for large codebases where a single run can only cover 3–5 subsystems, and for library/framework codebases where different exploration paths find different bug classes.
 
 **Read `.github/skills/ITERATION.md` for detailed strategy instructions.** That file contains the full operational detail for each strategy, shared rules, merge steps, and the completion gate. The summary below describes when to use each strategy.
 
-**TDD applies to iteration runs.** Every newly confirmed bug in an iteration run must go through the full TDD red-green cycle and produce `quality/results/BUG-NNN.red.log` (and `.green.log` if a fix patch exists). The quality gate enforces this — missing logs cause FAIL. See ITERATION.md shared rule 5 and the TDD Log Closure Gate in Phase 2d.
+**TDD applies to iteration runs.** Every newly confirmed bug in an iteration run must go through the full TDD red-green cycle and produce `quality/results/BUG-NNN.red.log` (and `.green.log` if a fix patch exists). The quality gate enforces this — missing logs cause FAIL. See ITERATION.md shared rule 5 and the TDD Log Closure Gate in Phase 5.
 
 **Iteration strategies.** The user selects a strategy by naming it in the prompt. If no strategy is named, default to `gap`.
 
@@ -205,7 +213,7 @@ Between phases, write your findings and artifacts to disk, then read them back w
 
 - **`quality/EXPLORATION.md`** — Phase 1 writes this, Phase 2 reads it. Contains everything Phase 2 needs to generate artifacts without re-exploring the codebase.
 - **`quality/PROGRESS.md`** — Updated after every phase. Cumulative BUG tracker ensures no finding is lost.
-- **Generated artifacts** (REQUIREMENTS.md, CONTRACTS.md, etc.) — Phase 2 writes these, Phases 2b–2d read them to run reviews, audits, and reconciliation.
+- **Generated artifacts** (REQUIREMENTS.md, CONTRACTS.md, etc.) — Phase 2 writes these, Phases 3–5 read them to run reviews, audits, and reconciliation.
 
 The pattern for each phase boundary: finish the current phase, write everything to disk, then explicitly read back the files you need before starting the next phase. This "write then read" cycle is the pass boundary — it lets you drop exploration context from working memory before loading review context, for example.
 
@@ -236,8 +244,8 @@ When prior runs exist, the playbook enters **continuation mode**. This enables i
 **Step 0c: Identify prior-run scope.** Read `previous_runs/*/quality/PROGRESS.md` for scope declarations. Note which subsystems were covered in prior runs. During Phase 1 exploration, prioritize areas NOT covered by prior runs to maximize the chance of finding new bugs. If all subsystems were covered in prior runs, explore the same scope but with different emphasis (e.g., different scrutiny areas, different entry points).
 
 **Step 0d: Inject seeds into downstream phases.** The seed list becomes input to:
-- **Phase 2b (code review):** Add to the code review prompt: "Prior runs confirmed these bugs — verify they are still present and look for additional findings in the same subsystems."
-- **Phase 2c (spec audit):** Add to `RUN_SPEC_AUDIT.md`: "Known open issues from prior runs: [seed list]. Expect auditors to find these. If an auditor does NOT flag a known seed bug, that is a coverage gap in their review, not evidence the bug was fixed."
+- **Phase 3 (code review):** Add to the code review prompt: "Prior runs confirmed these bugs — verify they are still present and look for additional findings in the same subsystems."
+- **Phase 4 (spec audit):** Add to `RUN_SPEC_AUDIT.md`: "Known open issues from prior runs: [seed list]. Expect auditors to find these. If an auditor does NOT flag a known seed bug, that is a coverage gap in their review, not evidence the bug was fixed."
 
 **Why this exists:** Non-deterministic scope exploration means different runs notice different bugs. In cross-version testing, 4/8 repos had bugs found in some versions but not others — not because the bugs were fixed, but because the model explored different parts of the codebase. Iterating with seed injection solves this: confirmed bugs carry forward mechanically (no re-discovery needed), and each new run can focus exploration on uncovered territory.
 
@@ -291,7 +299,7 @@ The Phase 1 completion gate checks for all three stages. The open exploration se
 
 **The rhythm is: read a subsystem → write findings to disk → read the next subsystem → append findings → repeat.** Each append should include specific function names, file paths, line numbers, and concrete bug hypotheses. A 5-line section that says "checked cross-implementation consistency, found one gap" is a gate-passing placeholder, not an exploration finding. A useful section traces a code path: "function A at file:line calls function B at file:line, which does X but not Y; compare with function C at file:line which does both X and Y."
 
-**Mandatory consolidation step.** After all three stages (open exploration, quality risks, and selected pattern deep dives) are explored and written to EXPLORATION.md, add a final section: `## Candidate Bugs for Phase 2`. This section consolidates the strongest bug hypotheses from all earlier sections into a prioritized handoff list. For each candidate, include: the hypothesis, the specific file:line references, which stage surfaced it (open exploration, quality risks, or pattern), and what the code review should look for. This section is the bridge between exploration and artifact generation — it tells Phase 2b exactly where to focus. Minimum: 4 candidate bugs with file:line references — at least 2 from open exploration or quality risks, and at least 1 from a pattern deep dive. There is no maximum.
+**Mandatory consolidation step.** After all three stages (open exploration, quality risks, and selected pattern deep dives) are explored and written to EXPLORATION.md, add a final section: `## Candidate Bugs for Phase 2`. This section consolidates the strongest bug hypotheses from all earlier sections into a prioritized handoff list. For each candidate, include: the hypothesis, the specific file:line references, which stage surfaced it (open exploration, quality risks, or pattern), and what the code review should look for. This section is the bridge between exploration and artifact generation — it tells Phase 3 exactly where to focus. Minimum: 4 candidate bugs with file:line references — at least 2 from open exploration or quality risks, and at least 1 from a pattern deep dive. There is no maximum.
 
 **Pre-flight: Scope declaration for large repositories**
 
@@ -399,7 +407,7 @@ Read the existing test files — all of them for small/medium projects, or a rep
 
 Walk each spec document section by section. For every section, ask: "What testable requirement does this state?" Record spec requirements without corresponding tests — these are the gaps the functional tests must close.
 
-If using inferred requirements (from tests, types, or code behavior), tag each with its confidence tier using the `[Req: tier — source]` format defined in Step 1. Inferred requirements feed into QUALITY.md scenarios and should be flagged for user review in Phase 4.
+If using inferred requirements (from tests, types, or code behavior), tag each with its confidence tier using the `[Req: tier — source]` format defined in Step 1. Inferred requirements feed into QUALITY.md scenarios and should be flagged for user review in Phase 7.
 
 ### Step 4b: Read Function Signatures and Real Data
 
@@ -516,9 +524,9 @@ This is the most important step for the code review protocol. Everything found d
    exit $FAIL
    ```
 
-   **Phase 3 must execute `bash quality/mechanical/verify.sh`** and the benchmark fails if any artifact mismatches. This catches a failure mode observed in v1.3.19: the model executed the extraction command but wrote its own expected output to the file instead of letting the shell redirect capture it, inserting a hallucinated `case VIRTIO_F_RING_RESET:` line that the real command does not produce. Re-running the same command in a separate step and diffing against the file detects this tampering.
+   **Phase 6 must execute `bash quality/mechanical/verify.sh`** and the benchmark fails if any artifact mismatches. This catches a failure mode observed in v1.3.19: the model executed the extraction command but wrote its own expected output to the file instead of letting the shell redirect capture it, inserting a hallucinated `case VIRTIO_F_RING_RESET:` line that the real command does not produce. Re-running the same command in a separate step and diffing against the file detects this tampering.
 
-   **Immediate integrity gate (mandatory, Phase 2a).** Run `bash quality/mechanical/verify.sh` **immediately** after writing each `*_cases.txt` file and **before** writing any contract, requirement, or prose artifact that cites the extraction. If exit code ≠ 0: stop, delete the failed `*_cases.txt`, re-run the extraction command with a fresh shell redirect (do not hand-edit the output), and re-verify. Do not advance to Phase 2b/2c until verify.sh exits 0. Save verify.sh stdout and exit code to `quality/results/mechanical-verify.log` and `quality/results/mechanical-verify.exit` as durable receipt files. This gate exists because v1.3.23 showed that deferring verification to Phase 3 allows downstream artifacts (CONTRACTS.md, REQUIREMENTS.md, triage probes) to build on a forged extraction — the model reconciles a discrepancy between requirements and the artifact by corrupting the artifact instead of correcting the requirement.
+   **Immediate integrity gate (mandatory, Phase 2a).** Run `bash quality/mechanical/verify.sh` **immediately** after writing each `*_cases.txt` file and **before** writing any contract, requirement, or prose artifact that cites the extraction. If exit code ≠ 0: stop, delete the failed `*_cases.txt`, re-run the extraction command with a fresh shell redirect (do not hand-edit the output), and re-verify. Do not advance to Phase 3/2c until verify.sh exits 0. Save verify.sh stdout and exit code to `quality/results/mechanical-verify.log` and `quality/results/mechanical-verify.exit` as durable receipt files. This gate exists because v1.3.23 showed that deferring verification to Phase 6 allows downstream artifacts (CONTRACTS.md, REQUIREMENTS.md, triage probes) to build on a forged extraction — the model reconciles a discrepancy between requirements and the artifact by corrupting the artifact instead of correcting the requirement.
 
    **Mechanical artifacts are immutable after extraction.** Once a `*_cases.txt` file has been written by the shell redirect and verified by `verify.sh`, it must not be modified, overwritten, or regenerated for the remainder of the run. If a downstream step discovers a discrepancy between the mechanical artifact and a requirement or contract, the requirement or contract is wrong — not the artifact. Fix the prose, not the extraction. This rule prevents the v1.3.23 failure mode where the model overwrote a correct extraction with fabricated content to match its own narrative.
 
@@ -531,7 +539,7 @@ This is the most important step for the code review protocol. Everything found d
 3. **Phase C — Coverage verification.** Cross-reference every contract against every requirement. Fix gaps. Loop up to 3 times until coverage reaches 100%. Write to `quality/COVERAGE_MATRIX.md`. The matrix must have **one row per requirement** (REQ-001, REQ-002, etc.) — not grouped ranges like "C-001 to C-007 | REQ-001, REQ-003". Grouped ranges make machine verification impossible and hide gaps.
 4. **Phase D — Completeness check + self-refinement loop.** Apply the domain checklist, testability audit, and cross-requirement consistency check. Also verify that every deep document with a "will cover" commitment in the coverage commitment table has at least one requirement traced to it — if not, add requirements for the gap before continuing.
 
-   Write to `quality/COMPLETENESS_REPORT.md` as a **baseline** completeness report (without a `## Verdict` section — the verdict is deferred to Phase 2d post-reconciliation, which produces the only verdict that counts for closure). Then run up to 3 self-refinement iterations: read the report, fix gaps, re-check. Short-circuit when fewer than 3 changes per iteration.
+   Write to `quality/COMPLETENESS_REPORT.md` as a **baseline** completeness report (without a `## Verdict` section — the verdict is deferred to Phase 5 post-reconciliation, which produces the only verdict that counts for closure). Then run up to 3 self-refinement iterations: read the report, fix gaps, re-check. Short-circuit when fewer than 3 changes per iteration.
 5. **Phase E — Narrative pass.** Add project overview (with overview validation gate), then derive use cases (with use case derivation gate). Both gates must pass before proceeding to category narratives, cross-cutting concerns, and final reordering. This sequencing prevents multi-pass loops where a failed late gate forces re-derivation. Reorder for top-down flow. Renumber sequentially.
 
 **REQUIREMENTS.md must begin with a human-readable overview** that answers: What is this project? What does it do? Who are the actors (users, systems, hardware, protocols)? What are the highest-risk areas? This overview should be useful to someone who has never seen the project before. If the project is a library or driver where all actors are systems, describe the system actors (kernel maintainers, protocol peers, integrators, end-user developers) and their interactions. Do not start with raw scope metadata or HTML comments — lead with a plain-language description.
@@ -632,7 +640,7 @@ Record all requirements in a structured format. These feed directly into the cod
 
 After completing Phase 1 exploration, create `quality/PROGRESS.md`. This file is the skill's external memory — it persists state across phases so that context is never lost, even if the session is interrupted and resumed. It also serves as an audit trail for debugging and improvement.
 
-**Why this exists:** In single-session runs, the agent holds context in memory. But context degrades over long sessions — findings from Phase 1 are forgotten by Phase 3, BUG counts drift, spec-audit bugs get orphaned because the closure check never saw them. PROGRESS.md solves this by making every phase write its state to disk. The agent reads it back before each phase, so it always has an accurate picture of what happened so far. As a side benefit, it makes the skill work correctly even if the run is split across multiple sessions.
+**Why this exists:** In single-session runs, the agent holds context in memory. But context degrades over long sessions — findings from Phase 1 are forgotten by Phase 6, BUG counts drift, spec-audit bugs get orphaned because the closure check never saw them. PROGRESS.md solves this by making every phase write its state to disk. The agent reads it back before each phase, so it always has an accurate picture of what happened so far. As a side benefit, it makes the skill work correctly even if the run is split across multiple sessions.
 
 **Checkpoint discipline for long runs:** After each requirements-pipeline phase (Contracts, Requirements, Coverage Matrix, Completeness, Narrative), update `quality/PROGRESS.md` with: completed phase, artifact paths, current scoped subsystems, remaining work, and exact resume point. This ensures a resumed session can continue from the last completed checkpoint without redoing work.
 
@@ -652,11 +660,11 @@ With docs: [yes/no]
 ## Phase completion
 - [x] Phase 1: Exploration — completed [date/time]
 - [ ] Phase 2: Artifact generation (QUALITY.md, REQUIREMENTS.md, tests, protocols, BUGS.md, RUN_TDD_TESTS.md, AGENTS.md)
-- [ ] Phase 2b: Code review + regression tests
-- [ ] Phase 2c: Spec audit + triage
-- [ ] Phase 2d: Post-review reconciliation + closure verification
+- [ ] Phase 3: Code review + regression tests
+- [ ] Phase 4: Spec audit + triage
+- [ ] Phase 5: Post-review reconciliation + closure verification
 - [ ] TDD logs: red-phase log for every confirmed bug, green-phase log for every bug with fix patch
-- [ ] Phase 3: Verification benchmarks
+- [ ] Phase 6: Verification benchmarks
 
 ## Artifact inventory
 | Artifact | Status | Path | Notes |
@@ -695,7 +703,7 @@ With docs: [yes/no]
 
 
 ## Terminal Gate Verification
-<!-- Filled in during Phase 2d. Must match BUG tracker counts exactly. -->
+<!-- Filled in during Phase 5. Must match BUG tracker counts exactly. -->
 
 ## Exploration summary
 [Brief notes on architecture, key modules, spec sources, defensive patterns found]
@@ -808,7 +816,7 @@ This file is essential in all modes. In single-pass mode it forces the model to 
 11. A section titled **exactly** `## Candidate Bugs for Phase 2` exists and contains at least 4 prioritized bug hypotheses with file:line references, the stage that surfaced each one (open exploration, quality risks, or pattern), and what the code review should look for.
 12. **Ensemble balance check:** At least 2 candidate bugs must originate from open exploration or quality risks, and at least 1 must originate from or be materially strengthened by a pattern deep dive. This ensures both domain-knowledge and structural-analysis findings flow into Phase 2.
 
-Do not begin Phase 2 until all twelve checks pass AND the `## Gate Self-Check` section is written to EXPLORATION.md on disk. Phase 1 is your only chance to understand the codebase deeply. Every requirement you miss here is a bug you will not find in Phase 2b. Invest the time.
+Do not begin Phase 2 until all twelve checks pass AND the `## Gate Self-Check` section is written to EXPLORATION.md on disk. Phase 1 is your only chance to understand the codebase deeply. Every requirement you miss here is a bug you will not find in Phase 3. Invest the time.
 
 **If you find yourself about to start Phase 2 without having written a Gate Self-Check section, STOP.** Go back and run the gate. This instruction exists because models reliably skip the gate when they feel confident about their exploration — and that confidence is precisely when bugs are missed.
 
@@ -866,7 +874,7 @@ Use the comment syntax appropriate for the language (`#`, `//`, `/* */`, etc.). 
 - `quality/RUN_CODE_REVIEW.md` Pass 2 depends on a stable `quality/REQUIREMENTS.md` — thin requirements produce thin Pass 2 review. If the requirements count seems low for the code surface (fewer than ~3–4 requirements per core module), note this at the start of the Pass 2 report.
 - Functional tests depend on `quality/REQUIREMENTS.md` and `quality/QUALITY.md` — after any requirements refinement, re-verify that `test_functional.*` still covers every requirement.
 - `quality/RUN_SPEC_AUDIT.md` depends on requirements, quality scenarios, and docs validation.
-- `quality/COMPLETENESS_REPORT.md` has two stages: baseline (pre-review, no verdict section) and final (post-reconciliation in Phase 2d, with the authoritative verdict).
+- `quality/COMPLETENESS_REPORT.md` has two stages: baseline (pre-review, no verdict section) and final (post-reconciliation in Phase 5, with the authoritative verdict).
 - `quality/PROGRESS.md` is the authoritative state file and must be updated before each downstream artifact begins.
 
 **Why nine files instead of just tests?** Tests catch regressions but don't prevent new categories of bugs. The quality constitution (`QUALITY.md`) tells future sessions what "correct" means before they start writing code. The protocols (`RUN_*.md`) provide structured processes for review, integration testing, and spec auditing that produce repeatable results — instead of leaving quality to whatever the AI feels like checking. Together, these files create a quality system where each piece reinforces the others: scenarios in QUALITY.md map to tests in the functional test file, which are verified by the integration protocol, which is audited by the Council of Three.
@@ -1102,9 +1110,9 @@ printf 'GREEN\n--- Test output for BUG-NNN green phase ---\nCommand: %s\nExit co
   "$TEST_CMD" "$EXIT" "$OUTPUT" > quality/results/BUG-NNN.green.log
 ```
 
-Run this for every confirmed bug. If the test runner is not available, create the log file with `NOT_RUN` on the first line and an explanation. Do not skip this step — the TDD Log Closure Gate in Phase 2d will block completion if logs are missing.
+Run this for every confirmed bug. If the test runner is not available, create the log file with `NOT_RUN` on the first line and an explanation. Do not skip this step — the TDD Log Closure Gate in Phase 5 will block completion if logs are missing.
 
-**TDD execution gate.** Before the terminal gate in Phase 2d, verify that for every confirmed bug in `quality/BUGS.md`, a corresponding `quality/results/BUG-NNN.red.log` exists. Bugs without red-phase logs are incomplete — the regression test patch exists but was never proven to detect the bug. This gate exists because v1.3.45 benchmarking showed that most repos generate regression test patches but never execute them, leaving the TDD verdict unverified.
+**TDD execution gate.** Before the terminal gate in Phase 5, verify that for every confirmed bug in `quality/BUGS.md`, a corresponding `quality/results/BUG-NNN.red.log` exists. Bugs without red-phase logs are incomplete — the regression test patch exists but was never proven to detect the bug. This gate exists because v1.3.45 benchmarking showed that most repos generate regression test patches but never execute them, leaving the TDD verdict unverified.
 
 ### File 4: `quality/RUN_INTEGRATION_TESTS.md`
 
@@ -1233,7 +1241,7 @@ The protocol defines: a copy-pasteable audit prompt with guardrails, project-spe
 
 **Minority finding rule:** During triage, any finding where only one of three auditors flags it (a minority finding) requires a re-investigation — read the specific code location and make an explicit CONFIRMED/FALSE-POSITIVE determination rather than discarding by default. Minority findings are disproportionately likely to be real bugs that two models missed.
 
-**Triage must not raise the evidentiary bar above code-path analysis.** The triage step confirms or rejects findings — it does not defer them pending runtime evidence. If a finding includes a code-path trace showing a behavioral violation (function calls, missing branches, wrong return values with file:line references), the triage should confirm it. Do not demote code-path-traced findings to "candidate" or "needs runtime verification." The TDD protocol (Phase 2d) provides runtime evidence AFTER confirmation. See "What counts as sufficient evidence to confirm a bug" in the BUGS.md section for the full evidentiary standard.
+**Triage must not raise the evidentiary bar above code-path analysis.** The triage step confirms or rejects findings — it does not defer them pending runtime evidence. If a finding includes a code-path trace showing a behavioral violation (function calls, missing branches, wrong return values with file:line references), the triage should confirm it. Do not demote code-path-traced findings to "candidate" or "needs runtime verification." The TDD protocol (Phase 5) provides runtime evidence AFTER confirmation. See "What counts as sufficient evidence to confirm a bug" in the BUGS.md section for the full evidentiary standard.
 
 **Code review vs spec audit conflicts:** If the code review and spec audit disagree on the same finding, the spec audit finding is not automatically correct. Deploy a verification probe — read the specific code location and determine which assessment is accurate. Record the resolution in the BUG tracker. A code review BUG not flagged by any spec auditor is still confirmed but should be verified with a targeted probe before closure.
 
@@ -1397,27 +1405,27 @@ Re-read `quality/PROGRESS.md`. Update:
 - Update the artifact inventory: set each generated artifact to "generated" with its file path
 - Add exploration summary notes if not already present
 
-**Phase 2 completion gate (mandatory).** Before proceeding to Phase 2b, verify:
+**Phase 2 completion gate (mandatory).** Before proceeding to Phase 3, verify:
 1. All nine core artifacts exist on disk (`QUALITY.md`, `CONTRACTS.md`, `REQUIREMENTS.md`, `COVERAGE_MATRIX.md`, `test_functional.*`, `RUN_CODE_REVIEW.md`, `RUN_INTEGRATION_TESTS.md`, `RUN_SPEC_AUDIT.md`, `RUN_TDD_TESTS.md`).
 2. `REQUIREMENTS.md` contains requirements with specific conditions of satisfaction referencing actual code (file paths, function names, line numbers) — not abstract behavioral descriptions.
 3. If dispatch/enumeration contracts exist: `quality/mechanical/verify.sh` exists and has been executed.
 4. PROGRESS.md marks Phase 2 complete with timestamp.
 
-Re-read `quality/PROGRESS.md` and `quality/REQUIREMENTS.md` before starting Phase 2b. The requirements are the target list for the code review — every requirement is a potential bug if the code doesn't satisfy its conditions.
+Re-read `quality/PROGRESS.md` and `quality/REQUIREMENTS.md` before starting Phase 3. The requirements are the target list for the code review — every requirement is a potential bug if the code doesn't satisfy its conditions.
 
-### Phase 2b: Code Review and Regression Tests
+## Phase 3: Code Review and Regression Tests
 
-> **Required references for this sub-phase:**
+> **Required references for this phase:**
 > - `quality/REQUIREMENTS.md` — target list for the code review
 > - `.github/skills/references/review_protocols.md` — three-pass protocol and regression test conventions
 
 Run the code review protocol (all three passes) as described in File 3. After producing findings, write regression tests for every confirmed BUG per the closure mandate in `references/review_protocols.md`.
 
-**Update PROGRESS.md:** Add every confirmed BUG to the cumulative BUG tracker with source "Code Review", the file:line reference, description, severity, and closure status (regression test function name or exemption reason). Mark Phase 2b (Code review + regression tests) complete.
+**Update PROGRESS.md:** Add every confirmed BUG to the cumulative BUG tracker with source "Code Review", the file:line reference, description, severity, and closure status (regression test function name or exemption reason). Mark Phase 3 (Code review + regression tests) complete.
 
-### Phase 2c: Spec Audit and Triage
+## Phase 4: Spec Audit and Triage
 
-> **Required references for this sub-phase:**
+> **Required references for this phase:**
 > - `.github/skills/references/spec_audit.md` — Council of Three protocol, triage process, verification probes
 
 Run the spec audit protocol as described in File 5. The triage report **must** include a `## Pre-audit docs validation` section (see `references/spec_audit.md` for the full template). This section is required even if `docs_gathered/` is empty — in that case, note what baseline the auditors used instead. Every verification probe in the triage must produce executable evidence (test assertions with line-number citations) per the "Verification probes must produce executable evidence" rule above. After triage, categorize each confirmed finding.
@@ -1436,13 +1444,13 @@ After the spec audit triage, check the cumulative BUG tracker in PROGRESS.md. An
 
 **Individual auditor artifacts (mandatory).** The spec audit must produce individual auditor report files at `quality/spec_audits/YYYY-MM-DD-auditor-N.md` (one per auditor), not just the triage synthesis. Each auditor report records what that auditor found independently before triage reconciliation. If only the triage file exists with no individual auditor artifacts, the audit is incomplete — the triage cannot be verified because there is no record of pre-reconciliation findings. This requirement exists because a single triage file conflates discovery with reconciliation, making it impossible to tell whether a finding was independently confirmed or synthesized from a single source.
 
-**Phase 2c completion gate.** Phase 2c is not complete until a triage file exists at `quality/spec_audits/YYYY-MM-DD-triage.md` **and** individual auditor reports exist. If only auditor reports exist with no triage synthesis, mark Phase 2c as "partial — triage pending" in PROGRESS.md and complete the triage before proceeding. If only the triage exists with no individual reports, mark Phase 2c as "partial — auditor artifacts missing" and regenerate them. The PROGRESS.md checkbox must not be set until both the triage file and auditor reports are confirmed present.
+**Phase 4 completion gate.** Phase 4 is not complete until a triage file exists at `quality/spec_audits/YYYY-MM-DD-triage.md` **and** individual auditor reports exist. If only auditor reports exist with no triage synthesis, mark Phase 4 as "partial — triage pending" in PROGRESS.md and complete the triage before proceeding. If only the triage exists with no individual reports, mark Phase 4 as "partial — auditor artifacts missing" and regenerate them. The PROGRESS.md checkbox must not be set until both the triage file and auditor reports are confirmed present.
 
-Update the BUG tracker entries with regression test references. Mark Phase 2c (Spec audit + triage) complete.
+Update the BUG tracker entries with regression test references. Mark Phase 4 (Spec audit + triage) complete.
 
-### Phase 2d: Post-Review Reconciliation and Closure Verification
+## Phase 5: Post-Review Reconciliation and Closure Verification
 
-> **Required references for this sub-phase:**
+> **Required references for this phase:**
 > - `quality/PROGRESS.md` — cumulative BUG tracker (authoritative finding list)
 > - `.github/skills/references/requirements_pipeline.md` — post-review reconciliation process
 > - `.github/skills/references/review_protocols.md` — regression test cleanup after reversals
@@ -1476,9 +1484,9 @@ If either file is missing, run `bash quality/mechanical/verify.sh > quality/resu
 3. The first line of each log file is one of: `RED`, `GREEN`, `NOT_RUN`, `ERROR`.
 If any check fails, stop and generate the missing logs now using the language-aware test execution commands from the TDD execution enforcement section. Do not proceed to the terminal gate with missing TDD logs — a bug with a "TDD verified" verdict in tdd-results.json but no corresponding red-phase log is a contradiction.
 
-**Terminal gate (mandatory before marking Phase 2d complete):**
+**Terminal gate (mandatory before marking Phase 5 complete):**
 
-**Prerequisite check:** The terminal gate may run only if Phase 2b (code review) and Phase 2c (spec audit) are both complete, or explicitly marked skipped with rationale in PROGRESS.md. A zero-bug outcome is valid only if code review and spec audit artifacts exist (i.e., `quality/code_reviews/` and `quality/spec_audits/` directories contain report files). If these artifacts are missing and the phases are not explicitly skipped, the terminal gate fails — do not mark Phase 2d complete.
+**Prerequisite check:** The terminal gate may run only if Phase 3 (code review) and Phase 4 (spec audit) are both complete, or explicitly marked skipped with rationale in PROGRESS.md. A zero-bug outcome is valid only if code review and spec audit artifacts exist (i.e., `quality/code_reviews/` and `quality/spec_audits/` directories contain report files). If these artifacts are missing and the phases are not explicitly skipped, the terminal gate fails — do not mark Phase 5 complete.
 
 **BUGS.md is always required.** Every completed run must produce `quality/BUGS.md`, regardless of whether bugs were found. If code review and spec audit confirmed zero source-code bugs, create BUGS.md with a `## Summary` stating "No confirmed source-code bugs found" and listing how many candidates were evaluated and eliminated (e.g., "Code review evaluated N candidates; spec audit evaluated M candidates; all were reclassified as design choices, test-only issues, or false positives"). This provides a positive assertion of a clean outcome rather than ambiguous file absence. A completed run with no BUGS.md is non-conformant.
 
@@ -1492,13 +1500,13 @@ Re-read `quality/PROGRESS.md`. Count the BUG tracker entries. Then:
 
 2. Write the same statement into PROGRESS.md under a new `## Terminal Gate Verification` section (immediately after the BUG tracker table). This persists the gate into the artifact so reviewers can verify it without reading session logs.
 
-If the tracker entry count does not equal M + L, stop and reconcile — a BUG was orphaned from the tracker. Do not mark Phase 2d complete until the counts match. This gate exists because the v1.3.5 bootstrap showed that agents reliably skip the tracker update after spec audit, orphaning 30-50% of confirmed bugs.
+If the tracker entry count does not equal M + L, stop and reconcile — a BUG was orphaned from the tracker. Do not mark Phase 5 complete until the counts match. This gate exists because the v1.3.5 bootstrap showed that agents reliably skip the tracker update after spec audit, orphaning 30-50% of confirmed bugs.
 
 **Regression test function-name verification:** For each BUG tracker entry that references a regression test, grep for the test function name in the regression test file and confirm it exists. An agent can write a test name in the tracker without actually creating the test. If any referenced test function does not exist, write it now before passing the gate.
 
 3. Verify the `With docs` metadata field in PROGRESS.md matches reality: if `docs_gathered/` exists and contains files, it should say `yes`; otherwise `no`. Fix it if wrong.
 
-**Artifact file-existence gate (mandatory before marking Phase 2d complete).** Before writing the Phase 2d completion checkbox, verify that every required artifact exists as a file on disk — not just mentioned in PROGRESS.md. Run these checks (use `ls` or equivalent):
+**Artifact file-existence gate (mandatory before marking Phase 5 complete).** Before writing the Phase 5 completion checkbox, verify that every required artifact exists as a file on disk — not just mentioned in PROGRESS.md. Run these checks (use `ls` or equivalent):
 
 - `quality/BUGS.md` exists (required for all completed runs, per benchmark 34)
 - `quality/REQUIREMENTS.md` exists
@@ -1506,37 +1514,37 @@ If the tracker entry count does not equal M + L, stop and reconcile — a BUG wa
 - `quality/PROGRESS.md` exists (obviously — you're writing to it)
 - `quality/COVERAGE_MATRIX.md` exists
 - `quality/COMPLETENESS_REPORT.md` exists
-- If Phase 2b ran: `quality/code_reviews/` contains at least one `.md` file
-- If Phase 2c ran: `quality/spec_audits/` contains a triage file AND individual auditor files
+- If Phase 3 ran: `quality/code_reviews/` contains at least one `.md` file
+- If Phase 4 ran: `quality/spec_audits/` contains a triage file AND individual auditor files
 - If Phase 0 or 0b ran: `quality/SEED_CHECKS.md` exists as a standalone file (not inlined in PROGRESS.md)
 - If confirmed bugs exist: `quality/results/tdd-results.json` exists
 - If confirmed bugs exist: `quality/results/BUG-NNN.red.log` exists for every confirmed bug ID in `quality/BUGS.md`
 - If confirmed bugs exist with fix patches: `quality/results/BUG-NNN.green.log` exists for each bug that has a `quality/patches/BUG-NNN-fix.patch`
 
-For each missing file, create it now. Do not mark Phase 2d complete with missing artifacts — the terminal gate verification in PROGRESS.md is meaningless if the files it references don't exist on disk. This gate exists because v1.3.24 benchmarking showed express completing all phases and writing a terminal gate section in PROGRESS.md, but BUGS.md, SEED_CHECKS.md, and code review/spec audit files were never written to disk.
+For each missing file, create it now. Do not mark Phase 5 complete with missing artifacts — the terminal gate verification in PROGRESS.md is meaningless if the files it references don't exist on disk. This gate exists because v1.3.24 benchmarking showed express completing all phases and writing a terminal gate section in PROGRESS.md, but BUGS.md, SEED_CHECKS.md, and code review/spec audit files were never written to disk.
 
 **Sidecar JSON post-write validation (mandatory).** After writing `quality/results/tdd-results.json` and/or `quality/results/integration-results.json`, immediately reopen each file and verify it contains all required keys. For `tdd-results.json`, the required root keys are: `schema_version`, `skill_version`, `date`, `project`, `bugs`, `summary`. Each entry in `bugs` must have: `id`, `requirement`, `red_phase`, `green_phase`, `verdict`, `fix_patch_present`, `writeup_path`. The `summary` object must include `confirmed_open` alongside `verified`, `red_failed`, `green_failed`. For `integration-results.json`, the required root keys are: `schema_version`, `skill_version`, `date`, `project`, `recommendation`, `groups`, `summary`, `uc_coverage`. Both files must have `schema_version: "1.1"`. If any key is missing, add it now — do not leave a non-conformant JSON file on disk. This validation exists because v1.3.25 benchmarking showed 6 of 8 repos with non-conformant sidecar JSON: httpx invented an alternate schema, serde used legacy shape, javalin omitted `summary` and per-bug fields, and others used invalid enum values.
 
-**Script-verified closure gate (mandatory, final step before marking Phase 2d complete).** Run `bash .github/skills/quality_gate.sh .` from the project root directory. This script mechanically validates: file existence, BUGS.md heading format, sidecar JSON required keys AND per-bug field names (`id`, `requirement`, `red_phase`, `green_phase`, `verdict`, `fix_patch_present`, `writeup_path`) AND enum values AND summary consistency, use case identifiers, terminal gate section, mechanical verification receipts, version stamps, writeup completeness, **regression-test patch presence for every confirmed bug**, and **inline fix diffs in every writeup** (every `quality/writeups/BUG-NNN.md` must contain a ` ```diff ` block). If the script reports any FAIL results, fix each failing check before proceeding — the most common FAILs are: (1) missing `quality/patches/BUG-NNN-regression-test.patch` files, (2) non-canonical JSON field names like `bug_id` instead of `id`, (3) missing `confirmed_open` in the TDD summary, (4) writeups without inline fix diffs (section 6 must include a concrete diff, not just "see patch file"). Do not mark Phase 2d complete until `quality_gate.sh` exits 0. Append the script's full output to `quality/results/quality-gate.log`.
+**Script-verified closure gate (mandatory, final step before marking Phase 5 complete).** Run `bash .github/skills/quality_gate.sh .` from the project root directory. This script mechanically validates: file existence, BUGS.md heading format, sidecar JSON required keys AND per-bug field names (`id`, `requirement`, `red_phase`, `green_phase`, `verdict`, `fix_patch_present`, `writeup_path`) AND enum values AND summary consistency, use case identifiers, terminal gate section, mechanical verification receipts, version stamps, writeup completeness, **regression-test patch presence for every confirmed bug**, and **inline fix diffs in every writeup** (every `quality/writeups/BUG-NNN.md` must contain a ` ```diff ` block). If the script reports any FAIL results, fix each failing check before proceeding — the most common FAILs are: (1) missing `quality/patches/BUG-NNN-regression-test.patch` files, (2) non-canonical JSON field names like `bug_id` instead of `id`, (3) missing `confirmed_open` in the TDD summary, (4) writeups without inline fix diffs (section 6 must include a concrete diff, not just "see patch file"). Do not mark Phase 5 complete until `quality_gate.sh` exits 0. Append the script's full output to `quality/results/quality-gate.log`.
 
 **Use case identifier format.** REQUIREMENTS.md must use canonical use case identifiers in the format `UC-01`, `UC-02`, etc. for all derived use cases. Each use case must be labeled with its identifier. This is required for machine-readable traceability — the identifier format enables `quality_gate.sh` and downstream tooling to count and cross-reference use cases programmatically. Use cases written as prose paragraphs without identifiers are non-conformant.
 
-Update PROGRESS.md: mark Phase 2d complete. The BUG tracker should now show closure status for every entry.
+Update PROGRESS.md: mark Phase 5 complete. The BUG tracker should now show closure status for every entry.
 
 ---
 
-## Phase 3: Verify
+## Phase 6: Verify
 
 > **Required references for this phase:**
 > - `.github/skills/references/verification.md` — 45 self-check benchmarks
 
 **Why a verification phase?** AI-generated output can look polished and be subtly wrong. Tests that reference undefined fixtures report 0 failures but 16 errors — and "0 failures" sounds like success. Integration protocols can list field names that don't exist in the actual schemas. The verification phase catches these problems before the user discovers them, which is important because trust in a generated quality playbook is fragile — one wrong field name undermines confidence in everything else.
 
-**Phase 3 execution model: incremental, not monolithic.** Phase 3 runs as a series of independent verification steps, each reading only the file(s) it needs, checking one thing, and writing its result to `quality/results/phase3-verification.log` before moving to the next step. Do NOT load all artifacts into context at once. Do NOT try to hold the full verification checklist in memory while reading artifacts. Each step below is self-contained — read the file, check the condition, append the result, drop the context.
+**Phase 6 execution model: incremental, not monolithic.** Phase 6 runs as a series of independent verification steps, each reading only the file(s) it needs, checking one thing, and writing its result to `quality/results/phase6-verification.log` before moving to the next step. Do NOT load all artifacts into context at once. Do NOT try to hold the full verification checklist in memory while reading artifacts. Each step below is self-contained — read the file, check the condition, append the result, drop the context.
 
-### Step 3.1: Mechanical Verification Closure (mandatory first step)
+### Step 6.1: Mechanical Verification Closure (mandatory first step)
 
-If `quality/mechanical/` exists, the **literal first action** of Phase 3 is:
+If `quality/mechanical/` exists, the **literal first action** of Phase 6 is:
 
 ```bash
 bash quality/mechanical/verify.sh > quality/results/mechanical-verify.log 2>&1
@@ -1545,34 +1553,34 @@ echo $? > quality/results/mechanical-verify.exit
 
 Execute this command in the shell. Do not substitute a Python script, do not read the artifact file and assert on its contents, do not skip this step. The command must be `bash quality/mechanical/verify.sh` — not `python3 -c "..."`, not `cat quality/mechanical/... | grep ...`, not any other equivalent.
 
-Record the exit code. If non-zero, **Phase 3 fails immediately.** Do not proceed to further steps. Go back to the extraction step: delete the mismatched `*_cases.txt`, re-run the extraction command with a fresh shell redirect, re-verify, and update all downstream artifacts that cited the old extraction.
+Record the exit code. If non-zero, **Phase 6 fails immediately.** Do not proceed to further steps. Go back to the extraction step: delete the mismatched `*_cases.txt`, re-run the extraction command with a fresh shell redirect, re-verify, and update all downstream artifacts that cited the old extraction.
 
-Record in PROGRESS.md under `## Phase 3 Mechanical Closure` and append to `quality/results/phase3-verification.log`:
+Record in PROGRESS.md under `## Phase 6 Mechanical Closure` and append to `quality/results/phase6-verification.log`:
 ```
-[Step 3.1] Mechanical verification: PASS (exit 0)
+[Step 6.1] Mechanical verification: PASS (exit 0)
 ```
 
 **Why this is non-substitutable:** In v1.3.23, the model replaced `bash verify.sh` with `python3 -c "from pathlib import Path; ..."` that read the (forged) artifact file and asserted on its contents — a circular check that passed despite the artifact being fabricated. The only trustworthy verification is re-running the same shell pipeline that produced the artifact and diffing the results. Any other method can be fooled by a corrupted intermediate file.
 
-### Step 3.2: Run quality_gate.sh (script-verified checks)
+### Step 6.2: Run quality_gate.sh (script-verified checks)
 
 Run the mechanical validation gate:
 
 ```bash
 bash .github/skills/quality_gate.sh . > quality/results/quality-gate.log 2>&1
-echo $? >> quality/results/phase3-verification.log
+echo $? >> quality/results/phase6-verification.log
 ```
 
 Read `quality/results/quality-gate.log`. If it reports any FAIL results, fix each failing check before proceeding. The most common FAILs are: (1) missing `quality/patches/BUG-NNN-regression-test.patch` files, (2) non-canonical JSON field names like `bug_id` instead of `id`, (3) missing `confirmed_open` in the TDD summary, (4) writeups without inline fix diffs, (5) missing TDD red/green log files. Do not proceed until `quality_gate.sh` exits 0.
 
-Append to `quality/results/phase3-verification.log`:
+Append to `quality/results/phase6-verification.log`:
 ```
-[Step 3.2] quality_gate.sh: PASS (exit 0) — N checks passed, 0 FAIL, 0 WARN
+[Step 6.2] quality_gate.sh: PASS (exit 0) — N checks passed, 0 FAIL, 0 WARN
 ```
 
 This step covers verification benchmarks: 14 (sidecar JSON), 17 (test file extension), 18 (use case count), 20 (writeups), 23 (mechanical artifacts), 26 (version stamps), 27 (mechanical directory), 29 (triage-to-BUGS sync), 34 (BUGS.md exists), 38 (individual auditor reports), 39 (BUGS.md heading format), 40 (artifact file existence), 41 (sidecar JSON validation), 42 (script-verified closure), 43 (use case identifiers), 44 (regression-test patches), 45 (writeup inline diffs).
 
-### Step 3.3: Test execution verification
+### Step 6.3: Test execution verification
 
 Run the functional test suite. Read only `quality/test_functional.*` to determine the test command:
 
@@ -1585,14 +1593,14 @@ Run the functional test suite. Read only `quality/test_functional.*` to determin
 
 Check for both failures AND errors. Errors from missing fixtures, failed imports, or unresolved dependencies count as broken tests. Expected-failure (xfail) regression tests do not count against this check.
 
-Append to `quality/results/phase3-verification.log`:
+Append to `quality/results/phase6-verification.log`:
 ```
-[Step 3.3] Functional tests: PASS — N tests, 0 failures, 0 errors
+[Step 6.3] Functional tests: PASS — N tests, 0 failures, 0 errors
 ```
 
 This covers benchmarks 8 (all tests pass) and 9 (existing tests unbroken).
 
-### Step 3.4: Verification checklist — file-by-file checks
+### Step 6.4: Verification checklist — file-by-file checks
 
 Process the remaining verification benchmarks from `references/verification.md` in small batches. For each batch, read only the file(s) needed, check the condition, and append the result. **Do not read more than 2 files per batch.**
 
@@ -1608,7 +1616,7 @@ Process the remaining verification benchmarks from `references/verification.md` 
 
 **Batch F — Continuation mode (benchmarks 32-33):** Only if `quality/SEED_CHECKS.md` exists. Read it, verify mechanical execution, verify convergence section in PROGRESS.md.
 
-Append each batch result to `quality/results/phase3-verification.log`:
+Append each batch result to `quality/results/phase6-verification.log`:
 ```
 [Step 3.4A] QUALITY.md scenarios: PASS — 8 scenarios, all reference real code
 [Step 3.4B] Functional test quality: PASS — 30% cross-variant, assertion depth OK
@@ -1620,7 +1628,7 @@ Append each batch result to `quality/results/phase3-verification.log`:
 
 If any batch fails, fix the issue immediately before proceeding to the next batch.
 
-### Step 3.5: Metadata Consistency Check
+### Step 6.5: Metadata Consistency Check
 
 Read `quality/PROGRESS.md` (just the metadata and artifact inventory sections). Then spot-check:
 - The requirement count is consistent across REQUIREMENTS.md header, PROGRESS.md artifact inventory, and COVERAGE_MATRIX.md header. All three must state the same number.
@@ -1629,9 +1637,9 @@ Read `quality/PROGRESS.md` (just the metadata and artifact inventory sections). 
 
 Then read `quality/COMPLETENESS_REPORT.md` (just the verdict section). Verify no stale pre-reconciliation text remains — if both a `## Verdict` and an `## Updated verdict` (or `## Post-Review Reconciliation`) section exist, **delete the original `## Verdict` section entirely**. The final document must have exactly one `## Verdict` heading.
 
-Append to `quality/results/phase3-verification.log`:
+Append to `quality/results/phase6-verification.log`:
 ```
-[Step 3.5] Metadata consistency: PASS — requirement counts match, version stamps consistent
+[Step 6.5] Metadata consistency: PASS — requirement counts match, version stamps consistent
 ```
 
 If any metadata is stale, fix it now.
@@ -1639,7 +1647,7 @@ If any metadata is stale, fix it now.
 ### Checkpoint: Finalize PROGRESS.md
 
 Re-read `quality/PROGRESS.md`. Update:
-- Mark Phase 3 (Verification benchmarks) complete with timestamp
+- Mark Phase 6 (Verification benchmarks) complete with timestamp
 - Verify the BUG tracker has closure for every entry
 - Add a final summary line: "Run complete. N BUGs found (N from code review, N from spec audit). N regression tests written. N exemptions granted."
 - **Print the suggested next prompt to the user (mandatory, all runs).** This applies to EVERY run, including baseline — it is not iteration-specific. Print the following block so the user can copy-paste it to start the next iteration:
@@ -1664,7 +1672,7 @@ The completed PROGRESS.md is a permanent audit trail. It documents what the skil
 
 > **Scope:** This subsection only. The suggested-next-prompt step above is unconditional and must execute on every run regardless of whether this convergence check is skipped.
 
-**This step runs only if Phase 0 executed** (i.e., `quality/SEED_CHECKS.md` exists from prior-run analysis). If this is a first run with no prior history, skip to Phase 4.
+**This step runs only if Phase 0 executed** (i.e., `quality/SEED_CHECKS.md` exists from prior-run analysis). If this is a first run with no prior history, skip to Phase 7.
 
 Compare this run's bug list against the seed list:
 
@@ -1688,7 +1696,7 @@ Net-new bugs:
 
 **Convergence criterion:** The run is converged if **net-new bugs = 0** — every bug found in this run was already known from a prior run. This means further runs are unlikely to find additional bugs in the declared scope.
 
-**If CONVERGED:** Print to the user: "This run found no new bugs beyond the N already known from prior runs. Bug discovery has converged for this scope. Total confirmed bugs across all runs: T." Then proceed to Phase 4.
+**If CONVERGED:** Print to the user: "This run found no new bugs beyond the N already known from prior runs. Bug discovery has converged for this scope. Total confirmed bugs across all runs: T." Then proceed to Phase 7.
 
 **If NOT converged — automatic re-iteration.** When the convergence check shows net-new bugs > 0 and the iteration count has not reached the maximum (default: 5), the skill re-iterates automatically:
 
@@ -1707,7 +1715,7 @@ The iteration counter starts at 1 for the first run. Each archive-and-restart in
 
 ---
 
-## Phase 4: Present, Explore, Improve (Interactive)
+## Phase 7: Present, Explore, Improve (Interactive)
 
 After generating and verifying, present the results clearly and give the user control over what happens next. This phase has three parts: a scannable summary, drill-down on demand, and a menu of improvement paths.
 
@@ -1886,4 +1894,4 @@ Read these as you work through each phase:
 | `references/functional_tests.md` | File 2 (functional tests) | Test structure, anti-patterns, cross-variant strategy |
 | `references/review_protocols.md` | Files 3–4 (code review, integration) | Templates for both protocols, patch validation, skip guards |
 | `references/spec_audit.md` | File 5 (Council of Three) | Full audit protocol, triage process, fix execution |
-| `references/verification.md` | Phase 3 (verify) | Complete self-check checklist (45 benchmarks) including structured output, patch gate, skip guard validation, pre-flight discovery, version stamps, bug writeups, enumeration completeness, triage executable evidence, code-extracted enumeration lists, mechanical verification artifacts, source-inspection test execution, contradiction gate, seed check execution, convergence tracking, sidecar JSON schema validation, script-verified closure gate, canonical use case identifiers, and writeup inline fix diffs |
+| `references/verification.md` | Phase 6 (verify) | Complete self-check checklist (45 benchmarks) including structured output, patch gate, skip guard validation, pre-flight discovery, version stamps, bug writeups, enumeration completeness, triage executable evidence, code-extracted enumeration lists, mechanical verification artifacts, source-inspection test execution, contradiction gate, seed check execution, convergence tracking, sidecar JSON schema validation, script-verified closure gate, canonical use case identifiers, and writeup inline fix diffs |

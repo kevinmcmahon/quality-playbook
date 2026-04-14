@@ -181,7 +181,7 @@ A session that terminates early (timeout, context exhaustion, crash) may generat
 2. If `quality/spec_audits/` exists but contains no triage summary, the spec audit did not run.
 3. If `quality/test_regression.*` exists but contains only imports and no test functions, regression tests were not written.
 
-A partial session is not a "clean run with no findings" — it's a failed run that needs to be re-executed. PROGRESS.md should record this clearly: "Phase 3: FAILED — code review session terminated before producing findings. Re-run required."
+A partial session is not a "clean run with no findings" — it's a failed run that needs to be re-executed. PROGRESS.md should record this clearly: "Phase 6: FAILED — code review session terminated before producing findings. Re-run required."
 
 ### Provenance headers on carried-over artifacts
 
