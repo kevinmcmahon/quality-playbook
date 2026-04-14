@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate nine quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, a consolidated bug report (BUGS.md) with patches, a TDD verification protocol (RUN_TDD_TESTS.md), an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis, missing safeguard detection, patch validation gates, and structured test output (JUnit XML + sidecar JSON). Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.47
+  version: 1.3.48
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -1589,21 +1589,27 @@ Re-read `quality/PROGRESS.md`. Update:
 - Mark Phase 3 (Verification benchmarks) complete with timestamp
 - Verify the BUG tracker has closure for every entry
 - Add a final summary line: "Run complete. N BUGs found (N from code review, N from spec audit). N regression tests written. N exemptions granted."
+- **Print the suggested next prompt to the user (mandatory, all runs).** This applies to EVERY run, including baseline — it is not iteration-specific. Print the following block so the user can copy-paste it to start the next iteration:
+
+  For a baseline run (no iteration strategy):
+  ```
+  ────────────────────────────────────────────────────────
+  Next iteration suggestion:
+  "Run the next iteration of the quality playbook using the gap strategy."
+  ────────────────────────────────────────────────────────
+  ```
+
+  For iteration runs, use this mapping to determine the next strategy:
+  - **gap** → suggest unfiltered
+  - **unfiltered** → suggest parity
+  - **parity** → suggest adversarial
+  - **adversarial** → suggest "Run the quality playbook from scratch." (cycle complete)
 
 The completed PROGRESS.md is a permanent audit trail. It documents what the skill did, what it found, and how it resolved each finding. Users can read it to understand the run, debug failures, and compare across runs.
 
-### Suggested Next Iteration
-
-After finalizing PROGRESS.md, print a suggested prompt for the next iteration strategy. This helps the user discover the iteration cycle without needing to memorize strategy names. See `.github/skills/ITERATION.md` "Suggested next iteration" for the mapping. For a baseline (non-iteration) run, suggest:
-
-```
-────────────────────────────────────────────────────────
-Next iteration suggestion:
-"Run the next iteration of the quality playbook using the gap strategy."
-────────────────────────────────────────────────────────
-```
-
 ### Convergence Check (continuation mode only)
+
+> **Scope:** This subsection only. The suggested-next-prompt step above is unconditional and must execute on every run regardless of whether this convergence check is skipped.
 
 **This step runs only if Phase 0 executed** (i.e., `quality/SEED_CHECKS.md` exists from prior-run analysis). If this is a first run with no prior history, skip to Phase 4.
 
