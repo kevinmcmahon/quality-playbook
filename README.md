@@ -50,6 +50,14 @@ When it finishes, check `quality/BUGS.md` for confirmed findings with file locat
 
 **What this demonstrates:** The playbook derives behavioral requirements from the code and virtio specification, then uses those requirements to drive a three-pass code review and multi-model spec audit. The bug it finds is a real intent violation: the transport-feature whitelist is *structurally correct* (valid C, no crashes, no warnings) but *behaviorally wrong* (it silently drops a feature the spec says it should preserve). This is the class of bug that structural code review alone cannot catch.
 
+## Getting help from your AI assistant
+
+The `ai_context/TOOLKIT.md` file is designed for your AI coding tool to read — not for you to read yourself. Open it in Claude Code, Cursor, Copilot, or any AI coding tool and say:
+
+> "Read ai_context/TOOLKIT.md and help me set up the quality playbook for my project."
+
+Your AI assistant will guide you through setup, running, interpreting results, and iterating. TOOLKIT.md also explains how the playbook works in detail — the techniques it uses (defensive pattern forensics, mechanical verification, cross-path parity analysis), the rationale behind them, and what makes each iteration strategy effective. You can ask your AI questions like "how does it find bugs that structural code review misses?" or "what's the difference between gap and adversarial iteration?" and it will answer from the toolkit.
+
 ## The problem
 
 Most AI code review can only find structural issues: null dereferences, resource leaks, race conditions. That catches about 65% of real defects. The other 35% are intent violations -- bugs that can only be found if you know what the code is *supposed* to do. A function that silently returns null instead of throwing, a duplicate-key check that passes when the first value is null, a sanitization step that runs after the branch decision it was supposed to guard. These bugs look correct to any reviewer that doesn't know the spec.

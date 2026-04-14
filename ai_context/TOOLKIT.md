@@ -9,7 +9,7 @@
 
 The Quality Playbook is a skill that explores any codebase from scratch and finds real bugs. It generates nine quality artifacts: exploration notes, requirements, a quality constitution, functional tests, a code review with regression tests, a consolidated bug report with patches, TDD verification, integration tests, and a multi-model spec audit. Every confirmed bug gets a regression test patch, a fix patch, and red/green TDD verification.
 
-The skill file is `SKILL.md`. The iteration reference is `ITERATION.md`. These contain the full operational instructions the agent follows when running the playbook. This toolkit file is different — it helps you (through your AI assistant) set up, run, interpret, and iterate on the playbook.
+The skill file is `SKILL.md`. The iteration reference is `ITERATION.md`. These contain the full operational instructions the agent follows when running the playbook. This toolkit file is different — it helps you (through your AI assistant) set up, run, interpret, and iterate on the playbook. It also explains how the playbook works: what techniques it uses, why it uses them, and what makes them effective at finding bugs that other approaches miss.
 
 ## Quick start
 
@@ -125,33 +125,186 @@ Prompt: paste the same prompt into the chat.
 
 The playbook should work with any agent that can read markdown files and execute shell commands. The key requirement is **reasoning depth** — the agent needs to be able to read unfamiliar code, form hypotheses about edge cases, and trace code paths across multiple functions. Models optimized purely for code generation (autocomplete, inline suggestions) typically lack this capability.
 
-## Iteration strategies
+---
 
-After the baseline run, iteration strategies find additional bugs by re-exploring the codebase with different approaches. Each strategy targets a different failure mode. Run them in order:
+## How the playbook works — detailed guide
 
-**gap** — Scans what the baseline covered and explores what it missed. Best for large codebases where the first run only reached a subset of modules.
+This section explains the playbook's core techniques in detail so you can answer questions like "how does it find bugs?", "what is forensic inversion of try/catch blocks?", "why does it need three code review passes?", or "what's the difference between gap and adversarial iteration?" If the user asks how something works, look for the answer here first.
 
-**unfiltered** — Ignores the structured three-stage approach entirely. Explores like an experienced developer: reading code, following hunches, tracing suspicious paths. Finds bugs that the structured approach suppresses by over-constraining exploration.
+### The core insight: intent-driven bug discovery
 
-**parity** — Systematically compares parallel implementations of the same contract (e.g., setup vs. teardown, primary vs. fallback, sync vs. async). Finds bugs by spotting inconsistencies between code paths that should behave the same way but don't.
+Most AI code review can only find structural issues — null dereferences, resource leaks, race conditions, obvious logic errors. This catches about 65% of real defects. The other 35% are intent violations: bugs that can only be found if you know what the code is *supposed* to do. A function that silently returns null instead of throwing, a feature-bit whitelist that silently drops a feature the spec says it should preserve, a sanitization step that runs after the branch decision it was supposed to guard. The code is structurally correct — it compiles, it doesn't crash, it handles its inputs gracefully. But it doesn't do what it's supposed to do.
 
-**adversarial** — Re-investigates findings that previous iterations dismissed as "design choices" or "insufficient evidence." Uses a lower evidentiary bar — a code-path trace showing the output differs from spec is sufficient. Finds bugs that conservative triage keeps rejecting.
+The playbook's main job is figuring out intent. It reads documentation, specs, code comments, test expectations, defensive patterns, and community documentation to derive what the code *should* do, then uses that knowledge to drive a code review that can find intent violations. Without requirements, a code reviewer can only ask "is this code correct?" With requirements, the reviewer can ask "does this code do what the spec says it should?"
 
-**all** — Runs gap → unfiltered → parity → adversarial in sequence. Convenient but burns through rate limits fast. For Copilot users: run strategies individually and stagger them to avoid multi-day cooldowns.
+### Phase 1: Exploration — understanding the codebase
 
-### Typical yield
+The agent reads source files, tests, config, specs, and commit history. The goal is not just to catalog what exists, but to understand what the code is supposed to do and where it might fail. Exploration has several specific techniques:
 
-In benchmarking across 10+ open-source repos, iterations typically multiply the baseline bug count by 3-4x:
-- Baseline alone: 1-3 bugs per repo on average
-- After full iteration cycle: 4-10 bugs per repo on average
+#### Defensive pattern forensics (the "skeleton" technique)
 
-Bug counts vary between runs on the same repo due to non-determinism in exploration. A single run isn't definitive — iterations compensate by providing multiple independent exploration attempts.
+Developers don't write try/catch blocks, null checks, or retry logic for fun. Every piece of defensive code exists because someone got burned — or because someone anticipated getting burned. The playbook treats defensive code as archaeological evidence of past failures.
 
-### When to iterate
+The technique works by systematically grepping the codebase for defensive patterns (null guards, exception handlers, retry loops, sentinel values, fallback defaults) and then asking: "What failure does this code prevent? What input would trigger this path?" Each answer becomes a fitness-to-purpose scenario and a boundary test.
 
-- If the baseline found bugs → iterate. The codebase has more.
-- If the baseline found zero bugs → try one iteration (unfiltered is a good choice) before concluding the codebase is clean. A zero-bug baseline on a non-trivial codebase is often a low roll, not a clean bill of health.
-- After the adversarial iteration, returns diminish sharply. Starting a fresh baseline run from scratch often finds more than a fifth iteration strategy would.
+For example, a `try/except` around a JSON parse means malformed JSON happened in production. A null check on a user field means that field was sometimes missing when it shouldn't have been. An exponential backoff wrapper means the downstream service was unreliable. The playbook doesn't just note these patterns — it inverts them into test scenarios: "What happens if the JSON IS malformed? Does the error propagate correctly? Is the user notified? Is the partial state cleaned up?"
+
+This inversion is particularly powerful because it generates test cases that the original developer already identified as important — they wrote defensive code for exactly these failure modes. The playbook ensures those failure modes are actually tested, not just guarded.
+
+#### State machine analysis
+
+When the codebase has status fields, lifecycle phases, or mode flags, the playbook traces the complete state machine: every possible state, every transition, every consumer that checks state. It specifically looks for states you can enter but never leave (terminal state without cleanup), operations that should be available in a state but are blocked by an incomplete guard, and state-checking code that doesn't handle all possible states.
+
+State machine bugs are invisible during normal operation because they only surface when the system enters an unusual state — exactly when you need it to work correctly. A batch processor that can't be killed when it's "stuck," a watcher that never stops after all work completes, a UI that refuses to resume a "pending" run — these are all symptoms of incomplete state handling.
+
+#### Enumeration and whitelist completeness
+
+When a function dispatches on a set of named constants (switch/case, match expressions, if-else chains), the playbook performs a mechanical two-list check: extract every constant from the spec/header/enum (List A), extract every case label from the code (List B), and diff them. Any constant in A but not in B is a potential gap.
+
+This mechanical check exists because AI models reliably hallucinate completeness for switch/case constructs. The model sees a function with many case labels, sees constants defined elsewhere, and concludes all constants are handled without checking. In one observed case, the model asserted a kernel feature-bit whitelist "preserves supported ring transport bits including VIRTIO_F_RING_RESET" when that constant was entirely absent from the switch. The two-list check catches this by forcing the agent to actually extract and compare rather than summarize from memory.
+
+The extraction must be done mechanically — using shell commands like `awk`/`grep` that read file bytes and cannot hallucinate. The output is saved to `quality/mechanical/` and verified with an integrity check script. Downstream artifacts must cite the mechanical file, not a hand-written list.
+
+#### Domain-knowledge risk analysis
+
+Beyond code exploration, the playbook asks domain-specific questions based on the agent's training knowledge of what goes wrong in similar systems. For an HTTP client: redirect credential stripping, encoding detection failures, connection state leaking across requests. For a serialization library: null handling asymmetry between API surfaces, round-trip fidelity loss, lazy evaluation caching bugs. For a batch processor: crash recovery, idempotency, silent data loss, state corruption.
+
+These hypotheses are grounded in the actual code: "Because `save_state()` at persistence.py:340 lacks an atomic rename pattern, a mid-write crash during a 10,000-record batch will leave a corrupted state file." The test: could a code reviewer read the scenario and immediately know what function to open and what input to test?
+
+### Phase 2: Artifact generation
+
+Exploration findings are distilled into nine quality artifacts through a structured pipeline.
+
+#### The requirements pipeline
+
+This is the playbook's core value. A five-phase pipeline converts exploration findings into testable behavioral requirements:
+
+1. **Contract extraction** — Read all source files and list every behavioral contract (what the code promises to do). Written to `CONTRACTS.md`.
+2. **Requirement derivation** — Group related contracts, enrich with user intent from documentation, write formal testable requirements. Each requirement cites a specific doc source with an authority tier (Tier 1 = formal spec, Tier 2 = official docs, Tier 3 = inferred from source code).
+3. **Coverage verification** — Cross-reference every contract against every requirement. Fix gaps until coverage reaches 100%.
+4. **Completeness check** — Apply a domain checklist, testability audit, and cross-requirement consistency check. Self-refine up to 3 times.
+5. **Narrative pass** — Add an overview, derive use cases, reorder for readability.
+
+The requirements are what make the three-pass code review and spec audit effective. Without them, a reviewer can only find structural bugs. With them, the reviewer can check "does this code do what the spec says?" — which is how you find the other 35%.
+
+#### The quality constitution
+
+`QUALITY.md` defines what "correct" means for this specific project. It includes fitness-to-purpose scenarios — concrete failure modes grounded in the actual codebase, not abstract quality goals. Each scenario reads like a vulnerability analysis: what could go wrong, what the consequences would be, and how to verify the system handles it. These scenarios are designed so that a future AI session reading them cannot argue the quality standard down.
+
+#### Functional tests
+
+Tests traced to requirements, not generated from source code. Organized into three groups: spec requirements (one test per testable spec section), fitness scenarios (one per QUALITY.md scenario), and boundaries/edge cases (one per defensive pattern from exploration). Every test cites the requirement it verifies.
+
+### Phase 2b: Three-pass code review
+
+The code review runs in three passes, each finding different classes of bugs:
+
+**Pass 1 — Structural review.** Read every function body in the project's source tree. For each function, check five mandatory scrutiny areas: error handling (catch blocks that swallow errors, error conditions that return success), resource management (open/close pairing, cleanup in all exit paths), concurrency safety (data accessed from multiple contexts, lock ordering), boundary conditions (off-by-one, empty inputs, integer overflow), and enumeration completeness (switch/case constructs with incomplete coverage).
+
+Pass 1 catches about 65% of real defects: race conditions, null pointer hazards, resource leaks, off-by-one errors, type mismatches — structural problems visible in the code itself.
+
+**Pass 2 — Requirement verification.** For each testable requirement from the pipeline, check whether the code satisfies it. This is a pure verification pass — the reviewer's only job is "does the code satisfy this requirement?" Each requirement must get its own SATISFIED or VIOLATED verdict with a specific code citation (file:line). Requirements cannot be grouped into ranges like "REQ-003 through REQ-012 — satisfied" because that hides shallow verification.
+
+Pass 2 catches intent violations — cases where the code doesn't do what the specification says it should. These are invisible to structural review because the code that IS there is correct; the bug is what's missing or what doesn't match the spec.
+
+**Pass 3 — Cross-requirement consistency.** Compare pairs of requirements that reference the same field, constant, range, or security policy. Do numeric ranges match bit widths? Do security policies propagate to all connection types? Do validation bounds in one file agree with encoding limits in another?
+
+Pass 3 catches contradictions where two individually-correct pieces of code disagree about a shared constraint. These bugs are invisible to both structural review and per-requirement verification because each requirement IS satisfied individually — the bug only appears when you compare them.
+
+### Phase 2c: Council of Three (multi-model spec audit)
+
+Three independent AI model passes audit the code against the requirements. Why three? Because each model has different blind spots. In practice, different models catch different issues, and the most valuable findings are often the ones only one model catches.
+
+The protocol defines a copy-pasteable audit prompt with guardrails, project-specific scrutiny areas, and a triage process. The triage is the critical step — it uses verification probes (targeted checks that ask "is this actually true?") rather than majority vote or confidence averaging.
+
+**Why not majority vote?** A finding that only one of three auditors catches is disproportionately likely to be a real bug that two models missed. Discarding minority findings by default throws away the most interesting discoveries. Instead, every minority finding gets a re-investigation with fresh evidence.
+
+**Verification probes must produce executable evidence.** When the triage confirms or rejects a finding, it must write a test assertion that mechanically proves the determination — not just prose reasoning. For rejections: an assertion that PASSES, proving the finding is wrong. For confirmations: an assertion that FAILS, proving the bug exists. This exists because in practice, the triage step hallucinated compliance with code — it claimed lines 3527-3528 "explicitly preserve VIRTIO_F_RING_RESET" when those lines actually contained the `default:` branch. Had it been required to write an assertion, the assertion would have failed, exposing the hallucination.
+
+### Phase 2d: Reconciliation and TDD
+
+Post-review reconciliation closes the loop: every bug from code review and spec audit is tracked, regression-tested, and closed. Every confirmed bug gets:
+
+- A regression test patch (`BUG-NNN-regression-test.patch`) — mandatory, proves the bug exists
+- A fix patch (`BUG-NNN-fix.patch`) — strongly encouraged, proposes a fix
+- Red-phase TDD log (`BUG-NNN.red.log`) — proves the regression test fails on unpatched code
+- Green-phase TDD log (`BUG-NNN.green.log`) — proves the test passes after applying the fix
+
+The TDD cycle is the strongest evidence a bug is real. A reviewer can disagree with the analysis, but they can't argue with a reproducing test that fails without the patch and passes with it.
+
+**TDD enforcement applies to all runs including iterations (v1.3.49).** Every newly confirmed bug in every run must produce red-phase and green-phase logs. `quality_gate.sh` checks for these files and FAILs if they're missing. If the test runner is not available for the project's language, the log file is still created with `NOT_RUN` on the first line and an explanation — the obligation is acknowledged, not silently skipped.
+
+### Phase 3: Self-verification
+
+45 self-check benchmarks validate the generated artifacts against internal consistency rules: requirement counts match across all surfaces, no stale text remains, every finding has a closure status, version stamps are consistent, triage probes include executable evidence, mechanical verification artifacts haven't been tampered with, and every confirmed bug has TDD log files.
+
+---
+
+## Iteration strategies — detailed explanation
+
+After the baseline run, iteration strategies find additional bugs by re-exploring the codebase with different approaches. Each strategy targets a different failure mode of the baseline exploration.
+
+### Why iterate?
+
+A single playbook run explores the codebase through one path. On large codebases, a single run only covers 3-5 subsystems. On any codebase, the exploration path creates blind spots — areas that the first run's structure and focus prevented it from reaching. Iteration compensates by providing multiple independent exploration attempts with different constraints and emphases.
+
+In benchmarking across 10+ open-source repos, iterations typically multiply the baseline bug count by 3-4x: baseline alone finds 1-3 bugs per repo on average, while a full iteration cycle finds 4-10.
+
+### The recommended cycle: gap → unfiltered → parity → adversarial
+
+Each strategy is designed to find a different class of bugs that the previous strategies missed. Running them in order maximizes cumulative yield.
+
+### Strategy: `gap` — find what the previous run missed
+
+**What it does:** Scans the previous run's EXPLORATION.md (using a lightweight coverage map, not loading the full file), identifies subsystems or code areas that were not explored or were explored shallowly, and runs a focused exploration targeting only those gaps.
+
+**What it finds:** Bugs in subsystems the baseline didn't reach. On large codebases with many modules, the baseline run can only cover a subset. Gap fills in the rest.
+
+**When it's most effective:** After a structurally sound baseline that covered a subset of the codebase. If the baseline was weak (few findings, shallow exploration), unfiltered may be a better first iteration than gap.
+
+**How it differs from just re-running the baseline:** Gap is targeted — it knows what was already covered and deliberately avoids re-exploring the same areas. A fresh baseline would re-explore the same high-salience code paths it explored the first time.
+
+### Strategy: `unfiltered` — pure domain-driven exploration without structure
+
+**What it does:** Ignores the playbook's structured three-stage exploration (open exploration → quality risks → selected patterns) entirely. Instead, the agent explores the codebase the way an experienced developer would — reading code, following hunches, tracing suspicious paths. No pattern templates, no applicability matrices, no section format requirements.
+
+**What it finds:** Bugs that the structured approach suppresses by over-constraining exploration. The structured approach excels at systematic coverage but can cause the agent to spend its context budget on format compliance (filling in template sections, checking applicability matrices) rather than deep code reading. Unfiltered removes that overhead and lets domain expertise drive discovery.
+
+**When it's most effective:** On library and framework codebases where the bugs live in API surface inconsistencies, ad-hoc string parsing of structured formats, and edge-case inputs that a domain expert would know to try. Also effective when the baseline found zero bugs — the structure may have been the problem, not the codebase.
+
+**Why it exists separately from baseline:** In benchmarking, the unfiltered domain-driven approach used in earlier skill versions (v1.3.25–v1.3.26) found bugs in web frameworks and HTTP libraries that the structured approach consistently missed. Rather than choosing one approach, the playbook offers both: structure for systematic coverage, unfiltered for discovery depth.
+
+### Strategy: `parity` — cross-path comparison and diffing
+
+**What it does:** Systematically enumerates parallel implementations of the same contract and diffs them for inconsistencies. It identifies groups of code that implement the same logical operation via different paths — transport variants (PCI vs MMIO vs vDPA), fallback chains (primary → fallback → last-resort), setup vs teardown, happy path vs error path, public API overloads — and then compares each pair using a structured checklist.
+
+**The comparison checklist covers six sub-types:**
+- **Resource lifecycle parity:** Does teardown release everything setup acquired?
+- **Allocation context parity:** Do parallel paths use compatible allocation flags for their lock/interrupt context?
+- **Identifier and index parity:** Do parallel paths compute indices the same way for the same logical entity?
+- **Capability/feature-bit parity:** Do parallel paths check the same feature bits?
+- **Error/exception parity:** Do fallback paths handle errors at least as robustly as primary paths?
+- **Iteration/collection parity:** Do parallel paths iterate over the same collections?
+
+**What it finds:** Inconsistencies between code paths that should behave the same way but don't. These bugs only emerge from cross-path comparison — they're invisible when exploring individual subsystems. A reset function that forgets to drain a list that the setup function populated, a fallback path that uses a different index calculation than the primary path, an error handler that's less robust than the happy path.
+
+**When it's most effective:** On codebases with multiple implementations of the same interface (transport backends, protocol versions, sync/async variants). The more parallel paths exist, the more bugs parity will find.
+
+**Why it exists:** In benchmarking on the Linux virtio subsystem, three bugs were found by lining up parallel code paths and spotting differences — not by exploring individual subsystems. The gap, unfiltered, and adversarial strategies all explore areas or challenge decisions, but none explicitly compare parallel paths. Parity fills that gap.
+
+### Strategy: `adversarial` — challenge previous conclusions
+
+**What it does:** Re-investigates what previous iterations dismissed, demoted, or marked SATISFIED. It reads the Demoted Candidates Manifest (findings that were rejected in previous iterations with structured re-promotion criteria), triage dismissals, and code review SATISFIED verdicts — then challenges those decisions with fresh evidence and a lower evidentiary bar.
+
+**What it finds:** Type II errors — real bugs that conservative triage rejected because they looked ambiguous, could be interpreted as "design choices," or lacked dramatic runtime failures. By the adversarial iteration, the remaining undiscovered bugs are precisely the ones that conservative evidence thresholds keep filtering out.
+
+**The lower evidentiary bar:** The baseline and gap strategies rightly demand strong evidence to avoid false positives during initial discovery. The adversarial strategy deliberately relaxes this. A code-path trace showing observable semantic drift (output differs from what spec or contract requires) is sufficient to confirm — you don't need a runtime crash. "Permissive behavior" is not automatically a design choice — if the spec defines the expected behavior and the code deviates, it's a bug.
+
+**When it's most effective:** After gap, unfiltered, and parity have run. It specifically targets the accumulated dismissed findings from all previous iterations. Each dismissed finding has structured re-promotion criteria that tell the adversarial strategy exactly what evidence to gather.
+
+**When to stop iterating:** After the adversarial iteration, returns diminish sharply. Starting a fresh baseline run from scratch often finds more than a fifth strategy would.
+
+---
 
 ## Understanding results
 
@@ -191,7 +344,64 @@ If it reports FAIL results, the most common causes:
 - BUGS.md heading format (`### BUG-NNN` not `## BUG-NNN`)
 - Missing fields in `tdd-results.json`
 - Writeups without inline fix diffs
-- Missing red-phase log files
+- Missing red-phase or green-phase log files (v1.3.49+)
+
+---
+
+## Key techniques explained
+
+This section provides detailed explanations of specific playbook techniques. Use this to answer "how does X work?" and "why does it do Y?" questions.
+
+### Mechanical verification and anti-hallucination
+
+**Problem:** AI models reliably hallucinate the contents of code when summarizing it. The model reads a function with many case labels, reads constants defined elsewhere, and concludes all constants are handled — without actually checking. In one observed case, the model asserted that a kernel function "preserves VIRTIO_F_RING_RESET" when that constant was entirely absent from the code.
+
+**Solution:** For dispatch functions, registries, and any construct where completeness matters, the playbook requires mechanical extraction using shell commands (awk/grep) that cannot hallucinate. The output is saved to a file, verified with an integrity check script, and used as the sole source of truth for downstream artifacts.
+
+**Why an integrity check?** In testing, the model executed the correct extraction command but wrote its own fabricated output to the file instead of letting the shell redirect capture it. The fabricated file included a constant that the real command does not produce. The integrity check re-runs the extraction and diffs against the saved file — any mismatch means the artifact was tampered with.
+
+**Why can't downstream artifacts use their own lists?** A contamination chain was observed in v1.3.17: REQUIREMENTS.md asserted RING_RESET was preserved in a switch, the code review copied the list from REQUIREMENTS.md, three spec auditors inherited the claim from the code review prompt, and the triage accepted it — all without anyone reading the actual code. Requiring mechanical extraction at the source and citation of the mechanical file downstream breaks this chain.
+
+### The contradiction gate
+
+Before closure, the playbook compares executed evidence (mechanical artifacts, regression test results, TDD red-phase failures) against prose artifacts (requirements, contracts, triage, BUGS.md). If they contradict, the executed result wins — the prose artifact must be corrected before proceeding.
+
+This exists because models can reconcile contradictions by changing the evidence rather than the conclusion. If a requirement says "function handles X" but the mechanical extraction shows it doesn't, the model might update the extraction file rather than the requirement. The contradiction gate catches this by requiring that executed evidence is immutable.
+
+### Confidence tiers and traceability
+
+Every requirement traces back to a source with a confidence tier:
+- **Tier 1: Formal spec** — written by humans in an authoritative document. Highest confidence.
+- **Tier 2: Official docs** — documentation that describes intended behavior but may be outdated.
+- **Tier 3: Inferred from source** — deduced from code patterns, comments, or test expectations. Lowest confidence, flagged for review.
+
+The traceability chain runs from gathered docs → requirements → bugs → tests. When a bug is reported upstream, the spec basis cites the exact passage that establishes the expected behavior. "Your code violates section X.Y of your own spec" is a much stronger report than "this looks like it might be a bug."
+
+### Skip guards and the TDD cycle
+
+Regression tests for confirmed bugs include "skip guards" — markers (like `xfail` in pytest, `@Disabled` in JUnit) that prevent the test from running in normal CI. This is because the bug hasn't been fixed yet — the test is supposed to fail. The skip guard ensures it doesn't break the project's test suite.
+
+During the TDD cycle, the skip guard is temporarily removed:
+- **Red phase:** Remove guard, run test on unpatched code. It must FAIL (proving the bug exists). Re-enable guard.
+- **Green phase:** Remove guard, apply fix patch, run test. It must PASS (proving the fix works). Re-enable guard if the fix will be reverted.
+
+The guard remains in the committed test file until the fix is merged upstream.
+
+### Bug writeups
+
+Each TDD-verified bug gets a self-contained writeup at `quality/writeups/BUG-NNN.md`. This file is designed to be emailed to a maintainer, attached to a Jira ticket, or reviewed outside the repository. It includes the bug description, spec basis, code location, regression test, fix patch with an inline diff, and the TDD verification results. A reviewer can read the writeup and understand the bug without navigating the rest of the quality artifacts.
+
+### The evidentiary standard for confirming bugs
+
+The playbook uses a specific evidentiary standard: a code-path trace that demonstrates a specific behavioral violation IS sufficient evidence to confirm a bug. You do NOT need an executed test, a runtime crash, or an integration-level reproduction to confirm a finding. If the spec says the behavior should be X, and the code demonstrably produces Y (traceable through the code path), that is a confirmed bug.
+
+This standard exists because earlier versions set the bar at "runtime proof before confirmation," which is backwards — the TDD protocol provides runtime evidence AFTER confirmation, not as a prerequisite. Setting the bar too high produced zero-bug runs on codebases where bugs were known to exist, because every candidate was deferred pending evidence that could only come from the TDD cycle that runs after confirmation.
+
+### Coverage theater prevention
+
+"Coverage theater" is when tests produce high coverage numbers without catching real bugs. Examples: asserting that imports worked, that dicts have keys, that mocks return what they were configured to return. The quality constitution calls this out explicitly with project-specific examples derived from exploration, so future AI sessions know what NOT to do.
+
+---
 
 ## Rate limits and cost management
 
@@ -201,7 +411,7 @@ The quality playbook is a large workload — a full run with iterations can cons
 
 **Claude Code:** Usage counts against your Claude plan. The Max plan provides the most headroom. A single baseline run on a medium-sized repo is manageable; a full iteration cycle on a large repo (like a Linux kernel driver) is expensive.
 
-**Cursor:** Usage depends on the model selected and the plan. Same advice: stagger runs, don't run everything in parallel.
+**Cursor:** Usage depends on the model selected and the plan. Cursor Pro has a monthly API budget for premium models (e.g., $20/month); a single large Opus call can consume most of it. When the budget is exhausted, Cursor falls back to weaker models that lack the reasoning depth for effective bug finding. Stagger runs and monitor usage.
 
 **General:** The playbook's multi-pass mode (explore in one session, generate artifacts in another) uses shorter sessions that each fit in a smaller context window. This can reduce per-session token usage compared to single-pass mode, at the cost of more manual coordination.
 
@@ -249,6 +459,7 @@ If no docs exist, the playbook derives requirements from the code itself — com
 - Read the output carefully — each FAIL line tells you exactly what's wrong.
 - The most common fix: missing patch files. Ask the agent to generate them.
 - Second most common: heading format. BUGS.md must use `### BUG-NNN` (three hashes), not `## BUG-NNN`.
+- Missing TDD log files (v1.3.49+): the agent generated tests but didn't run them. Ask the agent to execute the TDD cycle, or run it manually.
 
 **Phase 0 finds seeds from a previous run:**
 - This is expected if you're re-running on a repo that already has `quality/` artifacts from a prior run.

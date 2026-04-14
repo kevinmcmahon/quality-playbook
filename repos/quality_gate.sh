@@ -12,6 +12,8 @@
 # and triage executable evidence check.
 # v1.3.33 fixes language detection (find-based, not ls-glob), adds --benchmark
 # vs --general strictness modes, and makes UC threshold size-aware.
+# v1.3.49 adds TDD log file checks: verifies BUG-NNN.red.log exists for every
+# confirmed bug and BUG-NNN.green.log for every bug with a fix patch.
 #
 # Usage:
 #   ./quality_gate.sh .                          # Check current directory (benchmark mode)
@@ -270,6 +272,53 @@ check_repo() {
         fi
     else
         info "Zero bugs — tdd-results.json not required"
+    fi
+
+    # --- TDD log files — red/green phase logs per bug (v1.3.49) ---
+    echo "[TDD Log Files]"
+    if [ "$bug_count" -gt 0 ]; then
+        local red_found=0 red_missing=0 green_found=0 green_missing=0 green_expected=0
+        # Extract confirmed bug IDs from BUGS.md headings
+        local bug_ids
+        bug_ids=$(grep -oE 'BUG-[0-9]+' "${q}/BUGS.md" 2>/dev/null \
+            | grep -E '^BUG-[0-9]+$' | sort -u -t'-' -k2,2n)
+        for bid in $bug_ids; do
+            # Red-phase log — required for every confirmed bug
+            if [ -f "${q}/results/${bid}.red.log" ]; then
+                red_found=$((red_found + 1))
+            else
+                red_missing=$((red_missing + 1))
+            fi
+            # Green-phase log — required only if a fix patch exists
+            if ls ${q}/patches/${bid}-fix*.patch &>/dev/null; then
+                green_expected=$((green_expected + 1))
+                if [ -f "${q}/results/${bid}.green.log" ]; then
+                    green_found=$((green_found + 1))
+                else
+                    green_missing=$((green_missing + 1))
+                fi
+            fi
+        done
+
+        if [ "$red_missing" -eq 0 ] && [ "$red_found" -gt 0 ]; then
+            pass "All ${red_found} confirmed bug(s) have red-phase logs"
+        elif [ "$red_found" -gt 0 ]; then
+            fail "${red_missing} confirmed bug(s) missing red-phase log (BUG-NNN.red.log)"
+        else
+            fail "No red-phase logs found (every confirmed bug needs quality/results/BUG-NNN.red.log)"
+        fi
+
+        if [ "$green_expected" -gt 0 ]; then
+            if [ "$green_missing" -eq 0 ]; then
+                pass "All ${green_found} bug(s) with fix patches have green-phase logs"
+            else
+                fail "${green_missing} bug(s) with fix patches missing green-phase log (BUG-NNN.green.log)"
+            fi
+        else
+            info "No fix patches found — green-phase logs not required"
+        fi
+    else
+        info "Zero bugs — TDD log files not required"
     fi
 
     # --- Integration sidecar JSON — deep validation ---

@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate nine quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, a consolidated bug report (BUGS.md) with patches, a TDD verification protocol (RUN_TDD_TESTS.md), an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis, missing safeguard detection, patch validation gates, and structured test output (JUnit XML + sidecar JSON). Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.48
+  version: 1.3.49
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -176,6 +176,8 @@ Use this when a previous playbook run exists and you want to find additional bug
 **When to use iteration mode:** After a complete playbook run, when you believe the codebase has more bugs than the first run found. This is especially effective for large codebases where a single run can only cover 3–5 subsystems, and for library/framework codebases where different exploration paths find different bug classes.
 
 **Read `.github/skills/ITERATION.md` for detailed strategy instructions.** That file contains the full operational detail for each strategy, shared rules, merge steps, and the completion gate. The summary below describes when to use each strategy.
+
+**TDD applies to iteration runs.** Every newly confirmed bug in an iteration run must go through the full TDD red-green cycle and produce `quality/results/BUG-NNN.red.log` (and `.green.log` if a fix patch exists). The quality gate enforces this — missing logs cause FAIL. See ITERATION.md shared rule 5 and the TDD Log Closure Gate in Phase 2d.
 
 **Iteration strategies.** The user selects a strategy by naming it in the prompt. If no strategy is named, default to `gap`.
 
@@ -1530,56 +1532,107 @@ Update PROGRESS.md: mark Phase 2d complete. The BUG tracker should now show clos
 
 **Why a verification phase?** AI-generated output can look polished and be subtly wrong. Tests that reference undefined fixtures report 0 failures but 16 errors — and "0 failures" sounds like success. Integration protocols can list field names that don't exist in the actual schemas. The verification phase catches these problems before the user discovers them, which is important because trust in a generated quality playbook is fragile — one wrong field name undermines confidence in everything else.
 
-### Mechanical Verification Closure (mandatory first step of Phase 3)
+**Phase 3 execution model: incremental, not monolithic.** Phase 3 runs as a series of independent verification steps, each reading only the file(s) it needs, checking one thing, and writing its result to `quality/results/phase3-verification.log` before moving to the next step. Do NOT load all artifacts into context at once. Do NOT try to hold the full verification checklist in memory while reading artifacts. Each step below is self-contained — read the file, check the condition, append the result, drop the context.
+
+### Step 3.1: Mechanical Verification Closure (mandatory first step)
 
 If `quality/mechanical/` exists, the **literal first action** of Phase 3 is:
-
-```bash
-bash quality/mechanical/verify.sh
-```
-
-Execute this command in the shell. Do not substitute a Python script, do not read the artifact file and assert on its contents, do not skip this step. The command must be `bash quality/mechanical/verify.sh` — not `python3 -c "..."`, not `cat quality/mechanical/... | grep ...`, not any other equivalent. Record the full stdout and exit code in PROGRESS.md under a `## Phase 3 Mechanical Closure` heading, and update the receipt files:
 
 ```bash
 bash quality/mechanical/verify.sh > quality/results/mechanical-verify.log 2>&1
 echo $? > quality/results/mechanical-verify.exit
 ```
 
-If the exit code is not 0, **Phase 3 fails immediately.** Do not proceed to self-check benchmarks. Go back to the extraction step: delete the mismatched `*_cases.txt`, re-run the extraction command with a fresh shell redirect, re-verify, and update all downstream artifacts that cited the old extraction.
+Execute this command in the shell. Do not substitute a Python script, do not read the artifact file and assert on its contents, do not skip this step. The command must be `bash quality/mechanical/verify.sh` — not `python3 -c "..."`, not `cat quality/mechanical/... | grep ...`, not any other equivalent.
+
+Record the exit code. If non-zero, **Phase 3 fails immediately.** Do not proceed to further steps. Go back to the extraction step: delete the mismatched `*_cases.txt`, re-run the extraction command with a fresh shell redirect, re-verify, and update all downstream artifacts that cited the old extraction.
+
+Record in PROGRESS.md under `## Phase 3 Mechanical Closure` and append to `quality/results/phase3-verification.log`:
+```
+[Step 3.1] Mechanical verification: PASS (exit 0)
+```
 
 **Why this is non-substitutable:** In v1.3.23, the model replaced `bash verify.sh` with `python3 -c "from pathlib import Path; ..."` that read the (forged) artifact file and asserted on its contents — a circular check that passed despite the artifact being fabricated. The only trustworthy verification is re-running the same shell pipeline that produced the artifact and diffing the results. Any other method can be fooled by a corrupted intermediate file.
 
-### Self-Check Benchmarks
+### Step 3.2: Run quality_gate.sh (script-verified checks)
 
-Before declaring done, check every benchmark. **Read `references/verification.md`** for the complete checklist.
+Run the mechanical validation gate:
 
-The critical checks:
+```bash
+bash .github/skills/quality_gate.sh . > quality/results/quality-gate.log 2>&1
+echo $? >> quality/results/phase3-verification.log
+```
 
-1. **Test count** near heuristic target (spec sections + scenarios + defensive patterns)
-2. **Scenario coverage** — scenario test count matches QUALITY.md scenario count
-3. **Cross-variant coverage** — ~30% of tests parametrize across all input variants
-4. **Boundary test count** ≈ defensive pattern count from Step 5
-5. **Assertion depth** — Majority of assertions check values, not just presence
-6. **Layer correctness** — Tests assert outcomes (what spec says), not mechanisms (how code implements)
-7. **Mutation validity** — Every fixture mutation uses a schema-valid value from Step 5b
-8. **All tests pass — zero failures AND zero errors.** Run the test suite using the project's test runner (Python: `pytest -v`, Scala: `sbt testOnly`, Java: `mvn test`/`gradle test`, TypeScript: `npx jest`, Go: `go test -v`, Rust: `cargo test`) and check the summary. Errors from missing fixtures, failed imports, or unresolved dependencies count as broken tests. If you see setup errors, you forgot to create the fixture/setup file or referenced undefined test helpers.
-9. **Existing tests unbroken** — The new files didn't break anything.
-10. **Integration test quality gates were written from a Field Reference Table.** Verify that you built a Field Reference Table by re-reading each schema file before writing quality gates, and that every field name in the quality gates is copied from that table — not from memory. If you skipped the table, go back and build it now.
-14. **Structured output schemas are valid.** Verify that `RUN_TDD_TESTS.md` and `RUN_INTEGRATION_TESTS.md` both instruct the agent to produce JUnit XML output (using the framework's native reporter) and a sidecar JSON file. Check that the JSON schema in each protocol includes all mandatory fields (`schema_version`, `skill_version`, `date`, `summary`). Verify that the sidecar JSON verdict/result values use only the allowed enum values defined in this skill.
-15. **Patch validation gate is executable.** For each confirmed bug with patches, verify that the `git apply --check` and compile-check commands specified in the patch validation gate would work for this project's build system. The gate commands must use the project's actual build tool, not a generic placeholder. For interpreted languages (Python, JavaScript), verify the gate specifies an appropriate syntax check.
-16. **Regression test skip guards are present.** Grep `quality/test_regression.*` for the language-appropriate skip/xfail mechanism. Every test function must have a guard referencing the bug ID and fix patch path. A regression test without a skip guard will cause unexpected failures when the test suite runs on unpatched code.
-17. **Test file extension matches project language.** Verify that `quality/test_functional.*` and `quality/test_regression.*` use the correct file extension for the project's language: `.py` (Python), `.java` (Java), `.scala` (Scala), `.ts` (TypeScript), `.js` (JavaScript), `.go` (Go), `.rs` (Rust), `.kt` (Kotlin). A Go project with `test_functional.py` or a Rust project with `test_functional.java` is a hard fail — it means the test file was generated from a template without adapting to the actual language. Also verify the test file uses the correct test framework import for that language (e.g., `pytest` not `unittest` if the project's existing tests use pytest).
-18. **Minimum use case count (size-aware).** REQUIREMENTS.md must derive at least 5 use cases (UC-01 through UC-05 minimum) for typical projects. For small projects with fewer than 5 source files, 3 use cases is acceptable — document the rationale in the REQUIREMENTS.md header. Fewer than the threshold indicates the use case derivation step was superficial. If below threshold, go back to the use case derivation step and re-derive from the overview and gathered documentation.
+Read `quality/results/quality-gate.log`. If it reports any FAIL results, fix each failing check before proceeding. The most common FAILs are: (1) missing `quality/patches/BUG-NNN-regression-test.patch` files, (2) non-canonical JSON field names like `bug_id` instead of `id`, (3) missing `confirmed_open` in the TDD summary, (4) writeups without inline fix diffs, (5) missing TDD red/green log files. Do not proceed until `quality_gate.sh` exits 0.
 
-If any benchmark fails, go back and fix it before proceeding.
+Append to `quality/results/phase3-verification.log`:
+```
+[Step 3.2] quality_gate.sh: PASS (exit 0) — N checks passed, 0 FAIL, 0 WARN
+```
 
-### Metadata Consistency Check
+This step covers verification benchmarks: 14 (sidecar JSON), 17 (test file extension), 18 (use case count), 20 (writeups), 23 (mechanical artifacts), 26 (version stamps), 27 (mechanical directory), 29 (triage-to-BUGS sync), 34 (BUGS.md exists), 38 (individual auditor reports), 39 (BUGS.md heading format), 40 (artifact file existence), 41 (sidecar JSON validation), 42 (script-verified closure), 43 (use case identifiers), 44 (regression-test patches), 45 (writeup inline diffs).
 
-Before finalizing, re-read `quality/PROGRESS.md` and `quality/COMPLETENESS_REPORT.md` and verify:
-- The requirement count is explicit and consistent across all three surfaces: the count in REQUIREMENTS.md's header (add one if missing: "N requirements derived"), the count in PROGRESS.md's artifact inventory, and the count in COVERAGE_MATRIX.md's header. All three must state the same number, and it must match the actual count of `### REQ-NNN` headings in REQUIREMENTS.md.
-- The `With docs` field in PROGRESS.md accurately reflects whether `docs_gathered/` exists and contains files
+### Step 3.3: Test execution verification
+
+Run the functional test suite. Read only `quality/test_functional.*` to determine the test command:
+
+- **Python:** `pytest quality/test_functional.py -v 2>&1 | tail -20`
+- **Java:** `mvn test -Dtest=FunctionalTest` or `gradle test --tests FunctionalTest`
+- **Go:** `go test -v` targeting the generated test file's package
+- **TypeScript:** `npx jest functional.test.ts --verbose`
+- **Rust:** `cargo test`
+- **Scala:** `sbt "testOnly *FunctionalSpec"`
+
+Check for both failures AND errors. Errors from missing fixtures, failed imports, or unresolved dependencies count as broken tests. Expected-failure (xfail) regression tests do not count against this check.
+
+Append to `quality/results/phase3-verification.log`:
+```
+[Step 3.3] Functional tests: PASS — N tests, 0 failures, 0 errors
+```
+
+This covers benchmarks 8 (all tests pass) and 9 (existing tests unbroken).
+
+### Step 3.4: Verification checklist — file-by-file checks
+
+Process the remaining verification benchmarks from `references/verification.md` in small batches. For each batch, read only the file(s) needed, check the condition, and append the result. **Do not read more than 2 files per batch.**
+
+**Batch A — QUALITY.md (benchmarks 1-2, 10):** Read `quality/QUALITY.md`. Count scenarios. Verify each scenario references real code (grep for cited function names). Append results.
+
+**Batch B — Functional test file (benchmarks 3-7):** Read `quality/test_functional.*`. Check cross-variant coverage (~30%), boundary test count, assertion depth (value checks vs presence checks), layer correctness (outcomes vs mechanisms), mutation validity.
+
+**Batch C — Protocol files (benchmarks 11-13):** Read `quality/RUN_CODE_REVIEW.md`, then `quality/RUN_INTEGRATION_TESTS.md`, then `quality/RUN_SPEC_AUDIT.md` — one at a time. Check each is self-contained and executable. Verify Field Reference Table in integration tests.
+
+**Batch D — Regression tests (benchmarks 15-16, 24):** Read `quality/test_regression.*` if it exists. Verify skip guards reference bug IDs, verify patch validation gate commands, verify source-inspection tests don't use `run=False`.
+
+**Batch E — Enumeration and triage checks (benchmarks 19, 21-22, 25, 36):** Read `quality/code_reviews/*.md` (just the enumeration sections). Read `quality/spec_audits/*triage*` (just the verification probe sections). Check two-list comparisons, executable probe evidence, no circular mechanical artifact references, contradiction gate.
+
+**Batch F — Continuation mode (benchmarks 32-33):** Only if `quality/SEED_CHECKS.md` exists. Read it, verify mechanical execution, verify convergence section in PROGRESS.md.
+
+Append each batch result to `quality/results/phase3-verification.log`:
+```
+[Step 3.4A] QUALITY.md scenarios: PASS — 8 scenarios, all reference real code
+[Step 3.4B] Functional test quality: PASS — 30% cross-variant, assertion depth OK
+[Step 3.4C] Protocol files: PASS — all self-contained and executable
+[Step 3.4D] Regression tests: PASS — all skip guards present
+[Step 3.4E] Enumeration/triage: PASS — two-list checks present, probes have assertions
+[Step 3.4F] Continuation mode: SKIP — no SEED_CHECKS.md
+```
+
+If any batch fails, fix the issue immediately before proceeding to the next batch.
+
+### Step 3.5: Metadata Consistency Check
+
+Read `quality/PROGRESS.md` (just the metadata and artifact inventory sections). Then spot-check:
+- The requirement count is consistent across REQUIREMENTS.md header, PROGRESS.md artifact inventory, and COVERAGE_MATRIX.md header. All three must state the same number.
+- The `With docs` field accurately reflects whether `docs_gathered/` exists
 - The Terminal Gate Verification section is present and filled in
-- No stale pre-reconciliation text remains in COMPLETENESS_REPORT.md — if both a `## Verdict` and an `## Updated verdict` (or `## Post-Review Reconciliation`) section exist, **delete the original `## Verdict` section entirely**. Do not rename it, relabel it, or mark it as superseded — remove it from the document. The final document must have exactly one `## Verdict` heading with the post-reconciliation assessment. Two verdict sections, regardless of labeling, is a deliverable defect.
+
+Then read `quality/COMPLETENESS_REPORT.md` (just the verdict section). Verify no stale pre-reconciliation text remains — if both a `## Verdict` and an `## Updated verdict` (or `## Post-Review Reconciliation`) section exist, **delete the original `## Verdict` section entirely**. The final document must have exactly one `## Verdict` heading.
+
+Append to `quality/results/phase3-verification.log`:
+```
+[Step 3.5] Metadata consistency: PASS — requirement counts match, version stamps consistent
+```
 
 If any metadata is stale, fix it now.
 

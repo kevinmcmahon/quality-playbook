@@ -43,6 +43,8 @@ These rules apply to every iteration strategy:
 
 5. **Continue with Phases 2–3.** Use `EXPLORATION_MERGED.md` as the primary input for Phase 2 artifact generation. All downstream artifacts (REQUIREMENTS.md, code review, spec audit) should reference the merged exploration.
 
+   **TDD is mandatory for iteration runs (v1.3.49).** Iteration runs must execute the full TDD red-green cycle for every newly confirmed bug, exactly as baseline runs do. This means: for each new BUG-NNN confirmed in this iteration, create a regression test patch, run it against unpatched code to produce `quality/results/BUG-NNN.red.log`, and if a fix patch exists, run it against patched code to produce `quality/results/BUG-NNN.green.log`. The TDD Log Closure Gate in Phase 2d applies equally to iteration runs — missing log files will cause quality_gate.sh to FAIL. Do not skip TDD because this is "just an iteration" or because prior bugs already have logs. New bugs need new logs. If the test runner is not available for the project's language, create the log file with `NOT_RUN` on the first line and an explanation — the file must still exist.
+
 6. **Iteration mode completion gate.** Before proceeding to Phase 2 (applies to all strategies):
    - `quality/ITERATION_PLAN.md` exists and names the strategy used
    - `quality/EXPLORATION_ITER{N}.md` exists for this iteration with at least 80 lines of substantive content

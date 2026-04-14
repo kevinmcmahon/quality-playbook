@@ -137,8 +137,15 @@ done < <(resolve_repos "$VERSION" "${REPO_NAMES[@]}")
 # One timestamp per script invocation so parallel children agree on log paths with the parent.
 export RUN_TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
 
+# Show the installed skill version from the first resolved repo (more accurate than root SKILL.md)
+DISPLAY_VERSION="$VERSION"
+if [ ${#REPO_DIRS[@]} -gt 0 ]; then
+    _repo_ver=$(detect_repo_skill_version "${REPO_DIRS[0]}")
+    [ -n "$_repo_ver" ] && DISPLAY_VERSION="$_repo_ver"
+fi
+
 echo "=== Quality Playbook — Artifact Generation ==="
-echo "Version:  ${VERSION}"
+echo "Version:  ${DISPLAY_VERSION}"
 echo "Runner:   ${RUNNER}"
 if [ "$RUNNER" = "copilot" ]; then
     echo "Model:    ${MODEL}"
@@ -159,14 +166,25 @@ fi
 echo "Repos:    ${REPO_DIRS[*]##*/}"
 echo ""
 echo "=== Runner logs (one file per repo — names include this run's RUN_TIMESTAMP) ==="
-echo "Each file gets the full prompt and exact shell command before the tool runs. With this script version,"
-echo "Copilot stdout is also streamed into the runner log (tee). On older runs, live Copilot output was only in the repo transcript below."
+echo "Each file gets the full prompt and exact shell command before the tool runs."
+if [ "$RUNNER" = "claude" ]; then
+    echo "For Claude: live output goes to the output.txt file via script(1). The runner log gets a copy after the run."
+else
+    echo "For Copilot: stdout is streamed into the runner log via tee."
+fi
 _screen_logs=()
 for repo_dir in "${REPO_DIRS[@]}"; do
     _tail_name=$(basename "$repo_dir")
     _log_path="${SCRIPT_DIR}/${_tail_name}-playbook-${RUN_TIMESTAMP}.log"
-    _screen_logs+=("$_log_path")
-    echo "tail -f $(printf '%q' "$_log_path")"
+    if [ "$RUNNER" = "claude" ]; then
+        # For Claude, live output is in the output.txt file written by script(1)
+        _live_path="${repo_dir}/control_prompts/playbook_run.output.txt"
+        _screen_logs+=("$_live_path")
+        echo "tail -f $(printf '%q' "$_live_path")"
+    else
+        _screen_logs+=("$_log_path")
+        echo "tail -f $(printf '%q' "$_log_path")"
+    fi
 done
 if [ "$SINGLE_PASS" = true ] && [ "$RUNNER" = "copilot" ]; then
     echo ""
@@ -211,9 +229,9 @@ run_prompt() {
         if [ "$RUNNER" = "claude" ]; then
             echo "SHELL COMMAND (exact invocation — cwd is repo root):"
             if [ -n "$CLAUDE_MODEL" ]; then
-                echo "  claude --model $(printf '%q' "$CLAUDE_MODEL") -p $(printf '%q' "$prompt") --dangerously-skip-permissions 2>&1 | tee $(printf '%q' "$output_file")"
+                echo "  script -q $(printf '%q' "$output_file") claude --model $(printf '%q' "$CLAUDE_MODEL") -p $(printf '%q' "$prompt") --dangerously-skip-permissions"
             else
-                echo "  claude -p $(printf '%q' "$prompt") --dangerously-skip-permissions 2>&1 | tee $(printf '%q' "$output_file")"
+                echo "  script -q $(printf '%q' "$output_file") claude -p $(printf '%q' "$prompt") --dangerously-skip-permissions"
             fi
         else
             echo "SHELL COMMAND (exact invocation — cwd is repo root):"
@@ -233,7 +251,19 @@ run_prompt() {
     if [ "$RUNNER" = "claude" ]; then
         local claude_args=(-p "$prompt" --dangerously-skip-permissions)
         [ -n "$CLAUDE_MODEL" ] && claude_args=(--model "$CLAUDE_MODEL" "${claude_args[@]}")
-        claude "${claude_args[@]}" 2>&1 | tee "$output_file" | tee -a "$log_file"
+        # Write directly to file via script(1) — no pipe, so no buffering.
+        # macOS script: script -q <outfile> <command...>
+        # Linux script: script -q -c "<command>" <outfile>
+        # Detect which form to use:
+        if script -q /dev/null true 2>/dev/null; then
+            # macOS form: script -q <file> <command...>
+            script -q "$output_file" claude "${claude_args[@]}"
+        else
+            # Linux form: script -q -c "command" <file>
+            script -q -c "claude $(printf '%q ' "${claude_args[@]}")" "$output_file"
+        fi
+        # Append the captured output to the runner log for post-hoc review
+        cat "$output_file" >> "$log_file" 2>/dev/null
     else
         # Tee: same stream → control_prompts transcript (canonical) + runner log (so tail -f *.log shows live output)
         {
@@ -598,8 +628,10 @@ if [ "$ITER_STRATEGY" = "all" ] && [ "$NEXT_ITERATION" = true ]; then
             before_bugs=$((before_bugs + n))
         done
 
-        # Re-invoke ourselves for this single strategy
-        _ALL_RUNNING=true "$0" --next-iteration --strategy "$strategy" $repo_args
+        # Re-invoke ourselves for this single strategy (pass --claude if set)
+        local _runner_flag=""
+        [ "$RUNNER" = "claude" ] && _runner_flag="--claude"
+        _ALL_RUNNING=true "$0" $_runner_flag --next-iteration --strategy "$strategy" $repo_args
 
         # Count bugs after
         after_bugs=0
@@ -655,11 +687,13 @@ print_summary "${REPO_DIRS[@]}"
 # ── Suggested next command ──
 
 suggest_next_command() {
-    local repo_names=""
-    for repo_dir in "${REPO_DIRS[@]}"; do
-        repo_names="${repo_names} $(basename "$repo_dir" | sed 's/-[0-9].*//')"
-    done
-    repo_names=$(echo "$repo_names" | xargs)  # trim
+    # Use the original arg names the user passed in, not the resolved directory names.
+    # This way "virtio" stays "virtio", not "virtio-1.3.47" or "virtio-quality-playbook".
+    local repo_names="${REPO_NAMES[*]}"
+
+    # Include --claude if this run used it
+    local runner_flag=""
+    [ "$RUNNER" = "claude" ] && runner_flag=" --claude"
 
     if [ "$NEXT_ITERATION" = true ]; then
         local next
@@ -667,18 +701,18 @@ suggest_next_command() {
         if [ -n "$next" ]; then
             echo "────────────────────────────────────────────────────────"
             echo "Next iteration suggestion:"
-            echo "  ./run_playbook.sh --next-iteration --strategy ${next} ${repo_names}"
+            echo "  ./run_playbook.sh${runner_flag} --next-iteration --strategy ${next} ${repo_names}"
             echo "────────────────────────────────────────────────────────"
         else
             echo "────────────────────────────────────────────────────────"
             echo "Iteration cycle complete (gap → unfiltered → parity → adversarial)."
-            echo "To start fresh:  ./run_playbook.sh ${repo_names}"
+            echo "To start fresh:  ./run_playbook.sh${runner_flag} ${repo_names}"
             echo "────────────────────────────────────────────────────────"
         fi
     else
         echo "────────────────────────────────────────────────────────"
         echo "Next iteration suggestion:"
-        echo "  ./run_playbook.sh --next-iteration --strategy gap ${repo_names}"
+        echo "  ./run_playbook.sh${runner_flag} --next-iteration --strategy gap ${repo_names}"
         echo "────────────────────────────────────────────────────────"
     fi
 }
