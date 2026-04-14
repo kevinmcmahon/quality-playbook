@@ -211,9 +211,9 @@ run_prompt() {
         if [ "$RUNNER" = "claude" ]; then
             echo "SHELL COMMAND (exact invocation — cwd is repo root):"
             if [ -n "$CLAUDE_MODEL" ]; then
-                echo "  script -q $(printf '%q' "$output_file") claude --model $(printf '%q' "$CLAUDE_MODEL") -p $(printf '%q' "$prompt") --dangerously-skip-permissions"
+                echo "  claude --model $(printf '%q' "$CLAUDE_MODEL") -p $(printf '%q' "$prompt") --dangerously-skip-permissions 2>&1 | tee $(printf '%q' "$output_file")"
             else
-                echo "  script -q $(printf '%q' "$output_file") claude -p $(printf '%q' "$prompt") --dangerously-skip-permissions"
+                echo "  claude -p $(printf '%q' "$prompt") --dangerously-skip-permissions 2>&1 | tee $(printf '%q' "$output_file")"
             fi
         else
             echo "SHELL COMMAND (exact invocation — cwd is repo root):"
@@ -233,7 +233,7 @@ run_prompt() {
     if [ "$RUNNER" = "claude" ]; then
         local claude_args=(-p "$prompt" --dangerously-skip-permissions)
         [ -n "$CLAUDE_MODEL" ] && claude_args=(--model "$CLAUDE_MODEL" "${claude_args[@]}")
-        script -q "$output_file" claude "${claude_args[@]}" 2>&1
+        claude "${claude_args[@]}" 2>&1 | tee "$output_file" | tee -a "$log_file"
     else
         # Tee: same stream → control_prompts transcript (canonical) + runner log (so tail -f *.log shows live output)
         {

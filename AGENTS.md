@@ -1,55 +1,56 @@
-# AGENTS.md
+# Quality Playbook — Agent Guide
 
-The Quality Playbook is an AI coding skill that generates complete quality engineering infrastructure for any codebase: behavioral requirements derived from code intent, functional tests traced to those requirements, a three-pass code review protocol, and a multi-model spec audit.
+This file helps AI coding agents work on this repository. Read it first.
 
-## Repository layout
+## What this repo is
 
-- `SKILL.md` — The skill itself. This is the primary product of this repository.
-- `references/` — Protocol and pipeline reference documents used by the skill.
-- `quality/` — Generated quality infrastructure from running the skill on this repo (bootstrap output).
+The Quality Playbook is a skill for AI coding agents that explores any codebase from scratch and finds real bugs. It generates nine quality artifacts including a consolidated bug report with regression test patches, fix patches, and TDD red/green verification. It works with any language (Python, Java, Go, Rust, TypeScript, C, etc.) and any AI coding agent (Claude Code, GitHub Copilot, Cursor).
 
 ## Key files
 
-| File | Purpose |
-|------|---------|
-| `SKILL.md` | The skill — read this to understand what the playbook does and how to run it |
-| `references/constitution.md` | Quality constitution template and fitness-to-purpose scenarios |
-| `references/functional_tests.md` | Test generation patterns, library version awareness, anti-hallucination guardrails |
-| `references/review_protocols.md` | Three-pass code review protocol with regression test generation |
-| `references/spec_audit.md` | Council of Three multi-model audit and triage protocol |
-| `references/requirements_pipeline.md` | Five-phase requirements derivation pipeline |
-| `references/requirements_refinement.md` | Requirements refinement and versioning protocol |
-| `references/requirements_review.md` | Interactive requirements review guide |
-| `references/schema_mapping.md` | Schema mapping between artifacts |
-| `references/verification.md` | Verification and validation protocols |
-| `references/defensive_patterns.md` | Defensive coding pattern detection |
+| File | Purpose | When to read |
+|------|---------|-------------|
+| `SKILL.md` | Full operational instructions for running the playbook | When executing the playbook on a target repo |
+| `ITERATION.md` | Iteration strategy reference (gap, unfiltered, parity, adversarial) | When running iteration mode |
+| `quality_gate.sh` | Mechanical validation script | After playbook completes, to validate artifacts |
+| `references/*.md` | Phase-specific reference files (review protocols, spec audit, etc.) | During specific phases as directed by SKILL.md |
+| `ai_context/TOOLKIT.md` | User-facing interactive documentation | When helping a user set up or run the playbook |
+| `ai_context/DEVELOPMENT_CONTEXT.md` | Maintainer context (architecture, benchmarking, known issues) | When working on the skill itself |
 
 ## Installing the skill
 
-Copy the skill into your AI coding tool's skill directory:
+Copy the skill into your AI coding tool's skill directory in the target repo:
 
-**Claude Code:**
-```bash
-mkdir -p .claude/skills/quality-playbook/references
-cp SKILL.md .claude/skills/quality-playbook/SKILL.md
-cp LICENSE.txt .claude/skills/quality-playbook/LICENSE.txt
-cp references/* .claude/skills/quality-playbook/references/
-```
-
-**GitHub Copilot:**
 ```bash
 mkdir -p .github/skills/references
 cp SKILL.md .github/skills/SKILL.md
-cp LICENSE.txt .github/skills/LICENSE.txt
-cp references/* .github/skills/references/
+cp ITERATION.md .github/skills/ITERATION.md
+cp quality_gate.sh .github/skills/quality_gate.sh
+cp references/*.md .github/skills/references/
 ```
 
-Then tell your AI tool: *"Read the quality playbook skill and generate a complete quality system for this project."*
+Then tell your AI tool:
+```
+Read the quality playbook skill at .github/skills/SKILL.md and execute the quality playbook for this project.
+```
 
-## Validation
+## Repository layout
 
-The skill is validated against the [Quality Playbook Benchmark](https://github.com/andrewstellman/quality-playbook-benchmark): 2,564 real defects from 50 open-source repositories across 14 languages.
+```
+AGENTS.md                ← you are here
+SKILL.md                 ← the skill (operational instructions)
+ITERATION.md             ← iteration strategy reference
+quality_gate.sh          ← artifact validation script
+LICENSE.txt
+references/              ← phase-specific reference documents
+ai_context/
+  TOOLKIT.md             ← interactive documentation for users
+  DEVELOPMENT_CONTEXT.md ← development context for maintainers
+```
 
-## Current state
+## Conventions
 
-- Skill version: 1.3.8
+- **Don't edit skill files without backups.** Copy to `.bak` before modifying SKILL.md, ITERATION.md, or any reference file.
+- **Bump the version** in SKILL.md metadata for every change. Generated artifacts stamp this version.
+- **Test changes** on at least 2 benchmark repos before committing.
+- **Update ai_context/ files** if your change affects users or maintainers.
