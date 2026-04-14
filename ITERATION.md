@@ -28,6 +28,19 @@ These rules apply to every iteration strategy:
 
 4. **Merge.** After completing the strategy-specific exploration, create or update `quality/EXPLORATION_MERGED.md` that combines findings from ALL iterations. For each section, concatenate the findings with clear attribution (`[Iteration 1]` / `[Iteration 2: gap]` / `[Iteration 3: unfiltered]` / etc.). Include the strategy name in the attribution so downstream phases can see which approach surfaced each finding. The Candidate Bugs section should be re-consolidated from all findings across all iterations. If `EXPLORATION_MERGED.md` already exists from a previous iteration, merge the new iteration's findings into it rather than starting from scratch.
 
+   **Demoted Candidates Manifest (mandatory in EXPLORATION_MERGED.md).** After re-consolidating the Candidate Bugs section, add or update a `## Demoted Candidates` section at the end of EXPLORATION_MERGED.md. This section tracks findings that were dismissed, demoted, or deprioritized during any iteration — they are the raw material for the adversarial strategy. For each demoted candidate, record:
+
+   ```
+   ### DC-NNN: [short title]
+   - **Source:** [which iteration and strategy first surfaced this]
+   - **Dismissal reason:** [why it was demoted — e.g., "classified as design choice," "insufficient evidence," "needs runtime confirmation"]
+   - **Code location:** [file:line references]
+   - **Re-promotion criteria:** [specific evidence that would flip this to a confirmed candidate — e.g., "show that the permissive behavior violates a documented contract," "trace the code path to prove the edge case is reachable," "demonstrate that the output differs from what the spec requires"]
+   - **Status:** DEMOTED | RE-PROMOTED [iteration] | FALSE POSITIVE [iteration]
+   ```
+
+   The re-promotion criteria are the most important field — they tell the adversarial strategy exactly what evidence to gather. Vague criteria like "needs more investigation" are not acceptable; write criteria that a different agent session could act on without additional context. If a subsequent iteration re-promotes or definitively falsifies a demoted candidate, update its status and add a note explaining the resolution.
+
 5. **Continue with Phases 2–3.** Use `EXPLORATION_MERGED.md` as the primary input for Phase 2 artifact generation. All downstream artifacts (REQUIREMENTS.md, code review, spec audit) should reference the merged exploration.
 
 6. **Iteration mode completion gate.** Before proceeding to Phase 2 (applies to all strategies):
@@ -120,13 +133,18 @@ Systematically enumerate parallel implementations of the same contract and diff 
    - **Public API variants:** overloaded methods, convenience wrappers, format-specific parsers that should produce equivalent results
    - Write the enumeration to `quality/ITERATION_PLAN.md` with a brief description of each parallel group.
 
-2. **Pairwise comparison.** For each parallel group, read the code paths side by side and look for:
-   - Operations present in one path but missing in another (e.g., cleanup in setup but not in reset)
-   - Different arguments to the same function (e.g., `GFP_KERNEL` vs `GFP_ATOMIC` depending on lock context)
-   - Different index/offset calculations for the same logical entity
-   - Feature bits, flags, or capabilities handled in one path but not another
-   - Error handling present in one path but absent in another
-   - For each discrepancy, trace both code paths with file:line citations and determine whether the difference is intentional (documented, tested, or structurally necessary) or a bug.
+2. **Pairwise comparison.** For each parallel group, read the code paths side by side and systematically check each comparison sub-type below. Not every sub-type applies to every parallel group — but explicitly considering each one prevents the strategy from only finding "obvious" discrepancies while missing structural ones.
+
+   **Comparison sub-type checklist** (check each one for every parallel group):
+
+   - **Resource lifecycle parity:** Compare what setup/init does with a resource vs. what teardown/reset/cleanup does with the same resource. Every resource acquired in setup must be released in teardown — and in the same order, with the same scope. Look for resources that setup creates but reset forgets (e.g., a list populated during probe but not drained during reset).
+   - **Allocation context parity:** Compare allocation flags, lock context, and interrupt state across parallel paths. If one path allocates with `GFP_KERNEL` (sleepable) but runs under a spinlock that another path doesn't hold, that's a bug. Check: what locks are held? What allocation flags are valid in that context? Do parallel paths agree?
+   - **Identifier and index parity:** Compare how parallel paths compute indices, offsets, or identifiers for the same logical entity. If setup uses `queue_index + admin_offset` but reset uses `raw_queue_index`, the mismatch is a bug candidate.
+   - **Capability/feature-bit parity:** Compare which feature bits, flags, or capabilities each parallel path checks or sets. If the MSI-X path checks a slow-path vector list but the INTx fallback path doesn't, vectors may be misrouted after fallback.
+   - **Error/exception parity:** Compare error handling between paths. If the primary path handles an error gracefully but the fallback path lets it propagate, the fallback is less robust than the primary — which is backwards.
+   - **Iteration/collection parity:** Compare what collections each path iterates over. If setup iterates over `all_queues` but reset iterates over `active_queues`, resources for inactive queues leak.
+
+   For each discrepancy found, trace both code paths with file:line citations and determine whether the difference is intentional (documented, tested, or structurally necessary) or a bug.
 
 3. **Cross-file contract tracing.** For the most promising discrepancies, trace the call chain across files to verify:
    - What lock/interrupt context each path runs in
@@ -145,17 +163,21 @@ Re-investigate what the previous run dismissed, demoted, or marked SATISFIED. Th
 **Why this strategy exists:** In benchmarking, the triage step reliably demotes legitimate findings by demanding excessive evidence, marking ambiguous cases as "design choice," or accepting code-review SATISFIED verdicts without deep verification. The adversarial strategy specifically targets these failure modes.
 
 1. **Load previous decisions.** Read these files from the previous run (use divide-and-conquer — section headers first, then targeted deep reads):
+   - `quality/EXPLORATION_MERGED.md` — specifically the `## Demoted Candidates` section (this is your primary input — it contains structured re-promotion criteria for each dismissed finding)
    - `quality/BUGS.md` — what was confirmed (to avoid re-finding the same bugs)
    - `quality/spec_audits/*triage*` — what was dismissed or demoted during triage, and why
    - `quality/code_reviews/*.md` — Pass 2 SATISFIED/VIOLATED verdicts
    - `quality/EXPLORATION.md` — just the `## Candidate Bugs for Phase 2` section to see which candidates didn't become confirmed bugs
-   - Write a summary to `quality/ITERATION_PLAN.md` listing: (a) demoted/dismissed triage findings, (b) candidates that weren't promoted, (c) requirements marked SATISFIED that had thin evidence
+   - Write a summary to `quality/ITERATION_PLAN.md` listing: (a) demoted candidates from the manifest with their re-promotion criteria, (b) additional dismissed triage findings not yet in the manifest, (c) candidates that weren't promoted, (d) requirements marked SATISFIED that had thin evidence
 
-2. **Re-investigate dismissed findings.** For each demoted or dismissed finding from the triage:
+2. **Re-investigate dismissed findings with a lower evidentiary bar.** The adversarial strategy uses a deliberately lower evidentiary standard than earlier strategies. The baseline and gap strategies rightly demand strong evidence to avoid false positives during initial discovery. But by the adversarial iteration, remaining undiscovered bugs are precisely the ones that conservative triage keeps rejecting — they look ambiguous, they could be "design choices," they lack dramatic runtime failures. For these findings:
+   - A code-path trace showing observable semantic drift (output differs from what spec or contract requires) is sufficient to confirm — you do not need a runtime crash or dramatic failure
+   - "Permissive behavior" is not automatically a design choice — check whether the spec, docs, or API contract defines the expected behavior. If the code deviates from a documented contract, it's a bug regardless of whether the deviation is "permissive"
+   - If the Demoted Candidates Manifest includes re-promotion criteria, attempt to satisfy those criteria specifically. Each criterion was written to be actionable — follow it
    - Read the specific code location cited in the finding
    - Trace the code path independently — do not rely on the previous run's analysis
    - Make an explicit CONFIRMED/FALSE-POSITIVE determination with fresh evidence
-   - If the previous triage said "needs runtime evidence" or "ambiguous design choice," check whether a code-path trace can resolve it (per the evidentiary standard in "What counts as sufficient evidence to confirm a bug")
+   - Update the Demoted Candidates Manifest: change status to RE-PROMOTED or FALSE POSITIVE with the iteration attribution
 
 3. **Challenge SATISFIED verdicts.** For each requirement the code review marked SATISFIED with thin evidence (single-line citation, no code-path trace, or grouped with 3+ other requirements under one citation):
    - Re-verify the requirement by reading the cited code and tracing the behavior

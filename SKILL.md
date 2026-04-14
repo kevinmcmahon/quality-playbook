@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate nine quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, a consolidated bug report (BUGS.md) with patches, a TDD verification protocol (RUN_TDD_TESTS.md), an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis, missing safeguard detection, patch validation gates, and structured test output (JUnit XML + sidecar JSON). Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.45
+  version: 1.3.46
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -1052,6 +1052,35 @@ When a bug is fixed (fix patch applied permanently), remove the skip guard and u
 - **Red phase (NEVER SKIPPED):** Remove or disable the skip/xfail guard, then run the test against unpatched code. It must fail. Re-enable the guard after recording the result. **The red phase is mandatory for every confirmed bug, even when no fix patch exists.** A bug without red-phase evidence is unverified — do not record `verdict: "skipped"` without a failing red run. If the red phase cannot execute for a documented reason (compilation failure, environment unavailable), record `red_phase: "error"` with an explanation in `notes`.
 - **Green phase:** Remove or disable the guard, apply the fix patch, run the test. It must pass. If the fix will be reverted, re-enable the guard. **If no fix patch exists, record `green_phase: "skipped"` — but the red phase must still have run.**
 - **After TDD cycle:** The guard remains in the committed regression test file. It is only permanently removed when the fix is merged into the source tree.
+
+**TDD execution enforcement (mandatory).** Regression tests must be actually executed during the TDD verification cycle, not just generated as patch files. For every confirmed bug, the red-phase test run must produce a log file at `quality/results/BUG-NNN.red.log` capturing the test output. The green-phase (if a fix patch exists) must produce `quality/results/BUG-NNN.green.log`. Each log file's first line must be a status tag: `RED` (test failed as expected), `GREEN` (test passed after fix), `NOT_RUN` (test could not be executed — with explanation), or `ERROR` (test infrastructure failed — with explanation).
+
+**Language-aware test execution commands.** Use the project's native test runner to execute regression tests. Detect the project language and use the appropriate command:
+
+- **Go:** `go test -v -run TestBugNNN ./path/to/package`
+- **Python (pytest):** `python -m pytest -xvs quality/test_regression.py::test_bug_nnn`
+- **Python (unittest):** `python -m unittest quality.test_regression.TestRegression.test_bug_nnn`
+- **Java (Maven + JUnit):** `mvn test -pl module -Dtest=RegressionTest#testBugNnn`
+- **Java (Gradle + JUnit):** `./gradlew test --tests RegressionTest.testBugNnn`
+- **Rust:** `cargo test bug_nnn -- --nocapture`
+- **TypeScript/JavaScript (Jest):** `npx jest --verbose --testNamePattern="BUG-NNN"`
+- **TypeScript/JavaScript (Vitest):** `npx vitest run --reporter=verbose --testNamePattern="BUG-NNN"`
+- **C (kernel/make-based):** Source-inspection tests via shell script (grep/awk on source files) — log the script output.
+
+If the project uses a language or test framework not listed above, use whatever test runner the project already uses (check for `Makefile`, `package.json`, `build.gradle`, `Cargo.toml`, `go.mod`, `setup.py`, `pyproject.toml`, etc.) and adapt the pattern. If no test runner is available or the language runtime is not installed, record `NOT_RUN` with an explanation — do not skip the log file entirely.
+
+**Log capture format.** Each `BUG-NNN.red.log` and `BUG-NNN.green.log` must follow this format:
+```
+RED
+--- Test output for BUG-NNN red phase ---
+Command: [exact command run]
+Exit code: [exit code]
+[full stdout/stderr from test execution]
+```
+
+The status tag (`RED`, `GREEN`, `NOT_RUN`, `ERROR`) on the first line is machine-readable — `quality_gate.sh` will check for its presence. The `NOT_RUN` status is acceptable when the test runner is unavailable (e.g., a C project where the kernel build environment is not present), but the log file must still exist with an explanation of why the test could not be executed.
+
+**TDD execution gate.** Before the terminal gate in Phase 2d, verify that for every confirmed bug in `quality/BUGS.md`, a corresponding `quality/results/BUG-NNN.red.log` exists. Bugs without red-phase logs are incomplete — the regression test patch exists but was never proven to detect the bug. This gate exists because v1.3.45 benchmarking showed that most repos generate regression test patches but never execute them, leaving the TDD verdict unverified.
 
 ### File 4: `quality/RUN_INTEGRATION_TESTS.md`
 
