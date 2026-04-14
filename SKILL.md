@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate nine quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, a consolidated bug report (BUGS.md) with patches, a TDD verification protocol (RUN_TDD_TESTS.md), an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis, missing safeguard detection, patch validation gates, and structured test output (JUnit XML + sidecar JSON). Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.46
+  version: 1.3.47
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -83,6 +83,8 @@ The quality gate (`quality_gate.sh`) validates these artifacts. If the gate chec
 | Regression patches | `quality/patches/BUG-NNN-regression-test.patch` | If bugs found | Phase 2b |
 | Fix patches | `quality/patches/BUG-NNN-fix.patch` | Optional | Phase 2b |
 | TDD sidecar | `quality/results/tdd-results.json` | If bugs found | Phase 2d |
+| TDD red-phase logs | `quality/results/BUG-NNN.red.log` | If bugs found | Phase 2d |
+| TDD green-phase logs | `quality/results/BUG-NNN.green.log` | If fix patch exists | Phase 2d |
 | Integration sidecar | `quality/results/integration-results.json` | When integration tests run | Phase 2d |
 | Mechanical verify script | `quality/mechanical/verify.sh` | Yes (benchmark) | Phase 2d |
 | Verify receipt | `quality/results/mechanical-verify.log` + `.exit` | Yes (benchmark) | Phase 2d |
@@ -651,6 +653,7 @@ With docs: [yes/no]
 - [ ] Phase 2b: Code review + regression tests
 - [ ] Phase 2c: Spec audit + triage
 - [ ] Phase 2d: Post-review reconciliation + closure verification
+- [ ] TDD logs: red-phase log for every confirmed bug, green-phase log for every bug with fix patch
 - [ ] Phase 3: Verification benchmarks
 
 ## Artifact inventory
@@ -1080,6 +1083,25 @@ Exit code: [exit code]
 
 The status tag (`RED`, `GREEN`, `NOT_RUN`, `ERROR`) on the first line is machine-readable — `quality_gate.sh` will check for its presence. The `NOT_RUN` status is acceptable when the test runner is unavailable (e.g., a C project where the kernel build environment is not present), but the log file must still exist with an explanation of why the test could not be executed.
 
+**Ready-to-run TDD log template.** For each confirmed BUG-NNN, execute this sequence (adapt the test command for the project's language per the table above):
+
+```bash
+# ── Red phase: revert fix, run test, expect FAIL ──
+git apply -R quality/patches/BUG-NNN-fix.patch 2>/dev/null   # revert fix if applied
+TEST_CMD="python -m pytest -xvs quality/test_regression.py::test_bug_nnn"  # adapt per language
+OUTPUT=$($TEST_CMD 2>&1); EXIT=$?
+printf 'RED\n--- Test output for BUG-NNN red phase ---\nCommand: %s\nExit code: %d\n%s\n' \
+  "$TEST_CMD" "$EXIT" "$OUTPUT" > quality/results/BUG-NNN.red.log
+
+# ── Green phase: apply fix, run test, expect PASS ──
+git apply quality/patches/BUG-NNN-fix.patch
+OUTPUT=$($TEST_CMD 2>&1); EXIT=$?
+printf 'GREEN\n--- Test output for BUG-NNN green phase ---\nCommand: %s\nExit code: %d\n%s\n' \
+  "$TEST_CMD" "$EXIT" "$OUTPUT" > quality/results/BUG-NNN.green.log
+```
+
+Run this for every confirmed bug. If the test runner is not available, create the log file with `NOT_RUN` on the first line and an explanation. Do not skip this step — the TDD Log Closure Gate in Phase 2d will block completion if logs are missing.
+
 **TDD execution gate.** Before the terminal gate in Phase 2d, verify that for every confirmed bug in `quality/BUGS.md`, a corresponding `quality/results/BUG-NNN.red.log` exists. Bugs without red-phase logs are incomplete — the regression test patch exists but was never proven to detect the bug. This gate exists because v1.3.45 benchmarking showed that most repos generate regression test patches but never execute them, leaving the TDD verdict unverified.
 
 ### File 4: `quality/RUN_INTEGRATION_TESTS.md`
@@ -1432,7 +1454,9 @@ Re-read `quality/PROGRESS.md` — specifically the cumulative BUG tracker. This 
 4. **Clean up after spec-audit reversals:** If the spec audit reclassified any code review BUG as a design choice or false positive, remove or relocate the corresponding regression test per `references/review_protocols.md`.
 5. **Resolve CR vs spec-audit conflicts:** If the code review and spec audit disagree on the same finding (one says BUG, the other says design choice), deploy a verification probe per `references/spec_audit.md` and record the resolution in the BUG tracker.
 
-**Executed evidence outranks narrative artifacts (contradiction gate).** Before running the terminal gate, check for contradictions between executed evidence and prose artifacts. Executed evidence includes: mechanical verification artifacts (`quality/mechanical/*`), verification receipt files (`quality/results/mechanical-verify.log`, `quality/results/mechanical-verify.exit`), regression test results (`test_regression.*` with `xfail` outcomes), TDD traceability red-phase results, and any shell command output saved during the pipeline. Prose artifacts include: `REQUIREMENTS.md`, `CONTRACTS.md`, code reviews, spec audit triage, and `BUGS.md`. If an executed artifact shows a constant is absent (mechanical check), a test fails (regression test), or a red-phase confirms a bug (TDD traceability) — but a prose artifact claims the constant is present, the bug is fixed, or the code is compliant — the executed result wins. Re-open and correct the contradictory prose artifact before proceeding. Specifically: if `mechanical-verify.exit` contains a non-zero value, PROGRESS.md may not claim "Mechanical verification: passed" and the terminal gate may not pass — regardless of what any other artifact says. In v1.3.18, the triage claimed RING_RESET was preserved (`spec_audits/triage.md`), BUGS.md claimed "fixed in working tree," but TDD traceability showed the assertion `assert "case VIRTIO_F_RING_RESET:" in func` failed on the current source. Those three cannot all be true — the executed failure is the ground truth. This gate would have caught that contradiction.
+**TDD sidecar-to-log consistency check (mandatory).** For every bug entry in `tdd-results.json`, verify the corresponding log files exist and agree. If `tdd-results.json` contains a bug with `verdict: "TDD verified"`, then `quality/results/BUG-NNN.red.log` must exist with first line `RED` and `quality/results/BUG-NNN.green.log` must exist with first line `GREEN`. If the sidecar claims "TDD verified" but no red-phase log exists, the verdict is unsubstantiated — either create the log by running the test, or downgrade the verdict to `"confirmed open"`. This check exists because v1.3.46 benchmarking showed agents writing "TDD verified" verdicts in the JSON based on narrative reasoning without ever executing the test.
+
+**Executed evidence outranks narrative artifacts (contradiction gate).** Before running the terminal gate, check for contradictions between executed evidence and prose artifacts. Executed evidence includes: mechanical verification artifacts (`quality/mechanical/*`), verification receipt files (`quality/results/mechanical-verify.log`, `quality/results/mechanical-verify.exit`), regression test results (`test_regression.*` with `xfail` outcomes), TDD red-phase log files (`quality/results/BUG-NNN.red.log`), and any shell command output saved during the pipeline. Prose artifacts include: `REQUIREMENTS.md`, `CONTRACTS.md`, code reviews, spec audit triage, and `BUGS.md`. If an executed artifact shows a constant is absent (mechanical check), a test fails (regression test), or a red-phase confirms a bug (TDD traceability) — but a prose artifact claims the constant is present, the bug is fixed, or the code is compliant — the executed result wins. Re-open and correct the contradictory prose artifact before proceeding. Specifically: if `mechanical-verify.exit` contains a non-zero value, PROGRESS.md may not claim "Mechanical verification: passed" and the terminal gate may not pass — regardless of what any other artifact says. In v1.3.18, the triage claimed RING_RESET was preserved (`spec_audits/triage.md`), BUGS.md claimed "fixed in working tree," but TDD traceability showed the assertion `assert "case VIRTIO_F_RING_RESET:" in func` failed on the current source. Those three cannot all be true — the executed failure is the ground truth. This gate would have caught that contradiction.
 
 **Version stamp consistency check (mandatory).** Read the `version:` field from the SKILL.md metadata (in `.github/skills/SKILL.md`). Then check every generated artifact: PROGRESS.md's `Skill version:` field, every `> Generated by` attribution line, every code file header stamp, and every sidecar JSON `skill_version` field. Every version stamp must match the SKILL.md metadata exactly. A single mismatch is a benchmark failure — fix the stamp before proceeding. This check exists because in v1.3.21 benchmarking, 5 of 9 repos had version stamps from older skill versions (v1.3.16 or v1.3.20) because the PROGRESS.md template contained a hardcoded version number.
 
@@ -1443,6 +1467,12 @@ Re-read `quality/PROGRESS.md` — specifically the cumulative BUG tracker. This 
 - `quality/results/mechanical-verify.exit` — a single line containing the exit code (e.g., `0`)
 
 If either file is missing, run `bash quality/mechanical/verify.sh > quality/results/mechanical-verify.log 2>&1; echo $? > quality/results/mechanical-verify.exit` now. If the exit code is not `0`, the terminal gate fails — do not proceed until the mechanical mismatch is resolved (by fixing the extraction, not by editing verify.sh or the receipt). PROGRESS.md may not claim "Mechanical verification: passed" unless `mechanical-verify.exit` contains `0`. This gate exists because v1.3.23 PROGRESS.md claimed all verification passed when verify.sh actually returned exit 1 — the receipt file makes this claim auditable.
+
+**TDD Log Closure Gate (mandatory before terminal gate).** Before proceeding to the terminal gate, enumerate all confirmed bug IDs from `quality/BUGS.md` and verify:
+1. `quality/results/BUG-NNN.red.log` exists for every confirmed bug.
+2. If `quality/patches/BUG-NNN-fix.patch` exists for that bug, `quality/results/BUG-NNN.green.log` also exists.
+3. The first line of each log file is one of: `RED`, `GREEN`, `NOT_RUN`, `ERROR`.
+If any check fails, stop and generate the missing logs now using the language-aware test execution commands from the TDD execution enforcement section. Do not proceed to the terminal gate with missing TDD logs — a bug with a "TDD verified" verdict in tdd-results.json but no corresponding red-phase log is a contradiction.
 
 **Terminal gate (mandatory before marking Phase 2d complete):**
 
@@ -1478,6 +1508,8 @@ If the tracker entry count does not equal M + L, stop and reconcile — a BUG wa
 - If Phase 2c ran: `quality/spec_audits/` contains a triage file AND individual auditor files
 - If Phase 0 or 0b ran: `quality/SEED_CHECKS.md` exists as a standalone file (not inlined in PROGRESS.md)
 - If confirmed bugs exist: `quality/results/tdd-results.json` exists
+- If confirmed bugs exist: `quality/results/BUG-NNN.red.log` exists for every confirmed bug ID in `quality/BUGS.md`
+- If confirmed bugs exist with fix patches: `quality/results/BUG-NNN.green.log` exists for each bug that has a `quality/patches/BUG-NNN-fix.patch`
 
 For each missing file, create it now. Do not mark Phase 2d complete with missing artifacts — the terminal gate verification in PROGRESS.md is meaningless if the files it references don't exist on disk. This gate exists because v1.3.24 benchmarking showed express completing all phases and writing a terminal gate section in PROGRESS.md, but BUGS.md, SEED_CHECKS.md, and code review/spec audit files were never written to disk.
 
