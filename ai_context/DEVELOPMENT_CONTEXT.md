@@ -3,6 +3,9 @@
 > This file is for AI assistants helping maintain and improve the quality playbook skill.
 > It contains the project's architecture, benchmarking methodology, known issues,
 > and improvement axes. Read this when working on the skill files themselves.
+>
+> The project accompanies the O'Reilly Radar article [AI Is Writing Our Code Faster Than We Can Verify It](https://www.oreilly.com/radar/ai-is-writing-our-code-faster-than-we-can-verify-it/).
+> The README was coauthored with Claude Cowork.
 
 ## Project structure
 

@@ -4,6 +4,8 @@
 > Open it in Claude Code, Cursor, Copilot, or any AI coding tool and say:
 > "Read TOOLKIT.md and help me set up the quality playbook for my project."
 > The AI will guide you through everything.
+>
+> Background: [AI Is Writing Our Code Faster Than We Can Verify It](https://www.oreilly.com/radar/ai-is-writing-our-code-faster-than-we-can-verify-it/) (O'Reilly Radar)
 
 ## What this is
 
