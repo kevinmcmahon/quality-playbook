@@ -97,7 +97,7 @@ The quality gate (`quality_gate.sh`) validates these artifacts. If the gate chec
 | TDD verification protocol | `quality/RUN_TDD_TESTS.md` | Yes | Phase 2 |
 | Bug tracker | `quality/BUGS.md` | Yes | Phase 3 |
 | Coverage matrix | `quality/COVERAGE_MATRIX.md` | Yes | Phase 2 |
-| Completeness report | `quality/COMPLETENESS_REPORT.md` | Yes | Phase 5 |
+| Completeness report | `quality/COMPLETENESS_REPORT.md` | Yes | Phase 2 (baseline), Phase 5 (final verdict) |
 | Progress tracker | `quality/PROGRESS.md` | Yes | Throughout |
 | AI bootstrap | `AGENTS.md` | Yes | Phase 2 |
 | Bug writeups | `quality/writeups/BUG-NNN.md` | If bugs found | Phase 5 |
@@ -369,7 +369,7 @@ This context is gold. A chat history where the developer discussed "why we chose
 
 If the user doesn't have chat history, proceed normally — the skill works without it, just with less context.
 
-**Autonomous fallback:** When running in benchmark mode, via `run_playbook.sh`, or without user interaction (e.g., `--single-pass`), skip Step 0's question and proceed directly to Step 1. If chat history folders are visible in the project tree (e.g., `AI Chat History/`, `.chat_exports/`), scan them without asking. If no chat history is found, proceed — do not block waiting for a response that won't come.
+**Autonomous fallback:** When running in benchmark mode, via `run_playbook.sh` (benchmark runner, not shipped with the skill), or without user interaction (e.g., `--single-pass`), skip Step 0's question and proceed directly to Step 1. If chat history folders are visible in the project tree (e.g., `AI Chat History/`, `.chat_exports/`), scan them without asking. If no chat history is found, proceed — do not block waiting for a response that won't come.
 
 ### Step 1: Identify Domain, Stack, and Specifications
 
@@ -903,7 +903,7 @@ If the file does not exist, has fewer than 120 lines, or is **missing ANY of the
 
 Use `quality/EXPLORATION.md` as your primary source for this phase — do not re-explore the codebase from scratch. The exploration findings contain the architecture map, derived requirements, use cases, and risk analysis that drive every artifact below. If you find yourself reading source files to figure out what the project does, go back to EXPLORATION.md instead. Re-exploration wastes context and produces inconsistencies between what Phase 1 found and what Phase 2 generates.
 
-Now write the nine files. For each one, follow the structure below and consult the relevant reference file for detailed guidance.
+Now write the Phase 2 artifacts. The requirements pipeline above produced REQUIREMENTS.md, CONTRACTS.md, COVERAGE_MATRIX.md, and COMPLETENESS_REPORT.md. The seven files below complete the set. For each one, follow the structure below and consult the relevant reference file for detailed guidance.
 
 **Version stamp (mandatory on every generated file).** Every Markdown file the playbook generates must begin with the following attribution line immediately after the file's title heading:
 
@@ -1002,7 +1002,7 @@ The code review protocol has three passes. Each pass runs independently — a fr
 
    **Do not assert that a whitelist "covers all values" or "preserves supported bits" without performing this two-list comparison.** AI models reliably hallucinate completeness for switch/case constructs — the model sees the function, sees the constants defined elsewhere, and assumes coverage without checking each case label. The most dangerous form of this hallucination is copying from an upstream artifact (like REQUIREMENTS.md) that asserts a constant is present, rather than extracting from the code. In v1.3.17, the code review's "case labels present" list was word-for-word identical to the requirements list — proving it was copied rather than extracted. The mechanical check with per-label line numbers is the fix.
 
-These five areas must appear as labeled subsections in the Pass 1 report. If a project has no meaningful concurrency, say so explicitly and document why rather than omitting the section. Add project-specific scrutiny areas beyond these four as warranted.
+These five areas must appear as labeled subsections in the Pass 1 report. If a project has no meaningful concurrency, say so explicitly and document why rather than omitting the section. Add project-specific scrutiny areas beyond these five as warranted.
 
 Pass 1 catches ~65% of real defects: race conditions, null pointer hazards, resource leaks, off-by-one errors, type mismatches — structural problems visible in the code.
 
@@ -1463,7 +1463,7 @@ Re-read `quality/PROGRESS.md`. Update:
 - Add exploration summary notes if not already present
 
 **Phase 2 completion gate (mandatory).** Before proceeding to Phase 3, verify:
-1. All nine core artifacts exist on disk (`QUALITY.md`, `CONTRACTS.md`, `REQUIREMENTS.md`, `COVERAGE_MATRIX.md`, `test_functional.*`, `RUN_CODE_REVIEW.md`, `RUN_INTEGRATION_TESTS.md`, `RUN_SPEC_AUDIT.md`, `RUN_TDD_TESTS.md`).
+1. All core artifacts exist on disk (`QUALITY.md`, `CONTRACTS.md`, `REQUIREMENTS.md`, `COVERAGE_MATRIX.md`, `test_functional.*`, `RUN_CODE_REVIEW.md`, `RUN_INTEGRATION_TESTS.md`, `RUN_SPEC_AUDIT.md`, `RUN_TDD_TESTS.md`, `AGENTS.md`).
 2. `REQUIREMENTS.md` contains requirements with specific conditions of satisfaction referencing actual code (file paths, function names, line numbers) — not abstract behavioral descriptions.
 3. If dispatch/enumeration contracts exist: `quality/mechanical/verify.sh` exists and has been executed.
 4. PROGRESS.md marks Phase 2 complete with timestamp.
@@ -1643,7 +1643,7 @@ For each missing file, create it now. Do not mark Phase 5 complete with missing 
 
 **Sidecar JSON post-write validation (mandatory).** After writing `quality/results/tdd-results.json` and/or `quality/results/integration-results.json`, immediately reopen each file and verify it contains all required keys. For `tdd-results.json`, the required root keys are: `schema_version`, `skill_version`, `date`, `project`, `bugs`, `summary`. Each entry in `bugs` must have: `id`, `requirement`, `red_phase`, `green_phase`, `verdict`, `fix_patch_present`, `writeup_path`. The `summary` object must include `confirmed_open` alongside `verified`, `red_failed`, `green_failed`. For `integration-results.json`, the required root keys are: `schema_version`, `skill_version`, `date`, `project`, `recommendation`, `groups`, `summary`, `uc_coverage`. Both files must have `schema_version: "1.1"`. If any key is missing, add it now — do not leave a non-conformant JSON file on disk. This validation exists because v1.3.25 benchmarking showed 6 of 8 repos with non-conformant sidecar JSON: httpx invented an alternate schema, serde used legacy shape, javalin omitted `summary` and per-bug fields, and others used invalid enum values.
 
-**Script-verified closure gate (mandatory, final step before marking Phase 5 complete).** Run `bash .github/skills/quality_gate.sh .` from the project root directory. This script mechanically validates: file existence, BUGS.md heading format, sidecar JSON required keys AND per-bug field names (`id`, `requirement`, `red_phase`, `green_phase`, `verdict`, `fix_patch_present`, `writeup_path`) AND enum values AND summary consistency, use case identifiers, terminal gate section, mechanical verification receipts, version stamps, writeup completeness, **regression-test patch presence for every confirmed bug**, and **inline fix diffs in every writeup** (every `quality/writeups/BUG-NNN.md` must contain a ` ```diff ` block). If the script reports any FAIL results, fix each failing check before proceeding — the most common FAILs are: (1) missing `quality/patches/BUG-NNN-regression-test.patch` files, (2) non-canonical JSON field names like `bug_id` instead of `id`, (3) missing `confirmed_open` in the TDD summary, (4) writeups without inline fix diffs (section 6 must include a concrete diff, not just "see patch file"). Do not mark Phase 5 complete until `quality_gate.sh` exits 0. Append the script's full output to `quality/results/quality-gate.log`.
+**Script-verified closure gate (mandatory, final step before marking Phase 5 complete).** Locate `quality_gate.sh` using the same fallback as reference files (check `quality_gate.sh`, `.claude/skills/quality-playbook/quality_gate.sh`, `.github/skills/quality_gate.sh` in order) and run it from the project root directory. This script mechanically validates: file existence, BUGS.md heading format, sidecar JSON required keys AND per-bug field names (`id`, `requirement`, `red_phase`, `green_phase`, `verdict`, `fix_patch_present`, `writeup_path`) AND enum values AND summary consistency, use case identifiers, terminal gate section, mechanical verification receipts, version stamps, writeup completeness, **regression-test patch presence for every confirmed bug**, and **inline fix diffs in every writeup** (every `quality/writeups/BUG-NNN.md` must contain a ` ```diff ` block). If the script reports any FAIL results, fix each failing check before proceeding — the most common FAILs are: (1) missing `quality/patches/BUG-NNN-regression-test.patch` files, (2) non-canonical JSON field names like `bug_id` instead of `id`, (3) missing `confirmed_open` in the TDD summary, (4) writeups without inline fix diffs (section 6 must include a concrete diff, not just "see patch file"). Do not mark Phase 5 complete until `quality_gate.sh` exits 0. Append the script's full output to `quality/results/quality-gate.log`.
 
 **Use case identifier format.** REQUIREMENTS.md must use canonical use case identifiers in the format `UC-01`, `UC-02`, etc. for all derived use cases. Each use case must be labeled with its identifier. This is required for machine-readable traceability — the identifier format enables `quality_gate.sh` and downstream tooling to count and cross-reference use cases programmatically. Use cases written as prose paragraphs without identifiers are non-conformant.
 
@@ -1703,7 +1703,7 @@ Record in PROGRESS.md under `## Phase 6 Mechanical Closure` and append to `quali
 Run the mechanical validation gate:
 
 ```bash
-bash .github/skills/quality_gate.sh . > quality/results/quality-gate.log 2>&1
+bash quality_gate.sh . > quality/results/quality-gate.log 2>&1  # locate via fallback: quality_gate.sh, .claude/skills/quality-playbook/quality_gate.sh, .github/skills/quality_gate.sh
 echo $? >> quality/results/phase6-verification.log
 ```
 

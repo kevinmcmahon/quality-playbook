@@ -69,9 +69,10 @@ These rules apply to every iteration strategy:
 
 ## Meta-strategy: `all` — run every strategy in sequence
 
-The `all` strategy is a runner-level convenience that executes gap → unfiltered → parity → adversarial in order, each as a separate agent session. A single agent session cannot run multiple strategies (context budget), so `all` is implemented by the runner (run_playbook.sh) as a loop of `--next-iteration` calls. If any strategy finds zero new bugs, the runner stops early (diminishing returns).
+The `all` strategy is a runner-level convenience that executes gap → unfiltered → parity → adversarial in order, each as a separate agent session. A single agent session cannot run multiple strategies (context budget), so `all` is implemented by the orchestrator agent or benchmark runner as a loop of iteration calls. If any strategy finds zero new bugs, stop early (diminishing returns).
 
-Usage: `./run_playbook.sh --next-iteration --strategy all <repos>`
+Usage (orchestrator agent): "Run all iterations" — the agent runs gap → unfiltered → parity → adversarial sequentially.
+Usage (benchmark runner): `./run_playbook.sh --next-iteration --strategy all <repos>` (benchmark tooling, not shipped with the skill).
 
 ---
 

@@ -58,7 +58,7 @@ done
 
 # Detect version from SKILL.md — try multiple locations
 if [ -z "$VERSION" ]; then
-    for loc in "${SCRIPT_DIR}/../SKILL.md" "${SCRIPT_DIR}/SKILL.md" ".github/skills/SKILL.md"; do
+    for loc in "${SCRIPT_DIR}/../SKILL.md" "${SCRIPT_DIR}/SKILL.md" "SKILL.md" ".claude/skills/quality-playbook/SKILL.md" ".github/skills/SKILL.md" ".github/skills/quality-playbook/SKILL.md"; do
         if [ -f "$loc" ]; then
             VERSION=$(grep -m1 'version:' "$loc" 2>/dev/null | sed 's/.*version: *//' | tr -d ' ')
             [ -n "$VERSION" ] && break
@@ -578,7 +578,7 @@ check_repo() {
     # --- Version stamp consistency (benchmark 26) ---
     echo "[Version Stamps]"
     local skill_version=""
-    for loc in "${repo_dir}/.github/skills/SKILL.md" "${repo_dir}/SKILL.md"; do
+    for loc in "${repo_dir}/SKILL.md" "${repo_dir}/.claude/skills/quality-playbook/SKILL.md" "${repo_dir}/.github/skills/SKILL.md" "${repo_dir}/.github/skills/quality-playbook/SKILL.md"; do
         if [ -f "$loc" ]; then
             skill_version=$(grep -m1 'version:' "$loc" 2>/dev/null | sed 's/.*version: *//' | tr -d ' ')
             [ -n "$skill_version" ] && break
