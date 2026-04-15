@@ -20,7 +20,7 @@ quality-playbook/
 │   ├── requirements_pipeline.md ← Requirements derivation and post-review reconciliation
 │   ├── review_protocols.md      ← Three-pass code review protocol and regression test conventions
 │   ├── spec_audit.md            ← Council of Three spec audit protocol
-│   └── verification.md          ← 45 self-check benchmarks for Phase 3
+│   └── verification.md          ← 45 self-check benchmarks for Phase 6
 ├── ai_context/                  ← AI-readable context files
 │   ├── TOOLKIT.md               ← For users' AI assistants (setup, run, interpret)
 │   └── DEVELOPMENT_CONTEXT.md   ← For maintainers' AI assistants (this file)

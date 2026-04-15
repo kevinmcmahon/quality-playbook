@@ -28,6 +28,8 @@ Before reading any other section of this skill, understand the plan and its depe
 
 **Phase 6 (Verify):** Run self-check benchmarks against all generated artifacts. Check for internal consistency, version stamp correctness, and convergence.
 
+**Phase 7 (Present, Explore, Improve):** Present results to the user with a scannable summary table, offer drill-down on any artifact, and provide a menu of improvement paths (iteration strategies, requirement refinement, integration test tuning). This is the interactive phase where the user takes ownership of the quality system.
+
 Every bug found traces back to a requirement, and every requirement traces back to an exploration finding.
 
 **The critical dependency chain:** Exploration findings → EXPLORATION.md → Requirements → Code review + Spec audit → Bug discovery. A shallow exploration produces abstract requirements. Abstract requirements miss bugs. The exploration phase is where bugs are won or lost.
@@ -94,7 +96,7 @@ The quality gate (`quality_gate.sh`) validates these artifacts. If the gate chec
 | TDD red-phase logs | `quality/results/BUG-NNN.red.log` | If bugs found | Phase 5 |
 | TDD green-phase logs | `quality/results/BUG-NNN.green.log` | If fix patch exists | Phase 5 |
 | Integration sidecar | `quality/results/integration-results.json` | When integration tests run | Phase 5 |
-| Mechanical verify script | `quality/mechanical/verify.sh` | Yes (benchmark) | Phase 5 |
+| Mechanical verify script | `quality/mechanical/verify.sh` | Yes (benchmark) | Phase 2 |
 | Verify receipt | `quality/results/mechanical-verify.log` + `.exit` | Yes (benchmark) | Phase 5 |
 | Triage probes | `quality/spec_audits/triage_probes.sh` | When triage runs | Phase 4 |
 | Code review reports | `quality/code_reviews/*.md` | Yes | Phase 3 |
@@ -124,7 +126,7 @@ The quality gate (`quality_gate.sh`) validates these artifacts. If the gate chec
     }
   ],
   "summary": {
-    "total": 3, "confirmed_open": 1, "red_failed": 0, "green_failed": 0, "tdd_verified": 2
+    "total": 3, "confirmed_open": 1, "red_failed": 0, "green_failed": 0, "verified": 2
   }
 }
 ```
@@ -691,6 +693,7 @@ With docs: [yes/no]
 - [ ] Phase 5: Post-review reconciliation + closure verification
 - [ ] TDD logs: red-phase log for every confirmed bug, green-phase log for every bug with fix patch
 - [ ] Phase 6: Verification benchmarks
+- [ ] Phase 7: Present, Explore, Improve (interactive)
 
 ## Artifact inventory
 | Artifact | Status | Path | Notes |

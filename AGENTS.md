@@ -23,6 +23,7 @@ The Quality Playbook is a skill for AI coding agents that explores any codebase 
 
 Copy the skill into your AI coding tool's skill directory in the target repo:
 
+**GitHub Copilot:**
 ```bash
 mkdir -p .github/skills/references
 cp SKILL.md .github/skills/SKILL.md
@@ -30,9 +31,17 @@ cp quality_gate.sh .github/skills/quality_gate.sh
 cp references/* .github/skills/references/
 ```
 
+**Claude Code:**
+```bash
+mkdir -p .claude/skills/quality-playbook/references
+cp SKILL.md .claude/skills/quality-playbook/SKILL.md
+cp quality_gate.sh .claude/skills/quality-playbook/quality_gate.sh
+cp references/* .claude/skills/quality-playbook/references/
+```
+
 Then tell your AI tool:
 ```
-Read the quality playbook skill at .github/skills/SKILL.md and execute the quality playbook for this project.
+Run the quality playbook on this project.
 ```
 
 ## Repository layout

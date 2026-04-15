@@ -17,13 +17,22 @@ The skill file is `SKILL.md`. The iteration reference is `references/iteration.m
 
 The user wants to run the quality playbook on a codebase. Here's what to do:
 
-1. **Copy skill files into the repo.** The playbook expects its files at `.github/skills/` inside the target repository:
+1. **Copy skill files into the repo.** The playbook expects its files in your AI tool's skill directory inside the target repository:
+
+   **GitHub Copilot:**
    ```
    .github/skills/SKILL.md
-   .github/skills/references/iteration.md
    .github/skills/references/          (all .md files from the references/ directory)
    .github/skills/quality_gate.sh
    ```
+
+   **Claude Code:**
+   ```
+   .claude/skills/quality-playbook/SKILL.md
+   .claude/skills/quality-playbook/references/    (all .md files from the references/ directory)
+   .claude/skills/quality-playbook/quality_gate.sh
+   ```
+
    Create the directories if they don't exist. Copy from wherever the user has the playbook files.
 
 2. **Add documentation (strongly recommended).** If the user has specs, API docs, design documents, or community documentation, put them in a `docs_gathered/` directory in the repo. Documentation-enriched runs find significantly more bugs and higher-confidence bugs than code-only runs. The playbook works without docs, but it works much better with them.
