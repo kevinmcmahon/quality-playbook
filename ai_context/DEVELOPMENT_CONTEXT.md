@@ -147,7 +147,7 @@ Council review artifacts go in `council-reviews/`. Each review has:
 - **v1.3.45:** references/iteration.md reference file, parity strategy, suggested-next-prompt UX.
 - **v1.3.46:** Demoted Candidates Manifest, parity sub-type checklist, adversarial bar adjustment, TDD execution enforcement.
 - **v1.3.47:** TDD log enforcement — six insertion points from Cursor diagnostic (artifact contract, closure gate, bash template, progress checkbox, file-existence gate, sidecar contradiction check).
-- **v1.3.51:** Moved ITERATION.md to references/iteration.md (now installed via wildcard copy with other reference files). Updated AGENTS.md, TOOLKIT.md, DEVELOPMENT_CONTEXT.md, and setup_repos.sh references. O'Reilly Radar article link added to README and ai_context files.
+- **v1.4.0:** Six-phase interactive architecture, four iteration strategies, TDD enforcement, quality gate, O'Reilly Radar article, moved ITERATION.md to references/iteration.md. Promoted from 1.3.x to reflect the scope of changes since the structured exploration approach was introduced.
 - **v1.3.50:** Six-phase architecture (renumbered from 3 phases to 6), interactive phase-by-phase execution with end-of-phase messages, `--phase` flag in runner, quality gate script, four iteration strategies with 40-60% yield boost, documentation warning, help system, "keep going" continuation. Benchmarked: Express.js (14 bugs), Gson (9 bugs), Linux virtio (8 bugs) — all with 100% TDD coverage and 0 gate failures.
 
 ## Current known issues
