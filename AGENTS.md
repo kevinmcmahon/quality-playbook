@@ -11,7 +11,7 @@ The Quality Playbook is a skill for AI coding agents that explores any codebase 
 | File | Purpose | When to read |
 |------|---------|-------------|
 | `SKILL.md` | Full operational instructions for running the playbook | When executing the playbook on a target repo |
-| `ITERATION.md` | Iteration strategy reference (gap, unfiltered, parity, adversarial) | When running iteration mode |
+| `references/iteration.md` | Iteration strategy reference (gap, unfiltered, parity, adversarial) | When running iteration mode |
 | `quality_gate.sh` | Mechanical validation script | After playbook completes, to validate artifacts |
 | `references/*.md` | Phase-specific reference files (review protocols, spec audit, etc.) | During specific phases as directed by SKILL.md |
 | `ai_context/TOOLKIT.md` | User-facing interactive documentation | When helping a user set up or run the playbook |
@@ -24,9 +24,8 @@ Copy the skill into your AI coding tool's skill directory in the target repo:
 ```bash
 mkdir -p .github/skills/references
 cp SKILL.md .github/skills/SKILL.md
-cp ITERATION.md .github/skills/ITERATION.md
 cp quality_gate.sh .github/skills/quality_gate.sh
-cp references/*.md .github/skills/references/
+cp references/* .github/skills/references/
 ```
 
 Then tell your AI tool:
@@ -39,7 +38,6 @@ Read the quality playbook skill at .github/skills/SKILL.md and execute the quali
 ```
 AGENTS.md                ← you are here
 SKILL.md                 ← the skill (operational instructions)
-ITERATION.md             ← iteration strategy reference
 quality_gate.sh          ← artifact validation script
 LICENSE.txt
 references/              ← phase-specific reference documents
@@ -50,7 +48,7 @@ ai_context/
 
 ## Conventions
 
-- **Don't edit skill files without backups.** Copy to `.bak` before modifying SKILL.md, ITERATION.md, or any reference file.
+- **Don't edit skill files without backups.** Copy to `.bak` before modifying SKILL.md or any reference file.
 - **Bump the version** in SKILL.md metadata for every change. Generated artifacts stamp this version.
 - **Test changes** on at least 2 benchmark repos before committing.
 - **Update ai_context/ files** if your change affects users or maintainers.

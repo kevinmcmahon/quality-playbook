@@ -11,7 +11,7 @@
 
 The Quality Playbook is a skill that explores any codebase from scratch and finds real bugs. It generates nine quality artifacts: exploration notes, requirements, a quality constitution, functional tests, a code review with regression tests, a consolidated bug report with patches, TDD verification, integration tests, and a multi-model spec audit. Every confirmed bug gets a regression test patch, a fix patch, and red/green TDD verification.
 
-The skill file is `SKILL.md`. The iteration reference is `ITERATION.md`. These contain the full operational instructions the agent follows when running the playbook. This toolkit file is different — it helps you (through your AI assistant) set up, run, interpret, and iterate on the playbook. It also explains how the playbook works: what techniques it uses, why it uses them, and what makes them effective at finding bugs that other approaches miss.
+The skill file is `SKILL.md`. The iteration reference is `references/iteration.md`. These contain the full operational instructions the agent follows when running the playbook. This toolkit file is different — it helps you (through your AI assistant) set up, run, interpret, and iterate on the playbook. It also explains how the playbook works: what techniques it uses, why it uses them, and what makes them effective at finding bugs that other approaches miss.
 
 ## Quick start
 
@@ -20,7 +20,7 @@ The user wants to run the quality playbook on a codebase. Here's what to do:
 1. **Copy skill files into the repo.** The playbook expects its files at `.github/skills/` inside the target repository:
    ```
    .github/skills/SKILL.md
-   .github/skills/ITERATION.md
+   .github/skills/references/iteration.md
    .github/skills/references/          (all .md files from the references/ directory)
    .github/skills/quality_gate.sh
    ```
@@ -62,7 +62,7 @@ for repo in "$@"; do
     dst="${REPO_DIR}/${repo}/.github/skills"
     mkdir -p "${dst}/references"
     cp "${SKILL_DIR}/SKILL.md" "${dst}/SKILL.md"
-    cp "${SKILL_DIR}/ITERATION.md" "${dst}/ITERATION.md"
+    # iteration.md is now in references/ — copied by the wildcard below
     cp "${SKILL_DIR}/quality_gate.sh" "${dst}/quality_gate.sh"
     cp "${SKILL_DIR}/references/"*.md "${dst}/references/"
     echo "Set up ${repo}"

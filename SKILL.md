@@ -3,7 +3,7 @@ name: quality-playbook
 description: "Explore any codebase from scratch and generate nine quality artifacts: a quality constitution (QUALITY.md), spec-traced functional tests, a code review protocol with regression test generation, a consolidated bug report (BUGS.md) with patches, a TDD verification protocol (RUN_TDD_TESTS.md), an integration testing protocol, a multi-model spec audit (Council of Three), and an AI bootstrap file (AGENTS.md). Includes state machine completeness analysis, missing safeguard detection, patch validation gates, and structured test output (JUnit XML + sidecar JSON). Works with any language (Python, Java, Scala, TypeScript, Go, Rust, etc.). Use this skill whenever the user asks to set up a quality playbook, generate functional tests from specifications, create a quality constitution, build testing protocols, audit code against specs, or establish a repeatable quality system for a project. Also trigger when the user mentions 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', 'coverage theater', or wants to go beyond basic test generation to build a full quality system grounded in their actual codebase."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.3.50
+  version: 1.3.51
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -34,7 +34,7 @@ Every bug found traces back to a requirement, and every requirement traces back 
 
 **MANDATORY FIRST ACTION:** After reading and understanding the plan above, print the following message to the user, then explain the plan in your own words — what you'll do, what each phase produces, and why the exploration phase matters most. Emphasize that exploration starts with open-ended domain-driven investigation, followed by domain-knowledge risk analysis that reasons about what goes wrong in systems like this, then supplemented by selected structured patterns. Do not copy the plan verbatim; paraphrase it to demonstrate understanding.
 
-> Quality Playbook v1.3.50 — by Andrew Stellman
+> Quality Playbook v1.3.51 — by Andrew Stellman
 > https://github.com/andrewstellman/quality-playbook
 
 Generate a complete quality system tailored to a specific codebase. Unlike test stub generators that work mechanically from source code, this skill explores the project first — understanding its domain, architecture, specifications, and failure history — then produces a quality playbook grounded in what it finds.
@@ -109,7 +109,7 @@ The quality gate (`quality_gate.sh`) validates these artifacts. If the gate chec
 ```json
 {
   "schema_version": "1.1",
-  "skill_version": "1.3.50",
+  "skill_version": "1.3.51",
   "date": "2026-04-12",
   "project": "repo-name",
   "bugs": [
@@ -136,7 +136,7 @@ The quality gate (`quality_gate.sh`) validates these artifacts. If the gate chec
 ```json
 {
   "schema_version": "1.1",
-  "skill_version": "1.3.50",
+  "skill_version": "1.3.51",
   "date": "2026-04-12",
   "project": "repo-name",
   "recommendation": "SHIP",
@@ -211,9 +211,9 @@ Use this when a previous playbook run exists and you want to find additional bug
 
 **When to use iteration mode:** After a complete playbook run, when you believe the codebase has more bugs than the first run found. This is especially effective for large codebases where a single run can only cover 3–5 subsystems, and for library/framework codebases where different exploration paths find different bug classes.
 
-**Read `.github/skills/ITERATION.md` for detailed strategy instructions.** That file contains the full operational detail for each strategy, shared rules, merge steps, and the completion gate. The summary below describes when to use each strategy.
+**Read `.github/skills/references/iteration.md` for detailed strategy instructions.** That file contains the full operational detail for each strategy, shared rules, merge steps, and the completion gate. The summary below describes when to use each strategy.
 
-**TDD applies to iteration runs.** Every newly confirmed bug in an iteration run must go through the full TDD red-green cycle and produce `quality/results/BUG-NNN.red.log` (and `.green.log` if a fix patch exists). The quality gate enforces this — missing logs cause FAIL. See ITERATION.md shared rule 5 and the TDD Log Closure Gate in Phase 5.
+**TDD applies to iteration runs.** Every newly confirmed bug in an iteration run must go through the full TDD red-green cycle and produce `quality/results/BUG-NNN.red.log` (and `.green.log` if a fix patch exists). The quality gate enforces this — missing logs cause FAIL. See `references/iteration.md` shared rule 5 and the TDD Log Closure Gate in Phase 5.
 
 **Iteration strategies.** The user selects a strategy by naming it in the prompt. If no strategy is named, default to `gap`.
 
@@ -894,14 +894,14 @@ Now write the nine files. For each one, follow the structure below and consult t
 **Version stamp (mandatory on every generated file).** Every Markdown file the playbook generates must begin with the following attribution line immediately after the file's title heading:
 
 ```
-> Generated by [Quality Playbook](https://github.com/andrewstellman/quality-playbook) v1.3.50 — Andrew Stellman
+> Generated by [Quality Playbook](https://github.com/andrewstellman/quality-playbook) v1.3.51 — Andrew Stellman
 > Date: YYYY-MM-DD · Project: <project name>
 ```
 
 Every generated code file (test files, scripts) must begin with a comment header:
 
 ```
-# Generated by Quality Playbook v1.3.50 — https://github.com/andrewstellman/quality-playbook
+# Generated by Quality Playbook v1.3.51 — https://github.com/andrewstellman/quality-playbook
 # Author: Andrew Stellman · Date: YYYY-MM-DD · Project: <project name>
 ```
 
@@ -1035,7 +1035,7 @@ Do NOT demand "executed request-level evidence" or defer findings because "they 
 --- /dev/null
 +++ b/quality/test_regression_virtio.c
 @@ -0,0 +1,15 @@
-+// Generated by Quality Playbook v1.3.50
++// Generated by Quality Playbook v1.3.51
 +// Regression test for BUG-004: VIRTIO_F_RING_RESET missing from vring_transport_features()
 +#include <assert.h>
 +#include <string.h>

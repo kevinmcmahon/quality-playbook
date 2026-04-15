@@ -13,7 +13,7 @@
 quality-playbook/
 ├── AGENTS.md                    ← AI coding agent entry point (repo root)
 ├── SKILL.md                     ← The skill — full operational instructions for running the playbook
-├── ITERATION.md                 ← Iteration strategy reference (gap, unfiltered, parity, adversarial)
+├── references/iteration.md      ← Iteration strategy reference (gap, unfiltered, parity, adversarial)
 ├── quality_gate.sh              ← Mechanical validation script (runs after playbook completes)
 ├── LICENSE.txt                  ← License terms
 ├── references/                  ← Reference files read during specific phases
@@ -50,7 +50,7 @@ The quality playbook is a long-form instruction document (SKILL.md) that an AI a
 
 After each phase, the skill prints a prominent end-of-phase message telling the user what happened and what to say next. The user says "keep going" or "run phase N" to continue. This interactive protocol gives much better results than single-session execution because each phase gets the full context window.
 
-**Iteration mode:** After the baseline run, the agent can run additional iterations using strategies defined in ITERATION.md. Each strategy re-explores the codebase with a different approach, then re-runs Phases 2-6 on the merged findings. Iterations typically add 40-60% more confirmed bugs.
+**Iteration mode:** After the baseline run, the agent can run additional iterations using strategies defined in references/iteration.md. Each strategy re-explores the codebase with a different approach, then re-runs Phases 2-6 on the merged findings. Iterations typically add 40-60% more confirmed bugs.
 
 ## Three improvement axes
 
@@ -62,13 +62,13 @@ When the playbook misses a bug, the miss falls on one of three axes. Identifying
 
 **What to fix:** Exploration patterns in SKILL.md Phase 1, pattern applicability matrix, domain-knowledge questions. Or add a new iteration strategy that targets the unexplored area.
 
-**Example:** The parity sub-type checklist was added to ITERATION.md because the parity strategy wasn't comparing resource lifecycle (setup vs. teardown) — it was only finding "obvious" parallel-path differences.
+**Example:** The parity sub-type checklist was added to references/iteration.md because the parity strategy wasn't comparing resource lifecycle (setup vs. teardown) — it was only finding "obvious" parallel-path differences.
 
 ### 2. Iteration types
 
 **Symptom:** The agent looked at the code but the bug wasn't found by any existing iteration strategy.
 
-**What to fix:** Add a new iteration strategy to ITERATION.md that targets the failure mode. Each strategy exists because a specific class of bugs was being systematically missed.
+**What to fix:** Add a new iteration strategy to references/iteration.md that targets the failure mode. Each strategy exists because a specific class of bugs was being systematically missed.
 
 **History:**
 - **gap** (v1.3.44): Baseline only covered subset of codebase
@@ -80,7 +80,7 @@ When the playbook misses a bug, the miss falls on one of three axes. Identifying
 
 **Symptom:** The agent found the code, flagged it as a candidate, but dismissed it during triage.
 
-**What to fix:** Triage rules in SKILL.md (evidentiary standards, "what counts as sufficient evidence"), the Demoted Candidates Manifest in ITERATION.md (tracks dismissed findings with re-promotion criteria), adversarial strategy evidentiary bar.
+**What to fix:** Triage rules in SKILL.md (evidentiary standards, "what counts as sufficient evidence"), the Demoted Candidates Manifest in references/iteration.md (tracks dismissed findings with re-promotion criteria), adversarial strategy evidentiary bar.
 
 **Example:** Pydantic's AliasPath bug was found and dismissed THREE times before the adversarial strategy recovered it. The triage kept classifying it as a "design choice" because the behavior was "permissive." The fix was lowering the adversarial evidentiary bar: code-path trace + semantic drift is sufficient.
 
@@ -144,9 +144,10 @@ Council review artifacts go in `council-reviews/`. Each review has:
 - **v1.3.25:** Unfiltered domain-driven exploration. Major breakthrough — 14 bugs.
 - **v1.3.40:** Parity patterns. Found 5 virtio bugs using fallback path comparison.
 - **v1.3.44:** Iteration mode (gap, unfiltered, adversarial). 3.7x baseline yield.
-- **v1.3.45:** ITERATION.md reference file, parity strategy, suggested-next-prompt UX.
+- **v1.3.45:** references/iteration.md reference file, parity strategy, suggested-next-prompt UX.
 - **v1.3.46:** Demoted Candidates Manifest, parity sub-type checklist, adversarial bar adjustment, TDD execution enforcement.
 - **v1.3.47:** TDD log enforcement — six insertion points from Cursor diagnostic (artifact contract, closure gate, bash template, progress checkbox, file-existence gate, sidecar contradiction check).
+- **v1.3.51:** Moved ITERATION.md to references/iteration.md (now installed via wildcard copy with other reference files). Updated AGENTS.md, TOOLKIT.md, DEVELOPMENT_CONTEXT.md, and setup_repos.sh references. O'Reilly Radar article link added to README and ai_context files.
 - **v1.3.50:** Six-phase architecture (renumbered from 3 phases to 6), interactive phase-by-phase execution with end-of-phase messages, `--phase` flag in runner, quality gate script, four iteration strategies with 40-60% yield boost, documentation warning, help system, "keep going" continuation. Benchmarked: Express.js (14 bugs), Gson (9 bugs), Linux virtio (8 bugs) — all with 100% TDD coverage and 0 gate failures.
 
 ## Current known issues
