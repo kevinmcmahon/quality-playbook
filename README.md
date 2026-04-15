@@ -4,66 +4,6 @@ Point an AI coding tool at any codebase. Get a complete quality engineering infr
 
 **Version:** 1.3.33 | **Author:** [Andrew Stellman](https://github.com/andrewstellman) | **License:** Apache 2.0
 
-## Need help? Just ask your AI
-
-You don't need to read the documentation to use the Quality Playbook — your AI coding tool can read it for you. The `ai_context/TOOLKIT.md` file explains everything about the playbook in a format designed for AI assistants to read and answer questions about.
-
-Open it in any AI tool — Claude Code, Cursor, GitHub Copilot, ChatGPT, Gemini, whatever you use — and tell it:
-
-> "Read TOOLKIT.md. Now you're an expert in the Quality Playbook."
-
-<a href="https://chatgpt.com/share/69dee323-1f34-832f-aa98-06e606aff1d0"><img src="images/chatgpt-toolkit.png" alt="ChatGPT with TOOLKIT.md attached" width="1000"></a>
-
-Then ask it anything you want. How do I set this up? What does Phase 3 actually do? How does it find bugs that structural code review misses? What's the difference between gap and adversarial iteration? Why did my run only find one bug? Ask as many questions as you want — the toolkit has detailed explanations of every technique, every phase, and every iteration strategy. Your AI assistant will walk you through setup, running, interpreting results, and improving your next run.
-
-[Here's what that conversation looks like in ChatGPT](https://chatgpt.com/share/69dee323-1f34-832f-aa98-06e606aff1d0) — it works just as well in Claude, Copilot, Gemini, or any other AI coding tool.
-
-## Reproduce the benchmark: Linux virtio bug discovery
-
-These commands clone the Linux kernel's virtio subsystem, install the playbook skill, and run a single GitHub Copilot prompt that independently discovers a confirmed kernel bug — a missing `VIRTIO_F_RING_RESET` case label in `vring_transport_features()` that silently drops queue-reset support on MMIO and vDPA transports.
-
-The entire run takes about 17 minutes with GPT-5.4 and costs one Copilot Premium request. No seeds, no prior run data, no human guidance — the model reads the skill, explores the code, derives requirements, and finds the bug on its own.
-
-**Prerequisites:** [GitHub Copilot CLI](https://docs.github.com/en/copilot/github-copilot-in-the-cli) with a model that supports `--yolo` mode (GPT-5.4 or later).
-
-```bash
-# 1. Clone the playbook skill
-git clone https://github.com/andrewstellman/quality-playbook.git
-SKILL_DIR="$(pwd)/quality-playbook"
-
-# 2. Shallow-clone the Linux kernel virtio subsystem (66 files, ~1 MB)
-git clone --filter=blob:none --no-checkout --sparse \
-  https://github.com/torvalds/linux.git virtio-benchmark
-cd virtio-benchmark
-git sparse-checkout set drivers/virtio include/linux include/uapi/linux
-git checkout bfe62a454542cfad3379f6ef5680b125f41e20f4
-
-# 3. Strip to just the virtio files
-mkdir -p ../virtio-clean/drivers ../virtio-clean/include/linux ../virtio-clean/include/uapi/linux
-cp -a drivers/virtio ../virtio-clean/drivers/
-cp include/linux/virtio*.h ../virtio-clean/include/linux/
-cp include/uapi/linux/virtio*.h ../virtio-clean/include/uapi/linux/
-cd .. && rm -rf virtio-benchmark && cd virtio-clean
-
-# 4. Install the skill
-mkdir -p .github/skills/references
-cp "$SKILL_DIR/SKILL.md" .github/skills/SKILL.md
-cp "$SKILL_DIR/LICENSE.txt" .github/skills/LICENSE.txt
-cp "$SKILL_DIR/references/"* .github/skills/references/
-
-# 5. Run the playbook (single prompt, ~17 minutes)
-gh copilot -p "Read the quality playbook skill at .github/skills/SKILL.md \
-and its reference files in .github/skills/references/. Execute the quality \
-playbook for this project. IMPORTANT: Skip Phase 0 and Phase 0b entirely — \
-do not look for previous_runs/ or sibling versioned directories. This is a \
-clean benchmark run testing independent bug discovery. Start directly at \
-Phase 1." --model gpt-5.4 --yolo
-```
-
-When it finishes, check `quality/BUGS.md` for confirmed findings with file locations, regression tests, and fix patches. The run also produces a full quality system in `quality/` — requirements, functional tests, code review protocols, and a spec audit.
-
-**What this demonstrates:** The playbook derives behavioral requirements from the code and virtio specification, then uses those requirements to drive a three-pass code review and multi-model spec audit. The bug it finds is a real intent violation: the transport-feature whitelist is *structurally correct* (valid C, no crashes, no warnings) but *behaviorally wrong* (it silently drops a feature the spec says it should preserve). This is the class of bug that structural code review alone cannot catch.
-
 ## The problem
 
 Most AI code review can only find structural issues: null dereferences, resource leaks, race conditions. That catches about 65% of real defects. The other 35% are intent violations -- bugs that can only be found if you know what the code is *supposed* to do. A function that silently returns null instead of throwing, a duplicate-key check that passes when the first value is null, a sanitization step that runs after the branch decision it was supposed to guard. These bugs look correct to any reviewer that doesn't know the spec.
@@ -94,7 +34,21 @@ Then tell your AI tool: *"Read the quality playbook skill and generate a complet
 
 The playbook runs in six tracked phases: explore the codebase (Phase 1), generate quality artifacts (Phase 2), run a three-pass code review with regression tests (Phase 3), execute a multi-model spec audit (Phase 4), reconcile and close findings (Phase 5), and verify against self-check benchmarks (Phase 6). It takes anywhere from 5 to 60 minutes depending on project size, and it works with any language.
 
-## What it produces
+## Need help? Just ask your AI
+
+You don't need to read the documentation to use the Quality Playbook — your AI coding tool can read it for you. The `ai_context/TOOLKIT.md` file explains everything about the playbook in a format designed for AI assistants to read and answer questions about.
+
+Open it in any AI tool — Claude Code, Cursor, GitHub Copilot, ChatGPT, Gemini, whatever you use — and tell it:
+
+> "Read TOOLKIT.md. Now you're an expert in the Quality Playbook."
+
+<a href="https://chatgpt.com/share/69dee323-1f34-832f-aa98-06e606aff1d0"><img src="images/chatgpt-toolkit.png" alt="ChatGPT with TOOLKIT.md attached" width="1000"></a>
+
+Then ask it anything you want. How do I set this up? What does Phase 3 actually do? How does it find bugs that structural code review misses? What's the difference between gap and adversarial iteration? Why did my run only find one bug? Ask as many questions as you want — the toolkit has detailed explanations of every technique, every phase, and every iteration strategy. Your AI assistant will walk you through setup, running, interpreting results, and improving your next run.
+
+[Here's what that conversation looks like in ChatGPT](https://chatgpt.com/share/69dee323-1f34-832f-aa98-06e606aff1d0) — it works just as well in Claude, Copilot, Gemini, or any other AI coding tool.
+
+## What the playbook produces
 
 The playbook generates these files:
 
