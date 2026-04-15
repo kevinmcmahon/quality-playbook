@@ -36,9 +36,9 @@ The playbook runs in six tracked phases: explore the codebase (Phase 1), generat
 
 ## Need help? Just ask your AI
 
-You don't need to read the documentation to use the Quality Playbook — your AI coding tool can read it for you. The `ai_context/TOOLKIT.md` file explains everything about the playbook in a format designed for AI assistants to read and answer questions about.
+You don't need to read the documentation to use the Quality Playbook — your AI coding tool can read it for you. The [`ai_context/TOOLKIT.md`](https://github.com/andrewstellman/quality-playbook/blob/main/ai_context/TOOLKIT.md) file explains everything about the playbook in a format designed for AI assistants to read and answer questions about.
 
-Open it in any AI tool — Claude Code, Cursor, GitHub Copilot, ChatGPT, Gemini, whatever you use — and tell it:
+Open a chat in any AI tool — Claude Code, Cursor, GitHub Copilot, ChatGPT, Gemini, whatever you use — attach [`ai_context/TOOLKIT.md`](https://github.com/andrewstellman/quality-playbook/blob/main/ai_context/TOOLKIT.md) and tell it:
 
 > "Read TOOLKIT.md. Now you're an expert in the Quality Playbook."
 
