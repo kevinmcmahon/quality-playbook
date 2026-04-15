@@ -4,6 +4,20 @@ Point an AI coding tool at any codebase. Get a complete quality engineering infr
 
 **Version:** 1.3.33 | **Author:** [Andrew Stellman](https://github.com/andrewstellman) | **License:** Apache 2.0
 
+## Need help? Just ask your AI
+
+You don't need to read the documentation to use the Quality Playbook — your AI coding tool can read it for you. The `ai_context/TOOLKIT.md` file explains everything about the playbook in a format designed for AI assistants to read and answer questions about.
+
+Open it in any AI tool — Claude Code, Cursor, GitHub Copilot, ChatGPT, Gemini, whatever you use — and tell it:
+
+> "Read TOOLKIT.md. Now you're an expert in the Quality Playbook."
+
+<a href="https://chatgpt.com/share/69dee323-1f34-832f-aa98-06e606aff1d0"><img src="images/chatgpt-toolkit.png" alt="ChatGPT with TOOLKIT.md attached" width="600"></a>
+
+Then ask it anything you want. How do I set this up? What does Phase 3 actually do? How does it find bugs that structural code review misses? What's the difference between gap and adversarial iteration? Why did my run only find one bug? Ask as many questions as you want — the toolkit has detailed explanations of every technique, every phase, and every iteration strategy. Your AI assistant will walk you through setup, running, interpreting results, and improving your next run.
+
+[Here's what that conversation looks like in ChatGPT](https://chatgpt.com/share/69dee323-1f34-832f-aa98-06e606aff1d0) — it works just as well in Claude, Copilot, Gemini, or any other AI coding tool.
+
 ## Reproduce the benchmark: Linux virtio bug discovery
 
 These commands clone the Linux kernel's virtio subsystem, install the playbook skill, and run a single GitHub Copilot prompt that independently discovers a confirmed kernel bug — a missing `VIRTIO_F_RING_RESET` case label in `vring_transport_features()` that silently drops queue-reset support on MMIO and vDPA transports.
@@ -49,14 +63,6 @@ Phase 1." --model gpt-5.4 --yolo
 When it finishes, check `quality/BUGS.md` for confirmed findings with file locations, regression tests, and fix patches. The run also produces a full quality system in `quality/` — requirements, functional tests, code review protocols, and a spec audit.
 
 **What this demonstrates:** The playbook derives behavioral requirements from the code and virtio specification, then uses those requirements to drive a three-pass code review and multi-model spec audit. The bug it finds is a real intent violation: the transport-feature whitelist is *structurally correct* (valid C, no crashes, no warnings) but *behaviorally wrong* (it silently drops a feature the spec says it should preserve). This is the class of bug that structural code review alone cannot catch.
-
-## Getting help from your AI assistant
-
-The `ai_context/TOOLKIT.md` file is designed for your AI coding tool to read — not for you to read yourself. Open it in Claude Code, Cursor, Copilot, or any AI coding tool and say:
-
-> "Read ai_context/TOOLKIT.md and help me set up the quality playbook for my project."
-
-Your AI assistant will guide you through setup, running, interpreting results, and iterating. TOOLKIT.md also explains how the playbook works in detail — the techniques it uses (defensive pattern forensics, mechanical verification, cross-path parity analysis), the rationale behind them, and what makes each iteration strategy effective. You can ask your AI questions like "how does it find bugs that structural code review misses?" or "what's the difference between gap and adversarial iteration?" and it will answer from the toolkit.
 
 ## The problem
 
