@@ -41,6 +41,17 @@ Every bug found traces back to a requirement, and every requirement traces back 
 
 Generate a complete quality system tailored to a specific codebase. Unlike test stub generators that work mechanically from source code, this skill explores the project first — understanding its domain, architecture, specifications, and failure history — then produces a quality playbook grounded in what it finds.
 
+### Locating reference files
+
+This skill references files in a `references/` directory (e.g., `references/iteration.md`, `references/review_protocols.md`). The location depends on how the skill was installed. When a reference file is mentioned, resolve it by checking these paths in order and using the first one that exists:
+
+1. `references/` (relative to SKILL.md — works when running from the skill directory)
+2. `.claude/skills/quality-playbook/references/` (Claude Code installation)
+3. `references/` (GitHub Copilot installation)
+4. `.github/skills/quality-playbook/references/` (alternate Copilot installation)
+
+All reference file mentions in this skill use the short form `references/filename.md`. If the relative path doesn't resolve, walk the fallback list above.
+
 ## Why This Exists
 
 Most software projects have tests, but few have a quality *system*. Tests check whether code works. A quality system answers harder questions: what does "working correctly" mean for this specific project? What are the ways it could fail that wouldn't be caught by tests? What should every developer (human or AI) know before touching this code?
@@ -213,7 +224,7 @@ Use this when a previous playbook run exists and you want to find additional bug
 
 **When to use iteration mode:** After a complete playbook run, when you believe the codebase has more bugs than the first run found. This is especially effective for large codebases where a single run can only cover 3–5 subsystems, and for library/framework codebases where different exploration paths find different bug classes.
 
-**Read `.github/skills/references/iteration.md` for detailed strategy instructions.** That file contains the full operational detail for each strategy, shared rules, merge steps, and the completion gate. The summary below describes when to use each strategy.
+**Read `references/iteration.md` for detailed strategy instructions.** That file contains the full operational detail for each strategy, shared rules, merge steps, and the completion gate. The summary below describes when to use each strategy.
 
 **TDD applies to iteration runs.** Every newly confirmed bug in an iteration run must go through the full TDD red-green cycle and produce `quality/results/BUG-NNN.red.log` (and `.green.log` if a fix patch exists). The quality gate enforces this — missing logs cause FAIL. See `references/iteration.md` shared rule 5 and the TDD Log Closure Gate in Phase 5.
 
@@ -295,7 +306,7 @@ When no `previous_runs/` directory exists but sibling versioned directories do, 
 ## Phase 1: Explore the Codebase (Write As You Go)
 
 > **Required references for this phase** — read these before proceeding:
-> - `.github/skills/references/exploration_patterns.md` — six bug-finding patterns to apply after open exploration
+> - `references/exploration_patterns.md` — six bug-finding patterns to apply after open exploration
 
 Spend the first phase understanding the project. The quality playbook must be grounded in this specific codebase — not generic advice.
 
@@ -872,12 +883,12 @@ Or say "keep going" to continue automatically.
 
 > **Required references for this phase** — read these before proceeding:
 > - `quality/EXPLORATION.md` — your Phase 1 findings (architecture, requirements, use cases, pattern analysis)
-> - `.github/skills/references/requirements_pipeline.md` — five-phase pipeline for requirement derivation
-> - `.github/skills/references/defensive_patterns.md` — grep patterns for finding defensive code
-> - `.github/skills/references/schema_mapping.md` — field mapping format for schema-aware tests
-> - `.github/skills/references/constitution.md` — QUALITY.md template
-> - `.github/skills/references/functional_tests.md` — test structure and anti-patterns
-> - `.github/skills/references/review_protocols.md` — code review and integration test templates
+> - `references/requirements_pipeline.md` — five-phase pipeline for requirement derivation
+> - `references/defensive_patterns.md` — grep patterns for finding defensive code
+> - `references/schema_mapping.md` — field mapping format for schema-aware tests
+> - `references/constitution.md` — QUALITY.md template
+> - `references/functional_tests.md` — test structure and anti-patterns
+> - `references/review_protocols.md` — code review and integration test templates
 
 **Phase 2 entry gate (mandatory — HARD STOP).** Before generating any artifacts, read `quality/EXPLORATION.md` from disk and verify ALL of the following exact section titles exist (grep or search — do not rely on memory):
 
@@ -888,7 +899,7 @@ Or say "keep going" to continue automatically.
 5. `## Candidate Bugs for Phase 2` — must exist verbatim
 6. `## Gate Self-Check` — must exist (proves the Phase 1 gate was run)
 
-If the file does not exist, has fewer than 120 lines, or is **missing ANY of these exact section titles**, STOP and go back to Phase 1. Do not attempt to proceed with "equivalent" sections under different names — the exact titles above are required. Write EXPLORATION.md now, starting with domain-driven open exploration, then domain-knowledge risk analysis, then selecting 3–4 patterns from `.github/skills/references/exploration_patterns.md` for deep dives. Do not proceed with Phase 2 until EXPLORATION.md passes the Phase 1 completion gate. This check exists because single-pass execution can skip the Phase 1 gate — this is the backstop. In v1.3.43, two repos bypassed both gates and produced zero bugs.
+If the file does not exist, has fewer than 120 lines, or is **missing ANY of these exact section titles**, STOP and go back to Phase 1. Do not attempt to proceed with "equivalent" sections under different names — the exact titles above are required. Write EXPLORATION.md now, starting with domain-driven open exploration, then domain-knowledge risk analysis, then selecting 3–4 patterns from `references/exploration_patterns.md` for deep dives. Do not proceed with Phase 2 until EXPLORATION.md passes the Phase 1 completion gate. This check exists because single-pass execution can skip the Phase 1 gate — this is the backstop. In v1.3.43, two repos bypassed both gates and produced zero bugs.
 
 Use `quality/EXPLORATION.md` as your primary source for this phase — do not re-explore the codebase from scratch. The exploration findings contain the architecture map, derived requirements, use cases, and risk analysis that drive every artifact below. If you find yourself reading source files to figure out what the project does, go back to EXPLORATION.md instead. Re-exploration wastes context and produces inconsistencies between what Phase 1 found and what Phase 2 generates.
 
@@ -1392,7 +1403,7 @@ The generated protocol must include:
    }
    ```
 
-   **Required top-level fields:** `schema_version`, `skill_version`, `date`, `project`, `bugs`, `summary`. **Required per-bug fields:** `id`, `requirement`, `red_phase`, `green_phase`, `verdict`, `fix_patch_present`, `writeup_path`. If any required field is missing, the result is non-conformant.
+   **Required top-level fields:** `schema_version`, `skill_version`, `date`, `project`, `bugs`, `summary`. **Required per-bug fields:** `id`, `requirement`, `red_phase`, `green_phase`, `verdict`, `fix_patch_present`, `writeup_path`. If any required field is missing, the result is non-conformant. **Optional per-bug fields** (shown in the template above but not gate-checked): `regression_patch`, `fix_patch`, `patch_gate_passed`, `junit_red`, `junit_green`, `junit_available`, `notes`. Include these when the data is available; omit them without penalty.
 
    **Required summary sub-keys:** The `summary` object must contain exactly these keys: `total`, `verified`, `confirmed_open`, `red_failed`, `green_failed`. All five are required — omitting any of them (especially `red_failed` or `green_failed`) makes the summary non-conformant.
 
@@ -1486,7 +1497,7 @@ Or say "keep going" to continue automatically.
 
 > **Required references for this phase:**
 > - `quality/REQUIREMENTS.md` — target list for the code review
-> - `.github/skills/references/review_protocols.md` — three-pass protocol and regression test conventions
+> - `references/review_protocols.md` — three-pass protocol and regression test conventions
 
 Run the code review protocol (all three passes) as described in File 3. After producing findings, write regression tests for every confirmed BUG per the closure mandate in `references/review_protocols.md`.
 
@@ -1514,7 +1525,7 @@ Or say "keep going" to continue automatically.
 ## Phase 4: Spec Audit and Triage
 
 > **Required references for this phase:**
-> - `.github/skills/references/spec_audit.md` — Council of Three protocol, triage process, verification probes
+> - `references/spec_audit.md` — Council of Three protocol, triage process, verification probes
 
 Run the spec audit protocol as described in File 5. The triage report **must** include a `## Pre-audit docs validation` section (see `references/spec_audit.md` for the full template). This section is required even if `docs_gathered/` is empty — in that case, note what baseline the auditors used instead. Every verification probe in the triage must produce executable evidence (test assertions with line-number citations) per the "Verification probes must produce executable evidence" rule above. After triage, categorize each confirmed finding.
 
@@ -1559,9 +1570,9 @@ Or say "keep going" to continue automatically.
 
 > **Required references for this phase:**
 > - `quality/PROGRESS.md` — cumulative BUG tracker (authoritative finding list)
-> - `.github/skills/references/requirements_pipeline.md` — post-review reconciliation process
-> - `.github/skills/references/review_protocols.md` — regression test cleanup after reversals
-> - `.github/skills/references/spec_audit.md` — verification probe protocol for conflicts
+> - `references/requirements_pipeline.md` — post-review reconciliation process
+> - `references/review_protocols.md` — regression test cleanup after reversals
+> - `references/spec_audit.md` — verification probe protocol for conflicts
 
 Re-read `quality/PROGRESS.md` — specifically the cumulative BUG tracker. This is the authoritative list of all findings across both code review and spec audit.
 
@@ -1661,7 +1672,7 @@ Or say "keep going" to continue automatically.
 ## Phase 6: Verify
 
 > **Required references for this phase:**
-> - `.github/skills/references/verification.md` — 45 self-check benchmarks
+> - `references/verification.md` — 45 self-check benchmarks
 
 **Why a verification phase?** AI-generated output can look polished and be subtly wrong. Tests that reference undefined fixtures report 0 failures but 16 errors — and "0 failures" sounds like success. Integration protocols can list field names that don't exist in the actual schemas. The verification phase catches these problems before the user discovers them, which is important because trust in a generated quality playbook is fragile — one wrong field name undermines confidence in everything else.
 

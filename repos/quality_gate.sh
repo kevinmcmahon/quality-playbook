@@ -112,6 +112,22 @@ check_repo() {
         fi
     done
 
+    # Additional artifacts — warn if missing (these are required by the spec but
+    # should not halt the skill if absent, per BUG-005)
+    for f in CONTRACTS.md RUN_CODE_REVIEW.md RUN_SPEC_AUDIT.md RUN_INTEGRATION_TESTS.md RUN_TDD_TESTS.md; do
+        if [ -f "${q}/${f}" ]; then
+            pass "${f} exists"
+        else
+            warn "${f} missing"
+        fi
+    done
+    # Functional test file (any extension)
+    if ls ${q}/test_functional.* &>/dev/null; then
+        pass "test_functional.* exists"
+    else
+        warn "test_functional.* missing"
+    fi
+
     # Code reviews dir
     if [ -d "${q}/code_reviews" ] && [ -n "$(ls ${q}/code_reviews/*.md 2>/dev/null)" ]; then
         pass "code_reviews/ has .md files"
@@ -225,8 +241,8 @@ check_repo() {
                 fi
             done
 
-            # Summary must include confirmed_open, red_failed, green_failed
-            for skey in confirmed_open red_failed green_failed; do
+            # Summary must include all 5 required keys
+            for skey in total verified confirmed_open red_failed green_failed; do
                 if json_has_key "$json_file" "$skey"; then
                     pass "summary has '${skey}'"
                 else
@@ -282,10 +298,18 @@ check_repo() {
         local bug_ids
         bug_ids=$(grep -oE 'BUG-[0-9]+' "${q}/BUGS.md" 2>/dev/null \
             | grep -E '^BUG-[0-9]+$' | sort -u -t'-' -k2,2n)
+        local red_bad_tag=0 green_bad_tag=0
         for bid in $bug_ids; do
             # Red-phase log — required for every confirmed bug
             if [ -f "${q}/results/${bid}.red.log" ]; then
                 red_found=$((red_found + 1))
+                # Validate first-line status tag
+                local red_tag
+                red_tag=$(head -1 "${q}/results/${bid}.red.log" 2>/dev/null | tr -d '[:space:]')
+                case "$red_tag" in
+                    RED|GREEN|NOT_RUN|ERROR) ;;
+                    *) red_bad_tag=$((red_bad_tag + 1)) ;;
+                esac
             else
                 red_missing=$((red_missing + 1))
             fi
@@ -294,6 +318,13 @@ check_repo() {
                 green_expected=$((green_expected + 1))
                 if [ -f "${q}/results/${bid}.green.log" ]; then
                     green_found=$((green_found + 1))
+                    # Validate first-line status tag
+                    local green_tag
+                    green_tag=$(head -1 "${q}/results/${bid}.green.log" 2>/dev/null | tr -d '[:space:]')
+                    case "$green_tag" in
+                        RED|GREEN|NOT_RUN|ERROR) ;;
+                        *) green_bad_tag=$((green_bad_tag + 1)) ;;
+                    esac
                 else
                     green_missing=$((green_missing + 1))
                 fi
@@ -316,6 +347,18 @@ check_repo() {
             fi
         else
             info "No fix patches found — green-phase logs not required"
+        fi
+
+        # Status tag validation
+        if [ "$red_bad_tag" -gt 0 ]; then
+            fail "${red_bad_tag} red-phase log(s) missing valid first-line status tag (expected RED/GREEN/NOT_RUN/ERROR)"
+        elif [ "$red_found" -gt 0 ]; then
+            pass "All red-phase logs have valid status tags"
+        fi
+        if [ "$green_bad_tag" -gt 0 ]; then
+            fail "${green_bad_tag} green-phase log(s) missing valid first-line status tag (expected RED/GREEN/NOT_RUN/ERROR)"
+        elif [ "$green_found" -gt 0 ]; then
+            pass "All green-phase logs have valid status tags"
         fi
     else
         info "Zero bugs — TDD log files not required"
@@ -504,7 +547,8 @@ check_repo() {
         if [ -d "${q}/writeups" ]; then
             writeup_count=$(ls ${q}/writeups/BUG-*.md 2>/dev/null | wc -l | tr -d ' ')
             # Check each writeup for inline diff (section 6 requirement)
-            for wf in ${q}/writeups/BUG-*.md; do
+            # Note: the [ -f "$wf" ] guard handles the case where the glob doesn't match
+            for wf in "${q}"/writeups/BUG-*.md; do
                 [ -f "$wf" ] || continue
                 if grep -q '```diff' "$wf" 2>/dev/null; then
                     writeup_diff_count=$((writeup_diff_count + 1))
