@@ -1,6 +1,9 @@
 # Local skill installations (test copies, not the canonical source)
 .github/
 
+# Claude Code local settings (session-specific permissions, not part of the skill)
+.claude/
+
 # Test repos and run artifacts (used for playbook evaluation, not part of the skill)
 repos/
 
