@@ -150,32 +150,60 @@ The quality gate (`quality_gate.sh`) validates these artifacts. If the gate chec
 
 ## How to Use
 
-Point this skill at any codebase:
+**The playbook is designed to run one phase at a time.** Each phase runs in its own session with a clean context window, producing files on disk that the next phase reads. This gives much better results than running all phases at once — each phase gets the full context window for deep analysis instead of competing for space with other phases.
+
+**Default behavior: run Phase 1 only.** When someone says "run the quality playbook" or "execute the quality playbook," run Phase 1 (Explore) and stop. After Phase 1 completes, tell the user what happened and what to say next. The user drives each phase forward explicitly.
+
+### Interactive protocol — how to guide the user
+
+**After every phase and every iteration, STOP and print guidance.** Use a `#` header so it's prominent in the chat. The guidance must include: what just happened (one line), what the key outputs are, and the exact prompt to continue. See the end-of-phase messages defined after each phase section below.
+
+**If the user says "keep going", "continue", "next phase", "next", or anything similar**, run the next phase in sequence. If all 6 phases are complete, suggest the first iteration strategy (gap). If an iteration just finished, suggest the next strategy in the recommended cycle.
+
+**If the user says "run all phases", "run everything", or "run the full pipeline"**, run all phases sequentially in a single session. This uses more context but some users prefer it.
+
+**If the user asks "help", "how does this work", "what is this", or any similar phrasing**, respond with this explanation (adapt the wording naturally, don't copy verbatim):
+
+> The Quality Playbook finds bugs that structural code review alone can't catch — the 35% of real defects that require understanding what the code is *supposed* to do. It works in six phases:
+>
+> - **Phase 1 (Explore):** Understand the codebase — architecture, risks, failure modes, specifications
+> - **Phase 2 (Generate):** Produce quality artifacts — requirements, tests, review protocols
+> - **Phase 3 (Code Review):** Three-pass review with regression tests for every confirmed bug
+> - **Phase 4 (Spec Audit):** Three independent AI auditors check the code against requirements
+> - **Phase 5 (Reconciliation):** Close the loop — TDD red-green verification for every bug
+> - **Phase 6 (Verify):** Self-check benchmarks validate all generated artifacts
+>
+> After all six phases, you can run iteration strategies (gap, unfiltered, parity, adversarial) to find additional bugs — iterations typically add 40-60% more confirmed bugs on top of the baseline.
+>
+> The playbook works best when you provide documentation alongside the code — specs, API docs, design documents, community documentation. It also gets significantly better results when you run each phase separately rather than all at once.
+>
+> To get started, say: **"Run the quality playbook on this project."**
+
+**If the user asks "what happened", "what's going on", "where are we", or "what should I do next"**, read `quality/PROGRESS.md` and give them a concise status update: which phases are complete, how many bugs found so far, and what the next step is.
+
+### Documentation warning
+
+**At the start of Phase 1, before exploring any code, check for documentation.** Look for directories named `docs/`, `docs_gathered/`, `doc/`, `documentation/`, or any gathered documentation files. Also check if the user mentioned documentation in their prompt.
+
+**If no documentation is found, print this warning immediately (before proceeding):**
+
+> **Important: No project documentation found.** The quality playbook works without documentation, but it finds significantly more bugs — and higher-confidence bugs — when you provide specs, API docs, design documents, or community documentation. In controlled experiments, documentation-enriched runs found different and better bugs than code-only baselines.
+>
+> If you have documentation available, you can add it to a `docs_gathered/` directory and re-run Phase 1. Otherwise, I'll proceed with code-only analysis.
+
+Then proceed with Phase 1 — don't block on this, just make sure the user sees the warning.
+
+### Running a specific phase
+
+The user can request any individual phase:
 
 ```
-Execute the quality playbook for this project.
+Run quality playbook phase 1.
+Run quality playbook phase 3 — code review.
+Run phase 5 reconciliation.
 ```
 
-This is the full pipeline end to end: explore the codebase → generate all quality artifacts → run the code review with regression tests → run the spec audit with triage → run post-review reconciliation and closure verification → finalize PROGRESS.md → check convergence and re-iterate if needed. Every phase described below, nothing skipped. This is the default when someone says "execute," "run," or "generate and execute" the playbook.
-
-If `previous_runs/` exists from earlier sessions, Phase 0 automatically loads confirmed bugs as seeds before exploration begins. After Phase 6, the convergence check determines whether to archive and re-iterate or proceed to Phase 7.
-
-Other entry points for partial runs:
-
-```
-Generate a quality playbook for this project.
-```
-→ Phases 1–2 only: explore and generate artifacts (QUALITY.md, REQUIREMENTS.md, functional tests, protocols). Does not run the code review or spec audit.
-
-```
-Update the functional tests — the quality playbook already exists.
-```
-
-```
-Run the spec audit protocol.
-```
-
-If a quality playbook already exists (`quality/QUALITY.md`, functional tests, etc.), read the existing files first, then evaluate them against the self-check benchmarks in the verification phase. Don't assume existing files are complete — treat them as a starting point.
+When running a specific phase, check that its prerequisites exist (e.g., Phase 3 requires Phase 2 artifacts). If prerequisites are missing, tell the user which phases need to run first.
 
 ### Iteration mode — improve on a previous run
 
@@ -205,19 +233,17 @@ Run an iteration using the adversarial strategy.
 - **`adversarial`** — Re-investigate dismissed/demoted triage findings and challenge thin SATISFIED verdicts. Recovers Type II errors from conservative triage.
 - **`all`** — Runner-level convenience: executes gap → unfiltered → parity → adversarial in sequence, each as a separate agent session. Stops early if a strategy finds zero new bugs.
 
-### Multi-pass execution
+### Phase-by-phase execution
 
-The playbook handles multi-pass execution internally — you run all phases yourself in a single session, using files on disk as the context bridge between phases. Do not use external shell scripts, separate `claude -p` invocations, or any other external orchestration to split the work across multiple sessions. The skill is self-contained: one session, one invocation, all phases.
-
-Between phases, write your findings and artifacts to disk, then read them back when the next phase needs them. This is how you manage working-memory pressure — by offloading to files, not by spawning separate processes. The key handoff files are:
+Each phase produces files on disk that the next phase reads. This is how context transfers between phases — through files, not through conversation history. The key handoff files are:
 
 - **`quality/EXPLORATION.md`** — Phase 1 writes this, Phase 2 reads it. Contains everything Phase 2 needs to generate artifacts without re-exploring the codebase.
 - **`quality/PROGRESS.md`** — Updated after every phase. Cumulative BUG tracker ensures no finding is lost.
 - **Generated artifacts** (REQUIREMENTS.md, CONTRACTS.md, etc.) — Phase 2 writes these, Phases 3–5 read them to run reviews, audits, and reconciliation.
 
-The pattern for each phase boundary: finish the current phase, write everything to disk, then explicitly read back the files you need before starting the next phase. This "write then read" cycle is the pass boundary — it lets you drop exploration context from working memory before loading review context, for example.
+The pattern for each phase boundary: finish the current phase, write everything to disk, then print the end-of-phase message and stop. When the user starts the next phase, read back the files you need before proceeding. This "write then read" cycle is the phase boundary — it lets you drop exploration context from working memory before loading review context, for example.
 
-Write your Phase 1 exploration findings to `quality/EXPLORATION.md` before proceeding to Phase 2. This file is mandatory in all modes — single-pass, multi-pass, and interactive. Make it thorough: domain identification, architecture map, existing tests, specification summary, quality risks, skeleton/dispatch analysis, derived requirements (REQ-NNN), and derived use cases (UC-NN). Everything Phase 2 needs to generate artifacts must be in this file.
+Write your Phase 1 exploration findings to `quality/EXPLORATION.md` before proceeding. This file is mandatory in all modes. Make it thorough: domain identification, architecture map, existing tests, specification summary, quality risks, skeleton/dispatch analysis, derived requirements (REQ-NNN), and derived use cases (UC-NN). Everything Phase 2 needs to generate artifacts must be in this file.
 
 The discipline of writing exploration findings to disk is what forces thorough analysis. Without it, the model keeps vague impressions in working memory and produces broad, abstract requirements that miss function-level defects. Writing forces specificity: file paths, line numbers, exact function names, concrete behavioral rules. That specificity is what makes requirements precise enough to catch bugs during code review.
 
@@ -820,6 +846,23 @@ Do not begin Phase 2 until all twelve checks pass AND the `## Gate Self-Check` s
 
 **If you find yourself about to start Phase 2 without having written a Gate Self-Check section, STOP.** Go back and run the gate. This instruction exists because models reliably skip the gate when they feel confident about their exploration — and that confidence is precisely when bugs are missed.
 
+**End-of-phase message (mandatory — print this after Phase 1 completes, then STOP):**
+
+```
+# Phase 1 Complete — Exploration
+
+I've finished exploring the codebase and written my findings to `quality/EXPLORATION.md`.
+[Summarize: how many candidate bugs, which subsystems explored, key risks identified.]
+
+To continue to Phase 2 (Generate quality artifacts), say:
+
+    Run quality playbook phase 2.
+
+Or say "keep going" to continue automatically.
+```
+
+**After printing this message, STOP. Do not proceed to Phase 2 unless the user explicitly asks.**
+
 ---
 
 ## Phase 2: Generate the Quality Playbook
@@ -1413,6 +1456,29 @@ Re-read `quality/PROGRESS.md`. Update:
 
 Re-read `quality/PROGRESS.md` and `quality/REQUIREMENTS.md` before starting Phase 3. The requirements are the target list for the code review — every requirement is a potential bug if the code doesn't satisfy its conditions.
 
+**End-of-phase message (mandatory — print this after Phase 2 completes, then STOP):**
+
+```
+# Phase 2 Complete — Quality Artifacts Generated
+
+I've generated the quality infrastructure for this project:
+[List the key artifacts created: REQUIREMENTS.md with N requirements and N use cases,
+QUALITY.md with N scenarios, functional tests, review protocols, etc.]
+
+The requirements are now the target list for Phase 3's code review — every requirement
+is a potential bug if the code doesn't satisfy it.
+
+To continue to Phase 3 (Code review with regression tests), say:
+
+    Run quality playbook phase 3.
+
+Or say "keep going" to continue automatically.
+```
+
+**After printing this message, STOP. Do not proceed to Phase 3 unless the user explicitly asks.**
+
+---
+
 ## Phase 3: Code Review and Regression Tests
 
 > **Required references for this phase:**
@@ -1422,6 +1488,25 @@ Re-read `quality/PROGRESS.md` and `quality/REQUIREMENTS.md` before starting Phas
 Run the code review protocol (all three passes) as described in File 3. After producing findings, write regression tests for every confirmed BUG per the closure mandate in `references/review_protocols.md`.
 
 **Update PROGRESS.md:** Add every confirmed BUG to the cumulative BUG tracker with source "Code Review", the file:line reference, description, severity, and closure status (regression test function name or exemption reason). Mark Phase 3 (Code review + regression tests) complete.
+
+**End-of-phase message (mandatory — print this after Phase 3 completes, then STOP):**
+
+```
+# Phase 3 Complete — Code Review
+
+The three-pass code review is done. [Summarize: N bugs confirmed, N regression test
+patches generated, N fix patches generated. List the bug IDs and one-line summaries.]
+
+To continue to Phase 4 (Spec audit — Council of Three), say:
+
+    Run quality playbook phase 4.
+
+Or say "keep going" to continue automatically.
+```
+
+**After printing this message, STOP. Do not proceed to Phase 4 unless the user explicitly asks.**
+
+---
 
 ## Phase 4: Spec Audit and Triage
 
@@ -1447,6 +1532,25 @@ After the spec audit triage, check the cumulative BUG tracker in PROGRESS.md. An
 **Phase 4 completion gate.** Phase 4 is not complete until a triage file exists at `quality/spec_audits/YYYY-MM-DD-triage.md` **and** individual auditor reports exist. If only auditor reports exist with no triage synthesis, mark Phase 4 as "partial — triage pending" in PROGRESS.md and complete the triage before proceeding. If only the triage exists with no individual reports, mark Phase 4 as "partial — auditor artifacts missing" and regenerate them. The PROGRESS.md checkbox must not be set until both the triage file and auditor reports are confirmed present.
 
 Update the BUG tracker entries with regression test references. Mark Phase 4 (Spec audit + triage) complete.
+
+**End-of-phase message (mandatory — print this after Phase 4 completes, then STOP):**
+
+```
+# Phase 4 Complete — Spec Audit
+
+The Council of Three spec audit is done. [Summarize: N auditors ran, N net-new bugs
+confirmed from triage, total bugs now at N. List any new bug IDs and summaries.]
+
+To continue to Phase 5 (Reconciliation — TDD verification, writeups, closure), say:
+
+    Run quality playbook phase 5.
+
+Or say "keep going" to continue automatically.
+```
+
+**After printing this message, STOP. Do not proceed to Phase 5 unless the user explicitly asks.**
+
+---
 
 ## Phase 5: Post-Review Reconciliation and Closure Verification
 
@@ -1530,6 +1634,24 @@ For each missing file, create it now. Do not mark Phase 5 complete with missing 
 **Use case identifier format.** REQUIREMENTS.md must use canonical use case identifiers in the format `UC-01`, `UC-02`, etc. for all derived use cases. Each use case must be labeled with its identifier. This is required for machine-readable traceability — the identifier format enables `quality_gate.sh` and downstream tooling to count and cross-reference use cases programmatically. Use cases written as prose paragraphs without identifiers are non-conformant.
 
 Update PROGRESS.md: mark Phase 5 complete. The BUG tracker should now show closure status for every entry.
+
+**End-of-phase message (mandatory — print this after Phase 5 completes, then STOP):**
+
+```
+# Phase 5 Complete — Reconciliation and TDD Verification
+
+All confirmed bugs now have regression tests, writeups, and TDD red-green verification.
+[Summarize: N total confirmed bugs, N with TDD verified status, N with fix patches.
+List all bug IDs with one-line summaries and their TDD verdicts.]
+
+To continue to Phase 6 (Final verification and quality gate), say:
+
+    Run quality playbook phase 6.
+
+Or say "keep going" to continue automatically.
+```
+
+**After printing this message, STOP. Do not proceed to Phase 6 unless the user explicitly asks.**
 
 ---
 
@@ -1712,6 +1834,56 @@ The iteration counter starts at 1 for the first run. Each archive-and-restart in
 **Context window awareness.** If at any point during re-iteration you detect that your context window is substantially consumed (e.g., you are producing noticeably shorter or lower-quality output than earlier iterations), stop iterating, write the current state to PROGRESS.md, and print: "Stopping iteration due to context constraints. Completed N of M iterations. Re-run the playbook to continue — Phase 0 will pick up the seed list from previous_runs/." This is a safety valve, not a target — most codebases converge in 2-3 iterations.
 
 **Why this matters:** A single playbook run explores a subset of the codebase non-deterministically. The first run on virtio might find BUG-001 and BUG-004 but miss BUG-005. The second run might find BUG-005 and BUG-006. By the third run, if no net-new bugs appear, the exploration has likely covered the high-value territory. The seed list ensures previously found bugs are never lost between runs, and the convergence check tells the user when additional runs have diminishing returns. Automatic re-iteration means the skill is self-contained — callers don't need external scripts or manual re-runs to achieve convergence.
+
+**End-of-phase message (mandatory — print this after Phase 6 completes, then STOP):**
+
+```
+# Phase 6 Complete — All Phases Done
+
+The quality playbook baseline run is complete. Here's the summary:
+
+[Include: total confirmed bugs, quality gate pass/fail/warn counts,
+list of all bug IDs with one-line summaries and severities.]
+
+Key output files:
+- quality/BUGS.md — all confirmed bugs with spec basis and patches
+- quality/results/tdd-results.json — structured TDD verification results
+- quality/patches/ — regression test and fix patches for every bug
+
+You can now run iteration strategies to find additional bugs. Iterations typically
+add 40-60% more confirmed bugs on top of the baseline. The recommended cycle is:
+gap → unfiltered → parity → adversarial.
+
+To start the first iteration, say:
+
+    Run the next iteration of the quality playbook.
+
+Or ask me about the results: "Tell me about BUG-001" or "Which bugs are highest priority?"
+```
+
+**After printing this message, STOP. Do not proceed to iterations unless the user explicitly asks.**
+
+**End-of-iteration message (mandatory — print this after each iteration completes, then STOP):**
+
+```
+# Iteration Complete — [Strategy Name]
+
+[Summarize: N net-new bugs found in this iteration, total now at N.
+List new bug IDs with one-line summaries.]
+
+[If there are remaining strategies in the recommended cycle, suggest the next one:]
+The next recommended strategy is [next strategy]. To run it, say:
+
+    Run the next iteration using the [next strategy] strategy.
+
+[If all four strategies have been run:]
+All four iteration strategies have been run. Total confirmed bugs: N.
+You can review the results, ask about specific bugs, or re-run any strategy.
+
+Or say "keep going" to run the next iteration automatically.
+```
+
+**After printing this message, STOP. Do not proceed to the next iteration unless the user explicitly asks.**
 
 ---
 

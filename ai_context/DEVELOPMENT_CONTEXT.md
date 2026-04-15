@@ -31,15 +31,23 @@ quality-playbook/
 
 ## How the skill works
 
-The quality playbook is a single long-form instruction document (SKILL.md) that an AI agent reads and follows end-to-end. It has three phases:
+The quality playbook is a long-form instruction document (SKILL.md) that an AI agent reads and follows. It is designed to run one phase at a time, with the user driving each phase forward. Each phase runs in its own session with a clean context window, producing files on disk that the next phase reads.
 
 **Phase 1 (Explore):** The agent explores the codebase using a three-stage approach — open exploration, quality risk analysis, and selected pattern deep-dives. Outputs: EXPLORATION.md with candidate bugs.
 
-**Phase 2 (Generate + Execute):** The agent generates nine quality artifacts from the exploration findings, then executes three sub-phases: code review with regression tests (2b), spec audit with Council of Three triage (2c), and post-review reconciliation with terminal gate verification (2d). Every confirmed bug gets a regression test patch, fix patch, writeup, and TDD red/green verification.
+**Phase 2 (Generate):** The agent generates nine quality artifacts from the exploration findings: requirements, constitution, functional tests, code review protocol, integration tests, spec audit protocol, TDD protocol, AGENTS.md.
 
-**Phase 3 (Verify):** The agent runs mechanical verification and self-check benchmarks against 45 criteria.
+**Phase 3 (Code Review):** Three-pass code review against HEAD. Regression tests for every confirmed bug. Generates patches.
 
-**Iteration mode:** After the baseline run, the agent can run additional iterations using strategies defined in ITERATION.md. Each strategy re-explores the codebase with a different approach, then re-runs Phases 2-3 on the merged findings.
+**Phase 4 (Spec Audit):** Three independent AI auditors review the code against requirements. Triage with verification probes. Regression tests for net-new findings.
+
+**Phase 5 (Reconciliation):** Close the loop — every bug tracked, regression-tested. TDD red-green cycle for all confirmed bugs. Writeups, fix patches, completeness report.
+
+**Phase 6 (Verify):** Mechanical verification and 45 self-check benchmarks.
+
+After each phase, the skill prints a prominent end-of-phase message telling the user what happened and what to say next. The user says "keep going" or "run phase N" to continue. This interactive protocol gives much better results than single-session execution because each phase gets the full context window.
+
+**Iteration mode:** After the baseline run, the agent can run additional iterations using strategies defined in ITERATION.md. Each strategy re-explores the codebase with a different approach, then re-runs Phases 2-6 on the merged findings. Iterations typically add 40-60% more confirmed bugs.
 
 ## Three improvement axes
 
@@ -136,6 +144,7 @@ Council review artifacts go in `council-reviews/`. Each review has:
 - **v1.3.45:** ITERATION.md reference file, parity strategy, suggested-next-prompt UX.
 - **v1.3.46:** Demoted Candidates Manifest, parity sub-type checklist, adversarial bar adjustment, TDD execution enforcement.
 - **v1.3.47:** TDD log enforcement — six insertion points from Cursor diagnostic (artifact contract, closure gate, bash template, progress checkbox, file-existence gate, sidecar contradiction check).
+- **v1.3.50:** Six-phase architecture (renumbered from 3 phases to 6), interactive phase-by-phase execution with end-of-phase messages, `--phase` flag in runner, quality gate script, four iteration strategies with 40-60% yield boost, documentation warning, help system, "keep going" continuation. Benchmarked: Express.js (14 bugs), Gson (9 bugs), Linux virtio (8 bugs) — all with 100% TDD coverage and 0 gate failures.
 
 ## Current known issues
 

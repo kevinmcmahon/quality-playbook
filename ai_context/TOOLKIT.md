@@ -24,18 +24,24 @@ The user wants to run the quality playbook on a codebase. Here's what to do:
    ```
    Create the directories if they don't exist. Copy from wherever the user has the playbook files.
 
-2. **Run the playbook.** Give the agent this prompt:
-   ```
-   Read the quality playbook skill at .github/skills/SKILL.md and execute the quality playbook for this project.
-   ```
-   That's it. The agent reads the skill, explores the codebase, and generates all artifacts into a `quality/` directory.
+2. **Add documentation (strongly recommended).** If the user has specs, API docs, design documents, or community documentation, put them in a `docs_gathered/` directory in the repo. Documentation-enriched runs find significantly more bugs and higher-confidence bugs than code-only runs. The playbook works without docs, but it works much better with them.
 
-3. **Review results.** The key output files:
+3. **Run the playbook — one phase at a time.** Give the agent this prompt:
+   ```
+   Run the quality playbook on this project.
+   ```
+   The playbook starts with Phase 1 (Explore) and stops after that phase, showing the user what happened and what to say next. The user drives each phase forward by saying "keep going" or "run phase 2". Running phases separately gives much better results — each phase gets the full context window for deep analysis instead of competing with other phases.
+
+   If the user says "help" or "how does this work", the skill will explain itself. If the user says "what happened" or "what should I do next", the skill reads PROGRESS.md and gives a status update.
+
+4. **Review results.** After all six phases, the key output files are:
    - `quality/BUGS.md` — confirmed bugs with file:line references
    - `quality/PROGRESS.md` — phase completion tracker and bug summary
    - `quality/results/tdd-results.json` — structured TDD verification results
    - `quality/patches/BUG-NNN-regression-test.patch` — test that proves each bug
    - `quality/patches/BUG-NNN-fix.patch` — proposed fix for each bug
+
+5. **Run iterations for more bugs.** After the baseline run, the user can run iteration strategies that typically find 40-60% more confirmed bugs. Say "run the next iteration" to start the gap strategy, or name a specific strategy: gap, unfiltered, parity, or adversarial. The recommended cycle runs all four in sequence.
 
 ## Setting up automation scripts
 

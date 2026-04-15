@@ -90,9 +90,13 @@ cp LICENSE.txt .claude/skills/quality-playbook/LICENSE.txt
 cp references/* .claude/skills/quality-playbook/references/
 ```
 
-Then tell your AI tool: *"Read the quality playbook skill and generate a complete quality system for this project."*
+Then tell your AI tool: *"Run the quality playbook on this project."*
 
-The playbook runs in six tracked phases: explore the codebase (Phase 1), generate quality artifacts (Phase 2), run a three-pass code review with regression tests (Phase 3), execute a multi-model spec audit (Phase 4), reconcile and close findings (Phase 5), and verify against self-check benchmarks (Phase 6). It takes anywhere from 5 to 60 minutes depending on project size, and it works with any language.
+**The playbook runs one phase at a time.** It starts with Phase 1 (Explore), then stops and tells you what happened and what to say next. You drive each phase forward — say "keep going" or "run phase 2" to continue. This gives much better results than running everything at once, because each phase gets a full context window for deep analysis.
+
+The six phases are: explore the codebase (Phase 1), generate quality artifacts (Phase 2), run a three-pass code review with regression tests (Phase 3), execute a multi-model spec audit (Phase 4), reconcile and close findings (Phase 5), and verify against self-check benchmarks (Phase 6). After all six phases, you can run iteration strategies to find even more bugs. The full cycle takes anywhere from 15 to 90 minutes depending on project size, and it works with any language.
+
+**Tip:** The playbook finds significantly more bugs when you provide documentation alongside the code — specs, API docs, design documents, community documentation. If you have docs available, put them in a `docs_gathered/` directory in your repo before running.
 
 ## What it produces
 

@@ -25,30 +25,40 @@ Also check for the reference files directory alongside SKILL.md (in a `reference
 
 Then stop and wait for the user to install it.
 
-**If the skill is installed**, read SKILL.md and every file in the `references/` directory. Then follow the skill's instructions exactly — it defines six phases, each with entry gates and exit gates. Do not skip phases or reorder them.
+**If the skill is installed**, read SKILL.md and every file in the `references/` directory. Then follow the skill's instructions exactly — it defines six phases, each with entry gates and exit gates.
 
-## What you produce
+## How it works — phase by phase
 
-The skill generates a complete quality infrastructure in `quality/`:
+The playbook runs one phase at a time. Each phase runs with a clean context window, producing files that the next phase reads. After each phase, stop and tell the user what happened and what to say next.
 
-- **REQUIREMENTS.md** — behavioral requirements derived from the code
-- **QUALITY.md** — quality constitution defining what "correct" means
-- **Functional tests** — spec-traced tests in the project's native language
-- **BUGS.md** — confirmed bugs with spec basis, severity, and patches
-- **Code review output** — three-pass protocol results
-- **Spec audit output** — Council of Three auditor reports and triage
-- **TDD verification** — red-green logs proving each bug and its fix
-- **AGENTS.md** — bootstrap file for future AI sessions
+1. **Phase 1 (Explore)** — Understand the codebase: architecture, risks, failure modes
+2. **Phase 2 (Generate)** — Produce quality artifacts: requirements, tests, protocols
+3. **Phase 3 (Code Review)** — Three-pass review with regression tests for every bug
+4. **Phase 4 (Spec Audit)** — Three independent auditors check code against requirements
+5. **Phase 5 (Reconciliation)** — TDD red-green verification for every confirmed bug
+6. **Phase 6 (Verify)** — Self-check benchmarks validate all artifacts
+
+After all six phases, the user can run iteration strategies (gap, unfiltered, parity, adversarial) to find more bugs — iterations typically add 40-60% more confirmed bugs.
+
+**Default behavior: run Phase 1 only, then stop.** The user drives each phase forward by saying "keep going" or "run phase N".
+
+## Documentation warning
+
+Before starting Phase 1, check if the project has documentation (a `docs/` or `docs_gathered/` directory). If not, warn the user that the playbook finds significantly more bugs with documentation, and suggest they add specs or API docs to `docs_gathered/` before running.
+
+## Responding to user questions
+
+- **"help" / "how does this work"** — Explain the six phases, mention that documentation improves results, and suggest "Run the quality playbook on this project" to get started.
+- **"what happened" / "what's going on"** — Read `quality/PROGRESS.md` and give a status update.
+- **"keep going" / "continue" / "next"** — Run the next phase in sequence.
+- **"run phase N"** — Run the specified phase (check prerequisites first).
 
 ## How to invoke
 
 Tell the user they can invoke you by name in Copilot Chat. Example prompts:
 
-- "Run the quality playbook for this project"
-- "Generate a complete quality system for this codebase"
-- "Find bugs that require understanding the spec, not just the code"
-
-For large codebases, suggest running phase-by-phase to stay within context limits:
-
-- "Run quality playbook phase 1 — explore the codebase"
-- "Run quality playbook phase 3 — code review"
+- "Run the quality playbook on this project"
+- "Keep going" (after any phase completes)
+- "Run quality playbook phase 3"
+- "Help — how does the quality playbook work?"
+- "What happened? What should I do next?"
