@@ -140,9 +140,9 @@ Grep every generated Markdown file in `quality/` for the attribution line: `Gene
 
 Verify that the code review (Pass 1 and Pass 2) performed mechanical two-list enumeration checks wherever the code uses `switch`/`case`, `match`, or if-else chains to dispatch on named constants. For each such check, the review must show: (a) the list of constants defined in headers/enums/specs, (b) the list of case labels actually present in the code, (c) any gaps. A review that claims "the whitelist covers all values" or "all cases are handled" without showing the two-list comparison is non-conformant — this is the specific hallucination pattern the check prevents.
 
-### 20. Bug Writeups Generated for TDD-Verified Bugs
+### 20. Bug Writeups Generated for All Confirmed Bugs
 
-For each bug with `verdict: "TDD verified"` in `tdd-results.json`, verify that a corresponding `quality/writeups/BUG-NNN.md` file exists and that `tdd-results.json` has a non-null `writeup_path` for that bug. Each writeup must include: summary, spec reference, code citation, observable consequence, fix diff, and test description. A TDD-verified bug without a writeup is incomplete.
+For each bug in `tdd-results.json` (both `verdict: "TDD verified"` and `verdict: "confirmed open"`), verify that a corresponding `quality/writeups/BUG-NNN.md` file exists and that `tdd-results.json` has a non-null `writeup_path` for that bug. Each writeup must include: summary, spec reference, code citation, observable consequence, fix diff, and test description. A confirmed bug without a writeup is incomplete.
 
 ### 21. Triage Verification Probes Include Executable Evidence
 

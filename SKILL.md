@@ -76,7 +76,7 @@ Nine files that together form a repeatable quality system:
 
 Plus output directories: `quality/code_reviews/`, `quality/spec_audits/`, `quality/results/`, `quality/history/`.
 
-The pipeline also generates supporting artifacts: `quality/PROGRESS.md` (phase-by-phase checkpoint log with cumulative BUG tracker), `quality/CONTRACTS.md` (behavioral contracts), `quality/COVERAGE_MATRIX.md` (traceability), `quality/COMPLETENESS_REPORT.md` (final gate), `quality/VERSION_HISTORY.md` (review log), `quality/REVIEW_REQUIREMENTS.md` (interactive review protocol), and `quality/REFINE_REQUIREMENTS.md` (refinement pass protocol).
+The pipeline also generates supporting artifacts: `quality/PROGRESS.md` (phase-by-phase checkpoint log with cumulative BUG tracker), `quality/CONTRACTS.md` (behavioral contracts), `quality/COVERAGE_MATRIX.md` (traceability), `quality/COMPLETENESS_REPORT.md` (final gate), and `quality/VERSION_HISTORY.md` (review log). Phase 7 can additionally generate `quality/REVIEW_REQUIREMENTS.md` (interactive review protocol) and `quality/REFINE_REQUIREMENTS.md` (refinement pass protocol) for iterative improvement.
 
 The two critical deliverables are the requirements file and the functional test file. The requirements file (`quality/REQUIREMENTS.md`) feeds the code review protocol's verification and consistency passes — it's what makes the code review catch more than structural anomalies. The functional test file (named for the project's language and test framework conventions) is the automated safety net. The Markdown protocols are documentation for humans and AI agents.
 
@@ -153,9 +153,9 @@ The quality gate (`quality_gate.sh`) validates these artifacts. If the gate chec
   "date": "2026-04-12",
   "project": "repo-name",
   "recommendation": "SHIP",
-  "groups": [{ "name": "Group 1", "tests": [{ "name": "happy path", "status": "pass" }] }],
-  "summary": { "total": 12, "passed": 11, "failed": 1, "skipped": 0 },
-  "uc_coverage": { "UC-01": "covered", "UC-02": "not covered — no API key" }
+  "groups": [{ "group": 1, "name": "Group 1", "use_cases": ["UC-01"], "result": "pass", "tests_passed": 3, "tests_failed": 0, "notes": "" }],
+  "summary": { "total_groups": 12, "passed": 11, "failed": 1, "skipped": 0 },
+  "uc_coverage": { "UC-01": "covered_pass", "UC-02": "not_mapped" }
 }
 ```
 
@@ -671,7 +671,7 @@ For each category, check whether the requirements contain specific conditions co
 
 **Carry-forward rule:** When a prior run's REQUIREMENTS.md exists in the quality directory, the pipeline must read it and check whether any conditions from the prior version were dropped. If conditions were dropped, the pipeline must either: (a) re-derive them with updated justification, or (b) document why the condition is no longer relevant. Silent drops are not permitted — they are a direct cause of regressions where previously learned requirements are lost between runs.
 
-**After the pipeline:** The skill also generates `quality/REVIEW_REQUIREMENTS.md` (interactive review protocol) and `quality/REFINE_REQUIREMENTS.md` (refinement pass protocol). These support iterative improvement — the user can review requirements interactively, run refinement passes with different models, and keep versioned backups of each iteration. See `references/requirements_pipeline.md` for the full versioning protocol and backup structure.
+**After the pipeline:** Phase 7 can generate `quality/REVIEW_REQUIREMENTS.md` (interactive review protocol) and `quality/REFINE_REQUIREMENTS.md` (refinement pass protocol). These are not Phase 2 artifacts — they support the Phase 7 interactive improvement paths. The user can review requirements interactively, run refinement passes with different models, and keep versioned backups of each iteration. See `references/requirements_pipeline.md` for the full versioning protocol and backup structure.
 
 Record all requirements in a structured format. These feed directly into the code review protocol's verification and consistency passes.
 
@@ -693,7 +693,7 @@ Write the initial PROGRESS.md:
 ## Run metadata
 Started: [date/time]
 Project: [project name]
-Skill version: [read from .github/skills/SKILL.md metadata — must match exactly]
+Skill version: [read from SKILL.md metadata using the reference file resolution order — must match exactly]
 With docs: [yes/no]
 
 ## Phase completion
@@ -1427,7 +1427,7 @@ The generated protocol must include:
 
 **Execution UX:** Same three-phase pattern as the integration tests — (1) show the plan as a numbered table of bugs to verify, (2) report one-line progress as each red-green cycle runs (`FAIL ✓ → PASS ✓` or `FAIL ✗ — test passes on unpatched code, rewriting`), (3) show a summary table with verified/failed/rewritten counts.
 
-7. **Bug writeup generation (for TDD-verified bugs).** After a successful red→green cycle (`verdict: "TDD verified"`), generate a self-contained writeup at `quality/writeups/BUG-NNN.md`. This file is designed to be emailed to a maintainer, attached to a Jira ticket, or reviewed outside the repository — it must stand alone without requiring the reader to navigate the rest of the quality artifacts.
+7. **Bug writeup generation (for all confirmed bugs).** After a successful red→green cycle (`verdict: "TDD verified"`) or confirmation without a fix (`verdict: "confirmed open"`), generate a self-contained writeup at `quality/writeups/BUG-NNN.md`. This file is designed to be emailed to a maintainer, attached to a Jira ticket, or reviewed outside the repository — it must stand alone without requiring the reader to navigate the rest of the quality artifacts.
 
    **Template (sections 1–4, 6, 7 are required in every writeup; add 5 when the depth judgment fires; add 8 when related bugs exist):**
 
@@ -1586,7 +1586,7 @@ Re-read `quality/PROGRESS.md` — specifically the cumulative BUG tracker. This 
 
 **Executed evidence outranks narrative artifacts (contradiction gate).** Before running the terminal gate, check for contradictions between executed evidence and prose artifacts. Executed evidence includes: mechanical verification artifacts (`quality/mechanical/*`), verification receipt files (`quality/results/mechanical-verify.log`, `quality/results/mechanical-verify.exit`), regression test results (`test_regression.*` with `xfail` outcomes), TDD red-phase log files (`quality/results/BUG-NNN.red.log`), and any shell command output saved during the pipeline. Prose artifacts include: `REQUIREMENTS.md`, `CONTRACTS.md`, code reviews, spec audit triage, and `BUGS.md`. If an executed artifact shows a constant is absent (mechanical check), a test fails (regression test), or a red-phase confirms a bug (TDD traceability) — but a prose artifact claims the constant is present, the bug is fixed, or the code is compliant — the executed result wins. Re-open and correct the contradictory prose artifact before proceeding. Specifically: if `mechanical-verify.exit` contains a non-zero value, PROGRESS.md may not claim "Mechanical verification: passed" and the terminal gate may not pass — regardless of what any other artifact says. In v1.3.18, the triage claimed RING_RESET was preserved (`spec_audits/triage.md`), BUGS.md claimed "fixed in working tree," but TDD traceability showed the assertion `assert "case VIRTIO_F_RING_RESET:" in func` failed on the current source. Those three cannot all be true — the executed failure is the ground truth. This gate would have caught that contradiction.
 
-**Version stamp consistency check (mandatory).** Read the `version:` field from the SKILL.md metadata (in `.github/skills/SKILL.md`). Then check every generated artifact: PROGRESS.md's `Skill version:` field, every `> Generated by` attribution line, every code file header stamp, and every sidecar JSON `skill_version` field. Every version stamp must match the SKILL.md metadata exactly. A single mismatch is a benchmark failure — fix the stamp before proceeding. This check exists because in v1.3.21 benchmarking, 5 of 9 repos had version stamps from older skill versions (v1.3.16 or v1.3.20) because the PROGRESS.md template contained a hardcoded version number.
+**Version stamp consistency check (mandatory).** Read the `version:` field from the SKILL.md metadata (using the reference file resolution order). Then check every generated artifact: PROGRESS.md's `Skill version:` field, every `> Generated by` attribution line, every code file header stamp, and every sidecar JSON `skill_version` field. Every version stamp must match the SKILL.md metadata exactly. A single mismatch is a benchmark failure — fix the stamp before proceeding. This check exists because in v1.3.21 benchmarking, 5 of 9 repos had version stamps from older skill versions (v1.3.16 or v1.3.20) because the PROGRESS.md template contained a hardcoded version number.
 
 **Mechanical directory conformance check.** If `quality/mechanical/` exists, it must contain at minimum a `verify.sh` file. An empty `quality/mechanical/` directory is non-conformant — it implies the step was attempted but abandoned. If no dispatch-function contracts exist in this project's scope, do not create a `mechanical/` directory at all. Instead, record in PROGRESS.md: `Mechanical verification: NOT APPLICABLE — no dispatch/registry/enumeration contracts in scope.` If dispatch contracts do exist, `verify.sh` must include one verification block per saved extraction file under `quality/mechanical/` (not just one). A verify.sh that checks only one artifact when multiple exist is incomplete.
 
@@ -1754,12 +1754,12 @@ Process the remaining verification benchmarks from `references/verification.md` 
 
 Append each batch result to `quality/results/phase6-verification.log`:
 ```
-[Step 3.4A] QUALITY.md scenarios: PASS — 8 scenarios, all reference real code
-[Step 3.4B] Functional test quality: PASS — 30% cross-variant, assertion depth OK
-[Step 3.4C] Protocol files: PASS — all self-contained and executable
-[Step 3.4D] Regression tests: PASS — all skip guards present
-[Step 3.4E] Enumeration/triage: PASS — two-list checks present, probes have assertions
-[Step 3.4F] Continuation mode: SKIP — no SEED_CHECKS.md
+[Step 6.4A] QUALITY.md scenarios: PASS — 8 scenarios, all reference real code
+[Step 6.4B] Functional test quality: PASS — 30% cross-variant, assertion depth OK
+[Step 6.4C] Protocol files: PASS — all self-contained and executable
+[Step 6.4D] Regression tests: PASS — all skip guards present
+[Step 6.4E] Enumeration/triage: PASS — two-list checks present, probes have assertions
+[Step 6.4F] Continuation mode: SKIP — no SEED_CHECKS.md
 ```
 
 If any batch fails, fix the issue immediately before proceeding to the next batch.
