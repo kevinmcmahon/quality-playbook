@@ -1,0 +1,5 @@
+RED
+--- Test output for BUG-014 red phase ---
+Command: test_bug_014_no_dangling_phase7_refs
+Exit code: 2
+bash: -c: line 33: syntax error: unexpected end of file

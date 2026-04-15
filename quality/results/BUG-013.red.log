@@ -1,0 +1,5 @@
+RED
+--- Test output for BUG-013 red phase ---
+Command: test_bug_013_toolkit_has_claude_path
+Exit code: 1
+

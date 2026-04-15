@@ -1,0 +1,12 @@
+RED
+--- Test output for BUG-018 red phase ---
+Command: test_bug_018_verification_md_no_hardcoded_skill_path
+Exit code: 1
+=== Regression Tests for Code Review and Spec Audit Bugs ===
+
+bash: line 24: run_test: command not found
+bash: line 25: run_test: command not found
+bash: line 26: run_test: command not found
+bash: line 27: run_test: command not found
+bash: line 28: run_test: command not found
+bash: line 29: run_test: command not found

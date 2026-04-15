@@ -1,0 +1,9 @@
+--- a/SKILL.md
++++ b/SKILL.md
+@@ -124,7 +124,7 @@
+   ],
+   "summary": {
+-    "total": 3, "confirmed_open": 1, "red_failed": 0, "green_failed": 0, "tdd_verified": 2
++    "total": 3, "confirmed_open": 1, "red_failed": 0, "green_failed": 0, "verified": 2
+   }
+ }

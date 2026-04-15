@@ -1,0 +1,7 @@
+--- /dev/null
++++ b/quality/BUG-011-exempt.md
+@@ -0,0 +1,4 @@
++# BUG-011: Exempt
++# json_has_key() flat grep matches key names inside string values (quality_gate.sh:76-78)
++# Exemption: structural limitation of grep-based JSON parsing. Fixing requires JSON parser; grep-based parsing is by design.
++# No executable regression test — explicit exemption documented in BUGS.md.

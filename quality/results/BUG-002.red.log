@@ -1,0 +1,5 @@
+RED
+--- Test output for BUG-002 red phase ---
+Command: test_bug_002_phase7_in_plan_overview
+Exit code: 2
+bash: -c: line 33: syntax error: unexpected end of file

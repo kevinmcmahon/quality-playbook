@@ -1,0 +1,4 @@
+NOT_RUN
+--- BUG-010 red phase ---
+Exempt: cosmetic risk in controlled paths. Repo paths with spaces are non-standard for git repositories.
+No regression test written — explicit exemption documented in BUGS.md and BUG tracker.

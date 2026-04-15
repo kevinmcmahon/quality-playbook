@@ -1,0 +1,7 @@
+--- /dev/null
++++ b/quality/BUG-010-exempt.md
+@@ -0,0 +1,4 @@
++# BUG-010: Exempt
++# Unquoted glob patterns in quality_gate.sh (lines 116, 125-126)
++# Exemption: cosmetic risk in controlled paths. Repo paths with spaces are non-standard for git repositories.
++# No executable regression test — explicit exemption documented in BUGS.md.

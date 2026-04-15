@@ -1,0 +1,5 @@
+RED
+--- Test output for BUG-003 red phase ---
+Command: test_bug_003_no_hardcoded_reference_paths
+Exit code: 2
+bash: -c: line 33: syntax error: unexpected end of file

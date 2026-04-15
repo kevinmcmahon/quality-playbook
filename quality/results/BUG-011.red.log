@@ -1,0 +1,4 @@
+NOT_RUN
+--- BUG-011 red phase ---
+Exempt: structural limitation of grep-based JSON parsing. Fixing requires a JSON parser; grep-based parsing is by design for portability.
+No regression test written — explicit exemption documented in BUGS.md and BUG tracker.

@@ -1,0 +1,5 @@
+RED
+--- Test output for BUG-004 red phase ---
+Command: test_bug_004_gate_validates_status_tags_or_skill_doesnt_claim
+Exit code: 1
+

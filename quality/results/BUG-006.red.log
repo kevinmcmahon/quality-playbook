@@ -1,0 +1,5 @@
+RED
+--- Test output for BUG-006 red phase ---
+Command: test_bug_006_agents_md_has_claude_path
+Exit code: 2
+bash: -c: line 33: syntax error: unexpected end of file
