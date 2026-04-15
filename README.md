@@ -36,6 +36,21 @@ Then tell your AI tool: *"Run the quality playbook on this project."*
 
 The six phases are: explore the codebase (Phase 1), generate quality artifacts (Phase 2), run a three-pass code review with regression tests (Phase 3), execute a multi-model spec audit (Phase 4), reconcile and close findings (Phase 5), and verify against self-check benchmarks (Phase 6). After all six phases, you can run iteration strategies to find even more bugs. The full cycle takes anywhere from 15 to 90 minutes depending on project size, and it works with any language.
 
+### Automated orchestration
+
+For a fully automated run, use the orchestrator agent. It runs each phase in its own context window and manages the handoffs automatically — no manual "keep going" needed.
+
+**Claude Code:** Copy the agent file into your project:
+```bash
+mkdir -p .claude/agents
+cp agents/quality-playbook-claude.agent.md .claude/agents/
+```
+Then say: *"Run the full playbook"* — Claude spawns a sub-agent for each phase automatically.
+
+**GitHub Copilot:** The orchestrator agent is available from [awesome-copilot](https://github.com/github/awesome-copilot). Copy it into your project's `agents/` directory, or use it directly from awesome-copilot. Then say: *"Run the full playbook."*
+
+**Other tools (Cursor, Windsurf, etc.):** Copy `agents/quality-playbook.agent.md` into your project and point your tool at it. The agent instructions are tool-agnostic — they tell any AI how to manage the phase-by-phase execution.
+
 **Tip:** The playbook finds significantly more bugs when you provide documentation alongside the code — specs, API docs, design documents, community documentation. If you have docs available, put them in a `docs_gathered/` directory in your repo before running.
 
 ## Need help? Just ask your AI

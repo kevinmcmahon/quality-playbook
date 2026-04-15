@@ -16,6 +16,8 @@ The Quality Playbook is a skill for AI coding agents that explores any codebase 
 | `references/*.md` | Phase-specific reference files (review protocols, spec audit, etc.) | During specific phases as directed by SKILL.md |
 | `ai_context/TOOLKIT.md` | User-facing interactive documentation | When helping a user set up or run the playbook |
 | `ai_context/DEVELOPMENT_CONTEXT.md` | Maintainer context (architecture, benchmarking, known issues) | When working on the skill itself |
+| `agents/quality-playbook.agent.md` | Orchestrator agent (Copilot / general format) | When setting up automated phase-by-phase execution |
+| `agents/quality-playbook-claude.agent.md` | Orchestrator agent (Claude Code format, uses sub-agents) | When running in Claude Code with automatic orchestration |
 
 ## Installing the skill
 
@@ -41,6 +43,9 @@ SKILL.md                 ← the skill (operational instructions)
 quality_gate.sh          ← artifact validation script
 LICENSE.txt
 references/              ← phase-specific reference documents
+agents/
+  quality-playbook.agent.md       ← orchestrator agent (Copilot / general)
+  quality-playbook-claude.agent.md ← orchestrator agent (Claude Code)
 ai_context/
   TOOLKIT.md             ← interactive documentation for users
   DEVELOPMENT_CONTEXT.md ← development context for maintainers
