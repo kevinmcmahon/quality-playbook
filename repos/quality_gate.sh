@@ -27,7 +27,7 @@
 #   1 — one or more checks failed
 #
 # This script is also copied into each repo at .github/skills/quality_gate.sh
-# so the playbook agent can run it as its final Phase 3 verification step.
+# so the playbook agent can run it as its final Phase 6 verification step.
 
 set -uo pipefail
 
