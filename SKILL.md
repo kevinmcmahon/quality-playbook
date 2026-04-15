@@ -698,7 +698,7 @@ With docs: [yes/no]
 
 ## Phase completion
 - [x] Phase 1: Exploration — completed [date/time]
-- [ ] Phase 2: Artifact generation (QUALITY.md, REQUIREMENTS.md, tests, protocols, BUGS.md, RUN_TDD_TESTS.md, AGENTS.md)
+- [ ] Phase 2: Artifact generation (QUALITY.md, REQUIREMENTS.md, tests, protocols, RUN_TDD_TESTS.md, AGENTS.md)
 - [ ] Phase 3: Code review + regression tests
 - [ ] Phase 4: Spec audit + triage
 - [ ] Phase 5: Post-review reconciliation + closure verification
@@ -1417,7 +1417,7 @@ The generated protocol must include:
    - `"verdict": "skipped"` — this value is deprecated; use `"confirmed open"` with `red_phase: "fail"` and `green_phase: "skipped"`.
    - Missing `"schema_version"` at the root — every tdd-results.json must include this field.
 
-   Valid `verdict` values: `"TDD verified"` (FAIL→PASS), `"red failed"` (test passed on unpatched code — test doesn't detect the bug), `"green failed"` (test still fails after fix — fix is incomplete or patch is corrupt), `"confirmed open"` (red phase ran and confirmed the bug, no fix patch available). **Do not use `"skipped"` as a verdict** — every confirmed bug must have a red-phase result. A bug with `verdict: "confirmed open"` must have `red_phase: "fail"` (red ran and confirmed the bug) and `green_phase: "skipped"` (no fix to apply). Valid `red_phase`/`green_phase` values: `"fail"`, `"pass"`, `"error"` (compile/apply failure), `"skipped"` (green only — red is never skipped). The `patch_gate_passed` field records whether the patch validation gate (apply-check + compile) succeeded — `false` if the gate failed and the patch was repaired, `null` if no fix patch exists. The `writeup_path` field points to the per-bug writeup file (see "Bug writeup generation" below) — `null` if no writeup was generated for this bug.
+   Valid `verdict` values: `"TDD verified"` (FAIL→PASS), `"red failed"` (test passed on unpatched code — test doesn't detect the bug), `"green failed"` (test still fails after fix — fix is incomplete or patch is corrupt), `"confirmed open"` (red phase ran and confirmed the bug, no fix patch available), `"deferred"` (TDD cannot execute in this environment — use with `notes` explaining why). **Do not use `"skipped"` as a verdict** — every confirmed bug must have a red-phase result. A bug with `verdict: "confirmed open"` must have `red_phase: "fail"` (red ran and confirmed the bug) and `green_phase: "skipped"` (no fix to apply). Valid `red_phase`/`green_phase` values: `"fail"`, `"pass"`, `"error"` (compile/apply failure), `"skipped"` (green only — red is never skipped). The `patch_gate_passed` field records whether the patch validation gate (apply-check + compile) succeeded — `false` if the gate failed and the patch was repaired, `null` if no fix patch exists. The `writeup_path` field points to the per-bug writeup file (see "Bug writeup generation" below) — `null` if no writeup was generated for this bug.
 
    Runner scripts and CI tools should read the sidecar JSON for pass/fail counts rather than grepping the Markdown report.
 
@@ -1463,7 +1463,7 @@ Re-read `quality/PROGRESS.md`. Update:
 - Add exploration summary notes if not already present
 
 **Phase 2 completion gate (mandatory).** Before proceeding to Phase 3, verify:
-1. All core artifacts exist on disk (`QUALITY.md`, `CONTRACTS.md`, `REQUIREMENTS.md`, `COVERAGE_MATRIX.md`, `test_functional.*`, `RUN_CODE_REVIEW.md`, `RUN_INTEGRATION_TESTS.md`, `RUN_SPEC_AUDIT.md`, `RUN_TDD_TESTS.md`, `AGENTS.md`).
+1. All core artifacts exist on disk (`QUALITY.md`, `CONTRACTS.md`, `REQUIREMENTS.md`, `COVERAGE_MATRIX.md`, `COMPLETENESS_REPORT.md`, `test_functional.*`, `RUN_CODE_REVIEW.md`, `RUN_INTEGRATION_TESTS.md`, `RUN_SPEC_AUDIT.md`, `RUN_TDD_TESTS.md`, `AGENTS.md`).
 2. `REQUIREMENTS.md` contains requirements with specific conditions of satisfaction referencing actual code (file paths, function names, line numbers) — not abstract behavioral descriptions.
 3. If dispatch/enumeration contracts exist: `quality/mechanical/verify.sh` exists and has been executed.
 4. PROGRESS.md marks Phase 2 complete with timestamp.
@@ -1905,7 +1905,7 @@ Or say "keep going" to run the next iteration automatically.
 
 After generating and verifying, present the results clearly and give the user control over what happens next. This phase has three parts: a scannable summary, drill-down on demand, and a menu of improvement paths.
 
-**Do not skip this phase.** The autonomous output from Phases 1-3 is a solid starting point, but the user needs to understand what was generated, explore what matters to them, and choose how to improve it. A quality playbook is only useful if the people who own the project trust it and understand it. Dumping six files without explanation creates artifacts nobody reads.
+**Do not skip this phase.** The autonomous output from Phases 1-6 is a solid starting point, but the user needs to understand what was generated, explore what matters to them, and choose how to improve it. A quality playbook is only useful if the people who own the project trust it and understand it. Dumping six files without explanation creates artifacts nobody reads.
 
 ### Part 1: The Summary Table
 
