@@ -60,6 +60,8 @@ Add `--dangerously-skip-permissions` to skip file-write approval prompts.
 
 **Windsurf:** Open Cascade and say: *"Read SKILL.md and run the quality playbook on this project."*
 
+<a href="images/claude-code-bootstrap-2.png"><img src="images/claude-code-bootstrap-0.png" alt="Giving Claude Code the initial prompt to start the playbook" width="700"></a>
+
 The playbook runs in six phases. Each phase gets its own context window — this is what lets it do deep analysis instead of running out of context on large codebases. After each phase, say "keep going" to continue.
 
 <a href="images/claude-code-bootstrap-2.png"><img src="images/claude-code-bootstrap-2.png" alt="Phase 1 results: 6 candidate bugs found" width="700"></a>
