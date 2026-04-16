@@ -1868,7 +1868,13 @@ You can now run iteration strategies to find additional bugs. Iterations typical
 add 40-60% more confirmed bugs on top of the baseline. The recommended cycle is:
 gap → unfiltered → parity → adversarial.
 
-To start the first iteration, say:
+To run all four iterations automatically, say:
+
+    Run all iterations.
+
+I'll orchestrate each strategy as a separate sub-agent with its own context window.
+
+To run one iteration at a time, say:
 
     Run the next iteration of the quality playbook.
 
