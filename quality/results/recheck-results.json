@@ -1,0 +1,152 @@
+{
+  "schema_version": "1.0",
+  "skill_version": "1.4.0",
+  "date": "2026-04-15",
+  "project": "quality-playbook",
+  "source_run": {
+    "bugs_md_date": "2026-04-15",
+    "total_bugs": 19
+  },
+  "results": [
+    {
+      "id": "BUG-001",
+      "severity": "HIGH",
+      "summary": "quality_gate.sh downgrades 6 required artifacts to WARN, allowing silent gate pass",
+      "status": "FIXED",
+      "evidence": "quality_gate.sh lines 116-122 now use fail() for all 5 required artifacts (CONTRACTS.md, RUN_CODE_REVIEW.md, RUN_SPEC_AUDIT.md, RUN_INTEGRATION_TESTS.md, RUN_TDD_TESTS.md); comment no longer references non-existent BUG-005"
+    },
+    {
+      "id": "BUG-002",
+      "severity": "MEDIUM",
+      "summary": "quality_gate.sh test_functional detection misses SKILL.md-allowed alternative names",
+      "status": "FIXED",
+      "evidence": "quality_gate.sh line 124 checks all SKILL.md-documented patterns: test_functional.*, FunctionalSpec.*, FunctionalTest.*, functional.test.*"
+    },
+    {
+      "id": "BUG-003",
+      "severity": "MEDIUM",
+      "summary": "quality_gate.sh eval injection with user-supplied directory paths",
+      "status": "FIXED",
+      "evidence": "grep -n 'eval' quality_gate.sh returns no results; eval() has been removed entirely, replaced with direct find calls"
+    },
+    {
+      "id": "BUG-004",
+      "severity": "MEDIUM",
+      "summary": "review_protocols.md Phase 6: Results numbering error (should be Phase 3)",
+      "status": "FIXED",
+      "evidence": "references/review_protocols.md line 376 shows '### Phase 3: Results', not Phase 6"
+    },
+    {
+      "id": "BUG-005",
+      "severity": "LOW",
+      "summary": "Dangling BUG-005 reference in quality_gate.sh",
+      "status": "FIXED",
+      "evidence": "grep -n 'BUG-005' quality_gate.sh returns no results; the dangling reference comment has been removed"
+    },
+    {
+      "id": "BUG-006",
+      "severity": "MEDIUM",
+      "summary": "AGENTS.md not checked by quality_gate.sh despite being required",
+      "status": "FIXED",
+      "evidence": "quality_gate.sh lines 129-134 check for AGENTS.md at project root with fail() severity"
+    },
+    {
+      "id": "BUG-007",
+      "severity": "LOW",
+      "summary": "Version detection path asymmetry between global and per-repo checks",
+      "status": "FIXED",
+      "evidence": "quality_gate.sh lines 59-67 (global) and 628 (per-repo) both use 6 identical paths for SKILL.md detection; asymmetry resolved"
+    },
+    {
+      "id": "BUG-008",
+      "severity": "MEDIUM",
+      "summary": "quality_gate.sh crashes on macOS bash 3.2 with no arguments",
+      "status": "FIXED",
+      "evidence": "quality_gate.sh line 686 uses ${REPO_DIRS[@]+'${REPO_DIRS[@]}'} pattern (safe empty array expansion for bash 3.2)"
+    },
+    {
+      "id": "BUG-009",
+      "severity": "MEDIUM",
+      "summary": "TOOLKIT.md Copilot reference installation path not in SKILL.md fallback chain",
+      "status": "FIXED",
+      "evidence": "SKILL.md line 50 now includes `.github/skills/references/` in the reference file resolution fallback chain"
+    },
+    {
+      "id": "BUG-010",
+      "severity": "MEDIUM",
+      "summary": "Incomplete writeups get WARN instead of FAIL despite being spec-mandatory",
+      "status": "FIXED",
+      "evidence": "quality_gate.sh line 608 uses fail() when writeup_count > 0 but < bug_count, preventing partial writeup runs from passing"
+    },
+    {
+      "id": "BUG-011",
+      "severity": "MEDIUM",
+      "summary": "TDD_TRACEABILITY.md not checked by quality_gate.sh despite being mandatory",
+      "status": "FIXED",
+      "evidence": "quality_gate.sh lines 377-384 check for TDD_TRACEABILITY.md when red-phase logs exist, using fail() severity"
+    },
+    {
+      "id": "BUG-012",
+      "severity": "MEDIUM",
+      "summary": "review_protocols.md.orig stale backup file in references/ directory",
+      "status": "FIXED",
+      "evidence": "ls references/review_protocols.md* shows only review_protocols.md; .orig backup file has been deleted"
+    },
+    {
+      "id": "BUG-013",
+      "severity": "MEDIUM",
+      "summary": "quality_gate.sh resolved=() empty array crashes on bash 3.2",
+      "status": "FIXED",
+      "evidence": "quality_gate.sh line 697 uses ${resolved[@]+'${resolved[@]}'} pattern (safe empty array expansion for bash 3.2)"
+    },
+    {
+      "id": "BUG-014",
+      "severity": "MEDIUM",
+      "summary": "quality_gate.sh heading detection misses #### BUG-NNN format (four+ hashes)",
+      "status": "FIXED",
+      "evidence": "quality_gate.sh line 189 detects deep_headings with grep -E '^#{4,} BUG-[0-9]+'; line 202 reports them as fail"
+    },
+    {
+      "id": "BUG-015",
+      "severity": "MEDIUM",
+      "summary": "integration-results.json validation depth asymmetry vs tdd-results.json",
+      "status": "FIXED",
+      "evidence": "quality_gate.sh lines 397-420 now validate integration-results.json schema_version value ('1.1'), date (ISO 8601, not placeholder, not future), matching tdd-results.json validation depth"
+    },
+    {
+      "id": "BUG-016",
+      "severity": "LOW",
+      "summary": "SKILL.md Reference Files table omits 3 required reference files",
+      "status": "FIXED",
+      "evidence": "SKILL.md reference file table (lines 2228-2239) now includes exploration_patterns.md (line 2230), requirements_pipeline.md (line 2233), and iteration.md (line 2238)"
+    },
+    {
+      "id": "BUG-017",
+      "severity": "MEDIUM",
+      "summary": "EXPLORATION.md declared mandatory but missing from artifact contract table",
+      "status": "FIXED",
+      "evidence": "SKILL.md artifact contract table (lines 87-119) now includes EXPLORATION.md at line 89 with 'Required: Yes' and 'Created In: Phase 1'"
+    },
+    {
+      "id": "BUG-018",
+      "severity": "MEDIUM",
+      "summary": "json_key_count false PASS masks missing per-bug fields in tdd-results.json",
+      "status": "FIXED",
+      "evidence": "quality_gate.sh lines 88-91 now use grep -c '\"${key}\"[[:space:]]*:' pattern that matches only actual JSON key-value pairs (with colon), not key strings in free-form text"
+    },
+    {
+      "id": "BUG-019",
+      "severity": "MEDIUM",
+      "summary": "verification.md benchmark 40 omits 7 required artifacts from file-existence check",
+      "status": "FIXED",
+      "evidence": "references/verification.md benchmark 40 (line 228) now lists all unconditionally-required artifacts: EXPLORATION.md, CONTRACTS.md, test_functional.* (with alternatives), RUN_CODE_REVIEW.md, RUN_INTEGRATION_TESTS.md, RUN_SPEC_AUDIT.md, RUN_TDD_TESTS.md, AGENTS.md"
+    }
+  ],
+  "summary": {
+    "total": 19,
+    "fixed": 19,
+    "partially_fixed": 0,
+    "still_open": 0,
+    "inconclusive": 0
+  }
+}

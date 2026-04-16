@@ -82,6 +82,10 @@ The six phases: **Explore** (read code + docs, find candidates) → **Generate**
 
 After the baseline, the playbook suggests iteration strategies that find different classes of bugs — typically 40-60% more on top of the baseline. Say *"Run the next iteration using the gap strategy"* to start, then follow the suggested order: gap → unfiltered → parity → adversarial.
 
+### Step 5: Fix bugs, then recheck
+
+After fixing the bugs from BUGS.md, say *"recheck"* to verify your fixes. Recheck mode reads the existing bug report, checks each bug against the current source (reverse-applying patches, inspecting cited lines), and reports which bugs are fixed vs. still open. Takes 2-10 minutes instead of re-running the full pipeline.
+
 ### Why phases?
 
 The playbook runs each phase in a separate context window on purpose. A single-session approach runs out of context partway through Phase 3 on most projects, which means shallow analysis and missed bugs. The phase-by-phase design gives each phase the full context budget for deep investigation. The tradeoff is saying "keep going" a few times — but the result is significantly more bugs found.
@@ -143,6 +147,7 @@ Adding community documentation to the pipeline produces measurably better result
 - **Four iteration strategies.** After the baseline run, the playbook supports four iteration strategies that find different classes of bugs: gap (explore areas the baseline missed), unfiltered (fresh-eyes re-review), parity (parallel path comparison), and adversarial (challenge prior dismissals and recover Type II errors). Iterations consistently add 40-60% more confirmed bugs on top of the baseline.
 - **TDD red-green verification for every confirmed bug.** Every bug in BUGS.md must have a regression test patch, a red-phase log proving the test detects the bug on unpatched code, and a green-phase log proving the fix resolves it. The `tdd-results.json` sidecar (schema 1.1) tracks all verdicts with machine-readable fields.
 - **Quality gate script.** A `quality_gate.sh` script mechanically validates artifact completeness: patch files, writeups, TDD logs, JSON schema conformance, version stamps, and BUGS.md heading format. Runs as the final Phase 6 step.
+- **Recheck mode.** After fixing bugs, say "recheck" to verify fixes without re-running the full pipeline. Recheck reads the existing BUGS.md, checks each bug against the current source (reverse-applying patches, inspecting cited lines), and outputs machine-readable results to `quality/results/recheck-results.json`. Takes 2-10 minutes instead of 60-90.
 - **Benchmark results across three codebases.** Validated against Express.js (14 confirmed bugs), Gson (9 confirmed bugs), and Linux virtio (8 confirmed bugs), all with 100% TDD red-phase coverage and 0 gate failures.
 
 ### What's new in v1.3.20
@@ -185,6 +190,7 @@ quality-playbook/
     ├── TDD_TRACEABILITY.md # Bug → requirement → spec → test mapping
     ├── test_regression.*   # Regression tests for confirmed bugs
     ├── SEED_CHECKS.md     # Prior-run seed list (continuation mode)
+    ├── results/            # TDD results, recheck results, verification logs
     ├── mechanical/         # Shell-extracted verification artifacts + verify.sh
     ├── writeups/           # Per-bug detailed writeups (BUG-NNN.md)
     ├── patches/            # Fix and regression-test patches

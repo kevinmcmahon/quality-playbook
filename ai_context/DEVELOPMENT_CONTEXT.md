@@ -22,7 +22,7 @@ quality-playbook/
 │   ├── spec_audit.md            ← Council of Three spec audit protocol
 │   └── verification.md          ← 45 self-check benchmarks for Phase 6
 ├── ai_context/                  ← AI-readable context files
-│   ├── TOOLKIT.md               ← For users' AI assistants (setup, run, interpret)
+│   ├── TOOLKIT.md               ← For users' AI assistants (setup, run, interpret, recheck)
 │   └── DEVELOPMENT_CONTEXT.md   ← For maintainers' AI assistants (this file)
 ├── repos/                       ← Benchmark infrastructure (not in skill repo)
 │   ├── setup_repos.sh           ← Copies skill files into target repos
@@ -51,6 +51,8 @@ The quality playbook is a long-form instruction document (SKILL.md) that an AI a
 After each phase, the skill prints a prominent end-of-phase message telling the user what happened and what to say next. The user says "keep going" or "run phase N" to continue. This interactive protocol gives much better results than single-session execution because each phase gets the full context window.
 
 **Iteration mode:** After the baseline run, the agent can run additional iterations using strategies defined in references/iteration.md. Each strategy re-explores the codebase with a different approach, then re-runs Phases 2-6 on the merged findings. Iterations typically add 40-60% more confirmed bugs.
+
+**Recheck mode:** After the user fixes bugs, saying "recheck" triggers a lightweight verification pass. Recheck reads BUGS.md, checks each bug against the current source (reverse-applying fix patches, inspecting cited lines, optionally running regression tests), and writes results to `quality/results/recheck-results.json` and `quality/results/recheck-summary.md`. Takes 2-10 minutes instead of a full re-run. Does not find new bugs — only verifies previously found bugs.
 
 ## Three improvement axes
 
@@ -147,7 +149,7 @@ Council review artifacts go in `council-reviews/`. Each review has:
 - **v1.3.45:** references/iteration.md reference file, parity strategy, suggested-next-prompt UX.
 - **v1.3.46:** Demoted Candidates Manifest, parity sub-type checklist, adversarial bar adjustment, TDD execution enforcement.
 - **v1.3.47:** TDD log enforcement — six insertion points from Cursor diagnostic (artifact contract, closure gate, bash template, progress checkbox, file-existence gate, sidecar contradiction check).
-- **v1.4.0** (promoted from v1.3.50)**:** Six-phase interactive architecture (renumbered from 3 phases to 6), interactive phase-by-phase execution with end-of-phase messages, `--phase` flag in runner, quality gate script, four iteration strategies with 40-60% yield boost, TDD enforcement, documentation warning, help system, "keep going" continuation, O'Reilly Radar article, moved ITERATION.md to references/iteration.md, orchestrator agents for Claude Code and Copilot. Benchmarked: Express.js (14 bugs), Gson (9 bugs), Linux virtio (8 bugs) — all with 100% TDD coverage and 0 gate failures.
+- **v1.4.0** (promoted from v1.3.50)**:** Six-phase interactive architecture (renumbered from 3 phases to 6), interactive phase-by-phase execution with end-of-phase messages, `--phase` flag in runner, quality gate script, four iteration strategies with 40-60% yield boost, TDD enforcement, documentation warning, help system, "keep going" continuation, O'Reilly Radar article, moved ITERATION.md to references/iteration.md, orchestrator agents for Claude Code and Copilot, **recheck mode** for lightweight fix verification (reads BUGS.md, checks each bug against current source, outputs recheck-results.json). Benchmarked: Express.js (14 bugs), Gson (9 bugs), Linux virtio (8 bugs) — all with 100% TDD coverage and 0 gate failures. Bootstrap self-audit: 19 bugs found across 4 iterations, all fixed and verified by recheck.
 
 ## Current known issues
 

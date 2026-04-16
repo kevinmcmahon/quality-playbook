@@ -49,10 +49,13 @@ The user wants to run the quality playbook on a codebase. Here's what to do:
    - `quality/BUGS.md` — confirmed bugs with file:line references
    - `quality/PROGRESS.md` — phase completion tracker and bug summary
    - `quality/results/tdd-results.json` — structured TDD verification results
+   - `quality/results/recheck-results.json` — fix verification results (after recheck)
    - `quality/patches/BUG-NNN-regression-test.patch` — test that proves each bug
    - `quality/patches/BUG-NNN-fix.patch` — proposed fix for each bug
 
 5. **Run iterations for more bugs.** After the baseline run, the user can run iteration strategies that typically find 40-60% more confirmed bugs. Say "run the next iteration" to start the gap strategy, or name a specific strategy: gap, unfiltered, parity, or adversarial. The recommended cycle runs all four in sequence.
+
+6. **Verify bug fixes with recheck.** After the user fixes bugs from BUGS.md, say "recheck" to verify the fixes. Recheck mode reads the existing bug report, checks each bug against the current source (reverse-applying fix patches, inspecting cited lines, optionally running regression tests), and reports FIXED / STILL_OPEN / PARTIALLY_FIXED / INCONCLUSIVE for each bug. Results go to `quality/results/recheck-results.json` (machine-readable) and `quality/results/recheck-summary.md` (human-readable). Takes 2-10 minutes instead of re-running the full 60-90 minute pipeline.
 
 ## Setting up automation scripts
 
@@ -482,3 +485,10 @@ If no docs exist, the playbook derives requirements from the code itself — com
 - This is expected if you're re-running on a repo that already has `quality/` artifacts from a prior run.
 - If you want a clean baseline, delete or rename the existing `quality/` directory first.
 - If you want to build on prior findings, leave it — Phase 0 will import previously confirmed bugs as seeds.
+
+**How to verify bug fixes (recheck mode):**
+- After the user fixes bugs from BUGS.md, say "recheck" to the playbook agent.
+- Recheck reads BUGS.md, checks each bug against the current source, and reports which are fixed.
+- For each bug, it tries: (1) reverse-applying the fix patch — if it succeeds, the fix is applied; (2) source inspection of the cited file:line; (3) optionally running the regression test patch.
+- Results are written to `quality/results/recheck-results.json` and `quality/results/recheck-summary.md`.
+- Recheck takes 2-10 minutes. It does NOT find new bugs — only verifies fixes for previously found bugs.
