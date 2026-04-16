@@ -10,7 +10,7 @@ Most AI code review can only find structural issues: null dereferences, resource
 
 The playbook closes that gap. It reads your codebase, derives behavioral requirements from every source it can find (code, docs, specs, comments, defensive patterns, community documentation), and uses those requirements to drive review. The result is a quality system grounded in intent, not just structure. For a deeper look at this problem, see the O'Reilly Radar article [AI Is Writing Our Code Faster Than We Can Verify It](https://www.oreilly.com/radar/ai-is-writing-our-code-faster-than-we-can-verify-it/).
 
-## How to find bugs in your code
+## How to use the Quality Playbook to find bugs in your code
 
 ### Step 1: Gather documentation first
 
@@ -62,25 +62,17 @@ Add `--dangerously-skip-permissions` to skip file-write approval prompts.
 
 The playbook runs in six phases. Each phase gets its own context window — this is what lets it do deep analysis instead of running out of context on large codebases. After each phase, say "keep going" to continue.
 
-<a href="images/claude-code-bootstrap-1.png"><img src="images/claude-code-bootstrap-1.png" alt="Phase 1: Exploring the codebase" width="700"></a>
-
-*Phase 1 explores the codebase, reads your documentation, and identifies candidate bugs.*
-
 <a href="images/claude-code-bootstrap-2.png"><img src="images/claude-code-bootstrap-2.png" alt="Phase 1 results: 6 candidate bugs found" width="700"></a>
 
-*After each phase, the playbook reports what it found and tells you what to say next.*
-
-<a href="images/claude-code-bootstrap-3.png"><img src="images/claude-code-bootstrap-3.png" alt="Phase 2: Generating quality artifacts" width="700"></a>
-
-*Phase 2 generates the full quality infrastructure: requirements, tests, review protocols.*
+*After Phase 1, the playbook reports candidate bugs and tells you what to say next.*
 
 <a href="images/claude-code-bootstrap-4.png"><img src="images/claude-code-bootstrap-4.png" alt="Phase 5: TDD verification of confirmed bugs" width="700"></a>
 
-*Phase 5 runs TDD red-green verification on every confirmed bug.*
+*Phase 5 confirms every bug with TDD red-green verification and generates fix patches.*
 
 <a href="images/claude-code-bootstrap-5.png"><img src="images/claude-code-bootstrap-5.png" alt="Final results: 7 confirmed bugs with patches" width="700"></a>
 
-*The final summary shows all confirmed bugs with regression tests, fix patches, and writeups.*
+*The final summary shows all confirmed bugs with regression tests, patches, and writeups.*
 
 The six phases: **Explore** (read code + docs, find candidates) → **Generate** (requirements, tests, protocols) → **Code Review** (three-pass: structural, requirement verification, cross-requirement consistency) → **Spec Audit** (three independent auditors check code against requirements) → **Reconciliation** (every bug tracked, regression-tested, TDD-verified) → **Verify** (45 self-check benchmarks). The full cycle takes 15-90 minutes depending on project size and works with any language.
 
