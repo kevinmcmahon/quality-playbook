@@ -1,0 +1,19 @@
+--- a/quality_gate.sh
++++ b/quality_gate.sh
+@@ -180,6 +180,9 @@
+         bullet_headings=$(grep -cE '^- BUG-[0-9]+' "${q}/BUGS.md" || true)
+         bullet_headings=${bullet_headings:-0}
+
++        local deep_headings
++        deep_headings=$(grep -cE '^#{4,} BUG-[0-9]+' "${q}/BUGS.md" || true)
++        deep_headings=${deep_headings:-0}
+
+         bug_count=$correct_headings
+
+@@ -188,6 +191,7 @@
+         else
+             [ "$wrong_headings" -gt 0 ] && fail "${wrong_headings} heading(s) use ## instead of ###"
+             [ "$bold_headings" -gt 0 ] && fail "${bold_headings} heading(s) use **BUG- format"
+             [ "$bullet_headings" -gt 0 ] && fail "${bullet_headings} heading(s) use - BUG- format"
++            [ "$deep_headings" -gt 0 ] && fail "${deep_headings} heading(s) use #### or deeper instead of ###"
+             if [ "$correct_headings" -eq 0 ] && [ "$wrong_headings" -eq 0 ]; then

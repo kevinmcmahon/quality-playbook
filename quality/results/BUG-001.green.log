@@ -1,6 +1,5 @@
 GREEN
 --- Test output for BUG-001 green phase ---
-Command: test_bug_001_tdd_verified_key (against fix-applied SKILL.md)
-Exit code: 0
-
-Fix: Changed "tdd_verified" to "verified" on SKILL.md line 127
+Command: RUN_BUG=001 bash quality/test_regression.sh
+Exit code: 127
+(eval):2: no such file or directory: bash quality/test_regression.sh

@@ -1,7 +1,20 @@
---- /dev/null
-+++ b/quality/BUG-010-exempt.md
-@@ -0,0 +1,4 @@
-+# BUG-010: Exempt
-+# Unquoted glob patterns in quality_gate.sh (lines 116, 125-126)
-+# Exemption: cosmetic risk in controlled paths. Repo paths with spaces are non-standard for git repositories.
-+# No executable regression test — explicit exemption documented in BUGS.md.
+--- a/quality/test_regression.sh
++++ b/quality/test_regression.sh
+@@ -120,3 +120,17 @@ test_bug_007_version_path_asymmetry() {
+     fi
+     return 0
+ }
++
++# BUG-010: Incomplete writeups get WARN instead of FAIL
++# Spec basis: SKILL.md line 1454 says writeups are mandatory for all confirmed bugs.
++# verification.md benchmark 30 says every confirmed bug must have a writeup.
++# quality_gate.sh line 561 uses warn() instead of fail().
++test_bug_010_writeup_incomplete_warn() {
++    local line
++    line=$(sed -n '561p' quality_gate.sh)
++    if echo "$line" | grep -q 'warn'; then
++        echo "FAIL: quality_gate.sh line 561 uses warn() for incomplete writeups (should be fail())"
++        return 1
++    fi
++    return 0
++}

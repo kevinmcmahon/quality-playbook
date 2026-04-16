@@ -1,0 +1,34 @@
+--- a/quality/test_regression.sh
++++ b/quality/test_regression.sh
+@@ -0,0 +1,30 @@
++# Regression test for BUG-016: SKILL.md Reference Files table omits 3 required reference files
++# The table at lines 2075-2083 lists 7 files but 3 required files are missing:
++# exploration_patterns.md, iteration.md, requirements_pipeline.md
++
++test_bug_016_reference_table_missing_files() {
++    local skill_file="SKILL.md"
++    if [ ! -f "$skill_file" ]; then
++        echo "SKIP: SKILL.md not found"
++        return
++    fi
++
++    # Extract referenced files from SKILL.md body text (imperative "Read references/" or
++    # "Required references" blocks)
++    local referenced
++    referenced=$(grep -oE 'references/[a-z_]+\.md' "$skill_file" | sort -u)
++
++    # Extract files listed in the Reference Files table (the table starts with "| File |")
++    # The table entries use backtick-quoted paths like `references/defensive_patterns.md`
++    local table_section
++    table_section=$(awk '/^## Reference Files$/,/^---$|^## /' "$skill_file")
++    local table_files
++    table_files=$(echo "$table_section" | grep -oE 'references/[a-z_]+\.md' | sort -u)
++
++    # Check: every referenced file should appear in the table
++    local missing
++    missing=$(comm -23 <(echo "$referenced") <(echo "$table_files"))
++
++    # BUG: exploration_patterns.md, iteration.md, and requirements_pipeline.md are
++    # referenced in body text but missing from the table
++    [ -z "$missing" ] || echo "XFAIL: Reference files missing from table: $missing"
++}

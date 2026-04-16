@@ -1,0 +1,31 @@
+--- a/quality/test_regression.sh
++++ b/quality/test_regression.sh
+@@ -0,0 +1,28 @@
++# Regression test for BUG-017: EXPLORATION.md declared mandatory but missing from artifact contract table
++# SKILL.md line 259 says "mandatory in all modes" but the artifact contract table (lines 86-115)
++# does not include EXPLORATION.md. Line 85 says unlisted artifacts should not be gate-enforced.
+
++test_bug_017_exploration_md_not_in_artifact_table() {
++    local skill_file="SKILL.md"
++    if [ ! -f "$skill_file" ]; then
++        echo "SKIP: SKILL.md not found"
++        return
++    fi
++
++    # Check that EXPLORATION.md is declared mandatory in body text
++    local mandatory_ref
++    mandatory_ref=$(grep -c "EXPLORATION.md.*mandatory" "$skill_file" || true)
++
++    # Extract the artifact contract table (between "Complete Artifact Contract" and the next section)
++    local table_section
++    table_section=$(awk '/^### Complete Artifact Contract$/,/^### /' "$skill_file")
++
++    # Check if EXPLORATION.md appears in the table
++    local in_table
++    in_table=$(echo "$table_section" | grep -c "EXPLORATION" || true)
++
++    # BUG: EXPLORATION.md is declared mandatory (line 259) but is NOT in the artifact table
++    if [ "$mandatory_ref" -gt 0 ] && [ "$in_table" -eq 0 ]; then
++        echo "XFAIL: EXPLORATION.md is mandatory per body text but missing from artifact contract table"
++    fi
++}

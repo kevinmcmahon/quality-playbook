@@ -3,7 +3,7 @@ Version:    1.4.0
 Strictness: benchmark
 Repos:      1
 
-=== QPB-bootstrap ===
+=== QFB-bootstrap ===
 [File Existence]
   PASS: BUGS.md exists
   PASS: REQUIREMENTS.md exists
@@ -11,14 +11,20 @@ Repos:      1
   PASS: PROGRESS.md exists
   PASS: COVERAGE_MATRIX.md exists
   PASS: COMPLETENESS_REPORT.md exists
+  PASS: CONTRACTS.md exists
+  PASS: RUN_CODE_REVIEW.md exists
+  PASS: RUN_SPEC_AUDIT.md exists
+  PASS: RUN_INTEGRATION_TESTS.md exists
+  PASS: RUN_TDD_TESTS.md exists
+  PASS: test_functional.* exists
   PASS: code_reviews/ has .md files
   PASS: spec_audits/ has triage file
   PASS: spec_audits/ has 3 auditor file(s)
   PASS: triage_probes.sh exists (executable triage evidence)
 [BUGS.md Heading Format]
-  PASS: All 18 bug headings use ### BUG-NNN format
+  PASS: All 16 bug headings use ### BUG-NNN format
 [TDD Sidecar JSON]
-  PASS: tdd-results.json exists (18 bugs)
+  PASS: tdd-results.json exists (16 bugs)
   PASS: has 'schema_version'
   PASS: has 'skill_version'
   PASS: has 'date'
@@ -26,25 +32,29 @@ Repos:      1
   PASS: has 'bugs'
   PASS: has 'summary'
   PASS: schema_version is '1.1'
-  PASS: per-bug field 'id' present (18x)
-  PASS: per-bug field 'requirement' present (18x)
-  PASS: per-bug field 'red_phase' present (18x)
-  PASS: per-bug field 'green_phase' present (18x)
-  PASS: per-bug field 'verdict' present (18x)
-  PASS: per-bug field 'fix_patch_present' present (18x)
-  PASS: per-bug field 'writeup_path' present (18x)
+  PASS: per-bug field 'id' present (16x)
+  PASS: per-bug field 'requirement' present (16x)
+  PASS: per-bug field 'red_phase' present (16x)
+  PASS: per-bug field 'green_phase' present (16x)
+  PASS: per-bug field 'verdict' present (16x)
+  PASS: per-bug field 'fix_patch_present' present (16x)
+  PASS: per-bug field 'writeup_path' present (16x)
+  PASS: summary has 'total'
+  PASS: summary has 'verified'
   PASS: summary has 'confirmed_open'
   PASS: summary has 'red_failed'
   PASS: summary has 'green_failed'
   PASS: tdd-results.json date '2026-04-15' is valid
   PASS: all verdict values are canonical
 [TDD Log Files]
-  PASS: All 18 confirmed bug(s) have red-phase logs
-  PASS: All 1 bug(s) with fix patches have green-phase logs
+  PASS: All 16 confirmed bug(s) have red-phase logs
+  PASS: All 16 bug(s) with fix patches have green-phase logs
+  PASS: All red-phase logs have valid status tags
+  PASS: All green-phase logs have valid status tags
 [Integration Sidecar JSON]
   WARN: integration-results.json not present
 [Use Cases]
-  PASS: Found 6 distinct UC identifiers (6 total references, 0 source files)
+  PASS: Found 7 distinct UC identifiers (7 total references, 0 source files)
 [Test File Extension]
   INFO: Cannot detect project language — skipping extension check (test_functional.sh)
 [Terminal Gate]
@@ -52,12 +62,12 @@ Repos:      1
 [Mechanical Verification]
   INFO: No mechanical/ directory
 [Patches]
-  PASS: 18 regression-test patch(es) for 18 bug(s)
-  PASS: 1 fix patch(es)
-  INFO: Total: 19 patch file(s) in quality/patches/
+  PASS: 16 regression-test patch(es) for 16 bug(s)
+  PASS: 16 fix patch(es)
+  INFO: Total: 32 patch file(s) in quality/patches/
 [Bug Writeups]
-  PASS: 18 writeup(s) for 18 bug(s)
-  PASS: All 18 writeup(s) have inline fix diffs
+  PASS: 16 writeup(s) for 16 bug(s)
+  PASS: All 16 writeup(s) have inline fix diffs
 [Version Stamps]
   PASS: PROGRESS.md version matches (1.4.0)
   PASS: tdd-results.json skill_version matches

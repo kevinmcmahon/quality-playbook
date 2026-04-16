@@ -1,0 +1,15 @@
+--- a/quality_gate.sh
++++ b/quality_gate.sh
+@@ -105,6 +105,14 @@
+     # --- File existence (benchmark 40) ---
+     echo "[File Existence]"
++    # AGENTS.md — required at repo root (SKILL.md line 102: Required: Yes, Created In: Phase 2)
++    if [ -f "${repo_dir}/AGENTS.md" ]; then
++        pass "AGENTS.md exists"
++    else
++        fail "AGENTS.md missing"
++    fi
++
+     for f in BUGS.md REQUIREMENTS.md QUALITY.md PROGRESS.md COVERAGE_MATRIX.md COMPLETENESS_REPORT.md; do
+         if [ -f "${q}/${f}" ]; then
+             pass "${f} exists"

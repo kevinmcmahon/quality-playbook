@@ -1,0 +1,21 @@
+--- a/quality_gate.sh
++++ b/quality_gate.sh
+@@ -365,6 +365,19 @@
+         info "Zero bugs — TDD log files not required"
+     fi
+
++    # --- TDD Traceability (benchmark 28) ---
++    echo "[TDD Traceability]"
++    if [ "$bug_count" -gt 0 ]; then
++        # TDD_TRACEABILITY.md is mandatory when bugs have red-phase results
++        if [ "$red_found" -gt 0 ] 2>/dev/null; then
++            if [ -f "${q}/TDD_TRACEABILITY.md" ]; then
++                pass "TDD_TRACEABILITY.md exists"
++            else
++                fail "TDD_TRACEABILITY.md missing (mandatory when bugs have red-phase results — SKILL.md:1426)"
++            fi
++        fi
++    fi
++
+     # --- Integration sidecar JSON — deep validation ---
+     echo "[Integration Sidecar JSON]"

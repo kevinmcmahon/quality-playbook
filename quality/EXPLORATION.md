@@ -1,426 +1,427 @@
 # Exploration Findings
 
 ## Domain and Stack
-- **Language:** Markdown (specification documents), Bash (quality_gate.sh validation script)
-- **Framework:** AI coding agent skill — a long-form instruction document (SKILL.md, ~2069 lines) that AI agents read and follow to perform quality audits on arbitrary codebases
-- **Build system:** None (no compilation). The project is a specification/protocol document with supporting references, a shell validation script, and orchestrator agent definitions.
-- **Deployment target:** Installed into target repositories at `.github/skills/` (Copilot) or `.claude/skills/` (Claude Code) — agents read the files at runtime
-- **Key dependencies:** AI coding agents (Claude Code, GitHub Copilot, Cursor), bash shell for quality_gate.sh
-- **Primary output:** Nine quality artifacts generated in a target project's `quality/` directory
-- **Classification:** Specification-primary repository — the primary product is the SKILL.md specification and its reference documents, with quality_gate.sh as supporting executable infrastructure
+- **Language:** Markdown specification + Bash (quality_gate.sh)
+- **Framework:** AI coding agent skill (Claude Code, GitHub Copilot, Cursor compatible)
+- **Build system:** None (no compilation; skill is a set of instruction documents)
+- **Deployment target:** Installed into target repositories as `.claude/skills/quality-playbook/` or `.github/skills/`
+- **Primary product:** SKILL.md (~2083 lines) -- a specification document that AI agents read and follow to produce quality artifacts
+- **Supporting infrastructure:** quality_gate.sh (676 lines, Bash), 12 reference files, 2 orchestrator agent definitions, 2 ai_context files, AGENTS.md
+
+This is a **specification-primary repository**: the specification (SKILL.md + references) IS the product, with quality_gate.sh as supporting validation infrastructure. Per SKILL.md's own guidance: "derive requirements from the specification's internal consistency, completeness, and correctness -- not just from the executable code paths."
 
 ## Architecture
 
-The project has five major subsystems:
+### Key files and their roles
+| File | Lines | Role |
+|------|-------|------|
+| SKILL.md | 2083 | Master specification -- all phase instructions, gate definitions, artifact contracts |
+| quality_gate.sh | 676 | Post-run validation script -- mechanically checks artifact conformance |
+| references/exploration_patterns.md | 283 | Six bug-finding patterns for Phase 1 |
+| references/review_protocols.md | 611 | Code review + integration test templates |
+| references/requirements_pipeline.md | 427 | Five-phase requirements generation pipeline |
+| references/spec_audit.md | 249 | Council of Three audit protocol |
+| references/verification.md | 302 | 45 self-check benchmarks for Phase 6 |
+| references/iteration.md | 191 | Four iteration strategies (gap, unfiltered, parity, adversarial) |
+| references/constitution.md | 160 | QUALITY.md template |
+| references/functional_tests.md | 589 | Test structure and anti-patterns |
+| references/defensive_patterns.md | 221 | Systematic defensive code search |
+| references/schema_mapping.md | 139 | Schema type mapping for boundary tests |
+| references/requirements_refinement.md | 113 | Refinement pass protocol |
+| references/requirements_review.md | 158 | Interactive review protocol |
+| agents/quality-playbook.agent.md | 148 | Orchestrator agent (Copilot/general) |
+| agents/quality-playbook-claude.agent.md | 103 | Orchestrator agent (Claude Code sub-agents) |
+| ai_context/TOOLKIT.md | 484 | User-facing interactive documentation |
+| ai_context/DEVELOPMENT_CONTEXT.md | 172 | Maintainer context |
+| AGENTS.md | 68 | AI coding agent entry point |
 
-1. **SKILL.md** (2069 lines) — The main specification. Contains Phase 0-7 instructions, artifact contracts, JSON schema templates, gate definitions, and execution rules. This is the single most critical file.
-   - Entry point: An AI agent reads this file and follows instructions sequentially
-   - Data flow: SKILL.md instructions → agent explores target codebase → writes artifacts to `quality/` → downstream phases read artifacts from disk
+### Data flow
+1. User triggers skill -> agent reads SKILL.md + references
+2. Phase 1: Agent explores target codebase -> writes quality/EXPLORATION.md
+3. Phase 2: Agent reads EXPLORATION.md -> generates 9+ quality artifacts
+4. Phases 3-5: Agent runs review, audit, reconciliation using generated artifacts
+5. Phase 6: Agent runs verification benchmarks; quality_gate.sh validates mechanically
+6. Phase 7: Interactive presentation to user
 
-2. **references/** (12 files, ~3442 lines total) — Phase-specific reference documents read during execution:
-   - `exploration_patterns.md` — Six bug-finding patterns for Phase 1
-   - `requirements_pipeline.md` — Five-phase requirements derivation for Phase 2
-   - `review_protocols.md` — Three-pass code review template for Phase 3
-   - `spec_audit.md` — Council of Three protocol for Phase 4
-   - `verification.md` — 45 self-check benchmarks for Phase 6
-   - `iteration.md` — Four iteration strategies (gap, unfiltered, parity, adversarial)
-   - `constitution.md`, `defensive_patterns.md`, `schema_mapping.md`, `functional_tests.md`, `requirements_refinement.md`, `requirements_review.md`
+### Major subsystems
+1. **Phase instruction system** (SKILL.md) -- the specification for all 7 phases
+2. **Reference document system** (references/*.md) -- detailed instructions for specific tasks
+3. **Mechanical validation** (quality_gate.sh) -- script-verified artifact conformance
+4. **Orchestration layer** (agents/*.md) -- agent definitions for automated multi-phase execution
+5. **Context/documentation layer** (ai_context/*.md, AGENTS.md) -- bootstrap context for agents and users
 
-3. **quality_gate.sh** (632 lines) — Mechanical validation script that checks artifact conformance after a playbook run. Validates: file existence, JSON schema conformance, heading format, version stamps, TDD log presence, patches, writeups, use case counts, test file extensions, cross-run contamination.
+### Most complex module: SKILL.md
+At 2083 lines, SKILL.md is a monolithic specification with deeply nested cross-references, sequential phase dependencies, gate definitions with specific pass/fail criteria, and detailed behavioral rules that AI agents must follow. Its complexity lies in the interplay between phases, the many mandatory gates, and the precise artifact contracts.
 
-4. **agents/** (2 files) — Orchestrator agent definitions:
-   - `quality-playbook.agent.md` — General orchestrator (Copilot/multi-tool)
-   - `quality-playbook-claude.agent.md` — Claude Code orchestrator using sub-agents
-
-5. **ai_context/** (2 files) — Documentation for different audiences:
-   - `TOOLKIT.md` — User-facing interactive guide
-   - `DEVELOPMENT_CONTEXT.md` — Maintainer context (architecture, benchmarking, known issues)
-
-**Most complex module:** SKILL.md — it contains overlapping phase definitions, multiple JSON schema examples that must be consistent, cross-references to reference files using hardcoded paths, gate definitions that reference each other, and evolutionary artifacts from version history.
-
-**Most fragile module:** quality_gate.sh — it must correctly validate all artifacts defined in SKILL.md using grep/awk-based parsing of JSON and Markdown. Any drift between what SKILL.md instructs and what quality_gate.sh validates creates a silent conformance gap.
+### Most fragile module: quality_gate.sh
+This is the only executable code. It mechanically validates artifacts produced by the skill. Bugs here directly affect whether real issues are caught or missed. A false-pass in quality_gate.sh means broken artifacts ship.
 
 ## Existing Tests
-- **No test suite exists.** The project has no automated tests for the specification itself or for quality_gate.sh.
-- There is no CI/CD pipeline.
-- Validation relies on: (1) manual benchmarking against 10+ open-source repos, (2) quality_gate.sh run after each benchmark, (3) council reviews (human-guided multi-model analysis).
-- The benchmarking methodology is described in DEVELOPMENT_CONTEXT.md but the benchmark infrastructure (repos/, setup_repos.sh, run_playbook.sh) is not included in this repository.
+- **Test framework:** None. There is no automated test suite for this repository.
+- **Test count:** 0
+- **Coverage:** None
+- **Gaps:** The entire repository lacks automated testing. quality_gate.sh has no unit tests. SKILL.md's internal consistency is not mechanically verified. The only "testing" is manual benchmarking on external repos (described in DEVELOPMENT_CONTEXT.md).
 
 ## Specifications
-- **Primary specification:** SKILL.md itself IS the specification — it defines expected behavior for AI agents executing the playbook
-- **Supporting specs:** docs_gathered/ contains 9 documents including:
-  - `readme.md` — project README describing intended behavior
-  - `toolkit-documentation.md` — user-facing documentation (identical to ai_context/TOOLKIT.md)
-  - `development-context.md` — maintainer documentation (identical to ai_context/DEVELOPMENT_CONTEXT.md)
-  - O'Reilly Radar articles explaining the design philosophy and methodology
-  - `quality-md-genesis-history.md` — design history of the quality constitution concept
-  - `article-reference-guide.md` — reference guide for article writing
+The repository IS the specification. SKILL.md is the authoritative document. The references/ files are normative extensions. The key behavioral rules are:
+- Phase gate definitions with numbered checks (e.g., Phase 1 completion gate has 12 checks)
+- Artifact contracts (the table at SKILL.md lines 86-115)
+- Sidecar JSON schemas (tdd-results.json, integration-results.json) with exact field requirements
+- 45 self-check benchmarks in verification.md
+- quality_gate.sh checks that encode a subset of the artifact contract
 
 ## Open Exploration Findings
 
-### Finding 1: TDD sidecar JSON summary schema inconsistency between two canonical examples
-SKILL.md contains two canonical examples of `tdd-results.json`. They use DIFFERENT summary field names:
-- **Example 1** (SKILL.md line 127): `"total": 3, "confirmed_open": 1, "red_failed": 0, "green_failed": 0, "tdd_verified": 2`
-- **Example 2** (SKILL.md line 1382-1388): `"total": 6, "verified": 4, "confirmed_open": 1, "red_failed": 1, "green_failed": 0`
-- **Line 1394** states: "The `summary` object must contain exactly these keys: `total`, `verified`, `confirmed_open`, `red_failed`, `green_failed`."
+### Finding 1: quality_gate.sh integration sidecar validation is warn-only in benchmark mode
+**File:** `/Users/andrewstellman/tmp/QFB-bootstrap/quality_gate.sh`, lines 382-388
+**Bug hypothesis:** When integration-results.json is missing, benchmark mode issues only a WARN, not a FAIL. But the artifact contract table in SKILL.md (line 109) says integration-results.json is required "When integration tests run." The gate's leniency means a run that executed integration tests but failed to produce the sidecar JSON would still pass the gate. This traces from `check_repo()` at line 93 through the `[Integration Sidecar JSON]` section at line 368 which uses `warn` instead of `fail` for benchmark mode.
 
-The first example uses `tdd_verified` while the second uses `verified`. An agent following Example 1 will produce a schema that does not match the normative text at line 1394. Furthermore, quality_gate.sh (line 229) only checks for `confirmed_open`, `red_failed`, and `green_failed` — it does NOT check for `total`, `verified`, or `tdd_verified`, so either example will pass the gate despite the inconsistency.
+### Finding 2: quality_gate.sh triage probe check has inconsistent strictness handling
+**File:** `/Users/andrewstellman/tmp/QFB-bootstrap/quality_gate.sh`, lines 147-163
+**Bug hypothesis:** The triage executable evidence check uses `fail` in benchmark mode but `warn` in general mode. However, SKILL.md's spec_audit.md reference (line 130-148) says verification probes "must produce executable evidence" unconditionally. The gate's `--general` mode allows non-executable triage evidence to pass, creating a strictness gap where general-mode runs skip a mandatory requirement. This traces from the `$STRICTNESS` check at line 157 to the probe evidence check at line 148.
 
-### Finding 2: Phase numbering inconsistency — Phase 7 exists but is not in the plan overview
-SKILL.md line 12-31 describes Phases 0-6 in the plan overview. Phase 7 ("Present, Explore, Improve") is defined at line 1890 but is NOT mentioned in the plan overview (lines 12-31). Additionally:
-- The Phase completion checklist (line 688) lists Phases 1-6 but not Phase 7
-- The convergence check (line 1797) says "skip to Phase 7" — referencing a phase that the plan overview omits
-- verification.md line 75 says "Inferred requirements should be flagged for user review in Phase 7"
-- The end-of-Phase-6 message (line 1838-1864) does NOT mention Phase 7
-- The agents/ orchestrators describe six phases, not seven
+### Finding 3: Version detection logic in quality_gate.sh may fail for skill-as-self-target
+**File:** `/Users/andrewstellman/tmp/QFB-bootstrap/quality_gate.sh`, lines 59-67
+**Bug hypothesis:** When running `quality_gate.sh .` from the QFB-bootstrap directory itself (this repo), the version detection loop tries `${SCRIPT_DIR}/../SKILL.md`, `${SCRIPT_DIR}/SKILL.md`, `SKILL.md`, and three nested paths. Since SKILL.md is in the repo root and quality_gate.sh is also in the root, the detection should work via `SKILL.md` (relative). But if invoked from a different working directory (e.g., `./quality_gate.sh /path/to/QFB-bootstrap`), the relative `SKILL.md` path fails and the nested paths won't match either, since the skill isn't installed in a subdirectory. The script would proceed with `VERSION=""` and skip version-stamp consistency checks entirely.
 
-This creates confusion: is Phase 7 required? Optional? Part of the standard flow or a legacy artifact? An agent following the plan overview will skip Phase 7 entirely.
+### Finding 4: SKILL.md Phase 1 gate check 4 allows 4 findings in the same module
+**File:** `/Users/andrewstellman/tmp/QFB-bootstrap/SKILL.md`, line 849
+**Bug hypothesis:** Gate check 4 requires "at least 8 concrete bug hypotheses... At least 4 must reference different modules or subsystems." This means up to 4 findings could reference the SAME module. Combined with gate check 5 requiring only 3 multi-function traces, a conformant EXPLORATION.md could have 5 single-function isolated findings in one module plus 3 multi-function findings, with only 4 different modules touched. For small codebases with few modules (like this one), the gate is permissive enough that shallow exploration could pass. The spec text at line 321 says "at least 4 must reference different modules or subsystems" but doesn't define what counts as a "module" vs a "subsystem" -- for a single-file project, every function could be argued as a "module."
 
-### Finding 3: Hardcoded `.github/skills/` paths in SKILL.md will fail when skill is installed elsewhere
-SKILL.md references `.github/skills/references/` paths throughout (lines 214, 296, 872-877, 888, 1486, 1514, 1559-1561, 1661). But the skill can be installed at:
-- `.github/skills/SKILL.md` (Copilot flat layout)
-- `.github/skills/quality-playbook/SKILL.md` (Copilot nested layout)
-- `.claude/skills/quality-playbook/SKILL.md` (Claude Code)
-- Or at project root (as in this repository)
+### Finding 5: quality_gate.sh bug count extraction misses non-heading bugs
+**File:** `/Users/andrewstellman/tmp/QFB-bootstrap/quality_gate.sh`, lines 168-205
+**Bug hypothesis:** The script counts bugs by grepping for `^### BUG-[0-9]+` headings. If BUGS.md contains confirmed bugs listed only in a summary table (not as `### BUG-NNN` headings), `bug_count` will be 0, and all downstream checks (TDD sidecar, patches, writeups, TDD logs) will be skipped with "Zero bugs" info messages. The function `check_repo()` at line 93 sets `bug_count` from heading matches at line 183, then uses it as the gate for every subsequent check. A BUGS.md with bugs in non-heading format would escape all validation. The zero-bug detection at line 192 (`grep -qE '(No confirmed|zero|0 confirmed)'`) partially addresses this, but only if the file contains those exact phrases.
 
-When the skill is at `.claude/skills/quality-playbook/SKILL.md`, the reference path `.github/skills/references/exploration_patterns.md` does not exist. The agents/ orchestrators correctly check multiple paths for SKILL.md but SKILL.md itself hardcodes only one path for references. An agent that reads SKILL.md installed at `.claude/skills/` will fail to find references at `.github/skills/references/`.
+### Finding 6: SKILL.md and quality_gate.sh disagree on which artifacts are FAIL vs WARN
+**File:** `/Users/andrewstellman/tmp/QFB-bootstrap/quality_gate.sh`, lines 106-129 vs `/Users/andrewstellman/tmp/QFB-bootstrap/SKILL.md`, lines 86-115
+**Bug hypothesis:** SKILL.md's artifact contract table marks CONTRACTS.md, RUN_CODE_REVIEW.md, RUN_SPEC_AUDIT.md, RUN_INTEGRATION_TESTS.md, and RUN_TDD_TESTS.md as "Yes" (required). But quality_gate.sh at lines 117-123 checks these as `warn` (not `fail`). A run that never produces CONTRACTS.md would pass the quality gate despite the spec saying it's required. The comment at line 116 says "should not halt the skill if absent, per BUG-005" -- but BUG-005 is an internal reference not present in any shipped file, making it an unexplained override of the stated artifact contract.
 
-### Finding 4: quality_gate.sh does not validate TDD log status tags despite SKILL.md claiming it does
-SKILL.md line 1137 states: "The status tag (`RED`, `GREEN`, `NOT_RUN`, `ERROR`) on the first line is machine-readable — `quality_gate.sh` will check for its presence."
+### Finding 7: Orphaned reference to "BUG-005" in quality_gate.sh
+**File:** `/Users/andrewstellman/tmp/QFB-bootstrap/quality_gate.sh`, line 116
+**Bug hypothesis:** The comment `per BUG-005` references a bug ID that doesn't appear in any file in the repository. This is likely from the skill's own quality playbook run, but since the quality/ directory doesn't exist, this reference is dangling. A maintainer reading the code cannot verify why these required artifacts were downgraded to warnings. This traces from line 116 (`# should not halt the skill if absent, per BUG-005`) to the absence of any BUG-005 documentation.
 
-However, quality_gate.sh (lines 277-322) only checks whether the log FILES exist (`-f "${q}/results/${bid}.red.log"`). It does NOT read the first line or validate the status tag content. An agent could create empty log files or log files without status tags and pass the gate.
+### Finding 8: quality_gate.sh uses `ls` glob patterns that may fail on some shells
+**File:** `/Users/andrewstellman/tmp/QFB-bootstrap/quality_gate.sh`, lines 125-129, 132, 141-142, 298-301, 431-432, 517-522, 548-551
+**Bug hypothesis:** The script uses bare `ls ${q}/code_reviews/*.md` and similar glob patterns without quoting. On bash with `set -u` (which is set at line 32), if the glob doesn't match anything, `ls` gets a literal `*` which causes an error. The script handles this inconsistently -- some places use `2>/dev/null` to suppress errors, some don't. For example, line 132 does `ls ${q}/code_reviews/*.md 2>/dev/null` but line 125 does `ls ${q}/test_functional.* &>/dev/null` -- the `&>` redirects both stdout and stderr which is correct, but the behavior differs from `2>/dev/null` in edge cases. More critically, the `ls` pattern at line 298 (`ls ${q}/patches/BUG-*-regression*.patch 2>/dev/null`) would fail to count correctly if filenames contain spaces.
 
-### Finding 5: Artifact contract table says mechanical verify script Created In "Phase 5" but instructions say Phase 1/2
-The artifact contract table (SKILL.md line 97) says `quality/mechanical/verify.sh` is created in "Phase 5". But:
-- SKILL.md line 531 instructs creation of verify.sh during Step 7 (Phase 1 requirements derivation — which is actually Phase 2's contract extraction)
-- SKILL.md line 555 has the "Immediate integrity gate (mandatory, Phase 2a)" that requires verify.sh to run before writing any contract
-- The verify receipt files (line 98) are also listed as "Phase 5" but are generated when verify.sh runs in Phase 2a
+### Finding 9: SKILL.md references "Phase 6" in integration test results section heading
+**File:** `/Users/andrewstellman/tmp/QFB-bootstrap/references/review_protocols.md`, line 378
+**Bug hypothesis:** The integration test protocol execution UX section lists three phases of communication: "Phase 1: The Plan", "Phase 2: Progress", and "Phase 6: Results." This is clearly a numbering error -- should be "Phase 3: Results." The jump from Phase 2 to Phase 6 is confusing because "Phase 6" also refers to the verification phase of the overall playbook. An AI agent following these instructions literally might attempt to map this to the playbook's Phase 6. This traces from line 378 (`### Phase 6: Results`) in the execution UX section.
 
-This table-vs-instruction mismatch means an agent consulting the artifact contract table will expect to create verify.sh in Phase 5, while the detailed instructions demand it in Phase 2.
+### Finding 10: SKILL.md mechanical verification section references worktree but not all environments support it
+**File:** `/Users/andrewstellman/tmp/QFB-bootstrap/SKILL.md`, lines 1069-1080
+**Bug hypothesis:** The patch validation gate instructs use of `git worktree` for compile checking, with a fallback to `git stash`. But this repository itself is not a git repo (confirmed: "Is directory a git repo: No" in the environment). When the skill runs on a non-git project (downloaded tarball, copy of source), both the worktree and stash approaches fail. The fallback text says "or accept `--check`-only validation and note the limitation" but this is buried in a parenthetical, not a clear conditional instruction. An agent following the primary instruction would error out.
 
-### Finding 6: DEVELOPMENT_CONTEXT.md incorrectly labels verification.md as "Phase 3"
-DEVELOPMENT_CONTEXT.md line 23 lists `verification.md` as "45 self-check benchmarks for Phase 3". But verification.md is used in Phase 6 (Verify), not Phase 3 (Code Review). This appears in both `ai_context/DEVELOPMENT_CONTEXT.md` and `docs_gathered/development-context.md`.
-
-### Finding 7: Duplicate content between ai_context/ and docs_gathered/
-`ai_context/TOOLKIT.md` and `docs_gathered/toolkit-documentation.md` are identical (both 475 lines, same content). `ai_context/DEVELOPMENT_CONTEXT.md` and `docs_gathered/development-context.md` are identical (both 173 lines). This creates a maintenance burden where changes must be synchronized in two places, and risks drift where one copy is updated and the other is not.
-
-### Finding 8: quality_gate.sh uses `ls` globbing patterns that may fail on some shells
-quality_gate.sh lines 116, 125-126, 159-165, 388-389, 477-478, 506 use unquoted glob patterns like `ls ${q}/code_reviews/*.md` and `ls ${q}/patches/BUG-*-regression*.patch`. While `set -uo pipefail` is set (line 32), `set -e` is not. The `ls` commands with glob patterns will print error messages to stderr if no files match, but the `wc -l` counting will still work. However, on some systems with `nullglob` or `failglob` options, the behavior may differ. More critically, the `for wf in ${q}/writeups/BUG-*.md` pattern (line 507) will iterate over the literal unexpanded glob if no files match, causing `[ -f "$wf" ]` to test against the unexpanded pattern string.
-
-### Finding 9: Step numbering inside Phase 1 is confusing — Steps 0-7 span Phases 1-2
-SKILL.md Phase 1 (starting line 292) contains Steps 0 through 7b. But Step 7 ("Derive Testable Requirements") with its five-phase pipeline (Phases A-E) is described as part of Phase 1 exploration. Yet the plan overview says requirements derivation happens in Phase 2 (line 21). The checkpoint at line 665 says "After completing Phase 1 exploration" but Steps 0-7b include the entire requirements pipeline which is a Phase 2 activity. This means the Phase 1 completion gate (line 828) checks for derived requirements that the plan overview assigns to Phase 2.
-
-### Finding 10: The per-bug field list in tdd-results.json schema differs between SKILL.md and verification.md
-SKILL.md line 1392 lists required per-bug fields as: `id`, `requirement`, `red_phase`, `green_phase`, `verdict`, `fix_patch_present`, `writeup_path`. The canonical example at line 1362-1379 includes additional fields: `regression_patch`, `fix_patch`, `patch_gate_passed`, `junit_red`, `junit_green`, `junit_available`, `notes`. But the earlier canonical example at line 115-123 uses a different set: `id`, `requirement`, `red_phase`, `green_phase`, `verdict`, `fix_patch_present`, `writeup_path` — matching the required list but missing all the extra fields from the second example. verification.md line 105 lists: `id`, `requirement`, `red_phase`, `green_phase`, `verdict`, `fix_patch_present`, `writeup_path` — matching the first example. Agents following the more detailed second example will produce fields not validated by the gate.
-
-### Finding 11: quality_gate.sh never validates EXPLORATION.md
-The Phase 1 completion gate (SKILL.md lines 828-845) describes 12 mandatory checks for EXPLORATION.md. But quality_gate.sh does not check for EXPLORATION.md at all — it is not in the file existence checks (line 107). An agent could skip Phase 1 entirely, produce no EXPLORATION.md, and still pass quality_gate.sh if all other artifacts exist.
+### Finding 11: Inconsistency between SKILL.md and quality_gate.sh on test_functional file detection
+**File:** `/Users/andrewstellman/tmp/QFB-bootstrap/quality_gate.sh`, lines 125-129 vs `/Users/andrewstellman/tmp/QFB-bootstrap/SKILL.md`, line 69
+**Bug hypothesis:** SKILL.md says to "Use the project's language" for functional test naming: `test_functional.py`, `FunctionalSpec.scala`, `functional.test.ts`, `FunctionalTest.java`. But quality_gate.sh at line 125 only checks `ls ${q}/test_functional.*` -- it would miss `FunctionalSpec.scala`, `FunctionalTest.java`, and `functional.test.ts`. The language-specific names given in SKILL.md line 69 aren't all prefixed with `test_functional.`, creating a detection gap. The gate's verification.md benchmark 8 references `quality/test_functional.*` but verification.md doesn't mention the alternative names.
 
 ## Quality Risks
 
-### Risk 1 (HIGH): Contradictory JSON schema templates cause agent-produced JSON to fail silent validation
-**Because** SKILL.md lines 127 and 1382-1388 define two different summary field structures for tdd-results.json (`tdd_verified` vs `verified`), an agent faithfully copying the first template will produce JSON that does not match the normative requirement at line 1394. quality_gate.sh (line 229) only validates three of the five required summary keys (`confirmed_open`, `red_failed`, `green_failed`), so neither `tdd_verified` nor `verified` is actually gate-checked. The result is that the gate passes regardless of which template the agent uses, but downstream tooling or human reviewers expecting one schema will encounter the other.
-- **Priority:** 1 — This is a direct specification contradiction with real downstream impact. An agent cannot satisfy both templates simultaneously.
+### Risk 1 (HIGH): quality_gate.sh false-pass on artifact format violations
+**Function:** `check_repo()` at quality_gate.sh:93
+**Specific scenario:** Because quality_gate.sh downgrads CONTRACTS.md, RUN_CODE_REVIEW.md, RUN_SPEC_AUDIT.md, RUN_INTEGRATION_TESTS.md, RUN_TDD_TESTS.md, and test_functional.* to WARN (lines 117-129), a run that produces only BUGS.md, REQUIREMENTS.md, QUALITY.md, PROGRESS.md, COVERAGE_MATRIX.md, and COMPLETENESS_REPORT.md -- but none of the protocol files, no functional tests, and no contracts -- would pass quality_gate.sh with zero FAILs. The gate would exit 0 (line 673-676 only checks `$FAIL -gt 0`). This directly contradicts SKILL.md's artifact contract table where these are marked "Required: Yes." A user running `quality_gate.sh .` after a partial run would see "GATE PASSED" despite missing half the required artifacts.
 
-### Risk 2 (HIGH): Phase numbering gap causes agents to skip Phase 7 or misroute convergence
-**Because** the plan overview (SKILL.md lines 12-31) describes Phases 0-6 but Phase 7 exists at line 1890, and the convergence check at line 1797 says "skip to Phase 7," an agent that uses the plan overview as its execution roadmap will have no entry for Phase 7 and will not know to execute it. The end-of-Phase-6 message (line 1838) says "STOP" without mentioning Phase 7. The orchestrator agents (agents/quality-playbook-claude.agent.md, agents/quality-playbook.agent.md) describe six phases, confirming Phase 7 is invisible to the orchestration layer.
-- **Priority:** 2 — Phase 7 contains the interactive improvement menu, which is valuable but not critical for bug discovery. The real risk is the dangling "skip to Phase 7" reference in the convergence check.
+### Risk 2 (HIGH): SKILL.md internal cross-reference drift between spec and gate
+**Files:** SKILL.md lines 86-115 (artifact contract table) vs quality_gate.sh lines 106-129 (file existence checks) vs references/verification.md (45 benchmarks)
+**Specific scenario:** Three documents independently define what's required: SKILL.md's artifact contract table, quality_gate.sh's check logic, and verification.md's benchmark checklist. When a new artifact is added to SKILL.md's table, it must also be added to quality_gate.sh and to verification.md. But there's no mechanical check that these three sources agree. In practice: SKILL.md says `quality/EXPLORATION.md` is written in Phase 1 (line 258), but quality_gate.sh never checks for its existence. SKILL.md says `quality/VERSION_HISTORY.md` is produced by the requirements pipeline (requirements_pipeline.md line 17), but quality_gate.sh doesn't check for it. These silent omissions mean the gate validates a subset of what the spec requires.
 
-### Risk 3 (HIGH): Hardcoded reference paths break installation at non-default locations
-**Because** SKILL.md hardcodes `.github/skills/references/` throughout (16+ occurrences), but Claude Code installations use `.claude/skills/quality-playbook/references/`, an agent running from a Claude Code installation will fail to find reference files. The orchestrator agents check multiple SKILL.md locations but SKILL.md itself does not adapt its internal reference paths. This means the most common Claude Code installation path will produce reference-not-found errors for every phase that reads a reference file.
-- **Priority:** 1 — This affects every Claude Code user and every phase that references a file.
+### Risk 3 (HIGH): Pattern numbering confusion in review_protocols.md
+**File:** references/review_protocols.md, line 378
+**Specific scenario:** The integration test execution UX uses "Phase 1", "Phase 2", "Phase 6" as section headings for the three communication phases (plan, progress, results). A conforming AI agent that reads both SKILL.md and review_protocols.md simultaneously will encounter "Phase 6" in two completely different contexts -- the playbook's Phase 6 (Verification) and the integration test UX's Phase 6 (Results). Because AI agents follow instructions literally and SKILL.md has extensive Phase 6 verification content, there's a real risk of an agent confusing these, potentially trying to run verification benchmarks when the protocol means "show results."
 
-### Risk 4 (MEDIUM): quality_gate.sh validates less than SKILL.md claims
-**Because** quality_gate.sh does not validate TDD log status tags (Finding 4), does not validate `total` or `verified`/`tdd_verified` summary keys (Finding 1), and does not check for EXPLORATION.md (Finding 11), a run that passes quality_gate.sh may still be non-conformant per SKILL.md. The specification's anti-tampering claims (e.g., "quality_gate.sh will check for its presence" regarding status tags) are false, which means the mechanical validation provides weaker guarantees than documented.
-- **Priority:** 2 — Gate under-validation means bugs in artifacts can slip through.
+### Risk 4 (MEDIUM): quality_gate.sh `eval` usage creates injection risk
+**File:** quality_gate.sh, lines 439-448
+**Specific scenario:** The test file extension check uses `eval "find '${repo_dir}' ..."` to run find commands. The `repo_dir` variable comes from command-line arguments (line 55: `REPO_DIRS+=("$arg")`). If a user passes a directory name containing shell metacharacters (e.g., `repo'$(id)'name`), the `eval` would execute the injection. While this is a developer tool not exposed to untrusted input, the pattern is dangerous and unnecessary -- the find commands could be run directly without `eval`.
 
-### Risk 5 (MEDIUM): Step 7 requirements pipeline described as Phase 1 but assigned to Phase 2
-**Because** Step 7 (SKILL.md line 508) with its five-phase requirements pipeline is located within the Phase 1 section but the plan overview assigns requirements to Phase 2 (line 21), an agent executing phases separately will face a contradiction. If it runs Phase 1 and stops, it may or may not have run the requirements pipeline. The Phase 1 completion gate checks for derived requirements (gate check 3, line 835), suggesting the pipeline IS part of Phase 1 — contradicting the plan overview.
-- **Priority:** 3 — This is a structural confusion that affects multi-session execution, though single-session runs handle it implicitly.
+### Risk 5 (MEDIUM): Sidecar JSON validation in quality_gate.sh uses grep, not a JSON parser
+**File:** quality_gate.sh, lines 75-91
+**Specific scenario:** The `json_has_key`, `json_str_val`, and `json_key_count` helper functions use `grep` to parse JSON. This means: (1) a key inside a string value would be counted (`"description": "the id field"` would match a check for key `id`); (2) multi-line JSON with keys on non-standard lines might not match; (3) escaped quotes in values could break extraction. For the sidecar JSON files the skill generates, these edge cases are unlikely but not impossible -- a bug description containing `"verdict"` as part of the text would inflate the key count check.
+
+### Risk 6 (MEDIUM): SKILL.md "specification-primary" guidance is buried and easy to miss
+**File:** SKILL.md, lines 353-354
+**Specific scenario:** The guidance for specification-primary repositories (like this one) is a single paragraph at the end of the "pre-flight scope declaration" section. It says to "derive requirements from the specification's internal consistency, completeness, and correctness." But this guidance competes with 30+ pages of instructions about reading source code, tracing function calls, and finding defensive patterns -- all of which are code-centric. An agent following Phase 1 steps sequentially would hit Step 2 (Map the Architecture), Step 3 (Read Existing Tests), Step 5 (Find the Skeletons) -- all code-focused -- before encountering the specification-primary paragraph buried in the pre-flight section. The result: agents applying the playbook to specification-primary repos will over-focus on quality_gate.sh and under-focus on SKILL.md's internal consistency.
+
+### Risk 7 (MEDIUM): quality_gate.sh date validation allows past dates with no lower bound
+**File:** quality_gate.sh, lines 256-276
+**Specific scenario:** The TDD sidecar date check validates ISO 8601 format, rejects placeholders (`YYYY-MM-DD`, `0000-00-00`), and rejects future dates. But it accepts any past date -- `1970-01-01` would pass. A stale artifact from a previous run with a real but old date would not be flagged. The cross-run contamination check at lines 606-614 compares directory version to skill version, but doesn't check date freshness.
 
 ## Skeletons and Dispatch
 
-### State machine: Phase execution lifecycle
-SKILL.md defines phases 0-7 (though 7 is partially hidden). The state transitions are:
-- Phase 0 (automatic, conditional on `previous_runs/`)
-- Phase 0b (automatic, conditional on sibling directories and no `previous_runs/`)
-- Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6 → (Phase 7?)
-- After Phase 6: iteration loop (gap → unfiltered → parity → adversarial)
-- Convergence check may loop back to Phase 0
+### State machine: Playbook phase progression
+**State field:** Phase completion checkboxes in PROGRESS.md
+**States:** Phase 0 (auto) -> Phase 1 (Explore) -> Phase 2 (Generate) -> Phase 3 (Code Review) -> Phase 4 (Spec Audit) -> Phase 5 (Reconciliation) -> Phase 6 (Verify) -> Phase 7 (Present)
+**Transitions:** Each phase has entry gates (prerequisites from prior phases) and exit gates (completion checks)
+**Gap:** Phase 7 has no completion gate defined. SKILL.md's phase completion checklist in PROGRESS.md (line 707) includes Phase 7 as `[ ] Phase 7: Present, Explore, Improve (interactive)` but there are no instructions for when to check this box or what constitutes Phase 7 completion.
 
-**Gap:** Phase 7 is unreachable from the standard flow. The end-of-Phase-6 message says STOP, suggests iterations, but never mentions Phase 7.
+### Dispatch table: quality_gate.sh file existence checks
+**Function:** `check_repo()` at quality_gate.sh:93
+**Dispatches on:** artifact file names
+**Primary artifacts (FAIL if missing):** BUGS.md, REQUIREMENTS.md, QUALITY.md, PROGRESS.md, COVERAGE_MATRIX.md, COMPLETENESS_REPORT.md
+**Secondary artifacts (WARN if missing):** CONTRACTS.md, RUN_CODE_REVIEW.md, RUN_SPEC_AUDIT.md, RUN_INTEGRATION_TESTS.md, RUN_TDD_TESTS.md, test_functional.*
+**Not checked at all:** EXPLORATION.md, VERSION_HISTORY.md, AGENTS.md, mechanical/verify.sh receipt files (checked only if mechanical/ exists)
 
-### Dispatch: quality_gate.sh check_repo() function
-The `check_repo()` function (lines 93-582) dispatches across nine validation sections:
-1. File Existence (lines 106-150)
-2. BUGS.md Heading Format (lines 153-189)
-3. TDD Sidecar JSON (lines 192-275)
-4. TDD Log Files (lines 278-322)
-5. Integration Sidecar JSON (lines 325-345)
-6. Use Cases (lines 348-383)
-7. Test File Extension (lines 386-443)
-8. Terminal Gate (lines 446-450)
-9. Mechanical Verification (lines 453-470)
-10. Patches (lines 473-498)
-11. Bug Writeups (lines 501-532)
-12. Version Stamps (lines 535-558)
-13. Cross-Run Contamination (lines 561-581)
-
-### Dispatch: SKILL.md reference file routing
-SKILL.md references at least 7 reference files. Each phase header contains a "Required references" block that lists which files to read. The routing is:
-- Phase 1: exploration_patterns.md
-- Phase 2: requirements_pipeline.md, defensive_patterns.md, schema_mapping.md, constitution.md, functional_tests.md, review_protocols.md
-- Phase 3: review_protocols.md
-- Phase 4: spec_audit.md
-- Phase 5: requirements_pipeline.md, review_protocols.md, spec_audit.md
-- Phase 6: verification.md
-
-All paths are hardcoded to `.github/skills/references/` (see Finding 3).
+### Feature registry: quality_gate.sh section checks
+The gate runs these labeled check sections in sequence:
+1. `[File Existence]` -- lines 106-166
+2. `[BUGS.md Heading Format]` -- lines 169-205
+3. `[TDD Sidecar JSON]` -- lines 208-291
+4. `[TDD Log Files]` -- lines 294-365
+5. `[Integration Sidecar JSON]` -- lines 368-388
+6. `[Use Cases]` -- lines 391-426
+7. `[Test File Extension]` -- lines 429-486
+8. `[Terminal Gate]` -- lines 489-494
+9. `[Mechanical Verification]` -- lines 497-513
+10. `[Patches]` -- lines 516-541
+11. `[Bug Writeups]` -- lines 544-576
+12. `[Version Stamps]` -- lines 579-602
+13. `[Cross-Run Contamination]` -- lines 605-624
 
 ## Pattern Applicability Matrix
 | Pattern | Decision | Target modules | Why |
 |---|---|---|---|
-| Fallback and Degradation Path Parity | SKIP | N/A | The project has no runtime fallback paths. SKILL.md describes a single execution flow per phase, not multiple strategies for the same operation. |
-| Dispatcher Return-Value Correctness | SKIP | N/A | quality_gate.sh returns exit codes (0 or 1) but has no complex dispatch-return-value interactions. The shell script's control flow is linear. |
-| Cross-Implementation Consistency | FULL | agents/, SKILL.md, ai_context/, docs_gathered/ | Multiple documents describe the same concepts (phases, installation, execution) and must be consistent. agents/quality-playbook.agent.md and agents/quality-playbook-claude.agent.md describe the same six phases. SKILL.md and TOOLKIT.md describe the same workflow. |
-| Enumeration and Representation Completeness | FULL | SKILL.md artifact contract table, quality_gate.sh, verification.md | The artifact contract table (SKILL.md lines 72-101) defines the canonical list of artifacts. quality_gate.sh must check for all required artifacts. verification.md must have benchmarks for all gate-enforced items. These three closed sets must be synchronized. |
-| API Surface Consistency | FULL | SKILL.md JSON schema templates | SKILL.md defines the same JSON schemas in multiple places (tdd-results.json appears twice with different structures). The "API" here is the JSON schema contract that agents produce and gates validate. |
-| Spec-Structured Parsing Fidelity | SKIP | N/A | quality_gate.sh uses grep-based JSON parsing (not formal parsing), but the project doesn't parse formal grammars in the spec-structured sense. The grep patterns are ad hoc by design. |
+| Fallback and Degradation Path Parity | FULL | quality_gate.sh strictness modes, SKILL.md phase prerequisites | quality_gate.sh has `--benchmark` vs `--general` dual strictness with different fail/warn behavior; SKILL.md has multiple fallback paths for reference file resolution, git worktree fallbacks |
+| Dispatcher Return-Value Correctness | FULL | quality_gate.sh exit codes, SKILL.md gate pass/fail semantics | quality_gate.sh aggregates FAIL/WARN counts to produce a single exit code; incorrect return value means the gate lies about pass/fail status |
+| Cross-Implementation Consistency | FULL | SKILL.md artifact contract vs quality_gate.sh checks vs verification.md benchmarks | Three documents independently specify what's required; inconsistencies mean the spec promises something the gate doesn't enforce |
+| Enumeration and Representation Completeness | FULL | quality_gate.sh checked artifacts vs SKILL.md required artifacts, verification.md benchmark list vs quality_gate.sh sections | The authoritative list of artifacts is in SKILL.md; the gate and verification checklist must cover all of them |
+| API Surface Consistency | SKIP | No multiple API surfaces; this is a specification repo, not a library | Not applicable -- the repo has no dual-surface API pattern |
+| Spec-Structured Parsing Fidelity | SKIP | quality_gate.sh does minimal parsing (JSON grep, date regex) but no formal grammar parsing | The grep-based JSON parsing is covered under Risk 5; no RFC/grammar-level parsing exists |
 
-## Pattern Deep Dive — Cross-Implementation Consistency
+## Pattern Deep Dive -- Fallback and Degradation Path Parity
 
-### Phase descriptions across SKILL.md, agents, and TOOLKIT.md
+### quality_gate.sh benchmark vs general strictness modes
+- **Primary path (benchmark mode):** Default strictness. All checks run with full `fail()` enforcement.
+- **Fallback path (general mode):** Relaxed strictness via `--general` flag.
 
-**SKILL.md plan overview (lines 12-31):** Describes Phases 0-6 explicitly. No Phase 7.
+**Parity analysis across all strictness-sensitive checks:**
 
-**agents/quality-playbook-claude.agent.md (lines 79-85):** Describes six phases (1-6). No Phase 0, no Phase 7.
+| Check | Benchmark | General | Parity gap? |
+|---|---|---|---|
+| Missing triage probes (line 157-161) | FAIL | WARN | YES -- executable triage evidence is spec-required (spec_audit.md lines 130-148) regardless of mode |
+| Missing integration-results.json (line 382-388) | WARN | INFO | Partial -- neither mode FAILs this, but SKILL.md says it's required when integration tests run |
+| UC count below threshold (line 416-419) | FAIL | WARN | YES -- canonical UC identifiers are spec-required (verification.md benchmark 43) |
 
-**agents/quality-playbook.agent.md (lines 110-118):** Describes six phases (1-6). No Phase 0, no Phase 7.
+**Candidate bugs:**
+- The `--general` mode silently weakens enforcement of spec-required artifacts. A user running `quality_gate.sh --general .` could pass the gate with missing triage probes and insufficient use cases -- both of which SKILL.md and the reference files say are mandatory.
+- The integration sidecar check is WARN even in benchmark mode, creating an unconditional gap.
 
-**ai_context/TOOLKIT.md (lines 148-152):** Describes Phase 1 through Phase 6. References Phase 0 at line 40 indirectly. No Phase 7.
+### SKILL.md reference file resolution fallback
+- **Primary path:** `references/` relative to SKILL.md (SKILL.md line 47)
+- **Fallback 1:** `.claude/skills/quality-playbook/references/` (line 48)
+- **Fallback 2:** `references/` in repo root (line 49)
+- **Fallback 3:** `.github/skills/quality-playbook/references/` (line 50)
 
-**SKILL.md body (line 1890):** Contains `## Phase 7: Present, Explore, Improve (Interactive)` with full instructions.
+**Parity gap:** The fallback chain assumes the reference files are always present. There is no error handling if none of the four paths resolve -- the instruction says "If the relative path doesn't resolve, walk the fallback list above" but doesn't say what to do if all four fail. An agent on a partial installation (SKILL.md copied but references/ not copied) would silently proceed without the reference files, producing degraded output with no explicit error.
 
-**Gap:** Phase 7 exists in SKILL.md body but is absent from ALL cross-implementation surfaces (plan overview, both orchestrators, TOOLKIT.md). Phase 0/0b exist in SKILL.md but are absent from orchestrators.
+## Pattern Deep Dive -- Dispatcher Return-Value Correctness
 
-### Installation instructions across surfaces
+### quality_gate.sh exit code determination
+- **Function:** Main script body, lines 664-676
+- **Input conditions:** `$FAIL` counter (incremented by `fail()` at line 69), `$WARN` counter (incremented by `warn()` at line 71)
+- **Return value logic:**
+  - `$FAIL -gt 0` -> exit 1 (gate failed)
+  - `$FAIL -eq 0` -> exit 0 (gate passed), regardless of WARN count
 
-**AGENTS.md (lines 27-30):** Copies to `.github/skills/` only. No `.claude/skills/` instructions.
+**Combinations checked:**
+- Many FAILs, no WARNs: exits 1 -- correct
+- No FAILs, many WARNs: exits 0 -- **potentially incorrect** because some WARNs represent spec-required artifacts (Finding 6)
+- No FAILs, no WARNs: exits 0 -- correct
+- Mixed FAILs and WARNs: exits 1 -- correct (FAIL dominates)
 
-**docs_gathered/readme.md (lines 17-30):** Provides both `.github/skills/` AND `.claude/skills/quality-playbook/` paths.
+**The core issue:** The dispatcher's return value is correct for its own logic but incorrect relative to the specification. The WARN-only path returns "gate passed" for conditions that SKILL.md says are failures. This is a dispatcher return-value bug where the classification (WARN vs FAIL) is wrong upstream, causing the final exit code to be wrong downstream.
 
-**ai_context/TOOLKIT.md (lines 20-25):** Only shows `.github/skills/` path.
+**Candidate requirement:** REQ: quality_gate.sh must FAIL (not WARN) for all artifacts marked "Required: Yes" in SKILL.md's artifact contract table.
 
-**agents/quality-playbook.agent.md (lines 17-19, 29-36):** Shows both Copilot and Claude Code paths.
+## Pattern Deep Dive -- Cross-Implementation Consistency
 
-**Gap:** AGENTS.md (the project's own bootstrap file) only shows Copilot installation. Users following AGENTS.md for Claude Code will use the wrong path structure.
+### Artifact requirement: three implementations of the same contract
 
-### JSON schema templates for tdd-results.json
+The "required artifacts" contract is stated in three places:
 
-**SKILL.md Example 1 (lines 109-130):** Summary uses `tdd_verified` key.
+**Implementation A: SKILL.md artifact contract table (lines 86-115)**
+Lists 20+ artifacts with Required? column. Key required artifacts: QUALITY.md, REQUIREMENTS.md, CONTRACTS.md, test_functional.*, RUN_CODE_REVIEW.md, RUN_INTEGRATION_TESTS.md, RUN_SPEC_AUDIT.md, RUN_TDD_TESTS.md, BUGS.md, COVERAGE_MATRIX.md, COMPLETENESS_REPORT.md, PROGRESS.md, AGENTS.md, mechanical/verify.sh.
 
-**SKILL.md Example 2 (lines 1357-1389):** Summary uses `verified` key.
+**Implementation B: quality_gate.sh file existence checks (lines 106-129)**
+Checks with FAIL: BUGS.md, REQUIREMENTS.md, QUALITY.md, PROGRESS.md, COVERAGE_MATRIX.md, COMPLETENESS_REPORT.md
+Checks with WARN: CONTRACTS.md, RUN_CODE_REVIEW.md, RUN_SPEC_AUDIT.md, RUN_INTEGRATION_TESTS.md, RUN_TDD_TESTS.md, test_functional.*
+Not checked: AGENTS.md, EXPLORATION.md, VERSION_HISTORY.md
 
-**SKILL.md normative text (line 1394):** Says summary must contain `total`, `verified`, `confirmed_open`, `red_failed`, `green_failed`.
+**Implementation C: verification.md benchmark 40 (lines 226-229)**
+"Required files: BUGS.md, REQUIREMENTS.md, QUALITY.md, PROGRESS.md, COVERAGE_MATRIX.md, COMPLETENESS_REPORT.md. If Phase 3 ran: at least one file in code_reviews/. If Phase 4 ran: at least one auditor file and a triage file in spec_audits/."
 
-**quality_gate.sh (line 229):** Only checks for `confirmed_open`, `red_failed`, `green_failed`.
+**Consistency gaps:**
 
-**verification.md (line 108):** Says "TDD summary must include a `confirmed_open` count alongside `verified`, `red_failed`, and `green_failed`" — uses `verified` (matching Example 2).
+| Artifact | SKILL.md says | quality_gate.sh does | verification.md says |
+|---|---|---|---|
+| CONTRACTS.md | Required: Yes | WARN if missing | Not mentioned in benchmark 40 |
+| test_functional.* | Required: Yes | WARN if missing | Not mentioned in benchmark 40 |
+| RUN_CODE_REVIEW.md | Required: Yes | WARN if missing | Not mentioned in benchmark 40 |
+| RUN_SPEC_AUDIT.md | Required: Yes | WARN if missing | Not mentioned in benchmark 40 |
+| RUN_TDD_TESTS.md | Required: Yes | WARN if missing | Not mentioned in benchmark 40 |
+| RUN_INTEGRATION_TESTS.md | Required: Yes | WARN if missing | Not mentioned in benchmark 40 |
+| AGENTS.md | Required: Yes | Not checked | Not mentioned |
+| EXPLORATION.md | Written in Phase 1 | Not checked | Not mentioned |
+| VERSION_HISTORY.md | Produced by pipeline | Not checked | Not mentioned |
+| mechanical/verify.sh | Required: Yes (benchmark) | Only checked if mechanical/ exists | Mentioned in benchmark 27 |
 
-**Gap:** Example 1's `tdd_verified` key contradicts the normative text's `verified` key. Neither `total` nor `verified`/`tdd_verified` is validated by quality_gate.sh.
+**Candidate requirement:** REQ: All three artifact-requirement sources (SKILL.md table, quality_gate.sh, verification.md) must agree on which artifacts are required and enforce the same severity for missing artifacts.
 
-## Pattern Deep Dive — Enumeration and Representation Completeness
+## Pattern Deep Dive -- Enumeration and Representation Completeness
 
-### Artifact contract table vs quality_gate.sh validation
+### quality_gate.sh check sections vs SKILL.md requirements
 
-**Authoritative source:** SKILL.md artifact contract table (lines 72-101) — 27 artifact entries.
+**Authoritative source (SKILL.md artifact contract table, lines 86-115):**
+All artifacts with "Required: Yes" or conditional requirements.
 
-**quality_gate.sh file existence checks (lines 107-108):** Checks for: BUGS.md, REQUIREMENTS.md, QUALITY.md, PROGRESS.md, COVERAGE_MATRIX.md, COMPLETENESS_REPORT.md.
+**Closed set (quality_gate.sh check sections):**
+The 13 labeled check sections handle a specific subset of the artifact contract.
 
-**Missing from quality_gate.sh file existence:**
-- `CONTRACTS.md` — listed as Required in artifact table (line 78) but not checked by gate
-- `test_functional.*` — listed as Required (line 79) but only warned, not failed, when missing (line 442)
-- `RUN_CODE_REVIEW.md` — listed as Required (line 81) but not directly checked
-- `RUN_INTEGRATION_TESTS.md` — listed as Required (line 82) but not directly checked
-- `RUN_SPEC_AUDIT.md` — listed as Required (line 83) but not directly checked
-- `RUN_TDD_TESTS.md` — listed as Required (line 84) but not directly checked
-- `AGENTS.md` — listed as Required (line 89) but not checked (it's at project root)
-- `EXPLORATION.md` — not in artifact table at all, but Phase 1 gate requires it
+**Missing entries -- artifacts required by SKILL.md but not checked by quality_gate.sh:**
+1. `AGENTS.md` -- Required: Yes, Created In: Phase 2 -- not checked at all
+2. `quality/EXPLORATION.md` -- mandatory handoff file from Phase 1 -- not checked
+3. `quality/VERSION_HISTORY.md` -- produced by requirements pipeline -- not checked
+4. `quality/RUN_TDD_TESTS.md` -- Required: Yes -- only WARN, not FAIL
+5. `quality/CONTRACTS.md` -- Required: Yes -- only WARN, not FAIL
 
-The code_reviews/ and spec_audits/ directories ARE checked. But 7 individually required artifacts from the contract table are NOT validated by quality_gate.sh. An agent could omit CONTRACTS.md, all four RUN_*.md files, and AGENTS.md, and still pass the gate.
+**Missing check categories -- things SKILL.md requires but quality_gate.sh doesn't verify:**
+1. EXPLORATION.md section structure (Phase 2 entry gate requires 6 specific sections)
+2. REQUIREMENTS.md section structure (must begin with human-readable overview)
+3. QUALITY.md scenario count (must have scenarios, not just exist)
+4. Version stamp format correctness (gate checks version match but not format)
+5. Integration test protocol self-containment (verification.md benchmark 12)
 
-### verification.md benchmark count
-
-**Claim:** "45 self-check benchmarks" (stated in SKILL.md line 1661, DEVELOPMENT_CONTEXT.md, TOOLKIT.md, agents)
-
-**Actual count in verification.md:** Benchmarks numbered 1-45. Count: 45. This is consistent.
-
-However, the quick checklist at the bottom of verification.md (lines 253-301) has approximately 49 checklist items, some of which are duplicates of the numbered benchmarks and some of which are not explicitly numbered benchmarks. This creates ambiguity about whether the checklist is the authoritative set or the numbered benchmarks are.
-
-## Pattern Deep Dive — API Surface Consistency
-
-### tdd-results.json schema across surfaces
-
-**Surface A: SKILL.md "Sidecar JSON Canonical Examples" (lines 109-130)**
-```json
-"summary": {
-  "total": 3, "confirmed_open": 1, "red_failed": 0, "green_failed": 0, "tdd_verified": 2
-}
-```
-Per-bug fields: `id`, `requirement`, `red_phase`, `green_phase`, `verdict`, `fix_patch_present`, `writeup_path`
-
-**Surface B: SKILL.md "File 7: RUN_TDD_TESTS.md" (lines 1357-1389)**
-```json
-"summary": {
-  "total": 6, "verified": 4, "confirmed_open": 1, "red_failed": 1, "green_failed": 0
-}
-```
-Per-bug fields: `id`, `requirement`, `red_phase`, `green_phase`, `verdict`, `regression_patch`, `fix_patch`, `fix_patch_present`, `patch_gate_passed`, `writeup_path`, `junit_red`, `junit_green`, `junit_available`, `notes`
-
-**Surface C: quality_gate.sh validation (lines 199-268)**
-Checked per-bug fields: `id`, `requirement`, `red_phase`, `green_phase`, `verdict`, `fix_patch_present`, `writeup_path`
-Checked summary keys: `confirmed_open`, `red_failed`, `green_failed`
-Rejected non-canonical fields: `bug_id`, `bug_name`, `status`, `phase`, `result`
-
-**Surface D: verification.md (line 105)**
-Required per-bug fields: `id`, `requirement`, `red_phase`, `green_phase`, `verdict`, `fix_patch_present`, `writeup_path`
-
-**Divergences:**
-1. Summary key `tdd_verified` (Surface A) vs `verified` (Surface B) — normative text says `verified`
-2. Surface B has 7 additional per-bug fields not present in Surfaces A/C/D
-3. Surface C does not validate `total` or `verified`/`tdd_verified`
-4. The non-canonical field rejection list in Surface C (`bug_id`, `bug_name`, `status`, `phase`, `result`) does not include `tdd_verified` — so Example 1's `tdd_verified` in summary would not be flagged as non-canonical
-
-### integration-results.json schema consistency
-
-**SKILL.md template (lines 1213-1244):** Uses `"recommendation": "SHIP"`, per-group fields: `group`, `name`, `use_cases`, `result`, `tests_passed`, `tests_failed`, `junit_file`, `junit_available`, `notes`.
-
-**quality_gate.sh (lines 328-329):** Checks for: `schema_version`, `skill_version`, `date`, `project`, `recommendation`, `groups`, `summary`, `uc_coverage`.
-
-**SKILL.md line 1247:** Lists required top-level fields matching quality_gate.sh. Consistent.
-
-**No divergence detected** for integration-results.json — the schema is consistent across surfaces. This contrasts with tdd-results.json's inconsistency, suggesting tdd-results.json was edited/evolved more frequently.
+**Candidate requirement:** REQ: quality_gate.sh should verify existence of all "Required: Yes" artifacts from SKILL.md's artifact contract table with FAIL severity, not WARN.
 
 ## Candidate Bugs for Phase 2
 
-### Candidate 1: tdd-results.json summary key inconsistency (`tdd_verified` vs `verified`)
-- **Source stage:** Open Exploration (Finding 1) + API Surface Consistency pattern
-- **File:line:** SKILL.md:127 (`tdd_verified`) vs SKILL.md:1384 (`verified`)
-- **What to inspect:** An agent following the first canonical example will produce `tdd_verified` in the summary. The normative text at line 1394 requires `verified`. quality_gate.sh does not validate either key. The code review should verify: is `tdd_verified` at line 127 a typo that should be `verified`? And should quality_gate.sh validate the `total` and `verified`/`tdd_verified` summary keys?
+### CB-1: quality_gate.sh downgrades 6 required artifacts to WARN (HIGH)
+**Source:** Open exploration (Finding 6) + Cross-Implementation Consistency pattern
+**File:line:** quality_gate.sh:117-129
+**Hypothesis:** CONTRACTS.md, RUN_CODE_REVIEW.md, RUN_SPEC_AUDIT.md, RUN_INTEGRATION_TESTS.md, RUN_TDD_TESTS.md, and test_functional.* are marked "Required: Yes" in SKILL.md's artifact contract but quality_gate.sh only WARNs on their absence. A run missing all of these passes the gate.
+**Code review should:** Compare SKILL.md lines 86-115 with quality_gate.sh lines 106-129. Verify whether the "per BUG-005" comment justifies the downgrade. Check if BUG-005 is documented anywhere.
 
-### Candidate 2: Phase 7 exists in SKILL.md body but is invisible to plan overview and orchestrators
-- **Source stage:** Open Exploration (Finding 2) + Cross-Implementation Consistency pattern
-- **File:line:** SKILL.md:1890 (Phase 7 definition) vs SKILL.md:12-31 (plan overview, no Phase 7) vs agents/quality-playbook-claude.agent.md:79-85 (six phases)
-- **What to inspect:** Is Phase 7 intentionally part of the flow or a legacy artifact? If intentional, the plan overview, Phase completion checklist, and orchestrators all need updating. If legacy, the convergence check's "skip to Phase 7" reference at line 1797 and verification.md's "Phase 7" reference at line 75 need removal.
+### CB-2: review_protocols.md "Phase 6: Results" numbering error (MEDIUM)
+**Source:** Open exploration (Finding 9)
+**File:line:** references/review_protocols.md:378
+**Hypothesis:** The integration test execution UX section jumps from "Phase 2: Progress" to "Phase 6: Results" instead of "Phase 3: Results." This confuses the integration test communication phases with the playbook's own Phase 6 (Verification).
+**Code review should:** Read lines 340-400 of review_protocols.md and verify the section numbering sequence.
 
-### Candidate 3: Hardcoded `.github/skills/references/` paths break Claude Code installations
-- **Source stage:** Open Exploration (Finding 3)
-- **File:line:** SKILL.md:296, SKILL.md:872-877, SKILL.md:1486, SKILL.md:1514, SKILL.md:1559-1561, SKILL.md:1661
-- **What to inspect:** Every Phase header that says "Read `.github/skills/references/X.md`" will fail when the skill is installed at `.claude/skills/quality-playbook/`. The code review should check whether these should use relative paths (`references/X.md`) or describe the path lookup logic used by the orchestrators.
+### CB-3: quality_gate.sh test_functional.* detection misses SKILL.md-allowed alternative names (MEDIUM)
+**Source:** Open exploration (Finding 11) + Enumeration Completeness pattern
+**File:line:** quality_gate.sh:125-129 vs SKILL.md:69
+**Hypothesis:** SKILL.md allows test names like `FunctionalSpec.scala`, `FunctionalTest.java`, `functional.test.ts` but quality_gate.sh only globs `test_functional.*`. Runs using language-conventional names would trigger a WARN.
+**Code review should:** Check all test file name patterns mentioned in SKILL.md and functional_tests.md, then verify quality_gate.sh's glob covers them.
 
-### Candidate 4: quality_gate.sh does not validate TDD log status tags despite SKILL.md's claim
-- **Source stage:** Open Exploration (Finding 4)
-- **File:line:** SKILL.md:1137 (claim) vs quality_gate.sh:277-322 (implementation)
-- **What to inspect:** Either quality_gate.sh should be updated to read and validate the first-line status tag of each TDD log file, or SKILL.md's claim should be corrected to say the gate only checks file existence.
+### CB-4: quality_gate.sh `eval` usage with user-supplied paths creates shell injection risk (MEDIUM)
+**Source:** Quality Risks (Risk 4)
+**File:line:** quality_gate.sh:439-448
+**Hypothesis:** The `eval "find '${repo_dir}' ..."` pattern passes user-supplied directory names through `eval`, enabling command injection via crafted directory names.
+**Code review should:** Trace the `repo_dir` variable from argument parsing (line 55) through `eval` at lines 439-448. Verify whether single-quoting within the eval string is sufficient protection (it is not -- a directory name containing `'` breaks the quoting).
 
-### Candidate 5: Seven required artifacts from contract table are not validated by quality_gate.sh
-- **Source stage:** Enumeration and Representation Completeness pattern
-- **File:line:** SKILL.md:78-84,89 (artifact contract table) vs quality_gate.sh:107 (file existence checks)
-- **What to inspect:** CONTRACTS.md, RUN_CODE_REVIEW.md, RUN_INTEGRATION_TESTS.md, RUN_SPEC_AUDIT.md, RUN_TDD_TESTS.md, test_functional.*, and AGENTS.md are all listed as "Required: Yes" in the artifact contract table but are not checked by quality_gate.sh's file existence validation. This means an agent could omit these files and still pass the gate.
+### CB-5: quality_gate.sh AGENTS.md is never checked despite being required (MEDIUM)
+**Source:** Enumeration Completeness pattern
+**File:line:** quality_gate.sh (absent) vs SKILL.md:102
+**Hypothesis:** SKILL.md artifact contract says `AGENTS.md` is "Required: Yes, Created In: Phase 2" but quality_gate.sh has no check for it at all.
+**Code review should:** Search quality_gate.sh for any reference to AGENTS.md. Confirm it's absent.
 
-### Candidate 6: AGENTS.md installation instructions omit Claude Code path
-- **Source stage:** Cross-Implementation Consistency pattern
-- **File:line:** AGENTS.md:27-30 (only `.github/skills/`) vs docs_gathered/readme.md:27-30 (both paths)
-- **What to inspect:** AGENTS.md is the "read this first" file for AI agents. If it only shows Copilot installation instructions, Claude Code users will follow the wrong path structure.
-
-### Candidate 7: Artifact contract table lists verify.sh as "Phase 5" but instructions say Phase 2
-- **Source stage:** Open Exploration (Finding 5)
-- **File:line:** SKILL.md:97 (artifact table says Phase 5) vs SKILL.md:531 (creation instructions in Phase 1/2) vs SKILL.md:555 (immediate integrity gate in Phase 2a)
-- **What to inspect:** The "Created In" column of the artifact contract table is wrong for mechanical verification artifacts. They are created during contract extraction (Phase 2) and must be verified before any downstream artifact cites them — not deferred to Phase 5.
+### CB-6: integration-results.json is WARN even in benchmark mode (MEDIUM)
+**Source:** Quality Risks (Risk 1) + Fallback Parity pattern
+**File:line:** quality_gate.sh:382-388
+**Hypothesis:** The integration sidecar check uses `warn` even when `$STRICTNESS = "benchmark"`. SKILL.md says this file is required "When integration tests run" but the gate never fails on its absence regardless of mode.
+**Code review should:** Check whether there's a way to determine if integration tests actually ran, and if so, whether the check should escalate to FAIL.
 
 ## Derived Requirements
 
-### REQ-001: JSON schema templates for tdd-results.json must be internally consistent
-All canonical examples and normative text for the tdd-results.json schema within SKILL.md must use identical field names. The summary object must use one canonical key name for the "verified bugs" count, and that name must be consistent across all examples, normative text, and validation logic.
-- **Spec basis:** [Tier 2] SKILL.md lines 107-132 and 1357-1398
+### REQ-001: Artifact contract enforcement consistency
+SKILL.md's artifact contract table, quality_gate.sh's file existence checks, and verification.md's benchmarks must agree on which artifacts are required and enforce the same severity for missing artifacts. Currently, 6 required artifacts are downgraded to WARN in quality_gate.sh despite being marked "Required: Yes" in SKILL.md.
+- **Spec basis:** [Tier 1] SKILL.md lines 83-85 ("If the gate checks for it, this skill must instruct its creation")
+- **File paths:** SKILL.md:86-115, quality_gate.sh:106-129, references/verification.md:226-229
 
-### REQ-002: Phase numbering must be consistent across plan overview, phase definitions, and orchestrators
-Every phase defined in SKILL.md body must appear in the plan overview (lines 12-31), the Phase completion checklist (line 688), and both orchestrator agents. Conversely, no phase may be referenced in cross-references (like "skip to Phase N") without being defined in the plan overview.
-- **Spec basis:** [Tier 2] SKILL.md lines 12-31 (plan overview) and SKILL.md line 1890 (Phase 7)
+### REQ-002: quality_gate.sh must validate all required artifacts with FAIL severity
+All artifacts marked "Required: Yes" in SKILL.md's artifact contract table must be checked by quality_gate.sh with `fail()`, not `warn()`. This includes CONTRACTS.md, test_functional.*, RUN_CODE_REVIEW.md, RUN_SPEC_AUDIT.md, RUN_TDD_TESTS.md, RUN_INTEGRATION_TESTS.md, and AGENTS.md.
+- **Spec basis:** [Tier 1] SKILL.md line 83 ("any artifact not listed here should not be gate-enforced, and any gate check should trace to an artifact listed here")
+- **File paths:** quality_gate.sh:106-129
 
-### REQ-003: Reference file paths must resolve correctly for all supported installation locations
-SKILL.md's references to reference files must work when the skill is installed at `.github/skills/`, `.github/skills/quality-playbook/`, `.claude/skills/quality-playbook/`, or at the project root. Either paths must be relative (e.g., `references/X.md`) or the skill must include path resolution logic.
-- **Spec basis:** [Tier 2] SKILL.md lines 296, 872-877 (hardcoded paths) and docs_gathered/readme.md lines 17-30 (installation instructions showing both paths)
+### REQ-003: Internal numbering consistency in reference documents
+All section numbering within reference documents must be internally consistent. Sequential sections must use sequential numbers. "Phase N" labels must not collide with the playbook's own phase numbering when used in a different context.
+- **Spec basis:** [Tier 2] references/review_protocols.md:340-400
+- **File paths:** references/review_protocols.md:378
 
-### REQ-004: quality_gate.sh must validate all claims SKILL.md makes about gate enforcement
-Any artifact that SKILL.md describes as "gate-enforced" or says "quality_gate.sh will check" must actually be checked by quality_gate.sh. Conversely, SKILL.md must not claim gate enforcement for checks that do not exist in quality_gate.sh.
-- **Spec basis:** [Tier 2] SKILL.md line 72 ("If the gate checks for it, this skill must instruct its creation") and SKILL.md line 1137 (TDD log status tag claim)
+### REQ-004: quality_gate.sh must not use eval with user-supplied paths
+Shell commands in quality_gate.sh must not pass user-supplied arguments through `eval`. Use direct command execution or `--` argument termination instead.
+- **Spec basis:** [Tier 3] [source] quality_gate.sh:439-448
+- **File paths:** quality_gate.sh:439-448
 
-### REQ-005: quality_gate.sh file existence checks must cover all artifacts marked "Required: Yes" in the artifact contract table
-Every artifact listed as "Required: Yes" in the artifact contract table (SKILL.md lines 76-101) must be checked for existence by quality_gate.sh, or the table must be corrected to show the artifact as not gate-enforced.
-- **Spec basis:** [Tier 2] SKILL.md line 72 (artifact contract principle)
+### REQ-005: quality_gate.sh test file detection must cover all SKILL.md-allowed names
+The gate's functional test file detection must recognize all naming patterns allowed by SKILL.md: test_functional.*, FunctionalSpec.*, FunctionalTest.*, functional.test.*.
+- **Spec basis:** [Tier 1] SKILL.md line 69 naming examples
+- **File paths:** quality_gate.sh:125-129, SKILL.md:69
 
-### REQ-006: Duplicate content across files must remain synchronized
-Where files contain identical or overlapping content (ai_context/TOOLKIT.md and docs_gathered/toolkit-documentation.md; ai_context/DEVELOPMENT_CONTEXT.md and docs_gathered/development-context.md), the content must be identical or one must clearly reference the other as canonical.
-- **Spec basis:** [Tier 3] [source] — inferred from repository structure
+### REQ-006: Reference file resolution must handle missing files explicitly
+SKILL.md's reference file resolution fallback chain (4 paths) must include an explicit error or warning when none of the paths resolve, rather than silent degradation.
+- **Spec basis:** [Tier 2] SKILL.md lines 44-51
+- **File paths:** SKILL.md:44-51
 
-### REQ-007: AGENTS.md must provide installation instructions for all supported agent platforms
-AGENTS.md installation instructions must cover all platforms described in the README and TOOLKIT.md, including both `.github/skills/` (Copilot) and `.claude/skills/quality-playbook/` (Claude Code) paths.
-- **Spec basis:** [Tier 2] docs_gathered/readme.md lines 17-30
-
-### REQ-008: Artifact contract table "Created In" phase assignments must match actual creation instructions
-The "Created In" column of the artifact contract table must reflect the phase where the skill instructions actually direct creation of each artifact.
-- **Spec basis:** [Tier 2] SKILL.md line 72 and lines 97-98
+### REQ-007: quality_gate.sh JSON validation must handle edge cases
+The grep-based JSON helpers must not false-match on keys appearing inside string values or across unexpected line boundaries.
+- **Spec basis:** [Tier 3] [source] quality_gate.sh:75-91
+- **File paths:** quality_gate.sh:75-91
 
 ## Derived Use Cases
 
-### UC-01: User installs the quality playbook skill into a target repository
-**Actor:** Developer using Claude Code or GitHub Copilot
-**Trigger:** User wants to run the quality playbook on their project
-**Expected outcome:** Skill files are correctly installed at the tool-specific path, and the agent can find and read SKILL.md and all reference files
+### UC-01: Developer runs quality playbook on a target codebase
+**Actor:** Developer with AI coding agent
+**Trigger:** "Run the quality playbook on this project"
+**Expected outcome:** Agent reads SKILL.md, executes Phase 1, produces EXPLORATION.md, and stops with guidance for next phase
 
-### UC-02: Agent executes a full baseline playbook run (Phases 1-6)
-**Actor:** AI coding agent (Claude Code, Copilot, Cursor)
-**Trigger:** User says "Run the quality playbook on this project"
-**Expected outcome:** Agent produces all required artifacts in quality/, all artifacts pass quality_gate.sh validation, and PROGRESS.md records completion of all phases
+### UC-02: Developer validates quality artifacts after a playbook run
+**Actor:** Developer
+**Trigger:** Runs `quality_gate.sh .` after playbook completes
+**Expected outcome:** Gate checks all required artifacts exist, have correct format, version stamps match, and exits 0 if all checks pass
 
-### UC-03: Agent produces tdd-results.json sidecar for confirmed bugs
-**Actor:** AI coding agent following RUN_TDD_TESTS.md
-**Trigger:** Phase 5 with confirmed bugs
-**Expected outcome:** tdd-results.json conforms to the canonical schema, passes quality_gate.sh validation, and all field names match normative text
-
-### UC-04: User runs quality_gate.sh to validate a completed playbook run
-**Actor:** Developer or CI system
-**Trigger:** After Phase 6 completes
-**Expected outcome:** quality_gate.sh validates all required artifacts, reports PASS/FAIL/WARN for each check, and exits 0 only when all checks pass
-
-### UC-05: User runs iteration strategies to find additional bugs
-**Actor:** Developer or orchestrator agent
-**Trigger:** After baseline run completes, user says "run the next iteration"
-**Expected outcome:** Iteration strategy explores different code areas, produces merged exploration findings, and re-runs Phases 2-6 with combined results
-
-### UC-06: Maintainer updates the skill and validates the change
+### UC-03: Maintainer modifies the skill and verifies correctness
 **Actor:** Skill maintainer
-**Trigger:** Editing SKILL.md or reference files
-**Expected outcome:** All internal cross-references remain consistent, version stamps match, quality_gate.sh passes on benchmark repos
+**Trigger:** Edits SKILL.md or reference files, then benchmarks on test repos
+**Expected outcome:** Changes are tested on 2+ repos, version is bumped, quality_gate.sh passes on test results, TOOLKIT.md and DEVELOPMENT_CONTEXT.md are updated
+
+### UC-04: Developer installs skill into a new repository
+**Actor:** Developer
+**Trigger:** Copies skill files into .claude/skills/ or .github/skills/
+**Expected outcome:** Agent can find SKILL.md and all reference files via the resolution fallback chain
+
+### UC-05: Developer runs iteration strategies to find additional bugs
+**Actor:** Developer with AI coding agent
+**Trigger:** "Run the next iteration using the gap strategy"
+**Expected outcome:** Agent reads previous EXPLORATION.md, identifies gaps, produces EXPLORATION_ITER{N}.md, merges findings, and re-runs Phases 2-6
+
+### UC-06: Orchestrator agent runs full pipeline automatically
+**Actor:** Orchestrator agent (from agents/*.md)
+**Trigger:** "Run the full playbook" or programmatic orchestration
+**Expected outcome:** All phases run sequentially with clean context windows, each phase writes checkpoint to PROGRESS.md, final results presented to user
+
+### UC-07: Developer uses quality_gate.sh across multiple benchmark repos
+**Actor:** Benchmark maintainer
+**Trigger:** `quality_gate.sh --all` or `quality_gate.sh --version 1.4.0 repo1 repo2`
+**Expected outcome:** Gate validates each repo independently, reports per-repo results, exits 1 if any repo fails
 
 ## Notes for Artifact Generation
-- The project's "language" for test_functional.* should be shell script (`.sh`) since quality_gate.sh is the primary executable and bash is the only runtime
-- The "source code" to review is primarily SKILL.md (~2069 lines of specification text) plus quality_gate.sh (~632 lines of bash)
-- Requirements should focus on internal consistency of the specification rather than runtime behavior of the tested codebases
-- This is a specification-primary repository: derive requirements from the specification's internal consistency, completeness, and correctness — not just from quality_gate.sh's executable code paths
+- This is a specification-primary repository. Requirements should focus heavily on SKILL.md internal consistency, cross-reference accuracy, and gate enforcement completeness -- not just quality_gate.sh code bugs.
+- The project uses Bash (quality_gate.sh) as its only executable code. Functional tests should be shell scripts or Python scripts that validate quality_gate.sh behavior.
+- There are no existing tests to match import patterns against. Tests must be written from scratch.
+- The test_functional file should be `test_functional.sh` or `test_functional.py` (Python with subprocess calls to quality_gate.sh).
+- Mechanical verification: quality_gate.sh has dispatch-style check sections that could benefit from mechanical extraction of what's checked vs what's required.
 
 ## Gate Self-Check
 
-1. **PASS** — File exists on disk with 411 lines of substantive content (threshold: 120).
-2. **PASS** — quality/PROGRESS.md will be created immediately after this gate (Phase 1 checkpoint).
-3. **PASS** — Derived Requirements section contains REQ-001 through REQ-008, each with specific file paths (SKILL.md:127, SKILL.md:1384, quality_gate.sh:229, etc.) and function-level references.
-4. **PASS** — `## Open Exploration Findings` exists with 11 concrete findings, each with file paths and line numbers. At least 4 reference different modules (SKILL.md, quality_gate.sh, DEVELOPMENT_CONTEXT.md, AGENTS.md, agents/).
-5. **PASS** — At least 3 findings trace across 2+ locations: Finding 1 (SKILL.md:127 vs SKILL.md:1382 vs quality_gate.sh:229), Finding 2 (SKILL.md:12-31 vs SKILL.md:1890 vs agents/), Finding 3 (16+ SKILL.md locations vs agents/ orchestrator path checks).
-6. **PASS** — `## Quality Risks` exists with 5 ranked failure scenarios. Each names specific files and lines, describes a domain-specific failure mechanism, and explains why the code produces wrong behavior.
-7. **PASS** — `## Pattern Applicability Matrix` exists evaluating all six patterns, marking 3 as FULL (Cross-Implementation Consistency, Enumeration and Representation Completeness, API Surface Consistency) and 3 as SKIP with codebase-specific rationale.
-8. **PASS** — 3 patterns marked FULL in the matrix.
-9. **PASS** — 3 sections with titles starting `## Pattern Deep Dive — ` exist, each with concrete file:line evidence.
-10. **PASS** — All 3 pattern deep-dive sections trace code paths across 2+ files: Cross-Implementation traces SKILL.md vs agents/ vs TOOLKIT.md; Enumeration traces SKILL.md artifact table vs quality_gate.sh; API Surface traces SKILL.md examples vs quality_gate.sh vs verification.md.
-11. **PASS** — `## Candidate Bugs for Phase 2` exists with 7 prioritized bug hypotheses, all with file:line references and source stage attribution.
-12. **PASS** — Ensemble balance: Candidates 1-4 from open exploration; Candidate 5 from Enumeration pattern; Candidate 6 from Cross-Implementation pattern. At least 2 from open exploration (Candidates 1-4) and at least 1 from pattern (Candidate 5).
+1. **File exists with 120+ lines:** PASS -- this file contains substantial findings with file paths, line numbers, and specific behavioral analysis.
+2. **PROGRESS.md exists and marks Phase 1 complete:** PASS -- quality/PROGRESS.md written with Phase 1 marked `[x]`.
+3. **Derived Requirements contain REQ-NNN with file paths and function names:** PASS -- REQ-001 through REQ-007 all cite specific file paths and line numbers.
+4. **Open Exploration Findings has 8+ concrete findings, 4+ different modules:** PASS -- 11 findings across SKILL.md, quality_gate.sh, review_protocols.md, and multiple reference files (4+ distinct modules).
+5. **Open-exploration depth check (3+ multi-function traces):** PASS -- Finding 1 traces from check_repo() through the integration sidecar section; Finding 5 traces from check_repo() through heading detection through downstream checks; Finding 6 traces from SKILL.md's artifact table through quality_gate.sh's check logic.
+6. **Quality Risks has 5+ domain-driven failure scenarios:** PASS -- 7 ranked risks, each with specific function, file, and line citations.
+7. **Pattern Applicability Matrix evaluates all 6 patterns:** PASS -- all 6 patterns evaluated with FULL/SKIP decisions and rationale.
+8. **3-4 patterns marked FULL:** PASS -- 4 patterns marked FULL (Fallback Parity, Dispatcher Return-Value, Cross-Implementation Consistency, Enumeration Completeness).
+9. **3-4 Pattern Deep Dive sections:** PASS -- 4 deep-dive sections present.
+10. **Pattern depth check (2+ trace across functions):** PASS -- Fallback Parity traces across quality_gate.sh strictness paths; Cross-Implementation Consistency traces across SKILL.md, quality_gate.sh, and verification.md; Enumeration Completeness traces from SKILL.md's artifact table through quality_gate.sh's check sections.
+11. **Candidate Bugs section with 4+ prioritized bugs:** PASS -- 6 candidate bugs with file:line references, source stages, and review instructions.
+12. **Ensemble balance check:** PASS -- CB-1 from open exploration + pattern, CB-2 from open exploration, CB-3 from open exploration + pattern, CB-4 from quality risks, CB-5 from pattern, CB-6 from quality risks + pattern. At least 2 from open exploration/risks, at least 1 from pattern.

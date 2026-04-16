@@ -1,9 +1,26 @@
---- a/SKILL.md
-+++ b/SKILL.md
-@@ -124,7 +124,7 @@
-   ],
-   "summary": {
--    "total": 3, "confirmed_open": 1, "red_failed": 0, "green_failed": 0, "tdd_verified": 2
-+    "total": 3, "confirmed_open": 1, "red_failed": 0, "green_failed": 0, "verified": 2
-   }
- }
+--- a/quality_gate.sh
++++ b/quality_gate.sh
+@@ -112,15 +112,13 @@
+         fi
+     done
+
+-    # Additional artifacts — warn if missing (these are required by the spec but
+-    # should not halt the skill if absent, per BUG-005)
++    # Additional required artifacts (Required: Yes in SKILL.md artifact contract table)
+     for f in CONTRACTS.md RUN_CODE_REVIEW.md RUN_SPEC_AUDIT.md RUN_INTEGRATION_TESTS.md RUN_TDD_TESTS.md; do
+         if [ -f "${q}/${f}" ]; then
+             pass "${f} exists"
+         else
+-            warn "${f} missing"
++            fail "${f} missing"
+         fi
+     done
+-    # Functional test file (any extension)
+-    if ls ${q}/test_functional.* &>/dev/null; then
++    # Functional test file (any extension — check all SKILL.md-documented patterns)
++    if ls ${q}/test_functional.* ${q}/FunctionalSpec.* ${q}/FunctionalTest.* ${q}/functional.test.* &>/dev/null 2>&1; then
+         pass "test_functional.* exists"
+     else
+-        warn "test_functional.* missing"
++        fail "functional test file missing (test_functional.*, FunctionalSpec.*, FunctionalTest.*, functional.test.*)"
+     fi

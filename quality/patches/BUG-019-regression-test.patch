@@ -1,0 +1,29 @@
+--- a/quality/test_regression.sh
++++ b/quality/test_regression.sh
+@@ -0,0 +1,40 @@
++# Regression test for BUG-019: verification.md benchmark 40 omits 7 required artifacts
++# Benchmark 40 lists 6 files but SKILL.md's artifact table has 13+ Required: Yes entries.
+
++test_bug_019_benchmark_40_missing_artifacts() {
++    local verification_file="references/verification.md"
++    local skill_file="SKILL.md"
++    if [ ! -f "$verification_file" ] || [ ! -f "$skill_file" ]; then
++        echo "SKIP: Required files not found"
++        return
++    fi
++
++    # Extract the benchmark 40 section
++    local bench40
++    bench40=$(awk '/^### 40\. Artifact File-Existence/,/^### [0-9]/' "$verification_file")
++
++    # Check for artifacts that are Required: Yes in SKILL.md but missing from benchmark 40
++    local missing=0
++    for artifact in CONTRACTS.md "test_functional" RUN_CODE_REVIEW.md RUN_INTEGRATION_TESTS.md RUN_SPEC_AUDIT.md RUN_TDD_TESTS.md AGENTS.md; do
++        if ! echo "$bench40" | grep -q "$artifact"; then
++            missing=$((missing + 1))
++        fi
++    done
++
++    # BUG: 7 required artifacts are not listed in benchmark 40
++    [ "$missing" -gt 0 ] && echo "XFAIL: $missing Required:Yes artifacts missing from benchmark 40"
++}

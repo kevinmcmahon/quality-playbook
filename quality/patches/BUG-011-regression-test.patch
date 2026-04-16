@@ -1,7 +1,44 @@
---- /dev/null
-+++ b/quality/BUG-011-exempt.md
-@@ -0,0 +1,4 @@
-+# BUG-011: Exempt
-+# json_has_key() flat grep matches key names inside string values (quality_gate.sh:76-78)
-+# Exemption: structural limitation of grep-based JSON parsing. Fixing requires JSON parser; grep-based parsing is by design.
-+# No executable regression test — explicit exemption documented in BUGS.md.
+--- a/quality/test_regression.sh
++++ b/quality/test_regression.sh
+@@ -262,6 +262,39 @@
+     fi
+ }
+
++# ──────────────────────────────────────────────────────────────────────
++# BUG-011: TDD_TRACEABILITY.md not checked by quality_gate.sh
++# Skip guard: Remove this block to run the test (unskip after applying
++# quality/patches/BUG-011-fix.patch)
++# ──────────────────────────────────────────────────────────────────────
++
++test_bug_011_tdd_traceability_not_checked() {
++    # BUG-011: quality_gate.sh has no check for TDD_TRACEABILITY.md
++    # [Spec basis: SKILL.md line 1426, verification.md benchmark 28 line 180]
++    # Expected: gate exits 1 when TDD_TRACEABILITY.md missing with bugs having red-phase results
++    # Actual (bug): gate exits 0 because TDD_TRACEABILITY.md is never checked
++    local dir
++    dir=$(setup_test_dir)
++    create_passing_artifacts "$dir"
++    # Create BUGS.md with a confirmed bug
++    echo -e "# Confirmed Bugs\n\n### BUG-001: Test bug\n\n**File:** test.sh:1\n**Severity:** LOW" > "${dir}/quality/BUGS.md"
++    # Create required TDD artifacts
++    mkdir -p "${dir}/quality/results" "${dir}/quality/patches" "${dir}/quality/writeups"
++    echo 'RED' > "${dir}/quality/results/BUG-001.red.log"
++    echo 'GREEN' > "${dir}/quality/results/BUG-001.green.log"
++    echo 'dummy' > "${dir}/quality/patches/BUG-001-regression-test.patch"
++    echo 'dummy' > "${dir}/quality/patches/BUG-001-fix.patch"
++    echo -e "# BUG-001\n\n\`\`\`diff\n--- a/test\n+++ b/test\n\`\`\`" > "${dir}/quality/writeups/BUG-001.md"
++    printf '{"schema_version":"1.1","skill_version":"1.4.0","date":"2026-04-15","project":"test","bugs":[{"id":"BUG-001","requirement":"REQ-001","red_phase":"fail","green_phase":"pass","verdict":"TDD verified","fix_patch_present":true,"writeup_path":"quality/writeups/BUG-001.md"}],"summary":{"total":1,"verified":1,"confirmed_open":0,"red_failed":0,"green_failed":0}}' > "${dir}/quality/results/tdd-results.json"
++    # Do NOT create TDD_TRACEABILITY.md -- this is the bug
++
++    # Check if quality_gate.sh mentions TDD_TRACEABILITY anywhere
++    if grep -q 'TDD_TRACEABILITY' "${GATE}" 2>/dev/null; then
++        pass "BUG-011: Gate checks for TDD_TRACEABILITY.md"
++    else
++        xfail "BUG-011: Gate has no check for TDD_TRACEABILITY.md (mandatory per SKILL.md:1426)"
++    fi
++    cleanup "$dir"
++}
++
+ # ──────────────────────────────────────────────────────────────────────
+ # Run all tests
+ # ──────────────────────────────────────────────────────────────────────

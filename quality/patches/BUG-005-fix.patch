@@ -1,0 +1,8 @@
+--- a/quality_gate.sh
++++ b/quality_gate.sh
+@@ -114,3 +114,3 @@
+
+-    # Additional artifacts — warn if missing (these are required by the spec but
+-    # should not halt the skill if absent, per BUG-005)
++    # Additional required artifacts (Required: Yes in SKILL.md artifact contract table)
+     for f in CONTRACTS.md RUN_CODE_REVIEW.md RUN_SPEC_AUDIT.md RUN_INTEGRATION_TESTS.md RUN_TDD_TESTS.md; do

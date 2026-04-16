@@ -1,12 +1,16 @@
 RED
---- Test output for BUG-018 red phase ---
-Command: test_bug_018_verification_md_no_hardcoded_skill_path
-Exit code: 1
-=== Regression Tests for Code Review and Spec Audit Bugs ===
+Test: test_bug_018_json_key_count_false_pass
+Target: quality_gate.sh json_key_count function (lines 88-91)
 
-bash: line 24: run_test: command not found
-bash: line 25: run_test: command not found
-bash: line 26: run_test: command not found
-bash: line 27: run_test: command not found
-bash: line 28: run_test: command not found
-bash: line 29: run_test: command not found
+Execution:
+  Created tdd-results.json with 2 bugs:
+    BUG-001: has verdict field, requirement text contains "verdict"
+    BUG-002: missing verdict field entirely
+
+  json_key_count("verdict") = grep -c '"verdict"' tdd-results.json => 2
+    Line matches: "verdict": "TDD verified" (BUG-001) and "verdict" in requirement text (BUG-001)
+
+  Gate check: fcount (2) >= bug_count (2) => PASS
+
+Result: XFAIL — Gate reports PASS for per-bug field 'verdict' but BUG-002 is missing the field.
+The false PASS is confirmed: string match in BUG-001's requirement text masks BUG-002's missing field.

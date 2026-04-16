@@ -1,5 +1,6 @@
 RED
 --- Test output for BUG-013 red phase ---
-Command: test_bug_013_toolkit_has_claude_path
-Exit code: 1
-
+Command: bash -c 'set -uo pipefail; resolved=(); REPO_DIRS=(""); echo survived'
+Exit code: 127
+bash: resolved[@]: unbound variable
+Result: Empty resolved array with set -u crashes with "unbound variable" (exit 127).

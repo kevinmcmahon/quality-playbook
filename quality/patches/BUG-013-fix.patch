@@ -1,0 +1,11 @@
+--- a/quality_gate.sh
++++ b/quality_gate.sh
+@@ -647,7 +647,7 @@
+             echo "WARNING: Cannot find repo '${name}'"
+         fi
+     done
+-    REPO_DIRS=("${resolved[@]}")
++    REPO_DIRS=("${resolved[@]+"${resolved[@]}"}")
+ fi
+
+ if [ ${#REPO_DIRS[@]} -eq 0 ]; then

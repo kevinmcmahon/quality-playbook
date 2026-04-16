@@ -1,0 +1,11 @@
+--- a/quality_gate.sh
++++ b/quality_gate.sh
+@@ -636,7 +636,7 @@ elif [ ${#REPO_DIRS[@]} -eq 1 ] && [ "${REPO_DIRS[0]}" = "." ]; then
+     REPO_DIRS=("$(pwd)")
+ else
+     resolved=()
+-    for name in "${REPO_DIRS[@]}"; do
++    for name in ${REPO_DIRS[@]+"${REPO_DIRS[@]}"}; do
+         if [ -d "$name/quality" ]; then
+             resolved+=("$name")
+         elif [ -d "${SCRIPT_DIR}/${name}-${VERSION}" ]; then
