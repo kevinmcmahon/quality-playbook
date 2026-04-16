@@ -134,7 +134,8 @@ Council review artifacts go in `council-reviews/`. Each review has:
 
 | Agent | Exploration | TDD execution | Known issues |
 |-------|------------|---------------|-------------|
-| Claude Code / Opus | Strong | Reliable (creates red/green logs) | Expensive on large repos |
+| Claude Code / Opus | Strong | Reliable (creates red/green logs) | Expensive (~8% weekly per run) |
+| Claude Code / Sonnet | Strong (25 bugs, 3 HIGH) | Reliable | Recommended default (~3% weekly per run) |
 | Copilot / gpt-5.4 | Strong | Weak (skips log creation) | 54hr rate limit on heavy use |
 | Cursor / Sonnet | Good | Weak first pass, follows up when asked | Workspace scope bleeds to siblings |
 | Cursor / Codex 5.3 | Weak (zero bugs) | N/A | Insufficient reasoning depth |
@@ -151,6 +152,7 @@ Council review artifacts go in `council-reviews/`. Each review has:
 - **v1.3.47:** TDD log enforcement — six insertion points from Cursor diagnostic (artifact contract, closure gate, bash template, progress checkbox, file-existence gate, sidecar contradiction check).
 - **v1.4.0** (promoted from v1.3.50)**:** Six-phase interactive architecture (renumbered from 3 phases to 6), interactive phase-by-phase execution with end-of-phase messages, `--phase` flag in runner, quality gate script, four iteration strategies with 40-60% yield boost, TDD enforcement, documentation warning, help system, "keep going" continuation, O'Reilly Radar article, moved ITERATION.md to references/iteration.md, orchestrator agents for Claude Code and Copilot. Benchmarked: Express.js (14 bugs), Gson (9 bugs), Linux virtio (8 bugs) — all with 100% TDD coverage and 0 gate failures.
 - **v1.4.1:** Recheck mode for lightweight fix verification (reads BUGS.md, checks each bug against current source, outputs recheck-results.json and recheck-summary.md). Fixed 19 bugs from bootstrap self-audit (second run): eval injection in quality_gate.sh, bash 3.2 empty array crashes, required artifacts downgraded to WARN, json_key_count false positives, missing artifact checks, documentation inconsistencies. All fixes verified by recheck (19/19 FIXED).
+- **v1.4.2:** Fixed 25 bugs from Sonnet 4.6 bootstrap self-audit (3 HIGH, 8 MEDIUM, 14 LOW). Key fixes: nullglob-safe artifact detection (find replaces ls-glob across 7 locations), severity-prefixed bug ID support (BUG-H1/BUG-M3/BUG-L6), TDD sidecar-to-log cross-validation, recheck-results.json gate validation, Phase 5 entry gate, SEED_CHECKS.md in artifact contract table, integration enum validation. Added run metadata JSON spec (`quality/results/run-YYYY-MM-DDTHH-MM-SS.json`) for multi-model comparison — records model, provider, runner, timestamps, phase timings, bug counts, and gate results. All 25 fixes verified by Sonnet recheck (25/25 FIXED). Multi-model comparison: Sonnet found 25 bugs (3 HIGH) at ~3% weekly usage vs Opus's 19 bugs (1 HIGH) at ~8% — Sonnet is the recommended default for playbook runs.
 
 ## Current known issues
 
