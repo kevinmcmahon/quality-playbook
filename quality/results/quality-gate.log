@@ -1,5 +1,5 @@
 === Quality Gate — Post-Run Validation ===
-Version:    1.4.0
+Version:    1.4.1
 Strictness: benchmark
 Repos:      1
 
@@ -16,45 +16,33 @@ Repos:      1
   PASS: RUN_SPEC_AUDIT.md exists
   PASS: RUN_INTEGRATION_TESTS.md exists
   PASS: RUN_TDD_TESTS.md exists
-  PASS: test_functional.* exists
+  FAIL: functional test file missing (test_functional.*, FunctionalSpec.*, FunctionalTest.*, functional.test.*)
+  PASS: AGENTS.md exists
+  PASS: EXPLORATION.md exists
   PASS: code_reviews/ has .md files
   PASS: spec_audits/ has triage file
   PASS: spec_audits/ has 3 auditor file(s)
   PASS: triage_probes.sh exists (executable triage evidence)
 [BUGS.md Heading Format]
-  PASS: All 16 bug headings use ### BUG-NNN format
+  PASS: Zero-bug run — no headings expected
 [TDD Sidecar JSON]
-  PASS: tdd-results.json exists (16 bugs)
+  INFO: Zero bugs — tdd-results.json not required
+[TDD Log Files]
+  INFO: Zero bugs — TDD log files not required
+[Integration Sidecar JSON]
   PASS: has 'schema_version'
   PASS: has 'skill_version'
   PASS: has 'date'
   PASS: has 'project'
-  PASS: has 'bugs'
+  PASS: has 'recommendation'
+  PASS: has 'groups'
   PASS: has 'summary'
-  PASS: schema_version is '1.1'
-  PASS: per-bug field 'id' present (16x)
-  PASS: per-bug field 'requirement' present (16x)
-  PASS: per-bug field 'red_phase' present (16x)
-  PASS: per-bug field 'green_phase' present (16x)
-  PASS: per-bug field 'verdict' present (16x)
-  PASS: per-bug field 'fix_patch_present' present (16x)
-  PASS: per-bug field 'writeup_path' present (16x)
-  PASS: summary has 'total'
-  PASS: summary has 'verified'
-  PASS: summary has 'confirmed_open'
-  PASS: summary has 'red_failed'
-  PASS: summary has 'green_failed'
-  PASS: tdd-results.json date '2026-04-15' is valid
-  PASS: all verdict values are canonical
-[TDD Log Files]
-  PASS: All 16 confirmed bug(s) have red-phase logs
-  PASS: All 16 bug(s) with fix patches have green-phase logs
-  PASS: All red-phase logs have valid status tags
-  PASS: All green-phase logs have valid status tags
-[Integration Sidecar JSON]
-  WARN: integration-results.json not present
+  PASS: has 'uc_coverage'
+  PASS: integration schema_version is '1.1'
+  PASS: integration-results.json date '2026-04-16' is valid
+  PASS: recommendation 'FIX BEFORE MERGE' is canonical
 [Use Cases]
-  PASS: Found 7 distinct UC identifiers (7 total references, 0 source files)
+  PASS: Found 5 distinct UC identifiers (5 total references, 0 source files)
 [Test File Extension]
   INFO: Cannot detect project language — skipping extension check (test_functional.sh)
 [Terminal Gate]
@@ -62,19 +50,15 @@ Repos:      1
 [Mechanical Verification]
   INFO: No mechanical/ directory
 [Patches]
-  PASS: 16 regression-test patch(es) for 16 bug(s)
-  PASS: 16 fix patch(es)
-  INFO: Total: 32 patch file(s) in quality/patches/
 [Bug Writeups]
-  PASS: 16 writeup(s) for 16 bug(s)
-  PASS: All 16 writeup(s) have inline fix diffs
 [Version Stamps]
-  PASS: PROGRESS.md version matches (1.4.0)
+  PASS: PROGRESS.md version matches (1.4.1)
   PASS: tdd-results.json skill_version matches
 [Cross-Run Contamination]
   PASS: No version mismatch detected
 
 
 ===========================================
-Total: 0 FAIL, 1 WARN
-RESULT: GATE PASSED
+Total: 1 FAIL, 0 WARN
+RESULT: GATE FAILED — 1 check(s) must be fixed
+1

@@ -1,8 +1,0 @@
---- a/SKILL.md
-+++ b/SKILL.md
-@@ -100,6 +100,7 @@
- | Completeness report | `quality/COMPLETENESS_REPORT.md` | Yes | Phase 2 (baseline), Phase 5 (final verdict) |
- | Progress tracker | `quality/PROGRESS.md` | Yes | Throughout |
-+| Exploration findings | `quality/EXPLORATION.md` | Yes | Phase 1 |
- | AI bootstrap | `AGENTS.md` | Yes | Phase 2 |
- | Bug writeups | `quality/writeups/BUG-NNN.md` | If bugs found | Phase 5 |
