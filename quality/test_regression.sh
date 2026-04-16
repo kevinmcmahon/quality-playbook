@@ -776,7 +776,7 @@ test_BUG_M16_functional_test_existence_nullglob() {
         return 77
     fi
     echo "TEST: test_BUG_M16_functional_test_existence_nullglob"
-    local gate="/Users/andrewstellman/tmp/QFB-bootstrap/quality_gate.sh"
+    local gate="${GATE_PATH:-repos/quality_gate.sh}"
     # The bug: line 124 uses ls-glob, not find-based detection
     # A find-based check would look like: find "${q}" -maxdepth 1 -name "test_functional.*" -print -quit | grep -q .
     # The vulnerable pattern: if ls ${q}/test_functional.* ...
@@ -803,7 +803,7 @@ test_BUG_H17_bug_id_regex_bypasses_severity_prefix() {
         return 77
     fi
     echo "TEST: test_BUG_H17_bug_id_regex_bypasses_severity_prefix"
-    local gate="/Users/andrewstellman/tmp/QFB-bootstrap/quality_gate.sh"
+    local gate="${GATE_PATH:-repos/quality_gate.sh}"
     # Direct proof: the regex BUG-[0-9]+ does not match BUG-H1
     local match
     match=$(echo '### BUG-H1' | grep -cE '^### BUG-[0-9]+' || true)
@@ -833,7 +833,7 @@ test_BUG_M18_red_phase_log_cross_validation() {
         return 77
     fi
     echo "TEST: test_BUG_M18_red_phase_log_cross_validation"
-    local gate="/Users/andrewstellman/tmp/QFB-bootstrap/quality_gate.sh"
+    local gate="${GATE_PATH:-repos/quality_gate.sh}"
     # The cross-validation that MUST exist per SKILL.md:1589:
     #   Extract json_str_val for "red_phase", compare with first line of BUG-NNN.red.log
     # Proxy: look for code that reads red_phase VALUE (not just checks key presence)
@@ -870,7 +870,7 @@ test_BUG_L19_summary_check_uses_weak_json_has_key() {
         return 77
     fi
     echo "TEST: test_BUG_L19_summary_check_uses_weak_json_has_key"
-    local gate="/Users/andrewstellman/tmp/QFB-bootstrap/quality_gate.sh"
+    local gate="${GATE_PATH:-repos/quality_gate.sh}"
     # Check that line 262 (or nearby) uses json_has_key for summary skey loop
     # The bug: for skey in total verified ...; do if json_has_key "$json_file" "$skey"
     # while per-bug check uses json_key_count
@@ -898,7 +898,7 @@ test_BUG_L20_patch_count_aggregate_vs_per_bug() {
         return 77
     fi
     echo "TEST: test_BUG_L20_patch_count_aggregate_vs_per_bug"
-    local gate="/Users/andrewstellman/tmp/QFB-bootstrap/quality_gate.sh"
+    local gate="${GATE_PATH:-repos/quality_gate.sh}"
     # Check that lines 562-588 use aggregate count (not per-bug iteration)
     # The bug: reg_patch_count=$(ls ${q}/patches/BUG-*-regression*.patch ... | wc -l)
     # compared to TDD log section which uses: for bid in $bug_ids; do
@@ -927,7 +927,7 @@ test_BUG_L21_phase5_no_entry_gate() {
         return 77
     fi
     echo "TEST: test_BUG_L21_phase5_no_entry_gate"
-    local skill_md="/Users/andrewstellman/tmp/QFB-bootstrap/SKILL.md"
+    local skill_md="${SKILL_PATH:-SKILL.md}"
     # Check: Phase 2 has entry gate text; Phase 5 opening should also have entry gate text
     # Phase 2 gate: "Phase 2 entry gate (mandatory — HARD STOP)"
     local phase2_gate
@@ -960,7 +960,7 @@ test_BUG_L22_seed_checks_absent_from_artifact_table() {
         return 77
     fi
     echo "TEST: test_BUG_L22_seed_checks_absent_from_artifact_table"
-    local skill_md="/Users/andrewstellman/tmp/QFB-bootstrap/SKILL.md"
+    local skill_md="${SKILL_PATH:-SKILL.md}"
     # Check that SKILL.md:1641 requires SEED_CHECKS.md (Phase 5 gate)
     local phase5_requirement
     phase5_requirement=$(grep -n 'SEED_CHECKS' "$skill_md" | grep -v '^#' | head -5)
@@ -994,7 +994,7 @@ test_BUG_L23_integration_groups_result_enum_absent() {
         return 77
     fi
     echo "TEST: test_BUG_L23_integration_groups_result_enum_absent"
-    local gate="/Users/andrewstellman/tmp/QFB-bootstrap/quality_gate.sh"
+    local gate="${GATE_PATH:-repos/quality_gate.sh}"
     # The gate SHOULD validate groups[].result enum values — check that it does NOT (red phase)
     local result_enum_check
     result_enum_check=$(grep -n 'result.*pass\|result.*fail\|groups\[\]\|result_enum' "$gate" | grep -v '^#' | head -10)
@@ -1029,7 +1029,7 @@ test_BUG_L24_integration_summary_subkeys_absent() {
         return 77
     fi
     echo "TEST: test_BUG_L24_integration_summary_subkeys_absent"
-    local gate="/Users/andrewstellman/tmp/QFB-bootstrap/quality_gate.sh"
+    local gate="${GATE_PATH:-repos/quality_gate.sh}"
     # The gate should validate integration summary sub-keys — check that it does NOT (red phase)
     local int_summary_subkey_check
     int_summary_subkey_check=$(grep -n 'total_groups\|integration.*summary\|summary.*total_groups' "$gate" | grep -v '^#' | head -5)
@@ -1065,7 +1065,7 @@ test_BUG_L25_phase2_entry_gate_missing_check1() {
         return 77
     fi
     echo "TEST: test_BUG_L25_phase2_entry_gate_missing_check1"
-    local skill_md="/Users/andrewstellman/tmp/QFB-bootstrap/SKILL.md"
+    local skill_md="${SKILL_PATH:-SKILL.md}"
     # Verify Phase 1 gate does have the 120-line check
     local phase1_120_check
     phase1_120_check=$(grep -n '120' "$skill_md" | grep -i 'line\|substan\|content' | head -5)
