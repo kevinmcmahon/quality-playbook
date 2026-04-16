@@ -41,7 +41,7 @@ STRICTNESS="benchmark"   # "benchmark" (default) or "general"
 
 # Parse args
 EXPECT_VERSION=false
-for arg in "$@"; do
+for arg in ${@+"$@"}; do
     if [ "$EXPECT_VERSION" = true ]; then
         VERSION="$arg"
         EXPECT_VERSION=false
@@ -84,10 +84,10 @@ json_str_val() {
         | head -1 | sed 's/.*: *"\([^"]*\)"/\1/'
 }
 
-# Helper: count occurrences of a key in JSON
+# Helper: count occurrences of a key in JSON (matches key: value pairs only)
 json_key_count() {
     local file="$1" key="$2"
-    grep -c "\"${key}\"" "$file" 2>/dev/null || echo 0
+    grep -c "\"${key}\"[[:space:]]*:" "$file" 2>/dev/null || echo 0
 }
 
 check_repo() {
@@ -112,20 +112,31 @@ check_repo() {
         fi
     done
 
-    # Additional artifacts — warn if missing (these are required by the spec but
-    # should not halt the skill if absent, per BUG-005)
+    # Additional required artifacts (Required: Yes in SKILL.md artifact contract table)
     for f in CONTRACTS.md RUN_CODE_REVIEW.md RUN_SPEC_AUDIT.md RUN_INTEGRATION_TESTS.md RUN_TDD_TESTS.md; do
         if [ -f "${q}/${f}" ]; then
             pass "${f} exists"
         else
-            warn "${f} missing"
+            fail "${f} missing"
         fi
     done
-    # Functional test file (any extension)
-    if ls ${q}/test_functional.* &>/dev/null; then
-        pass "test_functional.* exists"
+    # Functional test file — check all SKILL.md-documented naming patterns
+    if ls ${q}/test_functional.* ${q}/FunctionalSpec.* ${q}/FunctionalTest.* ${q}/functional.test.* &>/dev/null 2>&1; then
+        pass "functional test file exists"
     else
-        warn "test_functional.* missing"
+        fail "functional test file missing (test_functional.*, FunctionalSpec.*, FunctionalTest.*, functional.test.*)"
+    fi
+    # AGENTS.md — required per SKILL.md artifact contract table (Phase 2)
+    if [ -f "${repo_dir}/AGENTS.md" ]; then
+        pass "AGENTS.md exists"
+    else
+        fail "AGENTS.md missing (required at project root)"
+    fi
+    # EXPLORATION.md — mandatory in all modes (SKILL.md line 259)
+    if [ -f "${q}/EXPLORATION.md" ]; then
+        pass "EXPLORATION.md exists"
+    else
+        fail "EXPLORATION.md missing"
     fi
 
     # Code reviews dir
@@ -174,7 +185,9 @@ check_repo() {
         correct_headings=${correct_headings:-0}
         wrong_headings=$(grep -E '^## BUG-[0-9]+' "${q}/BUGS.md" 2>/dev/null | grep -cvE '^### BUG-' || true)
         wrong_headings=${wrong_headings:-0}
-        local bold_headings bullet_headings
+        local deep_headings bold_headings bullet_headings
+        deep_headings=$(grep -cE '^#{4,} BUG-[0-9]+' "${q}/BUGS.md" || true)
+        deep_headings=${deep_headings:-0}
         bold_headings=$(grep -cE '^\*\*BUG-[0-9]+' "${q}/BUGS.md" || true)
         bold_headings=${bold_headings:-0}
         bullet_headings=$(grep -cE '^- BUG-[0-9]+' "${q}/BUGS.md" || true)
@@ -182,10 +195,11 @@ check_repo() {
 
         bug_count=$correct_headings
 
-        if [ "$correct_headings" -gt 0 ] && [ "$wrong_headings" -eq 0 ] && [ "$bold_headings" -eq 0 ] && [ "$bullet_headings" -eq 0 ]; then
+        if [ "$correct_headings" -gt 0 ] && [ "$wrong_headings" -eq 0 ] && [ "$deep_headings" -eq 0 ] && [ "$bold_headings" -eq 0 ] && [ "$bullet_headings" -eq 0 ]; then
             pass "All ${correct_headings} bug headings use ### BUG-NNN format"
         else
             [ "$wrong_headings" -gt 0 ] && fail "${wrong_headings} heading(s) use ## instead of ###"
+            [ "$deep_headings" -gt 0 ] && fail "${deep_headings} heading(s) use #### or deeper instead of ###"
             [ "$bold_headings" -gt 0 ] && fail "${bold_headings} heading(s) use **BUG- format"
             [ "$bullet_headings" -gt 0 ] && fail "${bullet_headings} heading(s) use - BUG- format"
             if [ "$correct_headings" -eq 0 ] && [ "$wrong_headings" -eq 0 ]; then
@@ -193,7 +207,7 @@ check_repo() {
                     pass "Zero-bug run — no headings expected"
                 else
                     # Count wrong-format headings as bugs for patch check
-                    bug_count=$((wrong_headings + bold_headings + bullet_headings))
+                    bug_count=$((wrong_headings + deep_headings + bold_headings + bullet_headings))
                     warn "No ### BUG-NNN headings found in BUGS.md"
                 fi
             else
@@ -360,6 +374,14 @@ check_repo() {
         elif [ "$green_found" -gt 0 ]; then
             pass "All green-phase logs have valid status tags"
         fi
+        # TDD_TRACEABILITY.md — mandatory when bugs have red-phase results (benchmark 28)
+        if [ "$red_found" -gt 0 ]; then
+            if [ -f "${q}/TDD_TRACEABILITY.md" ]; then
+                pass "TDD_TRACEABILITY.md exists (${red_found} bugs with red-phase results)"
+            else
+                fail "TDD_TRACEABILITY.md missing (mandatory when bugs have red-phase results)"
+            fi
+        fi
     else
         info "Zero bugs — TDD log files not required"
     fi
@@ -371,6 +393,32 @@ check_repo() {
         for key in schema_version skill_version date project recommendation groups summary uc_coverage; do
             json_has_key "$ij" "$key" && pass "has '${key}'" || fail "missing key '${key}'"
         done
+
+        # schema_version value (must be "1.1" — same check as tdd-results.json)
+        local isv
+        isv=$(json_str_val "$ij" "schema_version")
+        [ "$isv" = "1.1" ] && pass "integration schema_version is '1.1'" || fail "integration schema_version is '${isv:-missing}', expected '1.1'"
+
+        # Date validation — same checks as tdd-results.json
+        local int_date
+        int_date=$(json_str_val "$ij" "date")
+        if [ -n "$int_date" ]; then
+            if echo "$int_date" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+                if [ "$int_date" = "YYYY-MM-DD" ] || [ "$int_date" = "0000-00-00" ]; then
+                    fail "integration-results.json date is placeholder '${int_date}'"
+                else
+                    local today_int
+                    today_int=$(date +%Y-%m-%d)
+                    if [[ "$int_date" > "$today_int" ]]; then
+                        fail "integration-results.json date '${int_date}' is in the future"
+                    else
+                        pass "integration-results.json date '${int_date}' is valid"
+                    fi
+                fi
+            else
+                fail "integration-results.json date '${int_date}' is not ISO 8601 (YYYY-MM-DD)"
+            fi
+        fi
 
         # Recommendation enum
         local rec
@@ -435,17 +483,16 @@ check_repo() {
         # Detect project language using find (portable, no globstar needed).
         # Exclude vendor/, node_modules/, .git/, and quality/ to avoid false positives.
         local detected_lang=""
-        local find_exclude="-not -path '*/vendor/*' -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/quality/*'"
-        if eval "find '${repo_dir}' -maxdepth 3 ${find_exclude} -name '*.go' -print -quit" 2>/dev/null | grep -q .; then detected_lang="go"
-        elif eval "find '${repo_dir}' -maxdepth 3 ${find_exclude} -name '*.py' -print -quit" 2>/dev/null | grep -q .; then detected_lang="py"
-        elif eval "find '${repo_dir}' -maxdepth 3 ${find_exclude} -name '*.java' -print -quit" 2>/dev/null | grep -q .; then detected_lang="java"
-        elif eval "find '${repo_dir}' -maxdepth 3 ${find_exclude} -name '*.kt' -print -quit" 2>/dev/null | grep -q .; then detected_lang="kt"
-        elif eval "find '${repo_dir}' -maxdepth 3 ${find_exclude} -name '*.rs' -print -quit" 2>/dev/null | grep -q .; then detected_lang="rs"
-        elif eval "find '${repo_dir}' -maxdepth 3 ${find_exclude} -name '*.ts' -print -quit" 2>/dev/null | grep -q .; then detected_lang="ts"
-        elif eval "find '${repo_dir}' -maxdepth 3 ${find_exclude} -name '*.js' -print -quit" 2>/dev/null | grep -q .; then detected_lang="js"
-        elif eval "find '${repo_dir}' -maxdepth 3 ${find_exclude} -name '*.scala' -print -quit" 2>/dev/null | grep -q .; then detected_lang="scala"
-        elif eval "find '${repo_dir}' -maxdepth 3 ${find_exclude} -name '*.c' -print -quit" 2>/dev/null | grep -q .; then detected_lang="c"
-        elif eval "find '${repo_dir}' -maxdepth 3 ${find_exclude} -name '*.agc' -print -quit" 2>/dev/null | grep -q .; then detected_lang="agc"
+        if find "${repo_dir}" -maxdepth 3 -not -path '*/vendor/*' -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/quality/*' -name '*.go' -print -quit 2>/dev/null | grep -q .; then detected_lang="go"
+        elif find "${repo_dir}" -maxdepth 3 -not -path '*/vendor/*' -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/quality/*' -name '*.py' -print -quit 2>/dev/null | grep -q .; then detected_lang="py"
+        elif find "${repo_dir}" -maxdepth 3 -not -path '*/vendor/*' -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/quality/*' -name '*.java' -print -quit 2>/dev/null | grep -q .; then detected_lang="java"
+        elif find "${repo_dir}" -maxdepth 3 -not -path '*/vendor/*' -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/quality/*' -name '*.kt' -print -quit 2>/dev/null | grep -q .; then detected_lang="kt"
+        elif find "${repo_dir}" -maxdepth 3 -not -path '*/vendor/*' -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/quality/*' -name '*.rs' -print -quit 2>/dev/null | grep -q .; then detected_lang="rs"
+        elif find "${repo_dir}" -maxdepth 3 -not -path '*/vendor/*' -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/quality/*' -name '*.ts' -print -quit 2>/dev/null | grep -q .; then detected_lang="ts"
+        elif find "${repo_dir}" -maxdepth 3 -not -path '*/vendor/*' -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/quality/*' -name '*.js' -print -quit 2>/dev/null | grep -q .; then detected_lang="js"
+        elif find "${repo_dir}" -maxdepth 3 -not -path '*/vendor/*' -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/quality/*' -name '*.scala' -print -quit 2>/dev/null | grep -q .; then detected_lang="scala"
+        elif find "${repo_dir}" -maxdepth 3 -not -path '*/vendor/*' -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/quality/*' -name '*.c' -print -quit 2>/dev/null | grep -q .; then detected_lang="c"
+        elif find "${repo_dir}" -maxdepth 3 -not -path '*/vendor/*' -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/quality/*' -name '*.agc' -print -quit 2>/dev/null | grep -q .; then detected_lang="agc"
         fi
 
         if [ -n "$detected_lang" ]; then
@@ -558,7 +605,7 @@ check_repo() {
         if [ "$writeup_count" -ge "$bug_count" ]; then
             pass "${writeup_count} writeup(s) for ${bug_count} bug(s)"
         elif [ "$writeup_count" -gt 0 ]; then
-            warn "${writeup_count} writeup(s) for ${bug_count} bug(s) — incomplete"
+            fail "${writeup_count} writeup(s) for ${bug_count} bug(s) — all confirmed bugs require writeups (SKILL.md line 1454)"
         else
             fail "No writeups for ${bug_count} confirmed bug(s)"
         fi
@@ -578,7 +625,7 @@ check_repo() {
     # --- Version stamp consistency (benchmark 26) ---
     echo "[Version Stamps]"
     local skill_version=""
-    for loc in "${repo_dir}/SKILL.md" "${repo_dir}/.claude/skills/quality-playbook/SKILL.md" "${repo_dir}/.github/skills/SKILL.md" "${repo_dir}/.github/skills/quality-playbook/SKILL.md"; do
+    for loc in "${repo_dir}/SKILL.md" "${repo_dir}/.claude/skills/quality-playbook/SKILL.md" "${repo_dir}/.github/skills/SKILL.md" "${repo_dir}/.github/skills/quality-playbook/SKILL.md" "${SCRIPT_DIR}/../SKILL.md" "${SCRIPT_DIR}/SKILL.md"; do
         if [ -f "$loc" ]; then
             skill_version=$(grep -m1 'version:' "$loc" 2>/dev/null | sed 's/.*version: *//' | tr -d ' ')
             [ -n "$skill_version" ] && break
@@ -636,7 +683,7 @@ elif [ ${#REPO_DIRS[@]} -eq 1 ] && [ "${REPO_DIRS[0]}" = "." ]; then
     REPO_DIRS=("$(pwd)")
 else
     resolved=()
-    for name in "${REPO_DIRS[@]}"; do
+    for name in ${REPO_DIRS[@]+"${REPO_DIRS[@]}"}; do
         if [ -d "$name/quality" ]; then
             resolved+=("$name")
         elif [ -d "${SCRIPT_DIR}/${name}-${VERSION}" ]; then
@@ -647,7 +694,7 @@ else
             echo "WARNING: Cannot find repo '${name}'"
         fi
     done
-    REPO_DIRS=("${resolved[@]}")
+    REPO_DIRS=(${resolved[@]+"${resolved[@]}"})
 fi
 
 if [ ${#REPO_DIRS[@]} -eq 0 ]; then

@@ -47,7 +47,7 @@ This skill references files in a `references/` directory (e.g., `references/iter
 
 1. `references/` (relative to SKILL.md — works when running from the skill directory)
 2. `.claude/skills/quality-playbook/references/` (Claude Code installation)
-3. `references/` (GitHub Copilot installation)
+3. `.github/skills/references/` (GitHub Copilot flat installation)
 4. `.github/skills/quality-playbook/references/` (alternate Copilot installation)
 
 All reference file mentions in this skill use the short form `references/filename.md`. If the relative path doesn't resolve, walk the fallback list above.
@@ -86,6 +86,7 @@ The quality gate (`quality_gate.sh`) validates these artifacts. If the gate chec
 
 | Artifact | Location | Required? | Created In |
 |----------|----------|-----------|------------|
+| Exploration findings | `quality/EXPLORATION.md` | Yes | Phase 1 |
 | Quality constitution | `quality/QUALITY.md` | Yes | Phase 2 |
 | Requirements (UC identifiers) | `quality/REQUIREMENTS.md` | Yes | Phase 2 |
 | Behavioral contracts | `quality/CONTRACTS.md` | Yes | Phase 2 |
@@ -103,6 +104,7 @@ The quality gate (`quality_gate.sh`) validates these artifacts. If the gate chec
 | Bug writeups | `quality/writeups/BUG-NNN.md` | If bugs found | Phase 5 |
 | Regression patches | `quality/patches/BUG-NNN-regression-test.patch` | If bugs found | Phase 3 |
 | Fix patches | `quality/patches/BUG-NNN-fix.patch` | Optional | Phase 3 |
+| TDD traceability | `quality/TDD_TRACEABILITY.md` | If bugs have red-phase results | Phase 5 |
 | TDD sidecar | `quality/results/tdd-results.json` | If bugs found | Phase 5 |
 | TDD red-phase logs | `quality/results/BUG-NNN.red.log` | If bugs found | Phase 5 |
 | TDD green-phase logs | `quality/results/BUG-NNN.green.log` | If fix patch exists | Phase 5 |
@@ -2080,10 +2082,13 @@ Read these as you work through each phase:
 
 | File | When to Read | Contains |
 |------|-------------|----------|
+| `references/exploration_patterns.md` | Phase 1 (explore) | Pattern applicability matrix, deep-dive templates, domain-knowledge questions |
 | `references/defensive_patterns.md` | Step 5 (finding skeletons) | Grep patterns, how to convert findings to scenarios |
 | `references/schema_mapping.md` | Step 5b (schema types) | Field mapping format, mutation validity rules |
+| `references/requirements_pipeline.md` | Phase 2 (requirements) | Five-phase pipeline, versioning protocol, carry-forward rules |
 | `references/constitution.md` | File 1 (QUALITY.md) | Full template with section-by-section guidance |
 | `references/functional_tests.md` | File 2 (functional tests) | Test structure, anti-patterns, cross-variant strategy |
 | `references/review_protocols.md` | Files 3–4 (code review, integration) | Templates for both protocols, patch validation, skip guards |
 | `references/spec_audit.md` | File 5 (Council of Three) | Full audit protocol, triage process, fix execution |
+| `references/iteration.md` | Iterations (after Phase 6) | Four iteration strategies: gap, unfiltered, parity, adversarial |
 | `references/verification.md` | Phase 6 (verify) | Complete self-check checklist (45 benchmarks) including structured output, patch gate, skip guard validation, pre-flight discovery, version stamps, bug writeups, enumeration completeness, triage executable evidence, code-extracted enumeration lists, mechanical verification artifacts, source-inspection test execution, contradiction gate, seed check execution, convergence tracking, sidecar JSON schema validation, script-verified closure gate, canonical use case identifiers, and writeup inline fix diffs |
