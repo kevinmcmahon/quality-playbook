@@ -10,35 +10,30 @@ Most AI code review can only find structural issues: null dereferences, resource
 
 The playbook closes that gap. It reads your codebase, derives behavioral requirements from every source it can find (code, docs, specs, comments, defensive patterns, community documentation), and uses those requirements to drive review. The result is a quality system grounded in intent, not just structure. For a deeper look at this problem, see the O'Reilly Radar article [AI Is Writing Our Code Faster Than We Can Verify It](https://www.oreilly.com/radar/ai-is-writing-our-code-faster-than-we-can-verify-it/).
 
-## How to use the Quality Playbook to find bugs in your code
+## How to find bugs in your code
 
-### Step 1: Gather documentation (do this first!)
+### Step 1: Gather documentation first
 
-The playbook finds bugs by checking code against intent — what the code is *supposed* to do. Without documentation, it can only find structural issues. With documentation, it finds the 35% of real defects that structural review alone misses. This is the single most impactful thing you can do to improve results.
+**This is the most important step.** The playbook finds bugs by checking code against intent — what the code is *supposed* to do. Without documentation, it's limited to structural issues. With documentation, it catches the 35% of defects that structural review alone misses.
 
-Create a `docs_gathered/` directory in your project and fill it with everything you can find about what the code should do. The more context you give the playbook, the more bugs it finds. Here are sources to look for:
+Create a `docs_gathered/` directory in your project and fill it with anything that describes what the code should do:
 
-**Official documentation:** API docs, design documents, architecture decision records (ADRs), RFCs, specs, OpenAPI/Swagger definitions, man pages, protocol specifications, configuration references, deployment guides, runbooks.
+- **Specs and API docs** — design documents, ADRs, RFCs, OpenAPI definitions, protocol specs, runbooks
+- **Team knowledge** — Slack threads, Teams call transcripts, meeting notes, wiki pages, Confluence, Notion, post-mortems, incident reports
+- **Community sources** — GitHub issues (especially bug reports — they describe expected vs. actual behavior), Stack Overflow threads, Reddit discussions, Discord archives, mailing lists, maintainer blog posts
+- **AI chat history** — conversations where you discussed the codebase with AI tools contain intent that may not exist anywhere else; export with browser extensions like [ChatGPT Exporter](https://github.com/pionxzh/chatgpt-exporter) or just copy-paste
+- **Code-adjacent artifacts** — test comments, bug-fix commit messages, PR descriptions, CHANGELOGs, release notes, migration guides
 
-**Internal knowledge:** Slack channels (export relevant threads), Microsoft Teams call transcripts, meeting notes, onboarding docs, internal wikis, Confluence pages, Notion databases, Google Docs, engineering blog posts, post-mortems, incident reports.
-
-**Community sources:** GitHub issues and discussions (especially bug reports — they describe expected vs. actual behavior), Stack Overflow threads, Reddit posts (especially from subreddits like r/golang, r/rust, r/python where maintainers are active), forum discussions, Discord server archives, mailing list archives, blog posts by maintainers or power users.
-
-**AI conversation history:** If you've discussed the codebase with AI tools, those conversations contain intent that may not exist anywhere else. Export chat history using browser extensions like [ChatGPT Exporter](https://github.com/pionxzh/chatgpt-exporter) or similar tools for Claude, Gemini, and other platforms. Even copy-pasting key conversations into markdown files works.
-
-**Code-adjacent artifacts:** Test descriptions and comments (they describe intended behavior), commit messages (especially for bug fixes — they describe what *should* have been happening), PR descriptions, CHANGELOG entries, release notes, migration guides.
-
-**Tip: Use AI to help gather documentation.** Tools like Claude Cowork, OpenAI Codex, or even a plain ChatGPT/Claude session with web search can find and compile documentation for you. Try prompts like: *"Search for community documentation, API references, known issues, and design discussions for [project name]. Compile everything you find into a single reference document."* The AI can search GitHub issues, read project wikis, find relevant Stack Overflow answers, and pull it all together into a docs_gathered/ folder. This step alone can take a mediocre playbook run and turn it into a great one.
+**Tip:** Use an AI tool with web search (Claude Cowork, ChatGPT, Codex) to gather docs for you: *"Search for documentation, API references, known issues, and design discussions for [project name]. Compile everything into a reference document."*
 
 ### Step 2: Install the skill
 
-The playbook is a skill file that your AI coding tool reads and follows. Copy it into your project in the location your tool expects.
+Copy the skill files into your project:
 
 **Claude Code:**
 ```bash
 mkdir -p .claude/skills/quality-playbook/references
 cp SKILL.md .claude/skills/quality-playbook/SKILL.md
-cp LICENSE.txt .claude/skills/quality-playbook/LICENSE.txt
 cp references/* .claude/skills/quality-playbook/references/
 ```
 
@@ -46,82 +41,56 @@ cp references/* .claude/skills/quality-playbook/references/
 ```bash
 mkdir -p .github/skills/references
 cp SKILL.md .github/skills/SKILL.md
-cp LICENSE.txt .github/skills/LICENSE.txt
 cp references/* .github/skills/references/
 ```
 
-**Cursor, Windsurf, and other tools:** Use either install location above — the skill checks both. Or just put `SKILL.md` and the `references/` directory in your project root.
+**Cursor, Windsurf, other tools:** Use either location above, or put `SKILL.md` and `references/` in your project root.
 
 ### Step 3: Run the playbook
 
-The playbook runs in six phases, each in its own context window. This isn't a limitation — it's a design choice. Each phase gets the full context window for deep analysis instead of competing for space with other phases. More context per phase means more bugs found.
-
-<a href="images/claude-code-bootstrap-1.png"><img src="images/claude-code-bootstrap-1.png" alt="Phase 1: The playbook explores the codebase and identifies candidate bugs" width="700"></a>
-
-*Phase 1: The playbook explores the codebase, reads documentation, and identifies candidate bugs for deeper investigation.*
-
-**Claude Code — interactive (recommended for first run):**
+**Claude Code:**
 ```bash
 claude --agent agents/quality-playbook.agent.md
 ```
-The agent runs Phase 1, shows you what it found, and asks you to say "keep going" to continue to the next phase. This lets you see results as they come in and take screenshots.
+Add `--dangerously-skip-permissions` to skip file-write approval prompts.
 
-To skip permission prompts, add `--dangerously-skip-permissions`:
-```bash
-claude --agent agents/quality-playbook.agent.md --dangerously-skip-permissions
-```
+**GitHub Copilot:** Open the chat panel in VS Code, IntelliJ, or any IDE with Copilot support and say: *"Run the quality playbook on this project."* For the CLI, use `copilot-cli` with `--yolo` to skip prompts.
 
-**GitHub Copilot (CLI) — interactive:**
-```bash
-copilot-cli --agent agents/quality-playbook.agent.md
-```
-To skip permission prompts, add `--yolo`. You can also run this from the Copilot chat panel in VS Code, IntelliJ, or any IDE that supports GitHub Copilot — just open a chat and say *"Run the quality playbook on this project."*
+**Cursor:** Open Composer (Cmd+I / Ctrl+I) and say: *"Read SKILL.md and run the quality playbook on this project."*
 
-**Cursor:** Open Composer (Cmd+I / Ctrl+I) and type: *"Read SKILL.md and run the quality playbook on this project."*
+**Windsurf:** Open Cascade and say: *"Read SKILL.md and run the quality playbook on this project."*
 
-**Windsurf:** Open Cascade and type: *"Read SKILL.md and run the quality playbook on this project."*
+The playbook runs in six phases. Each phase gets its own context window — this is what lets it do deep analysis instead of running out of context on large codebases. After each phase, say "keep going" to continue.
 
-**Any other AI coding tool:** Point it at `SKILL.md` and tell it to run the playbook. The skill is self-contained — any tool that can read files and write to disk can execute it.
+<a href="images/claude-code-bootstrap-1.png"><img src="images/claude-code-bootstrap-1.png" alt="Phase 1: Exploring the codebase" width="700"></a>
 
-<a href="images/claude-code-bootstrap-2.png"><img src="images/claude-code-bootstrap-2.png" alt="Phase 1 summary showing 6 candidate bugs" width="700"></a>
+*Phase 1 explores the codebase, reads your documentation, and identifies candidate bugs.*
 
-*After Phase 1 completes, the playbook reports what it found and tells you what to say next.*
+<a href="images/claude-code-bootstrap-2.png"><img src="images/claude-code-bootstrap-2.png" alt="Phase 1 results: 6 candidate bugs found" width="700"></a>
 
-### Step 4: Keep going
+*After each phase, the playbook reports what it found and tells you what to say next.*
 
-Say "keep going" after each phase to continue. The six phases are:
+<a href="images/claude-code-bootstrap-3.png"><img src="images/claude-code-bootstrap-3.png" alt="Phase 2: Generating quality artifacts" width="700"></a>
 
-1. **Explore** — Read the codebase and documentation, identify architecture, quality risks, and candidate bugs
-2. **Generate** — Produce requirements, functional tests, review protocols, and the quality constitution
-3. **Code Review** — Three-pass review: structural, requirement verification, cross-requirement consistency
-4. **Spec Audit** — Three independent auditors check code against requirements, with verification probes
-5. **Reconciliation** — Close the loop: every bug tracked, regression-tested, TDD red-green verified
-6. **Verify** — 45 self-check benchmarks validate all generated artifacts
+*Phase 2 generates the full quality infrastructure: requirements, tests, review protocols.*
 
-<a href="images/claude-code-bootstrap-3.png"><img src="images/claude-code-bootstrap-3.png" alt="Phase 2 generating quality artifacts" width="700"></a>
+<a href="images/claude-code-bootstrap-4.png"><img src="images/claude-code-bootstrap-4.png" alt="Phase 5: TDD verification of confirmed bugs" width="700"></a>
 
-*Phase 2 generates the full quality infrastructure: requirements, tests, review protocols, and more.*
+*Phase 5 runs TDD red-green verification on every confirmed bug.*
 
-The full cycle takes 15 to 90 minutes depending on project size and works with any language.
+<a href="images/claude-code-bootstrap-5.png"><img src="images/claude-code-bootstrap-5.png" alt="Final results: 7 confirmed bugs with patches" width="700"></a>
 
-### Step 5: Run iterations (optional but recommended)
+*The final summary shows all confirmed bugs with regression tests, fix patches, and writeups.*
 
-After all six phases complete, the playbook suggests running iteration strategies that find different classes of bugs. Iterations consistently add 40-60% more confirmed bugs on top of the baseline. The four strategies, in recommended order:
+The six phases: **Explore** (read code + docs, find candidates) → **Generate** (requirements, tests, protocols) → **Code Review** (three-pass: structural, requirement verification, cross-requirement consistency) → **Spec Audit** (three independent auditors check code against requirements) → **Reconciliation** (every bug tracked, regression-tested, TDD-verified) → **Verify** (45 self-check benchmarks). The full cycle takes 15-90 minutes depending on project size and works with any language.
 
-1. **gap** — Explore areas the baseline missed
-2. **unfiltered** — Fresh-eyes re-review without structural constraints
-3. **parity** — Compare parallel code paths (setup vs. teardown, encode vs. decode)
-4. **adversarial** — Challenge prior dismissals and recover Type II errors
+### Step 4: Run iterations
 
-Say *"Run the next iteration of the quality playbook using the gap strategy"* to start. After each iteration completes, the playbook suggests the next one.
+After the baseline, the playbook suggests iteration strategies that find different classes of bugs — typically 40-60% more on top of the baseline. Say *"Run the next iteration using the gap strategy"* to start, then follow the suggested order: gap → unfiltered → parity → adversarial.
 
-### Interactive vs. orchestrated runs
+### Why phases?
 
-**Interactive (phase by phase):** The agent runs one phase, shows you results, and waits for "keep going." You see each handoff and can stop, inspect, or re-run any phase. This is the default behavior.
-
-**Orchestrated (fully automatic):** The orchestrator agent manages all six phases and the handoffs between them. Each phase still gets its own context window — the orchestrator spawns a sub-agent for each phase. Use this when you want hands-off execution.
-
-Both approaches produce the same results. The phase-by-phase design keeps context window usage low, which is what allows the playbook to do deep analysis on large codebases. A single-session approach would run out of context partway through Phase 3 on most projects.
+The playbook runs each phase in a separate context window on purpose. A single-session approach runs out of context partway through Phase 3 on most projects, which means shallow analysis and missed bugs. The phase-by-phase design gives each phase the full context budget for deep investigation. The tradeoff is saying "keep going" a few times — but the result is significantly more bugs found.
 
 ## Need help? Just ask your AI
 
