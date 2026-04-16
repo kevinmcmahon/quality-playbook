@@ -10,17 +10,29 @@ Most AI code review can only find structural issues: null dereferences, resource
 
 The playbook closes that gap. It reads your codebase, derives behavioral requirements from every source it can find (code, docs, specs, comments, defensive patterns, community documentation), and uses those requirements to drive review. The result is a quality system grounded in intent, not just structure. For a deeper look at this problem, see the O'Reilly Radar article [AI Is Writing Our Code Faster Than We Can Verify It](https://www.oreilly.com/radar/ai-is-writing-our-code-faster-than-we-can-verify-it/).
 
-## Quick start
+## How to use the Quality Playbook to find bugs in your code
 
-The playbook is a skill for AI coding tools. Copy it into your project and ask the AI to run it.
+### Step 1: Gather documentation (do this first!)
 
-**GitHub Copilot:**
-```bash
-mkdir -p .github/skills/references
-cp SKILL.md .github/skills/SKILL.md
-cp LICENSE.txt .github/skills/LICENSE.txt
-cp references/* .github/skills/references/
-```
+The playbook finds bugs by checking code against intent — what the code is *supposed* to do. Without documentation, it can only find structural issues. With documentation, it finds the 35% of real defects that structural review alone misses. This is the single most impactful thing you can do to improve results.
+
+Create a `docs_gathered/` directory in your project and fill it with everything you can find about what the code should do. The more context you give the playbook, the more bugs it finds. Here are sources to look for:
+
+**Official documentation:** API docs, design documents, architecture decision records (ADRs), RFCs, specs, OpenAPI/Swagger definitions, man pages, protocol specifications, configuration references, deployment guides, runbooks.
+
+**Internal knowledge:** Slack channels (export relevant threads), Microsoft Teams call transcripts, meeting notes, onboarding docs, internal wikis, Confluence pages, Notion databases, Google Docs, engineering blog posts, post-mortems, incident reports.
+
+**Community sources:** GitHub issues and discussions (especially bug reports — they describe expected vs. actual behavior), Stack Overflow threads, Reddit posts (especially from subreddits like r/golang, r/rust, r/python where maintainers are active), forum discussions, Discord server archives, mailing list archives, blog posts by maintainers or power users.
+
+**AI conversation history:** If you've discussed the codebase with AI tools, those conversations contain intent that may not exist anywhere else. Export chat history using browser extensions like [ChatGPT Exporter](https://github.com/pionxzh/chatgpt-exporter) or similar tools for Claude, Gemini, and other platforms. Even copy-pasting key conversations into markdown files works.
+
+**Code-adjacent artifacts:** Test descriptions and comments (they describe intended behavior), commit messages (especially for bug fixes — they describe what *should* have been happening), PR descriptions, CHANGELOG entries, release notes, migration guides.
+
+**Tip: Use AI to help gather documentation.** Tools like Claude Cowork, OpenAI Codex, or even a plain ChatGPT/Claude session with web search can find and compile documentation for you. Try prompts like: *"Search for community documentation, API references, known issues, and design discussions for [project name]. Compile everything you find into a single reference document."* The AI can search GitHub issues, read project wikis, find relevant Stack Overflow answers, and pull it all together into a docs_gathered/ folder. This step alone can take a mediocre playbook run and turn it into a great one.
+
+### Step 2: Install the skill
+
+The playbook is a skill file that your AI coding tool reads and follows. Copy it into your project in the location your tool expects.
 
 **Claude Code:**
 ```bash
@@ -30,28 +42,86 @@ cp LICENSE.txt .claude/skills/quality-playbook/LICENSE.txt
 cp references/* .claude/skills/quality-playbook/references/
 ```
 
-Then tell your AI tool: *"Run the quality playbook on this project."*
-
-**The playbook runs one phase at a time.** It starts with Phase 1 (Explore), then stops and tells you what happened and what to say next. You drive each phase forward — say "keep going" or "run phase 2" to continue. This gives much better results than running everything at once, because each phase gets a full context window for deep analysis.
-
-The six phases are: explore the codebase (Phase 1), generate quality artifacts (Phase 2), run a three-pass code review with regression tests (Phase 3), execute a multi-model spec audit (Phase 4), reconcile and close findings (Phase 5), and verify against self-check benchmarks (Phase 6). After all six phases, you can run iteration strategies to find even more bugs. The full cycle takes anywhere from 15 to 90 minutes depending on project size, and it works with any language.
-
-### Automated orchestration
-
-For a fully automated run, use the orchestrator agent. It runs each phase in its own context window and manages the handoffs automatically — no manual "keep going" needed.
-
-**Claude Code:** Copy the agent file into your project:
+**GitHub Copilot:**
 ```bash
-mkdir -p .claude/agents
-cp agents/quality-playbook-claude.agent.md .claude/agents/
+mkdir -p .github/skills/references
+cp SKILL.md .github/skills/SKILL.md
+cp LICENSE.txt .github/skills/LICENSE.txt
+cp references/* .github/skills/references/
 ```
-Then say: *"Run the full playbook"* — Claude spawns a sub-agent for each phase automatically.
 
-**GitHub Copilot:** The orchestrator agent is available from [awesome-copilot](https://github.com/github/awesome-copilot). Copy it into your project's `agents/` directory, or use it directly from awesome-copilot. Then say: *"Run the full playbook."*
+**Cursor, Windsurf, and other tools:** Use either install location above — the skill checks both. Or just put `SKILL.md` and the `references/` directory in your project root.
 
-**Other tools (Cursor, Windsurf, etc.):** Copy `agents/quality-playbook.agent.md` into your project and point your tool at it. The agent instructions are tool-agnostic — they tell any AI how to manage the phase-by-phase execution.
+### Step 3: Run the playbook
 
-**Tip:** The playbook finds significantly more bugs when you provide documentation alongside the code — specs, API docs, design documents, community documentation. If you have docs available, put them in a `docs_gathered/` directory in your repo before running.
+The playbook runs in six phases, each in its own context window. This isn't a limitation — it's a design choice. Each phase gets the full context window for deep analysis instead of competing for space with other phases. More context per phase means more bugs found.
+
+<a href="images/claude-code-bootstrap-1.png"><img src="images/claude-code-bootstrap-1.png" alt="Phase 1: The playbook explores the codebase and identifies candidate bugs" width="700"></a>
+
+*Phase 1: The playbook explores the codebase, reads documentation, and identifies candidate bugs for deeper investigation.*
+
+**Claude Code — interactive (recommended for first run):**
+```bash
+claude --agent agents/quality-playbook.agent.md
+```
+The agent runs Phase 1, shows you what it found, and asks you to say "keep going" to continue to the next phase. This lets you see results as they come in and take screenshots.
+
+To skip permission prompts, add `--dangerously-skip-permissions`:
+```bash
+claude --agent agents/quality-playbook.agent.md --dangerously-skip-permissions
+```
+
+**GitHub Copilot (CLI) — interactive:**
+```bash
+copilot-cli --agent agents/quality-playbook.agent.md
+```
+To skip permission prompts, add `--yolo`. You can also run this from the Copilot chat panel in VS Code, IntelliJ, or any IDE that supports GitHub Copilot — just open a chat and say *"Run the quality playbook on this project."*
+
+**Cursor:** Open Composer (Cmd+I / Ctrl+I) and type: *"Read SKILL.md and run the quality playbook on this project."*
+
+**Windsurf:** Open Cascade and type: *"Read SKILL.md and run the quality playbook on this project."*
+
+**Any other AI coding tool:** Point it at `SKILL.md` and tell it to run the playbook. The skill is self-contained — any tool that can read files and write to disk can execute it.
+
+<a href="images/claude-code-bootstrap-2.png"><img src="images/claude-code-bootstrap-2.png" alt="Phase 1 summary showing 6 candidate bugs" width="700"></a>
+
+*After Phase 1 completes, the playbook reports what it found and tells you what to say next.*
+
+### Step 4: Keep going
+
+Say "keep going" after each phase to continue. The six phases are:
+
+1. **Explore** — Read the codebase and documentation, identify architecture, quality risks, and candidate bugs
+2. **Generate** — Produce requirements, functional tests, review protocols, and the quality constitution
+3. **Code Review** — Three-pass review: structural, requirement verification, cross-requirement consistency
+4. **Spec Audit** — Three independent auditors check code against requirements, with verification probes
+5. **Reconciliation** — Close the loop: every bug tracked, regression-tested, TDD red-green verified
+6. **Verify** — 45 self-check benchmarks validate all generated artifacts
+
+<a href="images/claude-code-bootstrap-3.png"><img src="images/claude-code-bootstrap-3.png" alt="Phase 2 generating quality artifacts" width="700"></a>
+
+*Phase 2 generates the full quality infrastructure: requirements, tests, review protocols, and more.*
+
+The full cycle takes 15 to 90 minutes depending on project size and works with any language.
+
+### Step 5: Run iterations (optional but recommended)
+
+After all six phases complete, the playbook suggests running iteration strategies that find different classes of bugs. Iterations consistently add 40-60% more confirmed bugs on top of the baseline. The four strategies, in recommended order:
+
+1. **gap** — Explore areas the baseline missed
+2. **unfiltered** — Fresh-eyes re-review without structural constraints
+3. **parity** — Compare parallel code paths (setup vs. teardown, encode vs. decode)
+4. **adversarial** — Challenge prior dismissals and recover Type II errors
+
+Say *"Run the next iteration of the quality playbook using the gap strategy"* to start. After each iteration completes, the playbook suggests the next one.
+
+### Interactive vs. orchestrated runs
+
+**Interactive (phase by phase):** The agent runs one phase, shows you results, and waits for "keep going." You see each handoff and can stop, inspect, or re-run any phase. This is the default behavior.
+
+**Orchestrated (fully automatic):** The orchestrator agent manages all six phases and the handoffs between them. Each phase still gets its own context window — the orchestrator spawns a sub-agent for each phase. Use this when you want hands-off execution.
+
+Both approaches produce the same results. The phase-by-phase design keeps context window usage low, which is what allows the playbook to do deep analysis on large codebases. A single-session approach would run out of context partway through Phase 3 on most projects.
 
 ## Need help? Just ask your AI
 
