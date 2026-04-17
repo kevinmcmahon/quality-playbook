@@ -8,7 +8,7 @@ tools:
 
 # Quality Playbook — Orchestrator Agent
 
-You are a quality engineering orchestrator. Your job is to run the Quality Playbook across multiple phases, giving each phase a clean context window so it can do deep analysis instead of running out of context partway through.
+**First: read `references/orchestrator_protocol.md`.** It contains the role definition, rationalization watchlist, file-writing override, post-phase verification gate with per-phase file lists, and error recovery protocol. Everything in that file applies here. Do not proceed without reading it.
 
 ## Setup: find the skill
 
@@ -18,7 +18,7 @@ Check that the quality playbook skill is installed. Look for SKILL.md in these l
 2. `.github/skills/SKILL.md` (Copilot, flat layout)
 3. `.github/skills/quality-playbook/SKILL.md` (Copilot, nested layout)
 
-Also check for a `references/` directory alongside SKILL.md. It should contain .md files (the full set includes iteration.md, review_protocols.md, spec_audit.md, verification.md, requirements_pipeline.md, exploration_patterns.md, defensive_patterns.md, schema_mapping.md, constitution.md, functional_tests.md, and others). Verify the directory exists and has at least 6 .md files.
+Also check for a `references/` directory alongside SKILL.md. It should contain .md files (the full set includes iteration.md, review_protocols.md, spec_audit.md, verification.md, requirements_pipeline.md, exploration_patterns.md, defensive_patterns.md, schema_mapping.md, constitution.md, functional_tests.md, orchestrator_protocol.md, and others). Verify the directory exists and has at least 6 .md files.
 
 **If the skill is not installed**, tell the user:
 
@@ -41,8 +41,6 @@ Then stop and wait for the user to install it.
 **If the skill is installed**, read SKILL.md and every file in the `references/` directory. Then follow the instructions below.
 
 ## Pre-flight checks
-
-Before starting Phase 1, do two things:
 
 1. **Check for documentation.** Look for a `docs/`, `docs_gathered/`, or `documentation/` directory. If none exists, give a prominent warning:
 
@@ -75,7 +73,7 @@ For each phase (1 through 6):
    - Read quality/PROGRESS.md (if it exists) for context from prior phases
    - Execute Phase N
 3. **Wait for completion.** The phase is done when it writes its checkpoint to quality/PROGRESS.md.
-4. **Check the result.** Read quality/PROGRESS.md after the phase completes. Verify the phase wrote its checkpoint. If it didn't, the phase failed — report to the user and ask whether to retry.
+4. **Run the post-phase verification gate** from `references/orchestrator_protocol.md`. The sub-agent's claim of completion is insufficient — only files on disk count.
 5. **Report progress.** Between phases, briefly tell the user what happened: how many findings, any issues, what's next.
 6. **Continue to next phase.** Repeat from step 1.
 
@@ -125,17 +123,6 @@ Each phase has entry gates (prerequisites from prior phases) and exit gates (wha
 - **"run phase N"** — Run the specified phase (check prerequisites first).
 - **"run iterations"** — Start the iteration cycle. Read `references/iteration.md` and run gap strategy first.
 - **"run [strategy] iteration"** — Run a specific iteration strategy.
-
-## Error recovery
-
-If a phase fails (crashes, runs out of context, doesn't write its checkpoint):
-
-1. Read quality/PROGRESS.md to see what was completed
-2. Report the failure to the user with specifics
-3. Suggest retrying the failed phase in a new context
-4. Do not skip phases — each phase depends on the prior phase's output
-
-If the tool runs out of context mid-phase, the phase's incremental writes to disk are preserved. A retry in a new context can pick up where it left off by reading PROGRESS.md and the quality/ directory.
 
 ## Example prompts
 
