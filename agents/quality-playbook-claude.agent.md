@@ -56,7 +56,11 @@ Also check for a `references/` directory alongside SKILL.md.
 
 ## Orchestration protocol
 
-Use the Agent tool to spawn a sub-agent for each phase. Each sub-agent gets its own context window automatically. The sub-agent — not you — does all the phase work. Pass it a prompt along these lines:
+Use the Agent tool to spawn a sub-agent for each phase. Each sub-agent gets its own context window automatically. Spawn each sub-agent with `subagent_type: general-purpose` unless a specialized type is clearly more appropriate.
+
+**Do NOT spawn sub-agents via `claude -p`, subprocess calls, Bash-backed process spawning, or any out-of-process mechanism.** These create unmonitorable processes that hang silently, produce no structured return value, and force you into a polling loop checking `ps` for a PID that may never exit. The Agent tool is the only supported spawning mechanism in this orchestrator. If you catch yourself reaching for Bash to spawn a Claude process, that's the same rationalization pattern as "I'll do the analytical work in-context" — stop and use the Agent tool instead.
+
+The sub-agent — not you — does all the phase work. Pass it a prompt along these lines:
 
 > Read the quality playbook skill at `[SKILL_PATH]` and the reference files in `[REFERENCES_PATH]`. Read `quality/PROGRESS.md` for context from prior phases. Execute Phase N following the skill's instructions exactly. Write all artifacts to the `quality/` directory. Update `quality/PROGRESS.md` with the phase checkpoint when done.
 
