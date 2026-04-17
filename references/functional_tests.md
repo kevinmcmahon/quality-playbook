@@ -32,9 +32,16 @@ For a medium-sized project (5–15 source files), this typically yields 35–50 
 
 Before writing any test code, read 2–3 existing test files and identify how they import project modules. This is critical — projects handle imports differently and getting it wrong means every test fails with resolution errors.
 
-Identify the import convention used in the project: path manipulation, package imports, relative imports, path aliases, same-package tests, or crate-level imports. Whatever pattern the existing tests use, copy it exactly. Do not guess or invent a different pattern.
+Identify the import convention used in the project. Whatever pattern the existing tests use, copy it exactly. Do not guess or invent a different pattern.
 
-> **Language-specific examples:** See `references/functional_tests_{lang}.md` for your project's language.
+Common patterns by language:
+
+- **Python:** `sys.path.insert(0, "src/")` then bare imports; package imports (`from myproject.module import func`); relative imports with conftest.py path manipulation
+- **Go:** Same-package tests (`package mypackage`) give access to unexported identifiers; black-box tests (`package mypackage_test`) test only exported API; internal packages may require specific import paths
+- **Java:** `import com.example.project.Module;` matching the package structure; test source root must mirror main source root
+- **TypeScript:** `import { func } from '../src/module'` with relative paths; path aliases from `tsconfig.json` (e.g., `@/module`)
+- **Rust:** `use crate::module::function;` for unit tests in the same crate; `use myproject::module::function;` for integration tests in `tests/`
+- **Scala:** `import com.example.project._` or `import com.example.project.{ClassA, ClassB}`; SBT layout mirrors `src/main/scala/` in `src/test/scala/`
 
 ## Create Test Setup BEFORE Writing Tests
 
@@ -45,8 +52,6 @@ Identify your framework's setup mechanism (fixtures, `@BeforeEach`, `beforeAll`,
 **Rule: Every fixture or test helper referenced must be defined.** If a test depends on shared setup that doesn't exist, the test will error during setup (not fail during assertion) — producing broken tests that look like they pass.
 
 **Preferred approach across all languages:** Write tests that create their own data inline. This eliminates cross-file dependencies. Create test data directly in each test function using the framework's temporary directory support and literal data structures.
-
-> **Language-specific examples:** See `references/functional_tests_{lang}.md` for your project's language.
 
 **After writing all tests, run the test suite and check for setup errors.** Setup errors (fixture not found, import failures) count as broken tests regardless of how the framework categorizes them.
 
@@ -80,7 +85,7 @@ Each test should:
 
 Each test should include a traceability annotation (via docstring, display name, or comment) citing the spec section it verifies, e.g., `[Req: formal — Design Doc §N] X should produce Y`.
 
-> **Language-specific examples:** See `references/functional_tests_{lang}.md` for your project's language.
+
 
 ## What Makes a Good Functional Test
 
@@ -96,7 +101,7 @@ If the project handles multiple input types, cross-variant coverage is where sil
 
 Use your framework's parametrization mechanism (e.g., `@pytest.mark.parametrize`, `@ParameterizedTest`, `test.each`, table-driven tests, iterating over cases) to run the same assertion logic across all variants.
 
-> **Language-specific examples:** See `references/functional_tests_{lang}.md` for your project's language.
+
 
 If parametrization doesn't fit, loop explicitly within a single test.
 
@@ -135,7 +140,7 @@ def test_bad_value_not_in_output(fixture):
 
 The pattern is the same in every language: don't test that the validation mechanism rejects bad input — test that the system produces correct output when given edge-case input the schema accepts. The WRONG approach tests the implementation (the validator); the RIGHT approach tests the requirement (the output).
 
-> **Language-specific examples:** See `references/functional_tests_{lang}.md` for your project's language.
+
 
 Always check your Step 5b schema map before choosing mutation values.
 
@@ -149,7 +154,7 @@ Ask: "What does the *spec* say should happen?" The spec says "invalid data shoul
 
 For each scenario in QUALITY.md, write a test. This is a 1:1 mapping. Each test should include a traceability annotation citing the scenario, e.g., `[Req: formal — QUALITY.md Scenario 1]`, and be named to match the scenario's memorable name.
 
-> **Language-specific examples:** See `references/functional_tests_{lang}.md` for your project's language.
+
 
 ## Boundary and Negative Tests
 
@@ -160,7 +165,7 @@ For each boundary test:
 2. Process the mutated input
 3. Assert graceful handling — the result is valid despite the edge-case input
 
-> **Language-specific examples:** See `references/functional_tests_{lang}.md` for your project's language.
+
 
 Use your Step 5b schema map when choosing mutation values. Every mutation must use a value the schema accepts.
 
