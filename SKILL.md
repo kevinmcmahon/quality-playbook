@@ -1032,7 +1032,7 @@ Every scenario's "How to verify" must map to at least one test in the functional
 
 ### File 2: Functional Tests
 
-**This is the most important deliverable.** Read `references/functional_tests.md` for the complete guide.
+**This is the most important deliverable.** Read `references/functional_tests.md` for the complete guide. Also read the language-specific examples file for this project's language: `references/functional_tests_{lang}.md` (e.g., `functional_tests_go.md` for Go, `functional_tests_python.md` for Python). Read only the file for the detected language — do not read all language files.
 
 Organize the tests into three logical groups (classes, describe blocks, modules, or whatever the test framework uses):
 
