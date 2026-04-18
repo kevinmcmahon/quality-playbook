@@ -2,7 +2,7 @@
 
 Point an AI coding tool at any codebase. Get a complete quality engineering infrastructure: requirements derived from the actual intent of the code, functional tests traced to those requirements, a three-pass code review protocol, and a multi-model spec audit that catches bugs no single reviewer can find alone.
 
-**Version:** 1.4.4 | **Author:** [Andrew Stellman](https://github.com/andrewstellman) | **License:** Apache 2.0
+**Version:** 1.4.5 | **Author:** [Andrew Stellman](https://github.com/andrewstellman) | **License:** Apache 2.0
 
 ## Find the 35% of bugs that code review misses
 
@@ -184,7 +184,7 @@ Adding community documentation to the pipeline produces measurably better result
 - **Phase-by-phase runner with `--phase` flag.** The standard-library Python runner at `bin/run_playbook.py` supports `--phase all` (run phases 1-6 sequentially with gates between each), `--phase 3` (run a single phase), or `--phase 3,4,5` (run a range). Each invocation gets a fresh CLI session, communicating through files on disk.
 - **Four iteration strategies.** After the baseline run, the playbook supports four iteration strategies that find different classes of bugs: gap (explore areas the baseline missed), unfiltered (fresh-eyes re-review), parity (parallel path comparison), and adversarial (challenge prior dismissals and recover Type II errors). Iterations consistently add 40-60% more confirmed bugs on top of the baseline.
 - **TDD red-green verification for every confirmed bug.** Every bug in BUGS.md must have a regression test patch, a red-phase log proving the test detects the bug on unpatched code, and a green-phase log proving the fix resolves it. The `tdd-results.json` sidecar (schema 1.1) tracks all verdicts with machine-readable fields.
-- **Quality gate script.** A `quality_gate.sh` script mechanically validates artifact completeness: patch files, writeups, TDD logs, JSON schema conformance, version stamps, and BUGS.md heading format. Runs as the final Phase 6 step.
+- **Quality gate script.** A mechanical validation script (originally `quality_gate.sh`, now `quality_gate.py`) validates artifact completeness: patch files, writeups, TDD logs, JSON schema conformance, version stamps, and BUGS.md heading format. Runs as the final Phase 6 step.
 - **Benchmark results across three codebases.** Validated against Express.js (14 confirmed bugs), Gson (9 confirmed bugs), and Linux virtio (8 confirmed bugs), all with 100% TDD red-phase coverage and 0 gate failures.
 
 ### What's new in v1.3.20
@@ -205,17 +205,27 @@ The key finding: approximately 65% of real defects are detectable by structural 
 
 ## Setting up automation scripts
 
-The repository includes a standard-library Python benchmark package in `bin/` that replaces the old shell entry point while leaving the historical bash scripts in `repos/` untouched.
+The repository includes a standard-library Python runner in `bin/` that replaces the old shell entry point while leaving the historical bash scripts in `repos/` untouched.
 
-Use the built-in runner from the repository root:
+Positional arguments are **directory paths** (relative or absolute). No version resolution, no benchmark-folder lookups — every argument is taken literally. Omit positional args to run against the current directory.
 
 ```bash
-python3 bin/run_playbook.py chi cobra virtio
-python3 bin/run_playbook.py --phase all virtio
-python3 bin/run_playbook.py --claude --model sonnet --next-iteration --strategy gap chi
+cd my-project
+python3 /path/to/quality-playbook/bin/run_playbook.py                      # run on cwd
+python3 /path/to/quality-playbook/bin/run_playbook.py --phase all          # phase-by-phase on cwd
+python3 /path/to/quality-playbook/bin/run_playbook.py ./project1 ./project2  # multiple targets
+python3 /path/to/quality-playbook/bin/run_playbook.py --claude --model opus --phase all ./project1
+python3 /path/to/quality-playbook/bin/run_playbook.py --next-iteration --strategy gap ./project1
 ```
 
-The default benchmark set is now `chi`, `cobra`, and `virtio`. You can still pass any repo short names positionally.
+For benchmark use, run from the `repos/` folder so relative paths resolve to the versioned working copies produced by `setup_repos.sh`:
+
+```bash
+cd repos
+python3 ../bin/run_playbook.py --phase all --sequential chi-1.4.5
+```
+
+**Rate limit warning:** Running multiple targets in parallel with single-prompt mode (no `--phase`) sends long autonomous prompts that consume large amounts of API quota. In testing, running 8 targets in parallel single-prompt mode triggered a 54-hour Copilot rate limit. Use `--phase all` instead — it runs each phase as a separate, shorter prompt with exit gates between phases. This uses less quota per prompt, produces better results (each phase gets a full context window), and is easier to resume if interrupted. For the same reason, prefer `--sequential` over `--parallel` unless you're confident in your rate limit headroom.
 
 ### Usage
 
@@ -225,17 +235,18 @@ usage: run_playbook.py [-h] [--parallel | --sequential] [--claude | --copilot]
                        [--next-iteration]
                        [--strategy {gap,unfiltered,parity,adversarial,all}]
                        [--model MODEL] [--kill]
-                       [repos ...]
+                       [targets ...]
 
-Run the Quality Playbook benchmark workflow across versioned repos.
+Run the Quality Playbook against one or more target directories.
 
 positional arguments:
-  repos                 Short repo names to run. Defaults to chi cobra virtio.
+  targets               Target directories to run against (relative or absolute
+                        paths). Defaults to the current directory.
 
 options:
   -h, --help            show this help message and exit
-  --parallel            Run all repos concurrently (default).
-  --sequential          Run repos one after another.
+  --parallel            Run all targets concurrently (default).
+  --sequential          Run targets one after another.
   --claude              Use claude -p instead of gh copilot.
   --copilot             Use gh copilot (default).
   --no-seeds            Skip Phase 0/0b seed injection (default).
@@ -252,16 +263,35 @@ options:
 
 ```
 quality-playbook/
-├── bin/                     # Standard-library benchmark runner package
+├── SKILL.md                 # The skill (main file — full operational instructions)
+├── references/              # Protocol and pipeline reference docs
+│   ├── iteration.md         # Iteration strategies (gap, unfiltered, parity, adversarial)
+│   ├── orchestrator_protocol.md  # Shared hardening rules for orchestrator agents
+│   ├── requirements_pipeline.md  # Requirements derivation and post-review reconciliation
+│   ├── review_protocols.md       # Three-pass code review protocol
+│   ├── spec_audit.md             # Council of Three spec audit protocol
+│   └── verification.md           # 45 self-check benchmarks for Phase 6
+├── agents/                  # Orchestrator agent files for autonomous runs
+│   ├── quality-playbook-claude.agent.md   # Claude Code orchestrator (sub-agent architecture)
+│   └── quality-playbook.agent.md          # General-purpose orchestrator
+├── bin/                     # Standard-library benchmark runner package (Python 3.8+)
 │   ├── __init__.py
-│   ├── benchmark_lib.py     # Shared repo-resolution, logging, cleanup, and summary helpers
+│   ├── benchmark_lib.py     # Shared logging, cleanup, artifact discovery, and summary helpers
 │   ├── run_playbook.py      # Main entry point: python3 bin/run_playbook.py
-│   └── tests/               # Stdlib-only unit tests runnable via python3 -m pytest bin/tests/
-├── SKILL.md                # The skill (main file)
-├── references/             # Protocol and pipeline reference docs
-├── LICENSE.txt             # Apache 2.0
-├── AGENTS.md               # AI bootstrap file
-└── quality/                # Generated quality infrastructure (from running the skill on itself)
+│   └── tests/               # Stdlib-only unit tests (python3 -m pytest bin/tests/)
+├── .github/skills/          # Installed-copy layout (also used in target repos)
+│   ├── quality_gate.py      # Symlink → quality_gate/quality_gate.py (stable invocation path)
+│   └── quality_gate/        # Gate script package
+│       ├── __init__.py
+│       ├── quality_gate.py  # Mechanical validation script (14 check sections, 1100+ lines)
+│       └── tests/           # 108 stdlib-only unit tests for the gate
+├── pytest/                  # Local stdlib-only shim (python3 -m pytest works without installs)
+├── ai_context/              # AI-readable context files
+│   ├── TOOLKIT.md           # For users' AI assistants (setup, run, interpret, recheck)
+│   └── DEVELOPMENT_CONTEXT.md  # For maintainers' AI assistants
+├── AGENTS.md                # AI bootstrap file (repo root)
+├── LICENSE.txt              # Apache 2.0
+└── quality/                 # Generated quality infrastructure (from running the skill on itself)
     ├── REQUIREMENTS.md     # Behavioral requirements
     ├── QUALITY.md          # Quality constitution
     ├── test_functional.py  # Spec-traced functional tests

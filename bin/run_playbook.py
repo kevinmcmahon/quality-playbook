@@ -1,4 +1,10 @@
-"""Python benchmark runner for the Quality Playbook."""
+"""Python runner for the Quality Playbook.
+
+Invoke with one or more target-directory paths (relative or absolute) or with
+no positional args to run against the current working directory. The runner
+does not resolve short names against a benchmark folder — every positional
+argument is treated literally as a directory path.
+"""
 
 from __future__ import annotations
 
@@ -20,9 +26,8 @@ except ImportError:
     import benchmark_lib as lib
 
 
-DEFAULT_REPO_NAMES = ["chi", "cobra", "virtio"]
 ALL_STRATEGIES = ["gap", "unfiltered", "parity", "adversarial"]
-PID_FILE = lib.REPOS_DIR / ".run_pids"
+PID_FILE = lib.QPB_DIR / ".run_pids"
 
 
 @dataclass
@@ -33,12 +38,12 @@ class GateCheck:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run the Quality Playbook benchmark workflow across versioned repos.",
+        description="Run the Quality Playbook against one or more target directories.",
         formatter_class=argparse.RawTextHelpFormatter,
     )
     parallel_group = parser.add_mutually_exclusive_group()
-    parallel_group.add_argument("--parallel", dest="parallel", action="store_true", default=True, help="Run all repos concurrently (default).")
-    parallel_group.add_argument("--sequential", dest="parallel", action="store_false", help="Run repos one after another.")
+    parallel_group.add_argument("--parallel", dest="parallel", action="store_true", default=True, help="Run all targets concurrently (default).")
+    parallel_group.add_argument("--sequential", dest="parallel", action="store_false", help="Run targets one after another.")
 
     runner_group = parser.add_mutually_exclusive_group()
     runner_group.add_argument("--claude", dest="runner", action="store_const", const="claude", default="copilot", help="Use claude -p instead of gh copilot.")
@@ -60,7 +65,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--model", help="Runner model override (copilot: gpt-5.4, claude: sonnet/opus/etc).")
     parser.add_argument("--kill", action="store_true", help="Kill processes from the current or last parallel run.")
-    parser.add_argument("repos", nargs="*", help="Short repo names to run. Defaults to chi cobra virtio.")
+    parser.add_argument(
+        "targets",
+        nargs="*",
+        help="Target directories to run against (relative or absolute paths). Defaults to the current directory.",
+    )
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     return parser
 
@@ -69,8 +78,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    if not args.kill and not args.repos:
-        args.repos = list(DEFAULT_REPO_NAMES)
+    if not args.kill and not args.targets:
+        args.targets = ["."]
     if args.worker:
         args.parallel = False
     if args.next_iteration and args.phase:
@@ -96,6 +105,34 @@ def phase_list_from_mode(phase_mode: Optional[str]) -> List[str]:
     if phase_mode == "all":
         return ["1", "2", "3", "4", "5", "6"]
     return [phase for phase in phase_mode.split(",") if phase]
+
+
+def resolve_target_dirs(paths: Sequence[str]) -> Tuple[List[Path], List[str], List[str]]:
+    """Resolve user-supplied paths into absolute directories.
+
+    Returns (resolved_dirs, warnings, errors). A missing SKILL.md is a warning
+    (the directory may still be a valid target); a non-directory path is an
+    error and that entry is dropped.
+    """
+    resolved: List[Path] = []
+    warnings: List[str] = []
+    errors: List[str] = []
+    for raw in paths:
+        candidate = Path(raw).expanduser()
+        if not candidate.is_absolute():
+            candidate = Path.cwd() / candidate
+        candidate = candidate.resolve()
+        if not candidate.is_dir():
+            errors.append(f"ERROR: '{raw}' is not a directory (resolved to {candidate})")
+            continue
+        if lib.find_installed_skill(candidate) is None:
+            warnings.append(
+                f"WARN: No SKILL.md found for {candidate}. Expected at "
+                ".github/skills/SKILL.md, .claude/skills/quality-playbook/SKILL.md, or SKILL.md "
+                "at the target root — the playbook may not be installed there."
+            )
+        resolved.append(candidate)
+    return resolved, warnings, errors
 
 
 def phase_label(phase: str) -> str:
@@ -359,6 +396,14 @@ def append_file(source: Path, destination: Path) -> None:
         out_handle.write(source.read_text(encoding="utf-8", errors="ignore"))
 
 
+def log_file_for(repo_dir: Path, timestamp: str) -> Path:
+    """Return the log path for a given target directory.
+
+    Logs live next to the target: `{parent}/{name}-playbook-{ts}.log`.
+    """
+    return repo_dir.parent / f"{repo_dir.name}-playbook-{timestamp}.log"
+
+
 def run_prompt(repo_dir: Path, prompt: str, pass_name: str, output_file: Path, log_file: Path, runner: str, model: Optional[str]) -> int:
     command = command_for_runner(runner, prompt, model)
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -489,7 +534,7 @@ def run_one_phase(repo_dir: Path, phase: str, phase_list: Sequence[str], args: a
 
 
 def run_one_phased(repo_dir: Path, phase_list: Sequence[str], args: argparse.Namespace, timestamp: str) -> int:
-    log_file = lib.REPOS_DIR / f"{repo_dir.name}-playbook-{timestamp}.log"
+    log_file = log_file_for(repo_dir, timestamp)
     if not docs_present(repo_dir):
         print(lib.log(f"SKIP: {repo_dir.name} - docs_gathered/ is missing or empty"))
         return 1
@@ -515,7 +560,7 @@ def run_one_phased(repo_dir: Path, phase_list: Sequence[str], args: argparse.Nam
 
 
 def run_one_singlepass(repo_dir: Path, args: argparse.Namespace, timestamp: str) -> int:
-    log_file = lib.REPOS_DIR / f"{repo_dir.name}-playbook-{timestamp}.log"
+    log_file = log_file_for(repo_dir, timestamp)
     if not docs_present(repo_dir):
         print(lib.log(f"SKIP: {repo_dir.name} - docs_gathered/ is missing or empty"))
         return 1
@@ -558,10 +603,6 @@ def count_total_bugs(repo_dirs: Sequence[Path]) -> int:
     return sum(lib.count_bug_writeups(repo_dir) for repo_dir in repo_dirs)
 
 
-def short_repo_args(repo_dirs: Sequence[Path]) -> List[str]:
-    return [lib.repo_short_name(repo_dir) for repo_dir in repo_dirs]
-
-
 def execute_strategy_all(args: argparse.Namespace, repo_dirs: Sequence[Path], timestamp: str) -> int:
     print("=== Running all iteration strategies: gap -> unfiltered -> parity -> adversarial ===\n")
     for strategy in ALL_STRATEGIES:
@@ -588,7 +629,7 @@ def execute_strategy_all(args: argparse.Namespace, repo_dirs: Sequence[Path], ti
 
 def display_run_header(args: argparse.Namespace, repo_dirs: Sequence[Path], display_version: str, phase_list: Sequence[str], timestamp: str) -> None:
     print("=== Quality Playbook - Artifact Generation ===")
-    print(f"Version:  {display_version}")
+    print(f"Version:  {display_version or 'unknown'}")
     print(f"Runner:   {args.runner}")
     if args.runner == "copilot":
         print(f"Model:    {args.model or lib.DEFAULT_MODEL}")
@@ -602,12 +643,14 @@ def display_run_header(args: argparse.Namespace, repo_dirs: Sequence[Path], disp
         print(f"Mode:     phase-by-phase ({','.join(phase_list)}) - separate session per phase with exit gates")
     else:
         print("Mode:     single-prompt (all phases in one session)")
-    print(f"Repos:    {' '.join(repo_dir.name for repo_dir in repo_dirs)}")
+    print("Targets:")
+    for repo_dir in repo_dirs:
+        print(f"  {repo_dir}")
     print(f"Run ID:   {timestamp}")
     print("")
-    print("=== Runner logs (one file per repo) ===")
+    print("=== Runner logs (one file per target) ===")
     for repo_dir in repo_dirs:
-        print(lib.REPOS_DIR / f"{repo_dir.name}-playbook-{timestamp}.log")
+        print(log_file_for(repo_dir, timestamp))
     print("")
 
 
@@ -641,7 +684,7 @@ def kill_recorded_processes() -> int:
     return 0
 
 
-def build_worker_command(args: argparse.Namespace, repo_name: str) -> List[str]:
+def build_worker_command(args: argparse.Namespace, target_path: str) -> List[str]:
     command = [sys.executable, str(Path(__file__).resolve()), "--worker", "--sequential"]
     command.append("--claude" if args.runner == "claude" else "--copilot")
     command.append("--no-seeds" if args.no_seeds else "--with-seeds")
@@ -653,7 +696,7 @@ def build_worker_command(args: argparse.Namespace, repo_name: str) -> List[str]:
         command.extend(["--strategy", args.strategy])
     if args.model:
         command.extend(["--model", args.model])
-    command.append(repo_name)
+    command.append(target_path)
     return command
 
 
@@ -677,18 +720,17 @@ def execute_run(args: argparse.Namespace, repo_dirs: Sequence[Path], timestamp: 
         processes = []
         pid_entries = []
         for repo_dir in repo_dirs:
-            repo_name = lib.repo_short_name(repo_dir)
             kwargs = {}
             if os.name != "nt":
                 kwargs["start_new_session"] = True
-            command = build_worker_command(args, repo_name)
+            command = build_worker_command(args, str(repo_dir))
             process = subprocess.Popen(command, cwd=str(lib.QPB_DIR), **kwargs)
             processes.append(process)
             pid_entries.append((process.pid, repo_dir.name))
         write_pid_file(pid_entries)
         print(f"PIDs written to {PID_FILE} - stop with: python bin/run_playbook.py --kill\n")
         failures = wait_for_processes(processes)
-        print(f"\n=== Parallel run complete. {failures} failures out of {len(repo_dirs)} repos. ===")
+        print(f"\n=== Parallel run complete. {failures} failures out of {len(repo_dirs)} targets. ===")
         print(lib.print_summary(repo_dirs))
         if not suppress_suggestion:
             print_suggested_next_command(args)
@@ -707,19 +749,19 @@ def execute_run(args: argparse.Namespace, repo_dirs: Sequence[Path], timestamp: 
 
 def print_suggested_next_command(args: argparse.Namespace) -> None:
     runner_flag = " --claude" if args.runner == "claude" else ""
-    repo_names = " ".join(args.repos)
+    target_args = " ".join(shlex.quote(name) for name in args.targets)
     print("-" * 56)
     if args.next_iteration:
         next_name = next_strategy(args.strategy)
         if next_name:
             print("Next iteration suggestion:")
-            print(f"  python bin/run_playbook.py{runner_flag} --next-iteration --strategy {next_name} {repo_names}")
+            print(f"  python bin/run_playbook.py{runner_flag} --next-iteration --strategy {next_name} {target_args}".rstrip())
         else:
             print("Iteration cycle complete (gap -> unfiltered -> parity -> adversarial).")
-            print(f"To start fresh:  python bin/run_playbook.py{runner_flag} {repo_names}")
+            print(f"To start fresh:  python bin/run_playbook.py{runner_flag} {target_args}".rstrip())
     else:
         print("Next iteration suggestion:")
-        print(f"  python bin/run_playbook.py{runner_flag} --next-iteration --strategy gap {repo_names}")
+        print(f"  python bin/run_playbook.py{runner_flag} --next-iteration --strategy gap {target_args}".rstrip())
     print("-" * 56)
 
 
@@ -728,10 +770,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.kill:
         return kill_recorded_processes()
 
-    version = lib.detect_skill_version(lib.QPB_DIR)
-    if not version:
-        print("ERROR: Can't detect version from SKILL.md", file=sys.stderr)
-        return 1
     if not ensure_runner_available(args.runner):
         if args.runner == "copilot":
             print("ERROR: 'gh copilot' not available. Install with: gh extension install github/gh-copilot", file=sys.stderr)
@@ -739,12 +777,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print("ERROR: 'claude' CLI not found. Install from https://docs.anthropic.com/claude-code", file=sys.stderr)
         return 1
 
-    repo_dirs = lib.resolve_repos(version, args.repos, repos_dir=lib.REPOS_DIR)
+    repo_dirs, warnings, errors = resolve_target_dirs(args.targets)
+    for message in warnings:
+        print(message, file=sys.stderr)
+    for message in errors:
+        print(message, file=sys.stderr)
+    if errors:
+        return 1
     if not repo_dirs:
-        print("ERROR: No repos found.", file=sys.stderr)
+        print("ERROR: No target directories to run against.", file=sys.stderr)
         return 1
 
-    display_version = lib.detect_repo_skill_version(repo_dirs[0]) or version
+    display_version = lib.detect_repo_skill_version(repo_dirs[0])
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     display_run_header(args, repo_dirs, display_version, phase_list_from_mode(args.phase), timestamp)
     return execute_run(args, repo_dirs, timestamp=timestamp)

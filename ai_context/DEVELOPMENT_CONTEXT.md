@@ -30,7 +30,13 @@ quality-playbook/
 │   └── skills/
 │       ├── SKILL.md                   ← Installed skill entry point
 │       ├── references/                ← Installed references bundle
-│       └── quality_gate.py            ← Mechanical validation script (stable invocation path)
+│       ├── quality_gate.py            ← Symlink → quality_gate/quality_gate.py (stable invocation path)
+│       └── quality_gate/              ← Gate script package
+│           ├── __init__.py            ← Re-exports public API
+│           ├── quality_gate.py        ← Mechanical validation (14 checks, 1100+ lines, Python 3.8+)
+│           └── tests/
+│               ├── __init__.py
+│               └── test_quality_gate.py  ← 108 stdlib-only unit tests
 ├── ai_context/                        ← AI-readable context files
 │   ├── TOOLKIT.md                     ← For users' AI assistants (setup, run, interpret, recheck)
 │   └── DEVELOPMENT_CONTEXT.md         ← For maintainers' AI assistants (this file)
@@ -112,7 +118,7 @@ When the playbook misses a bug, the miss falls on one of three axes. Identifying
 
 ### Benchmark repos
 
-The benchmark suite uses open-source codebases across multiple languages. Each repo is cloned once into `repos/clean/` and never modified. For each skill version, `setup_repos.sh` creates a working copy (e.g., `chi-1.4.4`) with the skill files installed.
+The benchmark suite uses open-source codebases across multiple languages. Each repo is cloned once into `repos/clean/` and never modified. For each skill version, `setup_repos.sh` creates a working copy (e.g., `chi-1.4.5`) with the skill files installed.
 
 Active benchmark set (four targets):
 
@@ -121,7 +127,7 @@ Active benchmark set (four targets):
 - **cobra** (Go) — larger CLI framework; exercises iteration strategies more heavily.
 - **virtio** (C / Linux kernel driver) — hardest repo; reference target for parity strategy and the historical home of the mechanical-verification rules.
 
-60+ additional repos remain in `repos/clean/` for expanded benchmarking when a specific change calls for it (e.g., language-specific regressions, framework-specific exploration patterns). They are not part of the default validation loop for skill changes. `python3 bin/run_playbook.py` accepts arbitrary short repo names as positional args.
+60+ additional repos remain in `repos/clean/` for expanded benchmarking when a specific change calls for it (e.g., language-specific regressions, framework-specific exploration patterns). They are not part of the default validation loop for skill changes. `python3 bin/run_playbook.py` treats every positional argument as a directory path (relative or absolute) — no version resolution, no benchmark-folder lookups.
 
 #### Why bootstrap is a benchmark target
 
@@ -135,16 +141,24 @@ Bootstrap artifacts live at `quality/` at the QPB repo root rather than under `r
 
 ### Running benchmarks
 
+Positional arguments are directory paths (relative or absolute); run from `repos/` so short paths resolve to the versioned working copies produced by `setup_repos.sh`:
+
 ```bash
 cd repos/
-./setup_repos.sh chi cobra virtio        # copy skill files into the three repo-based targets
-cd ..
-python3 bin/run_playbook.py chi cobra virtio          # baseline runs (Copilot default)
-python3 bin/run_playbook.py --claude chi cobra virtio # baseline runs (Claude Code)
-python3 bin/run_playbook.py --next-iteration --strategy all chi cobra virtio  # full iteration cycle
+./setup_repos.sh chi cobra virtio                     # copy skill files into the three repo-based targets
+python3 ../bin/run_playbook.py chi-1.4.4 cobra-1.4.4 virtio-1.4.4          # baseline runs (Copilot default)
+python3 ../bin/run_playbook.py --claude chi-1.4.4 cobra-1.4.4 virtio-1.4.4 # baseline runs (Claude Code)
+python3 ../bin/run_playbook.py --next-iteration --strategy all chi-1.4.4 cobra-1.4.4 virtio-1.4.4  # full iteration cycle
 ```
 
-Bootstrap is the fourth active target but isn't run through `run_playbook.py`. Invoke the agent directly with `/Users/andrewstellman/Documents/QPB` as the target directory — the QPB repo already has SKILL.md and references at their canonical locations, so `setup_repos.sh` does not apply.
+With no positional args the runner operates on the current directory, which is how bootstrap is invoked:
+
+```bash
+cd /Users/andrewstellman/Documents/QPB
+python3 bin/run_playbook.py --phase all      # bootstrap: run on the QPB repo itself
+```
+
+Bootstrap is the fourth active target but doesn't go through `setup_repos.sh` — the QPB repo already has SKILL.md and references at their canonical locations.
 
 ### Interpreting results
 
@@ -201,7 +215,7 @@ Council review artifacts go in `council-reviews/`. Each review has:
 
 **Always back up before editing.** Copy any file you're about to modify to a `.bak` version first.
 
-**Test on at least 2 repos after changes.** One large (virtio or cobra) and one small (express or httpx). Check both baseline and at least one iteration strategy.
+**Test on at least 2 repos after changes.** One large (virtio or cobra) and one small (chi). Check both baseline and at least one iteration strategy.
 
 **Update the version.** The `version:` field in SKILL.md metadata must be bumped for every change. All generated artifacts stamp this version, and mismatches cause quality_gate.py failures.
 

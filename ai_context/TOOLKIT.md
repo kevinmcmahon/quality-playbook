@@ -63,20 +63,29 @@ Users often want to run the playbook across multiple repositories or automate th
 
 ### Built-in runner
 
-Run it from the repository root:
+Positional arguments are directory paths (relative or absolute). No version resolution, no benchmark-folder lookups — every argument is taken literally. Omit positional args to run against the current directory.
 
 ```bash
-python3 bin/run_playbook.py chi cobra virtio
-python3 bin/run_playbook.py --phase all virtio
-python3 bin/run_playbook.py --claude --model sonnet chi
-python3 bin/run_playbook.py --next-iteration --strategy parity cobra
+cd my-project
+python3 /path/to/quality-playbook/bin/run_playbook.py                      # run on cwd
+python3 /path/to/quality-playbook/bin/run_playbook.py --phase all          # phase-by-phase on cwd
+python3 /path/to/quality-playbook/bin/run_playbook.py ./project1 ./project2  # multiple targets
+python3 /path/to/quality-playbook/bin/run_playbook.py --claude --model sonnet ./project1
+python3 /path/to/quality-playbook/bin/run_playbook.py --next-iteration --strategy parity ./project1
+```
+
+For benchmark use, run from the `repos/` folder so relative paths work naturally:
+
+```bash
+cd repos
+python3 ../bin/run_playbook.py --phase all --sequential chi-1.4.5
 ```
 
 Key properties:
 - Standard library only, Python 3.8+
 - No `pip install`, no `requirements.txt`, no virtual environment creation
-- Default benchmark set is `chi`, `cobra`, and `virtio`
-- Any repo short names can still be passed positionally
+- Defaults to `.` (current directory) when no positional args are given
+- Missing-SKILL.md produces a warning, not an error — useful for first-time installs
 
 ### Setup script
 

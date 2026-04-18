@@ -2,7 +2,6 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 from unittest import mock
-import re
 import subprocess
 
 from bin import benchmark_lib as lib
@@ -26,22 +25,32 @@ class BenchmarkLibTests(unittest.TestCase):
             write(temp_path / ".github" / "skills" / "SKILL.md", "version: 1.4.2\n")
             self.assertEqual(lib.detect_repo_skill_version(temp_path), "1.4.2")
 
-    def test_find_repo_dir_prefers_exact_version(self) -> None:
+    def test_detect_repo_skill_version_falls_back_to_claude_and_root(self) -> None:
         with TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
-            exact = temp_path / "chi-1.4.2"
-            exact.mkdir()
-            (temp_path / "chi-1.4.1").mkdir()
-            self.assertEqual(lib.find_repo_dir("chi", "1.4.2", repos_dir=temp_path), exact)
+            write(temp_path / ".claude" / "skills" / "quality-playbook" / "SKILL.md", "version: 2.0.0\n")
+            self.assertEqual(lib.detect_repo_skill_version(temp_path), "2.0.0")
 
-    def test_find_repo_dir_falls_back_to_highest_version(self) -> None:
         with TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
-            (temp_path / "cobra-1.4.0").mkdir()
-            latest = temp_path / "cobra-1.4.9"
-            latest.mkdir()
-            (temp_path / "cobra-1.4.9-claude").mkdir()
-            self.assertEqual(lib.find_repo_dir("cobra", "1.5.0", repos_dir=temp_path), latest)
+            write(temp_path / "SKILL.md", "version: 3.0.0\n")
+            self.assertEqual(lib.detect_repo_skill_version(temp_path), "3.0.0")
+
+        with TemporaryDirectory() as temp_dir:
+            self.assertEqual(lib.detect_repo_skill_version(Path(temp_dir)), "")
+
+    def test_find_installed_skill_returns_first_hit(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            gh_skill = temp_path / ".github" / "skills" / "SKILL.md"
+            write(gh_skill, "version: 1.0.0\n")
+            write(temp_path / "SKILL.md", "version: 2.0.0\n")
+            # .github/skills/SKILL.md is searched first.
+            self.assertEqual(lib.find_installed_skill(temp_path), gh_skill)
+
+    def test_find_installed_skill_returns_none_when_absent(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            self.assertIsNone(lib.find_installed_skill(Path(temp_dir)))
 
     def test_find_functional_and_regression_tests_skip_generated_dirs(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -86,10 +95,6 @@ class BenchmarkLibTests(unittest.TestCase):
             write(repo_dir / "quality" / "writeups" / "NOTE.md", "c")
             self.assertEqual(lib.count_bug_writeups(repo_dir), 2)
 
-    def test_repo_short_name_strips_version_suffix(self) -> None:
-        self.assertEqual(lib.repo_short_name(Path("virtio-1.4.2")), "virtio")
-        self.assertEqual(lib.repo_short_name(Path("virtio")), "virtio")
-
     def test_print_summary_produces_expected_columns(self) -> None:
         with TemporaryDirectory() as temp_dir:
             repo_dir = Path(temp_dir) / "chi-1.4.2"
@@ -121,6 +126,13 @@ class BenchmarkLibTests(unittest.TestCase):
             with mock.patch("sys.stdout.isatty", return_value=False):
                 lib.logboth(log_file, "stored line")
             self.assertEqual(log_file.read_text(encoding="utf-8"), "stored line\n")
+
+    def test_version_resolution_helpers_are_gone(self) -> None:
+        """Version-based repo resolution has been removed; positional args are now paths."""
+        for name in ("REPOS_DIR", "SHORT_VERSIONED_DIR_PATTERN",
+                     "find_repo_dir", "resolve_repos", "repo_short_name",
+                     "version_key"):
+            self.assertFalse(hasattr(lib, name), f"lib.{name} should have been removed")
 
 
 if __name__ == "__main__":

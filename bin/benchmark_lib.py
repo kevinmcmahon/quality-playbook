@@ -10,11 +10,10 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import Iterable, List, Optional, Sequence
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 QPB_DIR = SCRIPT_DIR.parent
-REPOS_DIR = QPB_DIR / "repos"
 DEFAULT_MODEL = os.environ.get("QPB_MODEL", "gpt-5.4")
 
 FUNCTIONAL_TEST_PATTERNS = (
@@ -36,7 +35,12 @@ REGRESSION_TEST_PATTERNS = (
 EXCLUDED_PARTS = {"target", "node_modules", "__pycache__"}
 EXCLUDED_SUFFIXES = {".class", ".pyc"}
 VERSION_PATTERN = re.compile(r"^\s*(?:version:|\*\*Version:\*\*)\s*([0-9]+(?:\.[0-9]+)+)\b", re.IGNORECASE)
-SHORT_VERSIONED_DIR_PATTERN = "{short}-{version}"
+
+SKILL_INSTALL_LOCATIONS = (
+    Path(".github") / "skills" / "SKILL.md",
+    Path(".claude") / "skills" / "quality-playbook" / "SKILL.md",
+    Path("SKILL.md"),
+)
 
 
 @dataclass(frozen=True)
@@ -78,50 +82,32 @@ def _read_version(path: Path) -> str:
 
 
 def detect_skill_version(qpb_dir: Optional[Path] = None) -> str:
+    """Read the `version:` value from the root SKILL.md (utility helper)."""
     base_dir = qpb_dir or QPB_DIR
     return _read_version(base_dir / "SKILL.md")
 
 
 def detect_repo_skill_version(repo_dir: Path) -> str:
-    return _read_version(repo_dir / ".github" / "skills" / "SKILL.md")
+    """Read the `version:` value from an installed-copy SKILL.md for display."""
+    for rel in SKILL_INSTALL_LOCATIONS:
+        version = _read_version(repo_dir / rel)
+        if version:
+            return version
+    return ""
 
 
-def version_key(version: str) -> Tuple[int, ...]:
-    return tuple(int(part) for part in version.split("."))
+def find_installed_skill(target_dir: Path) -> Optional[Path]:
+    """Return the first installed SKILL.md beneath `target_dir`, or None.
 
-
-def find_repo_dir(short: str, version: str, repos_dir: Optional[Path] = None) -> Optional[Path]:
-    base_dir = repos_dir or REPOS_DIR
-    exact = base_dir / SHORT_VERSIONED_DIR_PATTERN.format(short=short, version=version)
-    if exact.is_dir():
-        return exact
-
-    pattern = re.compile(rf"^{re.escape(short)}-([0-9]+(?:\.[0-9]+)+)$")
-    candidates = []
-    if not base_dir.is_dir():
-        return None
-    for child in base_dir.iterdir():
-        if not child.is_dir():
-            continue
-        match = pattern.match(child.name)
-        if match:
-            candidates.append((version_key(match.group(1)), child))
-    if not candidates:
-        return None
-    candidates.sort(key=lambda item: item[0])
-    return candidates[-1][1]
-
-
-def resolve_repos(version: str, repo_names: Sequence[str], repos_dir: Optional[Path] = None) -> List[Path]:
-    resolved: List[Path] = []
-    base_dir = repos_dir or REPOS_DIR
-    for name in repo_names:
-        repo_dir = find_repo_dir(name, version, repos_dir=base_dir)
-        if repo_dir is not None:
-            resolved.append(repo_dir)
-        else:
-            print(log(f"SKIP: {name} - no matching directory found"), file=sys.stderr)
-    return resolved
+    Searched in the same order as the skill's own fallback list:
+    `.github/skills/SKILL.md`, `.claude/skills/quality-playbook/SKILL.md`,
+    then a plain `SKILL.md` at the directory root.
+    """
+    for rel in SKILL_INSTALL_LOCATIONS:
+        candidate = target_dir / rel
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def _iter_quality_files(repo_dir: Path) -> Iterable[Path]:
@@ -188,11 +174,6 @@ def require_copilot() -> bool:
     except FileNotFoundError:
         return False
     return result.returncode == 0
-
-
-def repo_short_name(repo_dir: Path) -> str:
-    match = re.match(r"^(?P<short>.+?)-[0-9]+(?:\.[0-9]+)+$", repo_dir.name)
-    return match.group("short") if match else repo_dir.name
 
 
 def count_matching_lines(path: Path, pattern: str) -> int:

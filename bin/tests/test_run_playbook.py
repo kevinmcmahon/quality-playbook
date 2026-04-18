@@ -1,5 +1,6 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import os
 import unittest
 
 from bin import run_playbook
@@ -11,15 +12,19 @@ def write(path: Path, content: str) -> None:
 
 
 class RunPlaybookTests(unittest.TestCase):
-    def test_parse_args_defaults_to_new_benchmark_set(self) -> None:
+    def test_parse_args_defaults_to_current_directory(self) -> None:
         args = run_playbook.parse_args([])
-        self.assertEqual(args.repos, ["chi", "cobra", "virtio"])
+        self.assertEqual(args.targets, ["."])
         self.assertTrue(args.parallel)
         self.assertEqual(args.runner, "copilot")
 
+    def test_parse_args_accepts_explicit_paths(self) -> None:
+        args = run_playbook.parse_args(["./project-a", "/abs/project-b"])
+        self.assertEqual(args.targets, ["./project-a", "/abs/project-b"])
+
     def test_parse_args_validates_iteration_vs_phase(self) -> None:
         with self.assertRaises(SystemExit):
-            run_playbook.parse_args(["--next-iteration", "--phase", "3", "chi"])
+            run_playbook.parse_args(["--next-iteration", "--phase", "3", "./somedir"])
 
     def test_phase1_prompt_mentions_seed_skip(self) -> None:
         prompt = run_playbook.phase1_prompt(no_seeds=True)
@@ -119,7 +124,7 @@ class RunPlaybookTests(unittest.TestCase):
         preview = run_playbook.command_preview(["gh", "copilot", "-p", "contains spaces", "weird'quote"])
         self.assertEqual(preview, "gh copilot -p 'contains spaces' 'weird'\"'\"'quote'")
 
-    def test_build_worker_command_preserves_flags(self) -> None:
+    def test_build_worker_command_passes_target_path(self) -> None:
         phased_args = run_playbook.argparse.Namespace(
             parallel=False,
             runner="claude",
@@ -129,11 +134,11 @@ class RunPlaybookTests(unittest.TestCase):
             strategy="parity",
             model="sonnet",
             kill=False,
-            repos=["chi"],
+            targets=["./project-a"],
             worker=False,
         )
 
-        command = run_playbook.build_worker_command(phased_args, "virtio")
+        command = run_playbook.build_worker_command(phased_args, "/abs/path/to/target")
 
         self.assertEqual(command[0], run_playbook.sys.executable)
         self.assertEqual(Path(command[1]).resolve(), Path(run_playbook.__file__).resolve())
@@ -150,7 +155,7 @@ class RunPlaybookTests(unittest.TestCase):
                 "parity",
                 "--model",
                 "sonnet",
-                "virtio",
+                "/abs/path/to/target",
             ],
         )
 
@@ -163,10 +168,10 @@ class RunPlaybookTests(unittest.TestCase):
             strategy="parity",
             model="gpt-5.4",
             kill=False,
-            repos=["chi"],
+            targets=["./project-a"],
             worker=False,
         )
-        iteration_command = run_playbook.build_worker_command(iteration_args, "cobra")
+        iteration_command = run_playbook.build_worker_command(iteration_args, "/home/user/project")
         self.assertEqual(
             iteration_command[2:],
             [
@@ -179,7 +184,7 @@ class RunPlaybookTests(unittest.TestCase):
                 "parity",
                 "--model",
                 "gpt-5.4",
-                "cobra",
+                "/home/user/project",
             ],
         )
 
@@ -248,6 +253,67 @@ class RunPlaybookTests(unittest.TestCase):
             phase6_fail = run_playbook.check_phase_gate(Path(temp_dir) / "missing-progress", "6")
             self.assertFalse(phase6_fail.ok)
             self.assertIn("PROGRESS.md missing", phase6_fail.messages[0])
+
+    # --- Path-based target resolution (replaces the old version-matching tests) ---
+
+    def test_resolve_target_dirs_absolute_path_passes_through(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            resolved, warnings, errors = run_playbook.resolve_target_dirs([temp_dir])
+            self.assertEqual(resolved, [Path(temp_dir).resolve()])
+            self.assertEqual(errors, [])
+            # No skill installed -> warning about missing SKILL.md
+            self.assertEqual(len(warnings), 1)
+            self.assertIn("No SKILL.md found", warnings[0])
+
+    def test_resolve_target_dirs_relative_path_anchors_to_cwd(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir).resolve()
+            sub = temp_path / "project"
+            sub.mkdir()
+            prior_cwd = Path.cwd()
+            try:
+                os.chdir(temp_path)
+                resolved, _, errors = run_playbook.resolve_target_dirs(["./project"])
+            finally:
+                os.chdir(prior_cwd)
+            self.assertEqual(resolved, [sub])
+            self.assertEqual(errors, [])
+
+    def test_resolve_target_dirs_dot_resolves_to_cwd(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir).resolve()
+            prior_cwd = Path.cwd()
+            try:
+                os.chdir(temp_path)
+                resolved, _, errors = run_playbook.resolve_target_dirs(["."])
+            finally:
+                os.chdir(prior_cwd)
+            self.assertEqual(resolved, [temp_path])
+            self.assertEqual(errors, [])
+
+    def test_resolve_target_dirs_non_directory_is_error(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            missing = Path(temp_dir) / "does-not-exist"
+            resolved, warnings, errors = run_playbook.resolve_target_dirs([str(missing)])
+            self.assertEqual(resolved, [])
+            self.assertEqual(warnings, [])
+            self.assertEqual(len(errors), 1)
+            self.assertIn("is not a directory", errors[0])
+
+    def test_resolve_target_dirs_suppresses_skill_warning_when_installed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir).resolve()
+            write(temp_path / ".github" / "skills" / "SKILL.md", "version: 1.4.4\n")
+            resolved, warnings, errors = run_playbook.resolve_target_dirs([str(temp_path)])
+            self.assertEqual(resolved, [temp_path])
+            self.assertEqual(warnings, [])
+            self.assertEqual(errors, [])
+
+    def test_log_file_for_places_log_beside_target(self) -> None:
+        target = Path("/tmp/my-project").resolve()
+        log_path = run_playbook.log_file_for(target, "20260418-130000")
+        self.assertEqual(log_path.parent, target.parent)
+        self.assertEqual(log_path.name, f"{target.name}-playbook-20260418-130000.log")
 
 
 if __name__ == "__main__":
