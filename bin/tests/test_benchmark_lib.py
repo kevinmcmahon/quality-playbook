@@ -65,12 +65,15 @@ class BenchmarkLibTests(unittest.TestCase):
             self.assertEqual(lib.find_functional_test(repo_dir), functional)
             self.assertEqual(lib.find_regression_test(repo_dir), regression)
 
+    def _init_repo(self, repo_dir: Path) -> None:
+        subprocess.run(["git", "init"], cwd=repo_dir, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_dir, check=True)
+        subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_dir, check=True)
+
     def test_cleanup_repo_reverts_tracked_changes(self) -> None:
         with TemporaryDirectory() as temp_dir:
             repo_dir = Path(temp_dir)
-            subprocess.run(["git", "init"], cwd=repo_dir, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_dir, check=True)
-            subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_dir, check=True)
+            self._init_repo(repo_dir)
             tracked = repo_dir / "tracked.txt"
             write(tracked, "original\n")
             subprocess.run(["git", "add", "tracked.txt"], cwd=repo_dir, check=True)
@@ -79,6 +82,85 @@ class BenchmarkLibTests(unittest.TestCase):
             write(tracked, "changed\n")
             self.assertTrue(lib.cleanup_repo(repo_dir))
             self.assertEqual(tracked.read_text(encoding="utf-8"), "original\n")
+
+    def test_cleanup_repo_never_touches_protected_run_output_paths(self) -> None:
+        """Bootstrap self-audit regression: run outputs under quality/ etc. must survive cleanup."""
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            self._init_repo(repo_dir)
+
+            # Commit originals for both a protected-path file and a non-protected one.
+            protected = repo_dir / "quality" / "EXPLORATION.md"
+            non_protected = repo_dir / "README.md"
+            write(protected, "PRIOR\n")
+            write(non_protected, "original readme\n")
+            subprocess.run(["git", "add", "-A"], cwd=repo_dir, check=True)
+            subprocess.run(["git", "commit", "-m", "init"], cwd=repo_dir, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+            # Simulate Phase-1 artifacts + an incidental agent edit.
+            write(protected, "FRESH PHASE 1 OUTPUT\n")
+            write(non_protected, "agent edited this\n")
+
+            result = lib.cleanup_repo(repo_dir)
+
+            # Non-protected file reverted; protected file untouched.
+            self.assertTrue(result, "should report that something was tidied")
+            self.assertEqual(non_protected.read_text(encoding="utf-8"), "original readme\n")
+            self.assertEqual(protected.read_text(encoding="utf-8"), "FRESH PHASE 1 OUTPUT\n")
+
+    def test_cleanup_repo_returns_false_when_only_protected_paths_changed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            self._init_repo(repo_dir)
+            protected = repo_dir / "quality" / "EXPLORATION.md"
+            write(protected, "PRIOR\n")
+            subprocess.run(["git", "add", "-A"], cwd=repo_dir, check=True)
+            subprocess.run(["git", "commit", "-m", "init"], cwd=repo_dir, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+            write(protected, "FRESH RUN\n")
+            self.assertFalse(lib.cleanup_repo(repo_dir), "should stay silent when only protected paths changed")
+            self.assertEqual(protected.read_text(encoding="utf-8"), "FRESH RUN\n")
+
+    def test_cleanup_repo_all_four_protected_prefixes(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            self._init_repo(repo_dir)
+            protected_files = [
+                repo_dir / "quality" / "BUGS.md",
+                repo_dir / "control_prompts" / "phase1.output.txt",
+                repo_dir / "previous_runs" / "20260418-000000" / "quality" / "BUGS.md",
+                repo_dir / "docs_gathered" / "spec.md",
+            ]
+            for p in protected_files:
+                write(p, "original\n")
+            subprocess.run(["git", "add", "-A"], cwd=repo_dir, check=True)
+            subprocess.run(["git", "commit", "-m", "init"], cwd=repo_dir, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+            for p in protected_files:
+                write(p, "modified\n")
+
+            self.assertFalse(lib.cleanup_repo(repo_dir))
+            for p in protected_files:
+                self.assertEqual(p.read_text(encoding="utf-8"), "modified\n",
+                                 f"{p} should not have been reverted")
+
+    def test_parse_porcelain_path_handles_rename_and_plain(self) -> None:
+        self.assertEqual(lib._parse_porcelain_path(" M README.md"), "README.md")
+        self.assertEqual(lib._parse_porcelain_path("M  README.md"), "README.md")
+        self.assertEqual(lib._parse_porcelain_path("R  old.txt -> new.txt"), "new.txt")
+        self.assertIsNone(lib._parse_porcelain_path("??"))
+
+    def test_is_protected_recognizes_all_four_prefixes(self) -> None:
+        self.assertTrue(lib._is_protected("quality/BUGS.md"))
+        self.assertTrue(lib._is_protected("quality/results/tdd-results.json"))
+        self.assertTrue(lib._is_protected("control_prompts/phase1.output.txt"))
+        self.assertTrue(lib._is_protected("previous_runs/20260418/quality/BUGS.md"))
+        self.assertTrue(lib._is_protected("docs_gathered/spec.md"))
+        self.assertFalse(lib._is_protected("README.md"))
+        self.assertFalse(lib._is_protected("src/main.py"))
+        # Defensive: a file whose name starts with "quality" but isn't under
+        # quality/ is NOT protected.
+        self.assertFalse(lib._is_protected("qualityscore.txt"))
 
     def test_count_matching_lines_uses_regex(self) -> None:
         with TemporaryDirectory() as temp_dir:

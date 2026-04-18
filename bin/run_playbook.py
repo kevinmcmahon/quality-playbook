@@ -909,6 +909,25 @@ def print_suggested_next_command(args: argparse.Namespace) -> None:
     prefix = f"{invocation}{runner_flag}{model_flag}"
     target_args = " ".join(shlex.quote(name) for name in args.targets)
     print("-" * 56)
+
+    # If the user ran a strict subset of phases, the right next step is the
+    # remaining phases — NOT an iteration. Iterations only make sense after the
+    # full 6-phase cycle has completed. If --phase all was used (or the user
+    # covered every phase explicitly), fall through to the iteration logic.
+    phase_list = phase_list_from_mode(getattr(args, "phase", None))
+    if phase_list:
+        all_phases = {"1", "2", "3", "4", "5", "6"}
+        ran = set(phase_list)
+        remaining = sorted(all_phases - ran, key=int)
+        if remaining:
+            remaining_spec = ",".join(remaining)
+            print("Next phase suggestion:")
+            print(f"  {prefix} --phase {remaining_spec} {target_args}".rstrip())
+            print("(You can swap --model between phase groups — e.g. Opus for 1-2, Sonnet for 3-6.)")
+            print("-" * 56)
+            return
+        # All six phases covered — fall through to the iteration suggestion.
+
     if args.next_iteration:
         # Suggestion is based on the successor of the LAST strategy in the list.
         # Single-item lists behave the same as the old single-strategy case.

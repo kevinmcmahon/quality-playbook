@@ -140,7 +140,46 @@ def find_regression_test(repo_dir: Path) -> Optional[Path]:
     return _find_test_file(repo_dir, REGRESSION_TEST_PATTERNS)
 
 
+# Paths that cleanup_repo MUST NOT revert. These are playbook run outputs and
+# inputs: reverting them after a run would destroy the very artifacts we just
+# produced (quality/, control_prompts/), the archive from the prior run
+# (previous_runs/), or the docs that feed the next run (docs_gathered/). For
+# bootstrap targets where these trees are tracked in git, the difference matters.
+PROTECTED_PREFIXES = (
+    "quality/",
+    "control_prompts/",
+    "previous_runs/",
+    "docs_gathered/",
+)
+
+
+def _parse_porcelain_path(line: str) -> Optional[str]:
+    """Extract the affected path from a ``git status --porcelain`` line.
+
+    Returns the post-rename path for rename rows (``R  old -> new``), the plain
+    filename otherwise, or None if the line is too short to carry a path.
+    """
+    if len(line) < 4:
+        return None
+    rest = line[3:]
+    if "->" in rest:
+        rest = rest.split("->", 1)[1].strip()
+    return rest.strip()
+
+
+def _is_protected(path: str) -> bool:
+    """True if a porcelain path falls under a run-output directory we must not revert."""
+    return any(path.startswith(prefix) for prefix in PROTECTED_PREFIXES)
+
+
 def cleanup_repo(repo_dir: Path) -> bool:
+    """Revert incidental tracked-file edits the agent made, leaving run outputs alone.
+
+    Only tracked files OUTSIDE the protected run-output directories are considered.
+    Untracked files are never touched (``git checkout`` cannot affect them anyway).
+    Returns True iff at least one file was reverted; False (and prints nothing) if
+    the repo was either clean or only had protected-path changes.
+    """
     status = subprocess.run(
         ["git", "status", "--porcelain"],
         cwd=str(repo_dir),
@@ -152,9 +191,28 @@ def cleanup_repo(repo_dir: Path) -> bool:
     if status.returncode != 0 or not status.stdout.strip():
         return False
 
-    print(log(f"  Reverting uncommitted changes in {repo_dir.name}"))
+    to_revert: List[str] = []
+    for line in status.stdout.splitlines():
+        if not line:
+            continue
+        xy = line[:2]
+        if xy == "??":
+            continue  # untracked — not reachable via git checkout
+        path = _parse_porcelain_path(line)
+        if path is None or _is_protected(path):
+            continue
+        if path not in to_revert:
+            to_revert.append(path)
+
+    if not to_revert:
+        return False
+
+    preview = ", ".join(to_revert[:3])
+    if len(to_revert) > 3:
+        preview += f", +{len(to_revert) - 3} more"
+    print(log(f"  Tidied {len(to_revert)} tracked file(s) in {repo_dir.name}: {preview}"))
     subprocess.run(
-        ["git", "checkout", "."],
+        ["git", "checkout", "--", *to_revert],
         cwd=str(repo_dir),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,

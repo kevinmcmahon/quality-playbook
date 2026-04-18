@@ -494,6 +494,138 @@ class RunPlaybookTests(unittest.TestCase):
         strategy_idx = command.index("--strategy")
         self.assertEqual(command[strategy_idx + 1], "unfiltered,parity,adversarial")
 
+    def test_print_suggested_next_command_partial_phase_suggests_remaining(self) -> None:
+        """After --phase 1,2, next step is --phase 3,4,5,6 — not an iteration."""
+        import io
+        from contextlib import redirect_stdout
+
+        args = run_playbook.argparse.Namespace(
+            runner="claude",
+            next_iteration=False,
+            strategy=["gap"],
+            model="claude-opus-4-7",
+            targets=["quality-playbook"],
+            phase="1,2",
+        )
+        original_argv = run_playbook.sys.argv
+        try:
+            run_playbook.sys.argv = ["bin/run_playbook.py"]
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                run_playbook.print_suggested_next_command(args)
+        finally:
+            run_playbook.sys.argv = original_argv
+        output = buf.getvalue()
+
+        self.assertIn("--phase 3,4,5,6", output)
+        self.assertIn("Next phase suggestion:", output)
+        # Model override hint appears
+        self.assertIn("swap --model", output)
+        # Iteration suggestion must NOT appear after a partial phase run.
+        self.assertNotIn("--next-iteration", output)
+
+    def test_print_suggested_next_command_partial_phase_preserves_runner_and_target(self) -> None:
+        import io
+        from contextlib import redirect_stdout
+
+        args = run_playbook.argparse.Namespace(
+            runner="claude",
+            next_iteration=False,
+            strategy=["gap"],
+            model="claude-opus-4-7",
+            targets=["quality-playbook"],
+            phase="3,5",
+        )
+        original_argv = run_playbook.sys.argv
+        try:
+            run_playbook.sys.argv = ["bin/run_playbook.py"]
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                run_playbook.print_suggested_next_command(args)
+        finally:
+            run_playbook.sys.argv = original_argv
+        output = buf.getvalue()
+        # Remaining phases are in numeric order, not source-list order.
+        self.assertIn("--phase 1,2,4,6", output)
+        self.assertIn("--claude", output)
+        self.assertIn("--model claude-opus-4-7", output)
+        self.assertIn("quality-playbook", output)
+
+    def test_print_suggested_next_command_phase_all_keeps_iteration_suggestion(self) -> None:
+        """--phase all means every phase ran; iteration suggestion stays."""
+        import io
+        from contextlib import redirect_stdout
+
+        args = run_playbook.argparse.Namespace(
+            runner="copilot",
+            next_iteration=False,
+            strategy=["gap"],
+            model=None,
+            targets=["chi-1.4.5"],
+            phase="all",
+        )
+        original_argv = run_playbook.sys.argv
+        try:
+            run_playbook.sys.argv = ["bin/run_playbook.py"]
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                run_playbook.print_suggested_next_command(args)
+        finally:
+            run_playbook.sys.argv = original_argv
+        output = buf.getvalue()
+        self.assertNotIn("Next phase suggestion:", output)
+        self.assertIn("--next-iteration --strategy gap", output)
+
+    def test_print_suggested_next_command_phase_none_keeps_iteration_suggestion(self) -> None:
+        """Single-prompt mode (no --phase) always suggests an iteration next."""
+        import io
+        from contextlib import redirect_stdout
+
+        args = run_playbook.argparse.Namespace(
+            runner="copilot",
+            next_iteration=False,
+            strategy=["gap"],
+            model=None,
+            targets=["chi-1.4.5"],
+            phase=None,
+        )
+        original_argv = run_playbook.sys.argv
+        try:
+            run_playbook.sys.argv = ["bin/run_playbook.py"]
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                run_playbook.print_suggested_next_command(args)
+        finally:
+            run_playbook.sys.argv = original_argv
+        output = buf.getvalue()
+        self.assertNotIn("Next phase suggestion:", output)
+        self.assertIn("--next-iteration --strategy gap", output)
+
+    def test_print_suggested_next_command_explicit_full_phase_list_is_complete(self) -> None:
+        """--phase 1,2,3,4,5,6 is equivalent to --phase all — iteration suggestion."""
+        import io
+        from contextlib import redirect_stdout
+
+        args = run_playbook.argparse.Namespace(
+            runner="copilot",
+            next_iteration=False,
+            strategy=["gap"],
+            model=None,
+            targets=["chi-1.4.5"],
+            phase="1,2,3,4,5,6",
+        )
+        original_argv = run_playbook.sys.argv
+        try:
+            run_playbook.sys.argv = ["bin/run_playbook.py"]
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                run_playbook.print_suggested_next_command(args)
+        finally:
+            run_playbook.sys.argv = original_argv
+        output = buf.getvalue()
+        self.assertNotIn("Next phase suggestion:", output)
+        self.assertIn("--next-iteration --strategy gap", output)
+
     def test_print_suggested_next_command_list_midchain(self) -> None:
         import io
         from contextlib import redirect_stdout
