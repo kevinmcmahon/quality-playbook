@@ -14,16 +14,28 @@ quality-playbook/
 ├── AGENTS.md                          ← AI coding agent entry point (repo root)
 ├── SKILL.md                           ← The skill — full operational instructions for running the playbook
 ├── LICENSE.txt                        ← License terms
+├── agents/                            ← Orchestrator agent files for autonomous runs
+│   ├── quality-playbook-claude.agent.md   ← Claude Code orchestrator (single-level sub-agent model)
+│   └── quality-playbook.agent.md          ← Copilot / generic orchestrator
 ├── bin/                               ← Standard-library benchmark automation package
 │   ├── __init__.py                    ← Package marker
-│   ├── benchmark_lib.py               ← Shared helpers ported from repos/_benchmark_lib.sh
-│   ├── run_playbook.py                ← Main benchmark runner (python3 bin/run_playbook.py)
-│   └── tests/                         ← Stdlib-only tests for the runner package
-├── pytest/                            ← Local stdlib-only shim so python3 -m pytest bin/tests/ works without installs
+│   ├── benchmark_lib.py               ← Shared helpers (versioned from repos/_benchmark_lib.sh)
+│   ├── run_playbook.py                ← Main runner — positional args are target directories (python3 bin/run_playbook.py)
+│   └── tests/                         ← Stdlib-only tests for the runner package (36 tests)
+├── pytest/                            ← Local stdlib-only shim so python3 -m pytest works without installs
 ├── references/                        ← Reference files read during specific phases
+│   ├── challenge_gate.md              ← False-positive detection challenge gate (v1.4.3+)
+│   ├── constitution.md                ← Guidance for drafting the quality constitution
+│   ├── defensive_patterns.md          ← Forensic inversion of defensive code (try/except, null guards)
+│   ├── exploration_patterns.md        ← Pattern library for Phase 1 exploration
+│   ├── functional_tests.md            ← Functional-test generation reference (all languages)
 │   ├── iteration.md                   ← Iteration strategies (gap, unfiltered, parity, adversarial)
+│   ├── orchestrator_protocol.md       ← Shared hardening rules imported by both agent files (v1.4.4+)
 │   ├── requirements_pipeline.md       ← Requirements derivation and post-review reconciliation
+│   ├── requirements_refinement.md     ← Coverage / completeness refinement pass
+│   ├── requirements_review.md         ← Pre-finalization requirements review
 │   ├── review_protocols.md            ← Three-pass code review protocol and regression test conventions
+│   ├── schema_mapping.md              ← tdd-results.json / recheck-results.json schema reference
 │   ├── spec_audit.md                  ← Council of Three spec audit protocol
 │   └── verification.md                ← 45 self-check benchmarks for Phase 6
 ├── .github/                           ← Installed-copy layout used inside target repos
@@ -31,7 +43,7 @@ quality-playbook/
 │       ├── SKILL.md                   ← Installed skill entry point
 │       ├── references/                ← Installed references bundle
 │       ├── quality_gate.py            ← Symlink → quality_gate/quality_gate.py (stable invocation path)
-│       └── quality_gate/              ← Gate script package
+│       └── quality_gate/              ← Gate script package (sole mechanical gate since v1.4.5; bash retired)
 │           ├── __init__.py            ← Re-exports public API
 │           ├── quality_gate.py        ← Mechanical validation (14 checks, 1100+ lines, Python 3.8+)
 │           └── tests/
@@ -39,12 +51,14 @@ quality-playbook/
 │               └── test_quality_gate.py  ← 108 stdlib-only unit tests
 ├── ai_context/                        ← AI-readable context files
 │   ├── TOOLKIT.md                     ← For users' AI assistants (setup, run, interpret, recheck)
-│   └── DEVELOPMENT_CONTEXT.md         ← For maintainers' AI assistants (this file)
+│   ├── DEVELOPMENT_CONTEXT.md         ← For maintainers' AI assistants (this file)
+│   └── BENCHMARK_PROTOCOL.md          ← Clean-folder run protocol for contamination-free benchmarks
 ├── repos/                             ← Benchmark repos and historical shell scripts
 │   ├── setup_repos.sh                 ← Copies skill files into target repos
 │   ├── run_playbook.sh                ← Historical bash runner retained for reference
 │   ├── _benchmark_lib.sh              ← Historical bash helper library retained for reference
 │   └── clean/                         ← Clean clones of benchmark repos
+├── quality/                           ← Bootstrap artifacts (playbook run against QPB itself)
 └── council-reviews/                   ← Council review briefings and responses (not distributed)
 ```
 
@@ -53,12 +67,15 @@ quality-playbook/
 **Running the tests:**
 
 ```
+# Benchmark runner (36 tests)
 python3 -m pytest bin/tests/
-# or
 python3 -m unittest discover bin/tests
+
+# Quality gate package (108 tests) — invoke from the package dir
+cd .github/skills/quality_gate && python3 -m unittest discover -s tests -t .
 ```
 
-The local `pytest` package is a minimal shim around `unittest` so the command above works on plain Python 3.8+ with no external dependencies.
+The local `pytest` package is a minimal shim around `unittest` so `python3 -m pytest` works on plain Python 3.8+ with no external dependencies.
 
 ## How the skill works
 
@@ -141,14 +158,16 @@ Bootstrap artifacts live at `quality/` at the QPB repo root rather than under `r
 
 ### Running benchmarks
 
-Positional arguments are directory paths (relative or absolute); run from `repos/` so short paths resolve to the versioned working copies produced by `setup_repos.sh`:
+See `ai_context/BENCHMARK_PROTOCOL.md` for the clean-folder run protocol. Benchmark runs must be isolated (no sibling runs visible to the agent) or findings leak between runs and the tuning signal is corrupted.
+
+Positional arguments are directory paths (relative or absolute) — the runner does no short-name resolution and no benchmark-folder lookup. Run from `repos/` so the working-copy directory names produced by `setup_repos.sh` (e.g. `chi-1.4.5`) can be passed as plain relative paths:
 
 ```bash
 cd repos/
 ./setup_repos.sh chi cobra virtio                     # copy skill files into the three repo-based targets
-python3 ../bin/run_playbook.py chi-1.4.4 cobra-1.4.4 virtio-1.4.4          # baseline runs (Copilot default)
-python3 ../bin/run_playbook.py --claude chi-1.4.4 cobra-1.4.4 virtio-1.4.4 # baseline runs (Claude Code)
-python3 ../bin/run_playbook.py --next-iteration --strategy all chi-1.4.4 cobra-1.4.4 virtio-1.4.4  # full iteration cycle
+python3 ../bin/run_playbook.py chi-1.4.5 cobra-1.4.5 virtio-1.4.5          # baseline runs (Copilot default)
+python3 ../bin/run_playbook.py --claude chi-1.4.5 cobra-1.4.5 virtio-1.4.5 # baseline runs (Claude Code)
+python3 ../bin/run_playbook.py --next-iteration --strategy all chi-1.4.5 cobra-1.4.5 virtio-1.4.5  # full iteration cycle
 ```
 
 With no positional args the runner operates on the current directory, which is how bootstrap is invoked:
@@ -200,6 +219,14 @@ Council review artifacts go in `council-reviews/`. Each review has:
 - **v1.4.0** (promoted from v1.3.50)**:** Six-phase interactive architecture (renumbered from 3 phases to 6), interactive phase-by-phase execution with end-of-phase messages, `--phase` flag in runner, quality gate script, four iteration strategies with 40-60% yield boost, TDD enforcement, documentation warning, help system, "keep going" continuation, O'Reilly Radar article, moved ITERATION.md to references/iteration.md, orchestrator agents for Claude Code and Copilot. Benchmarked: Express.js (14 bugs), Gson (9 bugs), Linux virtio (8 bugs) — all with 100% TDD coverage and 0 gate failures.
 - **v1.4.1:** Recheck mode for lightweight fix verification (reads BUGS.md, checks each bug against current source, outputs recheck-results.json and recheck-summary.md). Fixed 19 bugs from bootstrap self-audit (second run): eval injection in the gate script (then `quality_gate.sh`, now `quality_gate.py`), bash 3.2 empty array crashes, required artifacts downgraded to WARN, json_key_count false positives, missing artifact checks, documentation inconsistencies. All fixes verified by recheck (19/19 FIXED).
 - **v1.4.2:** Fixed 25 bugs from Sonnet 4.6 bootstrap self-audit (3 HIGH, 8 MEDIUM, 14 LOW). Key fixes: nullglob-safe artifact detection (find replaces ls-glob across 7 locations), severity-prefixed bug ID support (BUG-H1/BUG-M3/BUG-L6), TDD sidecar-to-log cross-validation, recheck-results.json gate validation, Phase 5 entry gate, SEED_CHECKS.md in artifact contract table, integration enum validation. Added run metadata JSON spec (`quality/results/run-YYYY-MM-DDTHH-MM-SS.json`) for multi-model comparison — records model, provider, runner, timestamps, phase timings, bug counts, and gate results. All 25 fixes verified by Sonnet recheck (25/25 FIXED). Multi-model comparison: Sonnet found 25 bugs (3 HIGH) at ~3% weekly usage vs Opus's 19 bugs (1 HIGH) at ~8% — Sonnet is the recommended default for playbook runs.
+- **v1.4.3:** Challenge gate added for false-positive detection — forces triage to reconsider CRITICAL findings with common-sense review before closure (motivated by edgequake benchmarking where 6/7 "CRITICAL" findings turned out to be documented feature gaps or placeholders). Functional-test reference refactored: split into per-language files, then re-merged into a single `references/functional_tests.md` with import patterns folded in. First pass of orchestrator hardening: `references/orchestrator_protocol.md` extracted as a shared reference imported by both agent files, with critical rules duplicated inline for safety.
+- **v1.4.4:** Orchestrator hardening pass — "You are the orchestrator" architecture. Fixes three failure modes observed on casbin benchmarking: (1) single-context collapse (all six phases executed in one context, producing shallow summaries and zero files on disk), (2) `claude -p` subprocess spawning (orchestrator trying to fork fresh CLI processes instead of using the Agent tool), (3) nested Agent-tool stripping (Claude Code strips the Agent tool from nested sub-agents, so the orchestrator must be single-level). The session that reads the agent file IS the orchestrator — it never spawns a new session, only sub-agents. Protocol lives at `references/orchestrator_protocol.md`; critical rules are duplicated inline in each agent file.
+- **v1.4.5:** Tooling rebuild plus surface cleanup:
+    - **Runner rewritten in Python.** `bin/run_playbook.py` + `bin/benchmark_lib.py` replace the old `repos/run_playbook.sh` + `repos/_benchmark_lib.sh` (bash retained as historical reference). Standard library only, Python 3.8+, 36 stdlib-only tests.
+    - **Runner interface redesign.** Positional args are directory paths, not short names. Default is the current directory. No more `DEFAULT_REPO_NAMES`, `REPOS_DIR`, `SHORT_VERSIONED_DIR_PATTERN`, `find_repo_dir`, `resolve_repos`, `repo_short_name`, or version-resolution logic. Missing SKILL.md is a warning rather than a fatal error. Log files live beside each target at `{parent}/{target-name}-playbook-{timestamp}.log` instead of being forced into `repos/`.
+    - **Python gate is sole mechanical gate.** `quality_gate.sh` retired; `quality_gate.py` handles JSON via `json.load` instead of grep-style parsing. Moved to `.github/skills/quality_gate/` as a proper package with `__init__.py` and a 108-test `tests/` subdirectory. The stable invocation path `.github/skills/quality_gate.py` is a symlink to the package module.
+    - **Benchmark set reduced to four targets.** bootstrap, chi, cobra, virtio — down from 10. Bootstrap runs last because fixes from the first three land before the playbook audits itself. 60+ additional repos remain in `repos/clean/` for expanded benchmarking but aren't part of the default validation loop.
+    - **Recheck gate fix.** Root-key check for `recheck-results.json` corrected from `bugs` → `results` to match the SKILL.md schema.
 
 ## Current known issues
 

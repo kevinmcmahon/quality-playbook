@@ -12,6 +12,9 @@ __pycache__/
 *.pyc
 .venv/
 
+# Parallel runner PID file (written by bin/run_playbook.py at QPB_DIR/.run_pids)
+.run_pids
+
 # OS artifacts
 .DS_Store
 Thumbs.db

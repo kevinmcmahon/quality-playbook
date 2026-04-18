@@ -120,7 +120,7 @@ On Windows (PowerShell), replace the loop with `foreach ($repo in $args)` and us
 - `--kill`
 - `--no-seeds` or `--with-seeds`
 
-The runner writes one log file per repo into `repos/`, archives prior `quality/` runs before fresh baselines, enforces phase prerequisite gates, and leaves the historical bash scripts in `repos/` untouched.
+The runner writes one log file per target next to the target directory (at `{parent}/{target-name}-playbook-{timestamp}.log`), archives prior `quality/` runs before fresh baselines, enforces phase prerequisite gates, and leaves the historical bash scripts in `repos/` untouched.
 
 The iteration prompt is:
 ```
@@ -384,7 +384,7 @@ git apply quality/patches/BUG-NNN-fix.patch
 
 ### quality_gate.py
 
-The gate script validates all artifacts mechanically. Run it after the playbook completes:
+The gate script validates all artifacts mechanically. It is the sole mechanical gate — the legacy `quality_gate.sh` was retired in v1.4.5. Target repos install the standalone module at `.github/skills/quality_gate.py` (in the source tree this is a symlink into the `.github/skills/quality_gate/` package, which also ships the 108-test unit-test suite in `quality_gate/tests/`). Run it after the playbook completes:
 
 ```bash
 python3 .github/skills/quality_gate.py .

@@ -167,6 +167,23 @@ The playbook's value comes from requirement derivation. AI code reviewers are bo
 
 Adding community documentation to the pipeline produces measurably better results. In a controlled experiment across multiple repositories, documentation-enriched runs found more bugs, different bugs, and higher-confidence bugs than code-only baselines. The documentation gives auditors spec language to check against, turning "this code looks odd" into "this code contradicts the documented behavior."
 
+### What's new in v1.4.5
+
+- **Python runner with a path-based interface.** `bin/run_playbook.py` treats every positional argument as a directory path (relative or absolute) and defaults to the current directory when none are given. No more short-name resolution, no hardcoded `repos/` lookups — the runner works against any project you point it at. Log files live next to each target (`{parent}/{target-name}-playbook-{timestamp}.log`). Missing SKILL.md is a warning, not a fatal error, so first-time installs aren't blocked. 36 stdlib-only unit tests.
+- **Python gate is the sole mechanical gate.** `quality_gate.sh` has been retired. `quality_gate.py` now handles JSON with `json.load` instead of grep-style parsing and lives at `.github/skills/quality_gate/` as a proper package with a 108-test unit-test suite. A stable symlink at `.github/skills/quality_gate.py` preserves the previous invocation path.
+- **Benchmark set reduced to four targets** — bootstrap, chi, cobra, virtio — so full validation loops finish in a reasonable window. Bootstrap always runs last because fixes from the other three need to land before the playbook audits itself.
+- **Rate limit warning added.** The README and runner docs now call out that running many targets in parallel with single-prompt mode can trigger multi-day Copilot cooldowns; `--phase all` with `--sequential` is the recommended mode.
+
+### What's new in v1.4.4
+
+- **Orchestrator hardening — "you are the orchestrator" architecture.** Motivated by failures on the casbin run, the orchestrator agents now explicitly forbid three failure modes: single-context collapse (running all six phases in one context window), `claude -p` subprocess spawning (forking new CLI sessions instead of using the Agent tool), and nested Agent-tool stripping (sub-agents trying to spawn their own sub-agents, which Claude Code silently strips). The session reading the agent file IS the orchestrator — it spawns one sub-agent per phase and nothing else.
+- **Shared orchestrator protocol.** The hardening rules now live in `references/orchestrator_protocol.md` and are imported by both `agents/quality-playbook-claude.agent.md` and `agents/quality-playbook.agent.md`. Critical rules are also duplicated inline in each agent file so a partial read still enforces them.
+
+### What's new in v1.4.3
+
+- **Challenge gate for false-positive detection.** Before closure, the triage must re-review CRITICAL findings against common-sense reality checks. Motivated by edgequake benchmarking, where six "CRITICAL" tenant-isolation bugs turned out to be documented feature gaps and a seventh was a self-documenting `change-me-in-production` development placeholder. The gate forces that common-sense review to happen before findings are finalized.
+- **Functional-test reference reorganized.** Per-language functional-test guidance was split into separate reference files, then re-merged back into a single `references/functional_tests.md` with the import patterns folded in. Easier to maintain, easier for agents to read.
+
 ### What's new in v1.4.2
 
 - **25 bug fixes from Sonnet 4.6 bootstrap self-audit.** Fixed nullglob-vulnerable artifact detection across 7 locations (ls-glob replaced with find), severity-prefixed bug ID support (BUG-H1/BUG-M3/BUG-L6), TDD sidecar-to-log cross-validation, recheck-results.json gate validation, Phase 5 entry gate, and integration enum validation. All verified by recheck (25/25 FIXED).
@@ -265,23 +282,31 @@ options:
 quality-playbook/
 ├── SKILL.md                 # The skill (main file — full operational instructions)
 ├── references/              # Protocol and pipeline reference docs
-│   ├── iteration.md         # Iteration strategies (gap, unfiltered, parity, adversarial)
+│   ├── challenge_gate.md         # False-positive detection gate for CRITICAL findings
+│   ├── constitution.md           # Guidance for drafting the quality constitution
+│   ├── defensive_patterns.md     # Forensic inversion of try/except, null guards, fallback paths
+│   ├── exploration_patterns.md   # Pattern library for Phase 1 exploration
+│   ├── functional_tests.md       # Functional-test generation (all languages, import patterns)
+│   ├── iteration.md              # Iteration strategies (gap, unfiltered, parity, adversarial)
 │   ├── orchestrator_protocol.md  # Shared hardening rules for orchestrator agents
 │   ├── requirements_pipeline.md  # Requirements derivation and post-review reconciliation
+│   ├── requirements_refinement.md # Coverage / completeness refinement pass
+│   ├── requirements_review.md    # Pre-finalization requirements review
 │   ├── review_protocols.md       # Three-pass code review protocol
+│   ├── schema_mapping.md         # tdd-results.json / recheck-results.json schema reference
 │   ├── spec_audit.md             # Council of Three spec audit protocol
 │   └── verification.md           # 45 self-check benchmarks for Phase 6
 ├── agents/                  # Orchestrator agent files for autonomous runs
 │   ├── quality-playbook-claude.agent.md   # Claude Code orchestrator (sub-agent architecture)
 │   └── quality-playbook.agent.md          # General-purpose orchestrator
-├── bin/                     # Standard-library benchmark runner package (Python 3.8+)
+├── bin/                     # Standard-library runner package (Python 3.8+)
 │   ├── __init__.py
 │   ├── benchmark_lib.py     # Shared logging, cleanup, artifact discovery, and summary helpers
-│   ├── run_playbook.py      # Main entry point: python3 bin/run_playbook.py
-│   └── tests/               # Stdlib-only unit tests (python3 -m pytest bin/tests/)
+│   ├── run_playbook.py      # Main entry point — positional args are target directories; defaults to cwd
+│   └── tests/               # 36 stdlib-only unit tests (python3 -m pytest bin/tests/)
 ├── .github/skills/          # Installed-copy layout (also used in target repos)
 │   ├── quality_gate.py      # Symlink → quality_gate/quality_gate.py (stable invocation path)
-│   └── quality_gate/        # Gate script package
+│   └── quality_gate/        # Gate script package (sole mechanical gate; bash version retired in v1.4.5)
 │       ├── __init__.py
 │       ├── quality_gate.py  # Mechanical validation script (14 check sections, 1100+ lines)
 │       └── tests/           # 108 stdlib-only unit tests for the gate

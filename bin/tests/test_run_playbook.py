@@ -26,6 +26,22 @@ class RunPlaybookTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             run_playbook.parse_args(["--next-iteration", "--phase", "3", "./somedir"])
 
+    def test_parse_args_full_run_default_false(self) -> None:
+        args = run_playbook.parse_args(["./somedir"])
+        self.assertFalse(args.full_run)
+
+    def test_parse_args_accepts_full_run(self) -> None:
+        args = run_playbook.parse_args(["--full-run", "./somedir"])
+        self.assertTrue(args.full_run)
+
+    def test_parse_args_rejects_full_run_with_next_iteration(self) -> None:
+        with self.assertRaises(SystemExit):
+            run_playbook.parse_args(["--full-run", "--next-iteration", "./somedir"])
+
+    def test_parse_args_rejects_full_run_with_phase(self) -> None:
+        with self.assertRaises(SystemExit):
+            run_playbook.parse_args(["--full-run", "--phase", "3", "./somedir"])
+
     def test_phase1_prompt_mentions_seed_skip(self) -> None:
         prompt = run_playbook.phase1_prompt(no_seeds=True)
         self.assertIn("Skip Phase 0 and Phase 0b entirely", prompt)
@@ -188,11 +204,86 @@ class RunPlaybookTests(unittest.TestCase):
             ],
         )
 
+    def test_build_worker_command_includes_full_run(self) -> None:
+        full_run_args = run_playbook.argparse.Namespace(
+            parallel=True,
+            runner="copilot",
+            no_seeds=True,
+            phase=None,
+            next_iteration=False,
+            full_run=True,
+            strategy="gap",
+            model=None,
+            kill=False,
+            targets=["./project-a"],
+            worker=False,
+        )
+        command = run_playbook.build_worker_command(full_run_args, "/abs/path/to/target")
+        self.assertIn("--full-run", command)
+        self.assertNotIn("--next-iteration", command)
+
     def test_next_strategy_chain(self) -> None:
         self.assertEqual(run_playbook.next_strategy("gap"), "unfiltered")
         self.assertEqual(run_playbook.next_strategy("unfiltered"), "parity")
         self.assertEqual(run_playbook.next_strategy("parity"), "adversarial")
         self.assertEqual(run_playbook.next_strategy("adversarial"), "")
+
+    def test_print_suggested_next_command_includes_model_and_runtime(self) -> None:
+        import io
+        from contextlib import redirect_stdout
+
+        args = run_playbook.argparse.Namespace(
+            runner="claude",
+            next_iteration=False,
+            strategy="gap",
+            model="sonnet",
+            targets=["express-1.4.5"],
+        )
+
+        original_argv = run_playbook.sys.argv
+        original_executable = run_playbook.sys.executable
+        try:
+            run_playbook.sys.argv = ["../bin/run_playbook.py"]
+            run_playbook.sys.executable = "/usr/bin/python3"
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                run_playbook.print_suggested_next_command(args)
+        finally:
+            run_playbook.sys.argv = original_argv
+            run_playbook.sys.executable = original_executable
+
+        output = buf.getvalue()
+        self.assertIn("python3 ../bin/run_playbook.py", output)
+        self.assertIn("--claude", output)
+        self.assertIn("--model sonnet", output)
+        self.assertIn("--next-iteration --strategy gap", output)
+        self.assertIn("express-1.4.5", output)
+
+    def test_print_suggested_next_command_omits_model_when_unset(self) -> None:
+        import io
+        from contextlib import redirect_stdout
+
+        args = run_playbook.argparse.Namespace(
+            runner="copilot",
+            next_iteration=True,
+            strategy="unfiltered",
+            model=None,
+            targets=["chi-1.4.5"],
+        )
+
+        original_argv = run_playbook.sys.argv
+        try:
+            run_playbook.sys.argv = ["bin/run_playbook.py"]
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                run_playbook.print_suggested_next_command(args)
+        finally:
+            run_playbook.sys.argv = original_argv
+
+        output = buf.getvalue()
+        self.assertNotIn("--model", output)
+        self.assertNotIn("--claude", output)
+        self.assertIn("--next-iteration --strategy parity", output)
 
     def test_count_lines_handles_missing_and_existing_files(self) -> None:
         with TemporaryDirectory() as temp_dir:

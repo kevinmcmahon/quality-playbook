@@ -58,10 +58,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--multi-pass", dest="phase", action="store_const", const="all", help=argparse.SUPPRESS)
     parser.add_argument("--next-iteration", action="store_true", help="Iterate on an existing quality/ run.")
     parser.add_argument(
+        "--full-run",
+        action="store_true",
+        help="Fresh main run followed by all four iteration strategies sequentially (gap -> unfiltered -> parity -> adversarial).",
+    )
+    parser.add_argument(
         "--strategy",
         default="gap",
         choices=["gap", "unfiltered", "parity", "adversarial", "all"],
-        help="Iteration strategy to use with --next-iteration.",
+        help="Iteration strategy to use with --next-iteration. Use 'all' to chain gap -> unfiltered -> parity -> adversarial.",
     )
     parser.add_argument("--model", help="Runner model override (copilot: gpt-5.4, claude: sonnet/opus/etc).")
     parser.add_argument("--kill", action="store_true", help="Kill processes from the current or last parallel run.")
@@ -84,10 +89,14 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         args.parallel = False
     if args.next_iteration and args.phase:
         parser.error("--next-iteration is not compatible with --phase. Iteration uses a single prompt.")
+    if args.full_run and args.next_iteration:
+        parser.error("--full-run and --next-iteration are mutually exclusive. --full-run already chains all iterations after the main run.")
+    if args.full_run and args.phase:
+        parser.error("--full-run is not compatible with --phase. Full-run uses a single-prompt main run followed by all iterations.")
     if args.phase:
         validate_phase_mode(args.phase, parser)
-    if not args.next_iteration and args.strategy != "gap":
-        print("WARNING: --strategy is ignored without --next-iteration", file=sys.stderr)
+    if not args.next_iteration and not args.full_run and args.strategy != "gap":
+        print("WARNING: --strategy is ignored without --next-iteration or --full-run", file=sys.stderr)
     return args
 
 
@@ -637,7 +646,9 @@ def display_run_header(args: argparse.Namespace, repo_dirs: Sequence[Path], disp
         print(f"Model:    {args.model or '(default)'}")
     print(f"No seeds: {args.no_seeds}  (Phase 0/0b skipped when true)")
     print(f"Parallel: {args.parallel}")
-    if args.next_iteration:
+    if getattr(args, "full_run", False):
+        print("Mode:     full-run (fresh main run + all four iteration strategies)")
+    elif args.next_iteration:
         print(f"Mode:     next-iteration (strategy: {args.strategy}, builds on existing quality/)")
     elif phase_list:
         print(f"Mode:     phase-by-phase ({','.join(phase_list)}) - separate session per phase with exit gates")
@@ -692,6 +703,8 @@ def build_worker_command(args: argparse.Namespace, target_path: str) -> List[str
         command.extend(["--phase", args.phase])
     if args.next_iteration:
         command.append("--next-iteration")
+    if getattr(args, "full_run", False):
+        command.append("--full-run")
     if args.strategy:
         command.extend(["--strategy", args.strategy])
     if args.model:
@@ -712,6 +725,22 @@ def wait_for_processes(processes: Sequence[subprocess.Popen]) -> int:
 def execute_run(args: argparse.Namespace, repo_dirs: Sequence[Path], timestamp: Optional[str] = None, suppress_suggestion: bool = False) -> int:
     phase_list = phase_list_from_mode(args.phase)
     run_timestamp = timestamp or datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    if getattr(args, "full_run", False):
+        print("=== Full run: fresh main run + all iteration strategies ===\n")
+        main_args = argparse.Namespace(**vars(args))
+        main_args.full_run = False
+        main_args.next_iteration = False
+        main_args.strategy = "gap"
+        main_status = execute_run(main_args, repo_dirs, timestamp=run_timestamp, suppress_suggestion=True)
+        if main_status != 0:
+            print("\n=== Full run halted: main run reported failures; skipping iterations. ===")
+            return main_status
+        iter_args = argparse.Namespace(**vars(args))
+        iter_args.full_run = False
+        iter_args.next_iteration = True
+        iter_args.strategy = "all"
+        return execute_run(iter_args, repo_dirs, timestamp=run_timestamp, suppress_suggestion=suppress_suggestion)
 
     if args.next_iteration and args.strategy == "all":
         return execute_strategy_all(args, repo_dirs, timestamp=run_timestamp)
@@ -749,19 +778,24 @@ def execute_run(args: argparse.Namespace, repo_dirs: Sequence[Path], timestamp: 
 
 def print_suggested_next_command(args: argparse.Namespace) -> None:
     runner_flag = " --claude" if args.runner == "claude" else ""
+    model_flag = f" --model {shlex.quote(args.model)}" if getattr(args, "model", None) else ""
+    interpreter = os.path.basename(sys.executable) if sys.executable else "python"
+    script_path = sys.argv[0] if sys.argv and sys.argv[0] else "bin/run_playbook.py"
+    invocation = f"{interpreter} {shlex.quote(script_path)}"
+    prefix = f"{invocation}{runner_flag}{model_flag}"
     target_args = " ".join(shlex.quote(name) for name in args.targets)
     print("-" * 56)
     if args.next_iteration:
         next_name = next_strategy(args.strategy)
         if next_name:
             print("Next iteration suggestion:")
-            print(f"  python bin/run_playbook.py{runner_flag} --next-iteration --strategy {next_name} {target_args}".rstrip())
+            print(f"  {prefix} --next-iteration --strategy {next_name} {target_args}".rstrip())
         else:
             print("Iteration cycle complete (gap -> unfiltered -> parity -> adversarial).")
-            print(f"To start fresh:  python bin/run_playbook.py{runner_flag} {target_args}".rstrip())
+            print(f"To start fresh:  {prefix} {target_args}".rstrip())
     else:
         print("Next iteration suggestion:")
-        print(f"  python bin/run_playbook.py{runner_flag} --next-iteration --strategy gap {target_args}".rstrip())
+        print(f"  {prefix} --next-iteration --strategy gap {target_args}".rstrip())
     print("-" * 56)
 
 
