@@ -27,7 +27,54 @@ except ImportError:
 
 
 ALL_STRATEGIES = ["gap", "unfiltered", "parity", "adversarial"]
+VALID_STRATEGIES = frozenset(ALL_STRATEGIES)
 PID_FILE = lib.QPB_DIR / ".run_pids"
+
+
+def parse_strategy_list(value: str) -> List[str]:
+    """Parse --strategy value into an ordered list of concrete strategies.
+
+    Accepts a single strategy name, a comma-separated list of names, or the
+    shorthand ``all`` (expands to the full canonical order). Rules:
+
+    - Every item must be one of ``gap``, ``unfiltered``, ``parity``, ``adversarial``.
+    - ``all`` is only valid as a bare value; it may not appear inside a list.
+    - Duplicates (e.g. ``gap,gap``) are rejected.
+    - Empty values / whitespace-only tokens are rejected.
+    """
+    if not value or value.strip() == "":
+        raise argparse.ArgumentTypeError("strategy value cannot be empty")
+
+    raw_items = [item.strip() for item in value.split(",")]
+    if any(not item for item in raw_items):
+        raise argparse.ArgumentTypeError(
+            f"strategy value '{value}' contains an empty token"
+        )
+
+    if len(raw_items) == 1 and raw_items[0] == "all":
+        return list(ALL_STRATEGIES)
+
+    if "all" in raw_items:
+        raise argparse.ArgumentTypeError(
+            "'all' is only valid as a bare value; it cannot appear inside a "
+            "comma-separated strategy list. Use --strategy all to run the full "
+            "chain, or list the specific strategies you want."
+        )
+
+    seen = set()
+    for item in raw_items:
+        if item not in VALID_STRATEGIES:
+            raise argparse.ArgumentTypeError(
+                f"invalid strategy '{item}'. Must be one of: "
+                f"{', '.join(ALL_STRATEGIES)}, all"
+            )
+        if item in seen:
+            raise argparse.ArgumentTypeError(
+                f"strategy '{item}' appears more than once in '{value}'"
+            )
+        seen.add(item)
+
+    return raw_items
 
 
 @dataclass
@@ -64,9 +111,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--strategy",
-        default="gap",
-        choices=["gap", "unfiltered", "parity", "adversarial", "all"],
-        help="Iteration strategy to use with --next-iteration. Use 'all' to chain gap -> unfiltered -> parity -> adversarial.",
+        default=["gap"],
+        type=parse_strategy_list,
+        help=(
+            "Iteration strategy (or ordered list) to use with --next-iteration. "
+            "Single: 'gap' | 'unfiltered' | 'parity' | 'adversarial'. "
+            "Shorthand: 'all' (= gap,unfiltered,parity,adversarial). "
+            "Custom list: comma-separated subset, in the order you want, e.g. "
+            "'unfiltered,parity,adversarial'. "
+            "Lists reject duplicates and do not accept 'all' as a member."
+        ),
     )
     parser.add_argument("--model", help="Runner model override (copilot: gpt-5.4, claude: sonnet/opus/etc).")
     parser.add_argument("--kill", action="store_true", help="Kill processes from the current or last parallel run.")
@@ -95,7 +149,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         parser.error("--full-run is not compatible with --phase. Full-run uses a single-prompt main run followed by all iterations.")
     if args.phase:
         validate_phase_mode(args.phase, parser)
-    if not args.next_iteration and not args.full_run and args.strategy != "gap":
+    if not args.next_iteration and not args.full_run and args.strategy != ["gap"]:
         print("WARNING: --strategy is ignored without --next-iteration or --full-run", file=sys.stderr)
     return args
 
@@ -578,9 +632,12 @@ def run_one_singlepass(repo_dir: Path, args: argparse.Namespace, timestamp: str)
         if not (repo_dir / "quality" / "EXPLORATION.md").is_file():
             print(lib.log(f"SKIP: {repo_dir.name} - no quality/EXPLORATION.md to iterate on"))
             return 1
-        prompt = iteration_prompt(args.strategy)
-        pass_label = f"iteration-{args.strategy}"
-        lib.logboth(log_file, lib.log(f"Starting iteration ({args.strategy}): {repo_dir.name} (runner={args.runner}, building on existing quality/)"))
+        # In the single-strategy path, args.strategy is a list with one item;
+        # execute_strategy_list handles multi-item lists one strategy at a time.
+        strategy_name = args.strategy[0]
+        prompt = iteration_prompt(strategy_name)
+        pass_label = f"iteration-{strategy_name}"
+        lib.logboth(log_file, lib.log(f"Starting iteration ({strategy_name}): {repo_dir.name} (runner={args.runner}, building on existing quality/)"))
     else:
         archive_previous_run(repo_dir, timestamp)
         prompt = single_pass_prompt(no_seeds=args.no_seeds)
@@ -612,15 +669,22 @@ def count_total_bugs(repo_dirs: Sequence[Path]) -> int:
     return sum(lib.count_bug_writeups(repo_dir) for repo_dir in repo_dirs)
 
 
-def execute_strategy_all(args: argparse.Namespace, repo_dirs: Sequence[Path], timestamp: str) -> int:
-    print("=== Running all iteration strategies: gap -> unfiltered -> parity -> adversarial ===\n")
-    for strategy in ALL_STRATEGIES:
+def execute_strategy_list(
+    args: argparse.Namespace,
+    repo_dirs: Sequence[Path],
+    strategies: Sequence[str],
+    timestamp: str,
+) -> int:
+    """Run each strategy in ``strategies`` in order, with early stop on zero-gain."""
+    chain = " -> ".join(strategies)
+    print(f"=== Running iteration strategies: {chain} ===\n")
+    for strategy in strategies:
         print("=" * 58)
         print(f"  Strategy: {strategy}")
         print("=" * 58)
         before = count_total_bugs(repo_dirs)
         strategy_args = argparse.Namespace(**vars(args))
-        strategy_args.strategy = strategy
+        strategy_args.strategy = [strategy]
         status = execute_run(strategy_args, repo_dirs, timestamp=timestamp, suppress_suggestion=True)
         after = count_total_bugs(repo_dirs)
         gained = after - before
@@ -631,7 +695,7 @@ def execute_strategy_all(args: argparse.Namespace, repo_dirs: Sequence[Path], ti
             print("  No new bugs found - stopping early (diminishing returns).")
             break
         print("")
-    print("\n=== All-strategy run complete ===")
+    print("\n=== Strategy-list run complete ===")
     print(lib.print_summary(repo_dirs))
     return 0
 
@@ -649,7 +713,8 @@ def display_run_header(args: argparse.Namespace, repo_dirs: Sequence[Path], disp
     if getattr(args, "full_run", False):
         print("Mode:     full-run (fresh main run + all four iteration strategies)")
     elif args.next_iteration:
-        print(f"Mode:     next-iteration (strategy: {args.strategy}, builds on existing quality/)")
+        strategy_display = ",".join(args.strategy)
+        print(f"Mode:     next-iteration (strategy: {strategy_display}, builds on existing quality/)")
     elif phase_list:
         print(f"Mode:     phase-by-phase ({','.join(phase_list)}) - separate session per phase with exit gates")
     else:
@@ -665,33 +730,89 @@ def display_run_header(args: argparse.Namespace, repo_dirs: Sequence[Path], disp
     print("")
 
 
-def write_pid_file(entries: Sequence[Tuple[int, str]]) -> None:
-    PID_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with PID_FILE.open("w", encoding="utf-8") as handle:
+def pid_file_for_parent() -> Path:
+    """Return the PID file path for this parent process.
+
+    Each parent uses its own file (``.run_pids.<parent_pid>``) so that
+    concurrent parallel launches from different terminals don't overwrite
+    each other's worker registrations. ``kill_recorded_processes`` globs
+    every matching file to kill workers across all parents.
+    """
+    return PID_FILE.parent / f"{PID_FILE.name}.{os.getpid()}"
+
+
+def discover_pid_files() -> List[Path]:
+    """Return all per-parent PID files currently on disk."""
+    parent = PID_FILE.parent
+    if not parent.is_dir():
+        return []
+    return sorted(parent.glob(f"{PID_FILE.name}.*"))
+
+
+def write_pid_file(entries: Sequence[Tuple[int, str]]) -> Path:
+    """Write this parent's worker PIDs to its own file. Returns the path."""
+    path = pid_file_for_parent()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
         for pid, repo_name in entries:
             handle.write(f"{pid} {repo_name}\n")
+    return path
+
+
+def _pkill_fallback() -> None:
+    """Best-effort pattern kill when no PID file is available (e.g. after a crash)."""
+    patterns = [
+        "bin/run_playbook.py",
+        "claude -p",
+        "claude --model",
+    ]
+    for pattern in patterns:
+        try:
+            result = subprocess.run(
+                ["pkill", "-f", pattern],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        except FileNotFoundError:
+            print("  pkill not available; cannot do pattern-based cleanup")
+            return
+        if result.returncode == 0:
+            print(f"  killed processes matching: {pattern}")
+        else:
+            print(f"  no processes matched: {pattern}")
 
 
 def kill_recorded_processes() -> int:
-    if not PID_FILE.is_file():
-        print("No PID file found.")
+    pid_files = discover_pid_files()
+    if not pid_files:
+        print("No PID files found. Falling back to pkill:")
+        _pkill_fallback()
         return 0
 
-    print(f"Killing PIDs from {PID_FILE}:")
-    for line in PID_FILE.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        pid_text, _, repo_name = line.partition(" ")
-        pid = int(pid_text)
-        try:
-            if os.name != "nt":
-                os.killpg(pid, signal.SIGTERM)
-            else:
-                os.kill(pid, signal.SIGTERM)
-            print(f"  kill {pid} [{repo_name}]")
-        except ProcessLookupError:
-            print(f"  {pid} [{repo_name}] - already exited")
-    PID_FILE.unlink(missing_ok=True)
+    total_killed = 0
+    for pid_file in pid_files:
+        print(f"Killing PIDs from {pid_file}:")
+        for line in pid_file.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            pid_text, _, repo_name = line.partition(" ")
+            try:
+                pid = int(pid_text)
+            except ValueError:
+                continue
+            try:
+                if os.name != "nt":
+                    os.killpg(pid, signal.SIGTERM)
+                else:
+                    os.kill(pid, signal.SIGTERM)
+                print(f"  kill {pid} [{repo_name}]")
+                total_killed += 1
+            except ProcessLookupError:
+                print(f"  {pid} [{repo_name}] - already exited")
+        pid_file.unlink(missing_ok=True)
+    if total_killed == 0:
+        print("All recorded processes had already exited.")
     return 0
 
 
@@ -706,19 +827,20 @@ def build_worker_command(args: argparse.Namespace, target_path: str) -> List[str
     if getattr(args, "full_run", False):
         command.append("--full-run")
     if args.strategy:
-        command.extend(["--strategy", args.strategy])
+        command.extend(["--strategy", ",".join(args.strategy)])
     if args.model:
         command.extend(["--model", args.model])
     command.append(target_path)
     return command
 
 
-def wait_for_processes(processes: Sequence[subprocess.Popen]) -> int:
+def wait_for_processes(processes: Sequence[subprocess.Popen], pid_file: Path) -> int:
     failures = 0
     for process in processes:
         if process.wait() != 0:
             failures += 1
-    PID_FILE.unlink(missing_ok=True)
+    # Remove only this parent's file; peer parents keep their own.
+    pid_file.unlink(missing_ok=True)
     return failures
 
 
@@ -731,7 +853,7 @@ def execute_run(args: argparse.Namespace, repo_dirs: Sequence[Path], timestamp: 
         main_args = argparse.Namespace(**vars(args))
         main_args.full_run = False
         main_args.next_iteration = False
-        main_args.strategy = "gap"
+        main_args.strategy = ["gap"]
         main_status = execute_run(main_args, repo_dirs, timestamp=run_timestamp, suppress_suggestion=True)
         if main_status != 0:
             print("\n=== Full run halted: main run reported failures; skipping iterations. ===")
@@ -739,11 +861,13 @@ def execute_run(args: argparse.Namespace, repo_dirs: Sequence[Path], timestamp: 
         iter_args = argparse.Namespace(**vars(args))
         iter_args.full_run = False
         iter_args.next_iteration = True
-        iter_args.strategy = "all"
+        iter_args.strategy = list(ALL_STRATEGIES)
         return execute_run(iter_args, repo_dirs, timestamp=run_timestamp, suppress_suggestion=suppress_suggestion)
 
-    if args.next_iteration and args.strategy == "all":
-        return execute_strategy_all(args, repo_dirs, timestamp=run_timestamp)
+    # Multi-strategy iteration: chain each strategy in order with early stop.
+    # Single-strategy iteration falls through to the regular parallel/sequential path.
+    if args.next_iteration and len(args.strategy) > 1:
+        return execute_strategy_list(args, repo_dirs, args.strategy, timestamp=run_timestamp)
 
     if args.parallel:
         processes = []
@@ -756,9 +880,9 @@ def execute_run(args: argparse.Namespace, repo_dirs: Sequence[Path], timestamp: 
             process = subprocess.Popen(command, cwd=str(lib.QPB_DIR), **kwargs)
             processes.append(process)
             pid_entries.append((process.pid, repo_dir.name))
-        write_pid_file(pid_entries)
-        print(f"PIDs written to {PID_FILE} - stop with: python bin/run_playbook.py --kill\n")
-        failures = wait_for_processes(processes)
+        pid_file_path = write_pid_file(pid_entries)
+        print(f"PIDs written to {pid_file_path} - stop with: python bin/run_playbook.py --kill\n")
+        failures = wait_for_processes(processes, pid_file_path)
         print(f"\n=== Parallel run complete. {failures} failures out of {len(repo_dirs)} targets. ===")
         print(lib.print_summary(repo_dirs))
         if not suppress_suggestion:
@@ -786,7 +910,10 @@ def print_suggested_next_command(args: argparse.Namespace) -> None:
     target_args = " ".join(shlex.quote(name) for name in args.targets)
     print("-" * 56)
     if args.next_iteration:
-        next_name = next_strategy(args.strategy)
+        # Suggestion is based on the successor of the LAST strategy in the list.
+        # Single-item lists behave the same as the old single-strategy case.
+        last_strategy = args.strategy[-1] if args.strategy else "gap"
+        next_name = next_strategy(last_strategy)
         if next_name:
             print("Next iteration suggestion:")
             print(f"  {prefix} --next-iteration --strategy {next_name} {target_args}".rstrip())

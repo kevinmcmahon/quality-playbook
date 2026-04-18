@@ -147,7 +147,7 @@ class RunPlaybookTests(unittest.TestCase):
             no_seeds=False,
             phase="3,4,5",
             next_iteration=False,
-            strategy="parity",
+            strategy=["parity"],
             model="sonnet",
             kill=False,
             targets=["./project-a"],
@@ -181,7 +181,7 @@ class RunPlaybookTests(unittest.TestCase):
             no_seeds=True,
             phase=None,
             next_iteration=True,
-            strategy="parity",
+            strategy=["parity"],
             model="gpt-5.4",
             kill=False,
             targets=["./project-a"],
@@ -212,7 +212,7 @@ class RunPlaybookTests(unittest.TestCase):
             phase=None,
             next_iteration=False,
             full_run=True,
-            strategy="gap",
+            strategy=["gap"],
             model=None,
             kill=False,
             targets=["./project-a"],
@@ -235,7 +235,7 @@ class RunPlaybookTests(unittest.TestCase):
         args = run_playbook.argparse.Namespace(
             runner="claude",
             next_iteration=False,
-            strategy="gap",
+            strategy=["gap"],
             model="sonnet",
             targets=["express-1.4.5"],
         )
@@ -266,7 +266,7 @@ class RunPlaybookTests(unittest.TestCase):
         args = run_playbook.argparse.Namespace(
             runner="copilot",
             next_iteration=True,
-            strategy="unfiltered",
+            strategy=["unfiltered"],
             model=None,
             targets=["chi-1.4.5"],
         )
@@ -405,6 +405,187 @@ class RunPlaybookTests(unittest.TestCase):
         log_path = run_playbook.log_file_for(target, "20260418-130000")
         self.assertEqual(log_path.parent, target.parent)
         self.assertEqual(log_path.name, f"{target.name}-playbook-20260418-130000.log")
+
+    # --- Strategy list parsing and dispatch (Issue 2) ---
+
+    def test_parse_strategy_list_single(self) -> None:
+        self.assertEqual(run_playbook.parse_strategy_list("gap"), ["gap"])
+        self.assertEqual(run_playbook.parse_strategy_list("parity"), ["parity"])
+
+    def test_parse_strategy_list_multi(self) -> None:
+        self.assertEqual(
+            run_playbook.parse_strategy_list("unfiltered,parity,adversarial"),
+            ["unfiltered", "parity", "adversarial"],
+        )
+
+    def test_parse_strategy_list_all_expands_to_full_chain(self) -> None:
+        self.assertEqual(
+            run_playbook.parse_strategy_list("all"),
+            ["gap", "unfiltered", "parity", "adversarial"],
+        )
+
+    def test_parse_strategy_list_rejects_all_in_list(self) -> None:
+        import argparse as _argparse
+        with self.assertRaises(_argparse.ArgumentTypeError):
+            run_playbook.parse_strategy_list("all,gap")
+        with self.assertRaises(_argparse.ArgumentTypeError):
+            run_playbook.parse_strategy_list("gap,all")
+
+    def test_parse_strategy_list_rejects_duplicate(self) -> None:
+        import argparse as _argparse
+        with self.assertRaises(_argparse.ArgumentTypeError):
+            run_playbook.parse_strategy_list("gap,gap")
+        with self.assertRaises(_argparse.ArgumentTypeError):
+            run_playbook.parse_strategy_list("unfiltered,parity,unfiltered")
+
+    def test_parse_strategy_list_rejects_unknown(self) -> None:
+        import argparse as _argparse
+        with self.assertRaises(_argparse.ArgumentTypeError):
+            run_playbook.parse_strategy_list("bogus")
+        with self.assertRaises(_argparse.ArgumentTypeError):
+            run_playbook.parse_strategy_list("gap,bogus,parity")
+
+    def test_parse_strategy_list_rejects_empty(self) -> None:
+        import argparse as _argparse
+        with self.assertRaises(_argparse.ArgumentTypeError):
+            run_playbook.parse_strategy_list("")
+        with self.assertRaises(_argparse.ArgumentTypeError):
+            run_playbook.parse_strategy_list("gap,,parity")
+
+    def test_parse_args_accepts_strategy_list(self) -> None:
+        args = run_playbook.parse_args([
+            "--next-iteration",
+            "--strategy", "unfiltered,parity,adversarial",
+            "./somedir",
+        ])
+        self.assertEqual(args.strategy, ["unfiltered", "parity", "adversarial"])
+
+    def test_parse_args_default_strategy_is_list(self) -> None:
+        args = run_playbook.parse_args(["./somedir"])
+        self.assertEqual(args.strategy, ["gap"])
+
+    def test_parse_args_strategy_all_expands(self) -> None:
+        args = run_playbook.parse_args([
+            "--next-iteration", "--strategy", "all", "./somedir",
+        ])
+        self.assertEqual(args.strategy, ["gap", "unfiltered", "parity", "adversarial"])
+
+    def test_parse_args_rejects_invalid_strategy(self) -> None:
+        with self.assertRaises(SystemExit):
+            run_playbook.parse_args(["--strategy", "bogus", "./somedir"])
+
+    def test_build_worker_command_serializes_strategy_list(self) -> None:
+        args = run_playbook.argparse.Namespace(
+            parallel=True,
+            runner="copilot",
+            no_seeds=True,
+            phase=None,
+            next_iteration=True,
+            full_run=False,
+            strategy=["unfiltered", "parity", "adversarial"],
+            model=None,
+            kill=False,
+            targets=["./project-a"],
+            worker=False,
+        )
+        command = run_playbook.build_worker_command(args, "/abs/path/to/target")
+        # The list is serialized as a single comma-separated token so the worker's
+        # parse_strategy_list reconstructs the same list.
+        strategy_idx = command.index("--strategy")
+        self.assertEqual(command[strategy_idx + 1], "unfiltered,parity,adversarial")
+
+    def test_print_suggested_next_command_list_midchain(self) -> None:
+        import io
+        from contextlib import redirect_stdout
+
+        args = run_playbook.argparse.Namespace(
+            runner="copilot",
+            next_iteration=True,
+            strategy=["unfiltered", "parity"],  # ends at parity; successor is adversarial
+            model=None,
+            targets=["chi-1.4.5"],
+        )
+        original_argv = run_playbook.sys.argv
+        try:
+            run_playbook.sys.argv = ["bin/run_playbook.py"]
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                run_playbook.print_suggested_next_command(args)
+        finally:
+            run_playbook.sys.argv = original_argv
+        output = buf.getvalue()
+        self.assertIn("--next-iteration --strategy adversarial", output)
+        self.assertNotIn("Iteration cycle complete", output)
+
+    def test_print_suggested_next_command_list_ending_at_adversarial(self) -> None:
+        import io
+        from contextlib import redirect_stdout
+
+        args = run_playbook.argparse.Namespace(
+            runner="copilot",
+            next_iteration=True,
+            strategy=["parity", "adversarial"],
+            model=None,
+            targets=["chi-1.4.5"],
+        )
+        original_argv = run_playbook.sys.argv
+        try:
+            run_playbook.sys.argv = ["bin/run_playbook.py"]
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                run_playbook.print_suggested_next_command(args)
+        finally:
+            run_playbook.sys.argv = original_argv
+        output = buf.getvalue()
+        self.assertIn("Iteration cycle complete", output)
+        self.assertIn("To start fresh", output)
+        # Should NOT suggest --next-iteration anywhere (cycle is done).
+        self.assertNotIn("--next-iteration", output)
+
+    # --- PID file (per-parent) cleanup (Issue 3) ---
+
+    def test_pid_file_for_parent_is_unique_per_process(self) -> None:
+        import os as _os
+        expected = run_playbook.PID_FILE.parent / f"{run_playbook.PID_FILE.name}.{_os.getpid()}"
+        self.assertEqual(run_playbook.pid_file_for_parent(), expected)
+
+    def test_discover_pid_files_returns_all_per_parent_files(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            base = temp_path / ".run_pids"
+            # Create three per-parent files
+            (temp_path / f"{base.name}.111").write_text("111 repoA\n")
+            (temp_path / f"{base.name}.222").write_text("222 repoB\n")
+            (temp_path / f"{base.name}.333").write_text("333 repoC\n")
+            # And an unrelated file that shouldn't match
+            (temp_path / "unrelated.txt").write_text("skip")
+
+            original_pid_file = run_playbook.PID_FILE
+            try:
+                run_playbook.PID_FILE = base
+                found = run_playbook.discover_pid_files()
+            finally:
+                run_playbook.PID_FILE = original_pid_file
+
+            self.assertEqual(len(found), 3)
+            self.assertEqual(
+                {p.name for p in found},
+                {f"{base.name}.111", f"{base.name}.222", f"{base.name}.333"},
+            )
+
+    def test_write_pid_file_writes_to_per_parent_path(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            original_pid_file = run_playbook.PID_FILE
+            try:
+                run_playbook.PID_FILE = Path(temp_dir) / ".run_pids"
+                path = run_playbook.write_pid_file([(4242, "chi-1.4.5"), (4243, "cobra-1.4.5")])
+                self.assertTrue(path.exists())
+                self.assertTrue(path.name.startswith(".run_pids."))
+                content = path.read_text(encoding="utf-8")
+                self.assertIn("4242 chi-1.4.5", content)
+                self.assertIn("4243 cobra-1.4.5", content)
+            finally:
+                run_playbook.PID_FILE = original_pid_file
 
 
 if __name__ == "__main__":

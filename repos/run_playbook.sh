@@ -50,103 +50,145 @@
 set -uo pipefail
 source "$(dirname "$0")/_benchmark_lib.sh"
 
-PID_FILE="${SCRIPT_DIR}/.run_pids"
+# Each parent process owns its own PID file (suffix = parent PID).
+# Concurrent parallel launches from different terminals never overwrite each
+# other's registrations. --kill globs every .run_pids.* file across parents.
+PID_FILE_PREFIX="${SCRIPT_DIR}/.run_pids"
+PID_FILE="${PID_FILE_PREFIX}.$$"
 
-# Defaults: match a typical “open repo in VS Code, one Copilot prompt, full playbook” run.
+# Defaults: match a typical "open repo in VS Code, one Copilot prompt, full playbook" run.
 PARALLEL=true
-RUNNER=”copilot”  # “copilot” or “claude”
+RUNNER="copilot"  # "copilot" or "claude"
 NO_SEEDS=true     # clean benchmark — skip Phase 0 / sibling seeds
-PHASE_MODE=””     # “”: single-prompt; “all”: phases 1-6 sequentially; “1,3,4”: specific phases
+PHASE_MODE=""     # "": single-prompt; "all": phases 1-6 sequentially; "1,3,4": specific phases
 NEXT_ITERATION=false  # iterate on existing quality/ run
-ITER_STRATEGY=”gap”   # iteration strategy: gap, unfiltered, parity, adversarial, all
-CLAUDE_MODEL=””
+ITER_STRATEGY="gap"   # iteration strategy: gap, unfiltered, parity, adversarial, all
+CLAUDE_MODEL=""
 REPO_NAMES=()
 EXPECT_MODEL=false
 EXPECT_STRATEGY=false
 EXPECT_PHASE=false
-for arg in “$@”; do
-    if [ “$EXPECT_MODEL” = true ]; then
-        CLAUDE_MODEL=”$arg”
+for arg in "$@"; do
+    if [ "$EXPECT_MODEL" = true ]; then
+        CLAUDE_MODEL="$arg"
         EXPECT_MODEL=false
         continue
     fi
-    if [ “$EXPECT_STRATEGY” = true ]; then
-        ITER_STRATEGY=”$arg”
+    if [ "$EXPECT_STRATEGY" = true ]; then
+        ITER_STRATEGY="$arg"
         EXPECT_STRATEGY=false
         continue
     fi
-    if [ “$EXPECT_PHASE” = true ]; then
-        PHASE_MODE=”$arg”
+    if [ "$EXPECT_PHASE" = true ]; then
+        PHASE_MODE="$arg"
         EXPECT_PHASE=false
         continue
     fi
-    case “$arg” in
+    case "$arg" in
         --parallel)         PARALLEL=true ;;
         --sequential)       PARALLEL=false ;;
-        --claude)           RUNNER=”claude” ;;
-        --copilot)          RUNNER=”copilot” ;;
+        --claude)           RUNNER="claude" ;;
+        --copilot)          RUNNER="copilot" ;;
         --no-seeds)         NO_SEEDS=true ;;
         --with-seeds)       NO_SEEDS=false ;;
         --phase)            EXPECT_PHASE=true ;;
-        --single-pass)      PHASE_MODE=”” ;;  # back-compat
-        --multi-pass)       PHASE_MODE=”all” ;;  # back-compat
+        --single-pass)      PHASE_MODE="" ;;  # back-compat
+        --multi-pass)       PHASE_MODE="all" ;;  # back-compat
         --next-iteration)   NEXT_ITERATION=true ;;
         --strategy)         EXPECT_STRATEGY=true ;;
         --model)            EXPECT_MODEL=true ;;
         --kill)
-            if [ -f “$PID_FILE” ]; then
-                echo “Killing PIDs from $PID_FILE:”
-                while read -r pid repo; do
-                    if kill -0 “$pid” 2>/dev/null; then
-                        echo “  kill $pid [$repo]”
-                        kill “$pid” 2>/dev/null
-                        # Also kill any child claude processes
-                        pkill -P “$pid” 2>/dev/null
-                    else
-                        echo “  $pid [$repo] — already exited”
-                    fi
-                done < “$PID_FILE”
-                rm -f “$PID_FILE”
-            else
-                echo “No PID file found. Falling back to pkill:”
-                pkill -f “claude -p” && echo “  Killed claude -p processes” || echo “  No claude -p processes found”
+            # Glob every parent's PID file (.run_pids.<pid>).  Kill each listed
+            # PID, and remove the file when done.  If no files exist, fall back
+            # to pattern-based pkill so --kill still does something useful after
+            # a crash.
+            shopt -s nullglob
+            _pid_files=("${PID_FILE_PREFIX}".*)
+            shopt -u nullglob
+            if [ "${#_pid_files[@]}" -eq 0 ]; then
+                echo "No PID files found. Falling back to pkill:"
+                pkill -f "bin/run_playbook.py" && echo "  Killed bin/run_playbook.py processes" || echo "  No bin/run_playbook.py processes found"
+                pkill -f "claude -p"           && echo "  Killed claude -p processes"           || echo "  No claude -p processes found"
+                pkill -f "claude --model"      && echo "  Killed claude --model processes"      || echo "  No claude --model processes found"
+                exit 0
             fi
+            for _pf in "${_pid_files[@]}"; do
+                echo "Killing PIDs from $_pf:"
+                while read -r pid repo; do
+                    if kill -0 "$pid" 2>/dev/null; then
+                        echo "  kill $pid [$repo]"
+                        kill "$pid" 2>/dev/null
+                        # Also kill any child claude processes
+                        pkill -P "$pid" 2>/dev/null
+                    else
+                        echo "  $pid [$repo] — already exited"
+                    fi
+                done < "$_pf"
+                rm -f "$_pf"
+            done
             exit 0
             ;;
-        *)           REPO_NAMES+=(“$arg”) ;;
+        *)           REPO_NAMES+=("$arg") ;;
     esac
 done
 
 # --model overrides QPB_MODEL for copilot
-[ -n “$CLAUDE_MODEL” ] && [ “$RUNNER” = “copilot” ] && MODEL=”$CLAUDE_MODEL”
+[ -n "$CLAUDE_MODEL" ] && [ "$RUNNER" = "copilot" ] && MODEL="$CLAUDE_MODEL"
 
 # --next-iteration is not compatible with --phase (iteration uses its own single prompt)
-if [ “$NEXT_ITERATION” = true ] && [ -n “$PHASE_MODE” ]; then
-    echo “ERROR: --next-iteration is not compatible with --phase. Iteration uses a single prompt.”
+if [ "$NEXT_ITERATION" = true ] && [ -n "$PHASE_MODE" ]; then
+    echo "ERROR: --next-iteration is not compatible with --phase. Iteration uses a single prompt."
     exit 1
 fi
 
 # Validate --phase
-if [ -n “$PHASE_MODE” ] && [ “$PHASE_MODE” != “all” ]; then
+if [ -n "$PHASE_MODE" ] && [ "$PHASE_MODE" != "all" ]; then
     # Validate comma-separated phase numbers
-    IFS=',' read -ra _phases <<< “$PHASE_MODE”
-    for p in “${_phases[@]}”; do
-        case “$p” in
+    IFS=',' read -ra _phases <<< "$PHASE_MODE"
+    for p in "${_phases[@]}"; do
+        case "$p" in
             1|2|3|4|5|6) ;;
-            *) echo “ERROR: Invalid phase '${p}'. Must be 1-6 or 'all'.”; exit 1 ;;
+            *) echo "ERROR: Invalid phase '${p}'. Must be 1-6 or 'all'."; exit 1 ;;
         esac
     done
 fi
 
-# Validate --strategy
-case “$ITER_STRATEGY” in
-    gap|unfiltered|parity|adversarial|all) ;;
-    *) echo “ERROR: Unknown strategy '${ITER_STRATEGY}'. Must be one of: gap, unfiltered, parity, adversarial, all”; exit 1 ;;
-esac
+# Parse --strategy: accepts a single name, "all", or a comma-separated ordered
+# subset (e.g. "unfiltered,parity,adversarial"). "all" expands to the full
+# canonical chain; "all" is NOT permitted as a member of a list, and duplicates
+# are rejected.  ITER_STRATEGIES holds the expanded list; ITER_STRATEGY holds
+# the original comma-joined form for display / log messages.
+ITER_STRATEGIES=()
+if [ "$ITER_STRATEGY" = "all" ]; then
+    ITER_STRATEGIES=(gap unfiltered parity adversarial)
+else
+    IFS=',' read -ra _strategy_items <<< "$ITER_STRATEGY"
+    for _item in "${_strategy_items[@]}"; do
+        if [ -z "$_item" ]; then
+            echo "ERROR: strategy value '${ITER_STRATEGY}' contains an empty token"
+            exit 1
+        fi
+        if [ "$_item" = "all" ]; then
+            echo "ERROR: 'all' is only valid as a bare value; it cannot appear inside a comma-separated strategy list. Use --strategy all to run the full chain."
+            exit 1
+        fi
+        case "$_item" in
+            gap|unfiltered|parity|adversarial) ;;
+            *) echo "ERROR: invalid strategy '${_item}'. Must be one of: gap, unfiltered, parity, adversarial, all"; exit 1 ;;
+        esac
+        for _seen in "${ITER_STRATEGIES[@]:+${ITER_STRATEGIES[@]}}"; do
+            if [ "$_seen" = "$_item" ]; then
+                echo "ERROR: strategy '${_item}' appears more than once in '${ITER_STRATEGY}'"
+                exit 1
+            fi
+        done
+        ITER_STRATEGIES+=("$_item")
+    done
+fi
 
-# --strategy without --next-iteration is a no-op but warn
-if [ “$NEXT_ITERATION” = false ] && [ “$ITER_STRATEGY” != “gap” ]; then
-    echo “WARNING: --strategy is ignored without --next-iteration”
+# --strategy without --next-iteration is a no-op but warn (compare to default "gap")
+if [ "$NEXT_ITERATION" = false ] && [ "$ITER_STRATEGY" != "gap" ]; then
+    echo "WARNING: --strategy is ignored without --next-iteration"
 fi
 
 VERSION=$(detect_skill_version)
@@ -801,19 +843,23 @@ run_one() {
     fi
 }
 
-# ── Strategy: all — loop through gap → unfiltered → parity → adversarial ──
-
-if [ "$ITER_STRATEGY" = "all" ] && [ "$NEXT_ITERATION" = true ]; then
+# ── Multi-strategy iteration dispatch ──
+# Fires whenever --next-iteration is active AND the strategy list has more than
+# one entry (including --strategy all, which was expanded above).  For each
+# strategy in the list, re-invoke ourselves with that single strategy and stop
+# early on zero-gain.
+if [ "$NEXT_ITERATION" = true ] && [ "${#ITER_STRATEGIES[@]}" -gt 1 ]; then
     repo_args=""
     for repo_dir in "${REPO_DIRS[@]}"; do
         repo_args="${repo_args} $(basename "$repo_dir" | sed 's/-[0-9].*//')"
     done
     repo_args=$(echo "$repo_args" | xargs)
 
-    echo "=== Running all iteration strategies: gap → unfiltered → parity → adversarial ==="
+    _chain_display=$(IFS=' → '; echo "${ITER_STRATEGIES[*]}")
+    echo "=== Running iteration strategies: ${_chain_display} ==="
     echo ""
 
-    for strategy in "${ALL_STRATEGIES[@]}"; do
+    for strategy in "${ITER_STRATEGIES[@]}"; do
         echo "══════════════════════════════════════════════════════════"
         echo "  Strategy: ${strategy}"
         echo "══════════════════════════════════════════════════════════"
@@ -827,7 +873,7 @@ if [ "$ITER_STRATEGY" = "all" ] && [ "$NEXT_ITERATION" = true ]; then
         done
 
         # Re-invoke ourselves for this single strategy (pass --claude if set)
-        local _runner_flag=""
+        _runner_flag=""
         [ "$RUNNER" = "claude" ] && _runner_flag="--claude"
         _ALL_RUNNING=true "$0" $_runner_flag --next-iteration --strategy "$strategy" $repo_args
 
@@ -850,14 +896,17 @@ if [ "$ITER_STRATEGY" = "all" ] && [ "$NEXT_ITERATION" = true ]; then
     done
 
     echo ""
-    echo "=== All-strategy run complete ==="
+    echo "=== Strategy-list run complete ==="
     print_summary "${REPO_DIRS[@]}"
     exit 0
 fi
 
 if [ "$PARALLEL" = true ]; then
     PIDS=()
-    : > "$PID_FILE"  # truncate
+    # Per-parent PID file ($PID_FILE already includes $$ suffix) — concurrent
+    # batches each write to their own file, so truncating here only touches this
+    # parent's own record.
+    : > "$PID_FILE"
     for repo_dir in "${REPO_DIRS[@]}"; do
         run_one "$repo_dir" &
         pid=$!
@@ -870,6 +919,7 @@ if [ "$PARALLEL" = true ]; then
     for i in "${!PIDS[@]}"; do
         wait "${PIDS[$i]}" || FAILED=$((FAILED + 1))
     done
+    # Only remove this parent's file; peer parents keep their own.
     rm -f "$PID_FILE"
     echo ""
     echo "=== Parallel run complete. ${FAILED} failures out of ${#REPO_DIRS[@]} repos. ==="
@@ -894,8 +944,12 @@ suggest_next_command() {
     [ "$RUNNER" = "claude" ] && runner_flag=" --claude"
 
     if [ "$NEXT_ITERATION" = true ]; then
+        # Suggestion is based on the successor of the LAST strategy in the
+        # list.  Single-item lists behave the same as the old single-strategy
+        # case.  Lists ending at "adversarial" report cycle-complete.
+        local _last_strategy="${ITER_STRATEGIES[${#ITER_STRATEGIES[@]}-1]}"
         local next
-        next=$(next_strategy "$ITER_STRATEGY")
+        next=$(next_strategy "$_last_strategy")
         if [ -n "$next" ]; then
             echo "────────────────────────────────────────────────────────"
             echo "Next iteration suggestion:"

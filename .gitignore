@@ -12,8 +12,9 @@ __pycache__/
 *.pyc
 .venv/
 
-# Parallel runner PID file (written by bin/run_playbook.py at QPB_DIR/.run_pids)
+# Parallel runner PID files (one per parent process — .run_pids.<pid>)
 .run_pids
+.run_pids.*
 
 # OS artifacts
 .DS_Store
