@@ -543,8 +543,8 @@ check_repo() {
     if [ -f "$rj" ]; then
         pass "recheck-results.json exists"
 
-        # Required root keys (SKILL.md recheck template)
-        for key in schema_version skill_version date project bugs summary; do
+        # Required root keys (SKILL.md recheck template — uses 'results', not 'bugs')
+        for key in schema_version skill_version date project results summary; do
             json_has_key "$rj" "$key" && pass "recheck has '${key}'" || fail "recheck missing root key '${key}'"
         done
 

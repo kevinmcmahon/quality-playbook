@@ -614,7 +614,8 @@ def check_repo(repo_dir, version_arg, strictness):
     if rj.is_file():
         pass_("recheck-results.json exists")
 
-        for key in ["schema_version", "skill_version", "date", "project", "bugs", "summary"]:
+        # SKILL.md recheck template uses 'results' as the array key, not 'bugs'.
+        for key in ["schema_version", "skill_version", "date", "project", "results", "summary"]:
             if json_has_key(rj, key):
                 pass_(f"recheck has '{key}'")
             else:
