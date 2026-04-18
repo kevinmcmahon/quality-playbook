@@ -111,16 +111,20 @@ On Windows (PowerShell), replace the loop with `foreach ($repo in $args)` and us
 
 ### Runner behavior
 
-`bin/run_playbook.py` replaces the old `repos/run_playbook.sh` entry point. It preserves the same high-level behavior:
+`bin/run_playbook.py` is the entry point. The top-level flags are:
 - `--parallel` or `--sequential`
 - `--claude` or `--copilot`
 - `--phase all`, `--phase N`, or `--phase 3,4,5`
 - `--next-iteration --strategy gap|unfiltered|parity|adversarial|all`
+- `--strategy` also accepts a comma-separated ordered subset (e.g. `unfiltered,parity,adversarial`)
+- `--full-run` (fresh main run + all iteration strategies)
 - `--model MODEL`
 - `--kill`
 - `--no-seeds` or `--with-seeds`
 
-The runner writes one log file per target next to the target directory (at `{parent}/{target-name}-playbook-{timestamp}.log`), archives prior `quality/` runs before fresh baselines, enforces phase prerequisite gates, and leaves the historical bash scripts in `repos/` untouched.
+Positional arguments are **directory paths**. Version-append fallback: if a bare name (no path separators, no leading `.` / `..` / `~`) doesn't exist on disk, the runner retries `<name>-<skill_version>` using the `version:` line from `SKILL.md` at the QPB root. Path-like inputs are taken literally — no fallback. When the fallback hits, an `INFO: resolved '<name>' to '<name>-<version>' (via SKILL.md version)` line goes to stderr.
+
+The runner writes one log file per target next to the target directory (at `{parent}/{target-name}-playbook-{timestamp}.log`), archives prior `quality/` runs before fresh baselines, and enforces phase prerequisite gates.
 
 The iteration prompt is:
 ```

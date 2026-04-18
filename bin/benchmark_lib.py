@@ -87,6 +87,35 @@ def detect_skill_version(qpb_dir: Optional[Path] = None) -> str:
     return _read_version(base_dir / "SKILL.md")
 
 
+def skill_version() -> Optional[str]:
+    """Return the version string from QPB_DIR/SKILL.md, or None on miss.
+
+    Mirrors the legacy detect_skill_version helper in repos/_benchmark_lib.sh:
+    find the first line starting with ``version:`` (after optional whitespace),
+    split on whitespace, return the second token. Any failure (no file, no
+    version line, empty token) returns None. Used by run_playbook.py's
+    version-append fallback for bare-name target resolution.
+    """
+    path = QPB_DIR / "SKILL.md"
+    if not path.is_file():
+        return None
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                stripped = line.lstrip()
+                if not stripped.startswith("version:"):
+                    continue
+                # Strip the "version:" prefix, then split on whitespace.
+                remainder = stripped[len("version:"):].strip()
+                if not remainder:
+                    return None
+                token = remainder.split()[0]
+                return token or None
+    except OSError:
+        return None
+    return None
+
+
 def detect_repo_skill_version(repo_dir: Path) -> str:
     """Read the `version:` value from an installed-copy SKILL.md for display."""
     for rel in SKILL_INSTALL_LOCATIONS:

@@ -222,9 +222,9 @@ The key finding: approximately 65% of real defects are detectable by structural 
 
 ## Setting up automation scripts
 
-The repository includes a standard-library Python runner in `bin/` that replaces the old shell entry point while leaving the historical bash scripts in `repos/` untouched.
+The repository includes a standard-library Python runner at `bin/run_playbook.py`.
 
-Positional arguments are **directory paths** (relative or absolute). No version resolution, no benchmark-folder lookups — every argument is taken literally. Omit positional args to run against the current directory.
+Positional arguments are **directory paths** (relative or absolute). Omit positional args to run against the current directory. One convenience applies only to **bare names** (no path separators, no leading `.` / `..` / `~`): if `chi` isn't a directory, the runner retries `chi-<version>` using the `version:` line from `SKILL.md` at the QPB root. Path-like inputs (`./chi`, `/abs/chi`) are taken literally — no fallback.
 
 ```bash
 cd my-project
@@ -240,6 +240,7 @@ For benchmark use, run from the `repos/` folder so relative paths resolve to the
 ```bash
 cd repos
 python3 ../bin/run_playbook.py --phase all --sequential chi-1.4.5
+python3 ../bin/run_playbook.py chi     # resolves to chi-1.4.5 via SKILL.md version
 ```
 
 **Rate limit warning:** Running multiple targets in parallel with single-prompt mode (no `--phase`) sends long autonomous prompts that consume large amounts of API quota. In testing, running 8 targets in parallel single-prompt mode triggered a 54-hour Copilot rate limit. Use `--phase all` instead — it runs each phase as a separate, shorter prompt with exit gates between phases. This uses less quota per prompt, produces better results (each phase gets a full context window), and is easier to resume if interrupted. For the same reason, prefer `--sequential` over `--parallel` unless you're confident in your rate limit headroom.

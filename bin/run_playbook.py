@@ -170,12 +170,37 @@ def phase_list_from_mode(phase_mode: Optional[str]) -> List[str]:
     return [phase for phase in phase_mode.split(",") if phase]
 
 
+def _is_bare_name(raw: str) -> bool:
+    """True if ``raw`` is eligible for the version-append fallback.
+
+    Bare name = no path separators, no leading ``.`` / ``..`` / ``~``, not
+    absolute. Only bare names get the ``<name>-<version>`` retry — anything
+    that looks like an explicit path is taken literally.
+    """
+    if not raw:
+        return False
+    if raw.startswith(("/", "~", ".")):
+        return False
+    if "/" in raw or "\\" in raw:
+        return False
+    # Windows drive letters ("C:..." etc.).
+    if len(raw) >= 2 and raw[1] == ":":
+        return False
+    return True
+
+
 def resolve_target_dirs(paths: Sequence[str]) -> Tuple[List[Path], List[str], List[str]]:
     """Resolve user-supplied paths into absolute directories.
 
     Returns (resolved_dirs, warnings, errors). A missing SKILL.md is a warning
     (the directory may still be a valid target); a non-directory path is an
     error and that entry is dropped.
+
+    Version-append fallback: if a bare name (``chi``, ``virtio``) doesn't
+    exist as a directory, re-try ``<name>-<skill_version>`` using the
+    SKILL.md version at the QPB root. This replaces the short-name lookup
+    the retired ``repos/run_playbook.sh`` provided, without bringing back
+    the whole benchmark-folder scanning behavior.
     """
     resolved: List[Path] = []
     warnings: List[str] = []
@@ -185,9 +210,30 @@ def resolve_target_dirs(paths: Sequence[str]) -> Tuple[List[Path], List[str], Li
         if not candidate.is_absolute():
             candidate = Path.cwd() / candidate
         candidate = candidate.resolve()
+
         if not candidate.is_dir():
-            errors.append(f"ERROR: '{raw}' is not a directory (resolved to {candidate})")
-            continue
+            # Only bare names get the version-append retry. Anything path-like
+            # is taken literally.
+            version = lib.skill_version() if _is_bare_name(raw) else None
+            if version:
+                versioned_name = f"{raw}-{version}"
+                versioned = (Path.cwd() / versioned_name).resolve()
+                if versioned.is_dir():
+                    print(
+                        f"INFO: resolved '{raw}' to '{versioned_name}' (via SKILL.md version)",
+                        file=sys.stderr,
+                    )
+                    candidate = versioned
+                else:
+                    errors.append(
+                        f"ERROR: '{raw}' is not a directory (resolved to {candidate}; "
+                        f"also tried '{versioned_name}')"
+                    )
+                    continue
+            else:
+                errors.append(f"ERROR: '{raw}' is not a directory (resolved to {candidate})")
+                continue
+
         if lib.find_installed_skill(candidate) is None:
             warnings.append(
                 f"WARN: No SKILL.md found for {candidate}. Expected at "

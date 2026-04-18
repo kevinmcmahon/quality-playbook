@@ -16,7 +16,8 @@
 #   ./create_clean_repos.sh       # Populate clean/ (one-time)
 #
 # After setup, run (defaults: Copilot, gpt-5.4, parallel, single-pass, no seeds):
-#   ./run_playbook.sh chi httpx
+#   python3 ../bin/run_playbook.py chi httpx        # bare names → version-append fallback
+#   python3 ../bin/run_playbook.py chi-1.4.5        # explicit versioned directory
 
 set -euo pipefail
 source "$(dirname "$0")/_benchmark_lib.sh"
@@ -149,4 +150,4 @@ for short in "${REPOS[@]}"; do
     echo ""
 done
 
-echo "=== Setup complete. Next: ./run_playbook.sh ${REPOS[*]} ==="
+echo "=== Setup complete. Next: python3 ../bin/run_playbook.py ${REPOS[*]} ==="

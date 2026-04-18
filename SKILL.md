@@ -439,7 +439,7 @@ This context is gold. A chat history where the developer discussed "why we chose
 
 If the user doesn't have chat history, proceed normally — the skill works without it, just with less context.
 
-**Autonomous fallback:** When running in benchmark mode, via `run_playbook.sh` (benchmark runner, not shipped with the skill), or without user interaction (e.g., `--single-pass`), skip Step 0's question and proceed directly to Step 1. If chat history folders are visible in the project tree (e.g., `AI Chat History/`, `.chat_exports/`), scan them without asking. If no chat history is found, proceed — do not block waiting for a response that won't come.
+**Autonomous fallback:** When running in benchmark mode, via `bin/run_playbook.py` (benchmark runner, not shipped with the skill), or without user interaction (e.g., `--single-pass`), skip Step 0's question and proceed directly to Step 1. If chat history folders are visible in the project tree (e.g., `AI Chat History/`, `.chat_exports/`), scan them without asking. If no chat history is found, proceed — do not block waiting for a response that won't come.
 
 ### Step 1: Identify Domain, Stack, and Specifications
 
