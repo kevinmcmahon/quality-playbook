@@ -181,7 +181,7 @@ Adding community documentation to the pipeline produces measurably better result
 ### What's new in v1.4.0
 
 - **Six-phase architecture with clean context windows.** The playbook now runs as six distinct phases (Explore, Generate, Review, Audit, Reconcile, Verify), each designed to execute in a separate session with its own context window. Phase prompts include exit gates that verify prerequisites before starting and artifact completeness before finishing. This eliminates context-window exhaustion on large codebases and makes each phase independently re-runnable.
-- **Phase-by-phase runner with `--phase` flag.** The `run_playbook.sh` script supports `--phase all` (run phases 1-6 sequentially with gates between each), `--phase 3` (run a single phase), or `--phase 3,4,5` (run a range). Each invocation gets a fresh CLI session, communicating through files on disk.
+- **Phase-by-phase runner with `--phase` flag.** The standard-library Python runner at `bin/run_playbook.py` supports `--phase all` (run phases 1-6 sequentially with gates between each), `--phase 3` (run a single phase), or `--phase 3,4,5` (run a range). Each invocation gets a fresh CLI session, communicating through files on disk.
 - **Four iteration strategies.** After the baseline run, the playbook supports four iteration strategies that find different classes of bugs: gap (explore areas the baseline missed), unfiltered (fresh-eyes re-review), parity (parallel path comparison), and adversarial (challenge prior dismissals and recover Type II errors). Iterations consistently add 40-60% more confirmed bugs on top of the baseline.
 - **TDD red-green verification for every confirmed bug.** Every bug in BUGS.md must have a regression test patch, a red-phase log proving the test detects the bug on unpatched code, and a green-phase log proving the fix resolves it. The `tdd-results.json` sidecar (schema 1.1) tracks all verdicts with machine-readable fields.
 - **Quality gate script.** A `quality_gate.sh` script mechanically validates artifact completeness: patch files, writeups, TDD logs, JSON schema conformance, version stamps, and BUGS.md heading format. Runs as the final Phase 6 step.
@@ -203,10 +203,60 @@ The playbook is validated against the [Quality Playbook Benchmark](https://githu
 
 The key finding: approximately 65% of real defects are detectable by structural code review alone. The remaining 35% are intent violations that require knowing what the code is supposed to do. The playbook's value is in closing that gap.
 
+## Setting up automation scripts
+
+The repository includes a standard-library Python benchmark package in `bin/` that replaces the old shell entry point while leaving the historical bash scripts in `repos/` untouched.
+
+Use the built-in runner from the repository root:
+
+```bash
+python3 bin/run_playbook.py chi cobra virtio
+python3 bin/run_playbook.py --phase all virtio
+python3 bin/run_playbook.py --claude --model sonnet --next-iteration --strategy gap chi
+```
+
+The default benchmark set is now `chi`, `cobra`, and `virtio`. You can still pass any repo short names positionally.
+
+### Usage
+
+```text
+usage: run_playbook.py [-h] [--parallel | --sequential] [--claude | --copilot]
+                       [--no-seeds | --with-seeds] [--phase PHASE]
+                       [--next-iteration]
+                       [--strategy {gap,unfiltered,parity,adversarial,all}]
+                       [--model MODEL] [--kill]
+                       [repos ...]
+
+Run the Quality Playbook benchmark workflow across versioned repos.
+
+positional arguments:
+  repos                 Short repo names to run. Defaults to chi cobra virtio.
+
+options:
+  -h, --help            show this help message and exit
+  --parallel            Run all repos concurrently (default).
+  --sequential          Run repos one after another.
+  --claude              Use claude -p instead of gh copilot.
+  --copilot             Use gh copilot (default).
+  --no-seeds            Skip Phase 0/0b seed injection (default).
+  --with-seeds          Allow Phase 0/0b seed injection from prior or sibling runs.
+  --phase PHASE         Run specific phase(s): 1-6, all, or comma-separated values like 3,4,5.
+  --next-iteration      Iterate on an existing quality/ run.
+  --strategy {gap,unfiltered,parity,adversarial,all}
+                        Iteration strategy to use with --next-iteration.
+  --model MODEL         Runner model override (copilot: gpt-5.4, claude: sonnet/opus/etc).
+  --kill                Kill processes from the current or last parallel run.
+```
+
 ## Repository structure
 
 ```
 quality-playbook/
+├── bin/                     # Standard-library benchmark runner package
+│   ├── __init__.py
+│   ├── benchmark_lib.py     # Shared repo-resolution, logging, cleanup, and summary helpers
+│   ├── run_playbook.py      # Main entry point: python3 bin/run_playbook.py
+│   └── tests/               # Stdlib-only unit tests runnable via python3 -m pytest bin/tests/
 ├── SKILL.md                # The skill (main file)
 ├── references/             # Protocol and pipeline reference docs
 ├── LICENSE.txt             # Apache 2.0

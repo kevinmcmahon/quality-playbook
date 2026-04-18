@@ -59,11 +59,28 @@ The user wants to run the quality playbook on a codebase. Here's what to do:
 
 ## Setting up automation scripts
 
-Users often want to run the playbook across multiple repositories or automate the iteration cycle. Help them create two scripts adapted to their OS and shell:
+Users often want to run the playbook across multiple repositories or automate the iteration cycle. The repository now ships a built-in standard-library runner, so prefer that over asking users to write new shell wrappers.
+
+### Built-in runner
+
+Run it from the repository root:
+
+```bash
+python3 bin/run_playbook.py chi cobra virtio
+python3 bin/run_playbook.py --phase all virtio
+python3 bin/run_playbook.py --claude --model sonnet chi
+python3 bin/run_playbook.py --next-iteration --strategy parity cobra
+```
+
+Key properties:
+- Standard library only, Python 3.8+
+- No `pip install`, no `requirements.txt`, no virtual environment creation
+- Default benchmark set is `chi`, `cobra`, and `virtio`
+- Any repo short names can still be passed positionally
 
 ### Setup script
 
-Copies skill files into one or more target repos. Core logic:
+`repos/setup_repos.sh` still copies skill files into one or more target repos. Core logic:
 
 ```bash
 # Adapt paths for the user's environment
@@ -83,15 +100,18 @@ done
 
 On Windows (PowerShell), replace the loop with `foreach ($repo in $args)` and use `Copy-Item` / `New-Item -ItemType Directory`.
 
-### Run script
+### Runner behavior
 
-Invokes the AI agent on each repo. The prompt is always the same — what varies is how you invoke the agent. See the "Agent reference" section below for per-agent commands.
+`bin/run_playbook.py` replaces the old `repos/run_playbook.sh` entry point. It preserves the same high-level behavior:
+- `--parallel` or `--sequential`
+- `--claude` or `--copilot`
+- `--phase all`, `--phase N`, or `--phase 3,4,5`
+- `--next-iteration --strategy gap|unfiltered|parity|adversarial|all`
+- `--model MODEL`
+- `--kill`
+- `--no-seeds` or `--with-seeds`
 
-Key features the user might want in their run script:
-- **Logging:** Capture output to a file per repo (use `tee` on Unix, `Tee-Object` on PowerShell)
-- **Iteration support:** A `--next-iteration --strategy <name>` mode that passes the iteration prompt instead of the baseline prompt
-- **Strategy all:** A loop that runs gap → unfiltered → parity → adversarial in sequence, stopping early if a strategy finds zero new bugs
-- **Parallel execution:** Run multiple repos concurrently (but see "Rate limits" below)
+The runner writes one log file per repo into `repos/`, archives prior `quality/` runs before fresh baselines, enforces phase prerequisite gates, and leaves the historical bash scripts in `repos/` untouched.
 
 The iteration prompt is:
 ```
@@ -99,6 +119,8 @@ Read the quality playbook skill at .github/skills/SKILL.md and run the next iter
 ```
 
 Replace `<strategy>` with: gap, unfiltered, parity, or adversarial.
+
+If a user needs a custom wrapper for another environment, mirror the built-in Python runner rather than reviving the old shell script.
 
 ## Agent reference
 

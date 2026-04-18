@@ -14,45 +14,45 @@ quality-playbook/
 ├── AGENTS.md                          ← AI coding agent entry point (repo root)
 ├── SKILL.md                           ← The skill — full operational instructions for running the playbook
 ├── LICENSE.txt                        ← License terms
+├── bin/                               ← Standard-library benchmark automation package
+│   ├── __init__.py                    ← Package marker
+│   ├── benchmark_lib.py               ← Shared helpers ported from repos/_benchmark_lib.sh
+│   ├── run_playbook.py                ← Main benchmark runner (python3 bin/run_playbook.py)
+│   └── tests/                         ← Stdlib-only tests for the runner package
+├── pytest/                            ← Local stdlib-only shim so python3 -m pytest bin/tests/ works without installs
 ├── references/                        ← Reference files read during specific phases
 │   ├── iteration.md                   ← Iteration strategies (gap, unfiltered, parity, adversarial)
 │   ├── requirements_pipeline.md       ← Requirements derivation and post-review reconciliation
 │   ├── review_protocols.md            ← Three-pass code review protocol and regression test conventions
 │   ├── spec_audit.md                  ← Council of Three spec audit protocol
 │   └── verification.md                ← 45 self-check benchmarks for Phase 6
-├── .github/                           ← Gitignored (force-adds only); installed-copy layout
+├── .github/                           ← Installed-copy layout used inside target repos
 │   └── skills/
-│       ├── SKILL.md                   ← Symlink → ../../SKILL.md
-│       ├── references/                ← Symlink → ../../references
-│       ├── quality_gate.py            ← Symlink → quality_gate/quality_gate.py (stable invocation path)
-│       └── quality_gate/              ← Gate module package
-│           ├── __init__.py            ← Re-exports quality_gate.py public API
-│           ├── quality_gate.py        ← Mechanical validation script (runs after playbook completes)
-│           └── tests/
-│               ├── __init__.py
-│               └── test_quality_gate.py  ← 108 unittest cases (compatible with pytest)
+│       ├── SKILL.md                   ← Installed skill entry point
+│       ├── references/                ← Installed references bundle
+│       └── quality_gate.py            ← Mechanical validation script (stable invocation path)
 ├── ai_context/                        ← AI-readable context files
 │   ├── TOOLKIT.md                     ← For users' AI assistants (setup, run, interpret, recheck)
 │   └── DEVELOPMENT_CONTEXT.md         ← For maintainers' AI assistants (this file)
-├── repos/                             ← Benchmark infrastructure (not in skill repo)
+├── repos/                             ← Benchmark repos and historical shell scripts
 │   ├── setup_repos.sh                 ← Copies skill files into target repos
-│   ├── run_playbook.sh                ← Invokes agents on repos (supports Copilot, Claude Code)
-│   ├── _benchmark_lib.sh              ← Shared functions for benchmark scripts
+│   ├── run_playbook.sh                ← Historical bash runner retained for reference
+│   ├── _benchmark_lib.sh              ← Historical bash helper library retained for reference
 │   └── clean/                         ← Clean clones of benchmark repos
 └── council-reviews/                   ← Council review briefings and responses (not distributed)
 ```
 
-**Note on `.github/skills/`:** this directory is gitignored because the same layout is used in installed copies inside target repos (via `setup_repos.sh`). The files above are force-added individually. Target repos receive a flattened copy: `setup_repos.sh` copies `quality_gate/quality_gate.py` into each target as `.github/skills/quality_gate.py` (a single standalone script, no package dir, no tests).
+**Automation note:** benchmark automation now lives in `bin/` and uses only the Python standard library so sandboxed AI agents can run it without creating a virtual environment or installing packages. The bash scripts in `repos/` are kept as historical references and are not deleted.
 
 **Running the tests:**
 
 ```
-python3 -m pytest .github/skills/quality_gate/tests/test_quality_gate.py
+python3 -m pytest bin/tests/
 # or
-python3 -m unittest discover .github/skills/quality_gate/tests
+python3 -m unittest discover bin/tests
 ```
 
-Both runners pass all 108 tests.
+The local `pytest` package is a minimal shim around `unittest` so the command above works on plain Python 3.8+ with no external dependencies.
 
 ## How the skill works
 
@@ -114,25 +114,21 @@ When the playbook misses a bug, the miss falls on one of three axes. Identifying
 
 The benchmark suite uses open-source codebases across multiple languages. Each repo is cloned once into `repos/clean/` and never modified. For each skill version, `setup_repos.sh` creates a working copy (e.g., `chi-1.3.47`) with the skill files installed.
 
-Current benchmark repos (10 actively benchmarked):
+Default benchmark repos (3 actively used by the Python runner):
 - **C:** virtio (Linux kernel driver — hardest repo, reference target for parity strategy)
 - **Go:** chi, cobra
-- **Python:** httpx, pydantic
-- **Java:** javalin, gson
-- **JavaScript:** express
-- **Rust:** axum, serde
-- **TypeScript:** zod
 
-60+ additional repos in `repos/clean/` for expanded benchmarking.
+Additional versioned repos remain available in `repos/` and `repos/clean/` for expanded benchmarking, and `python3 bin/run_playbook.py` still accepts arbitrary short repo names as positional args.
 
 ### Running benchmarks
 
 ```bash
 cd repos/
 ./setup_repos.sh <repo-names>           # copy skill files
-./run_playbook.sh <repo-names>          # baseline runs (Copilot default)
-./run_playbook.sh --claude <repo-names> # baseline runs (Claude Code)
-./run_playbook.sh --next-iteration --strategy all <repo-names>  # full iteration cycle
+cd ..
+python3 bin/run_playbook.py <repo-names>          # baseline runs (Copilot default)
+python3 bin/run_playbook.py --claude <repo-names> # baseline runs (Claude Code)
+python3 bin/run_playbook.py --next-iteration --strategy all <repo-names>  # full iteration cycle
 ```
 
 ### Interpreting results
@@ -194,6 +190,6 @@ Council review artifacts go in `council-reviews/`. Each review has:
 
 **Update the version.** The `version:` field in SKILL.md metadata must be bumped for every change. All generated artifacts stamp this version, and mismatches cause quality_gate.sh failures.
 
-**Run quality_gate.sh after testing.** The gate validates artifact conformance mechanically. If it passes on your test repos, the change is safe to commit.
+**Run quality_gate.py after testing.** The gate validates artifact conformance mechanically. If it passes on your test repos, the change is safe to commit.
 
 **Update TOOLKIT.md and this file.** If your change affects how users run the playbook or how maintainers work on it, update the relevant context file.
