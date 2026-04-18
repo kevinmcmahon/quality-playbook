@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Test suite for quality_gate.py.
 
-Uses unittest from the standard library — no pytest dependency.
+Uses unittest.TestCase, which both `unittest` and `pytest` can run.
 Each test is self-contained: synthetic fixtures in temp directories,
-no dependency on real repos.
+no dependency on any real repo's quality/ folder.
 
-Run with: python3 -m unittest quality_gate.test_quality_gate -v
-         or: python3 test_quality_gate.py -v
-         (from the quality_gate/ directory)
+Run from the QPB repo root with either:
+    python3 -m pytest .github/skills/quality_gate/tests/test_quality_gate.py
+    python3 -m unittest discover .github/skills/quality_gate/tests
 """
 
 import json
@@ -19,10 +19,13 @@ import unittest
 from datetime import date, timedelta
 from pathlib import Path
 
-SCRIPT_PATH = Path(__file__).parent / "quality_gate.py"
+PACKAGE_DIR = Path(__file__).resolve().parent.parent
+SCRIPT_PATH = PACKAGE_DIR / "quality_gate.py"
 
-# Import the module for direct helper tests
-sys.path.insert(0, str(Path(__file__).parent))
+# Import the module for direct helper tests.
+# Insert the package dir first so `import quality_gate` resolves to the module
+# file (quality_gate.py) rather than the package (quality_gate/__init__.py).
+sys.path.insert(0, str(PACKAGE_DIR))
 import quality_gate  # noqa: E402
 
 

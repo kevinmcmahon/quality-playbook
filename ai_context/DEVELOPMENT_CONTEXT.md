@@ -11,26 +11,48 @@
 
 ```
 quality-playbook/
-├── AGENTS.md                    ← AI coding agent entry point (repo root)
-├── SKILL.md                     ← The skill — full operational instructions for running the playbook
-├── references/iteration.md      ← Iteration strategy reference (gap, unfiltered, parity, adversarial)
-├── quality_gate.sh              ← Mechanical validation script (runs after playbook completes)
-├── LICENSE.txt                  ← License terms
-├── references/                  ← Reference files read during specific phases
-│   ├── requirements_pipeline.md ← Requirements derivation and post-review reconciliation
-│   ├── review_protocols.md      ← Three-pass code review protocol and regression test conventions
-│   ├── spec_audit.md            ← Council of Three spec audit protocol
-│   └── verification.md          ← 45 self-check benchmarks for Phase 6
-├── ai_context/                  ← AI-readable context files
-│   ├── TOOLKIT.md               ← For users' AI assistants (setup, run, interpret, recheck)
-│   └── DEVELOPMENT_CONTEXT.md   ← For maintainers' AI assistants (this file)
-├── repos/                       ← Benchmark infrastructure (not in skill repo)
-│   ├── setup_repos.sh           ← Copies skill files into target repos
-│   ├── run_playbook.sh          ← Invokes agents on repos (supports Copilot, Claude Code)
-│   ├── _benchmark_lib.sh        ← Shared functions for benchmark scripts
-│   └── clean/                   ← Clean clones of benchmark repos
-└── council-reviews/             ← Council review briefings and responses (not distributed)
+├── AGENTS.md                          ← AI coding agent entry point (repo root)
+├── SKILL.md                           ← The skill — full operational instructions for running the playbook
+├── LICENSE.txt                        ← License terms
+├── references/                        ← Reference files read during specific phases
+│   ├── iteration.md                   ← Iteration strategies (gap, unfiltered, parity, adversarial)
+│   ├── requirements_pipeline.md       ← Requirements derivation and post-review reconciliation
+│   ├── review_protocols.md            ← Three-pass code review protocol and regression test conventions
+│   ├── spec_audit.md                  ← Council of Three spec audit protocol
+│   └── verification.md                ← 45 self-check benchmarks for Phase 6
+├── .github/                           ← Gitignored (force-adds only); installed-copy layout
+│   └── skills/
+│       ├── SKILL.md                   ← Symlink → ../../SKILL.md
+│       ├── references/                ← Symlink → ../../references
+│       ├── quality_gate.py            ← Symlink → quality_gate/quality_gate.py (stable invocation path)
+│       └── quality_gate/              ← Gate module package
+│           ├── __init__.py            ← Re-exports quality_gate.py public API
+│           ├── quality_gate.py        ← Mechanical validation script (runs after playbook completes)
+│           └── tests/
+│               ├── __init__.py
+│               └── test_quality_gate.py  ← 108 unittest cases (compatible with pytest)
+├── ai_context/                        ← AI-readable context files
+│   ├── TOOLKIT.md                     ← For users' AI assistants (setup, run, interpret, recheck)
+│   └── DEVELOPMENT_CONTEXT.md         ← For maintainers' AI assistants (this file)
+├── repos/                             ← Benchmark infrastructure (not in skill repo)
+│   ├── setup_repos.sh                 ← Copies skill files into target repos
+│   ├── run_playbook.sh                ← Invokes agents on repos (supports Copilot, Claude Code)
+│   ├── _benchmark_lib.sh              ← Shared functions for benchmark scripts
+│   └── clean/                         ← Clean clones of benchmark repos
+└── council-reviews/                   ← Council review briefings and responses (not distributed)
 ```
+
+**Note on `.github/skills/`:** this directory is gitignored because the same layout is used in installed copies inside target repos (via `setup_repos.sh`). The files above are force-added individually. Target repos receive a flattened copy: `setup_repos.sh` copies `quality_gate/quality_gate.py` into each target as `.github/skills/quality_gate.py` (a single standalone script, no package dir, no tests).
+
+**Running the tests:**
+
+```
+python3 -m pytest .github/skills/quality_gate/tests/test_quality_gate.py
+# or
+python3 -m unittest discover .github/skills/quality_gate/tests
+```
+
+Both runners pass all 108 tests.
 
 ## How the skill works
 

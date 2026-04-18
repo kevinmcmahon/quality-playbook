@@ -143,7 +143,7 @@ for short in "${REPOS[@]}"; do
     cp "${QPB_DIR}/SKILL.md" "${dst}/.github/skills/SKILL.md"
     cp "${QPB_DIR}/references/"* "${dst}/.github/skills/references/" 2>/dev/null || true
     cp "${QPB_DIR}/LICENSE.txt" "${dst}/.github/skills/LICENSE.txt" 2>/dev/null || true
-    cp "${QPB_DIR}/quality_gate/quality_gate.py" "${dst}/.github/skills/quality_gate.py" 2>/dev/null || true
+    cp "${QPB_DIR}/.github/skills/quality_gate/quality_gate.py" "${dst}/.github/skills/quality_gate.py" 2>/dev/null || true
 
     log "  ✓ ${short}-${VERSION} ready"
     echo ""

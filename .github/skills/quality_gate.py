@@ -1,1 +1,1 @@
-../../quality_gate/quality_gate.py
+quality_gate/quality_gate.py
