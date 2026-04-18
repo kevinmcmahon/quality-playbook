@@ -23,17 +23,17 @@ The user wants to run the quality playbook on a codebase. Here's what to do:
    ```
    .github/skills/SKILL.md
    .github/skills/references/          (all .md files from the references/ directory)
-   .github/skills/quality_gate.sh
+   .github/skills/quality_gate.py      (standalone Python gate script — Python 3.8+)
    ```
 
    **Claude Code:**
    ```
    .claude/skills/quality-playbook/SKILL.md
    .claude/skills/quality-playbook/references/    (all .md files from the references/ directory)
-   .claude/skills/quality-playbook/quality_gate.sh
+   .claude/skills/quality-playbook/quality_gate.py
    ```
 
-   Create the directories if they don't exist. Copy from wherever the user has the playbook files.
+   Create the directories if they don't exist. Copy from wherever the user has the playbook files. The source tree has the gate script inside a package directory with tests (`.github/skills/quality_gate/quality_gate.py` plus a `tests/` subdirectory) — target repos only need the standalone `quality_gate.py` file itself, not the package. `repos/setup_repos.sh` handles this automatically: it copies just the module file into each target's `.github/skills/quality_gate.py`.
 
 2. **Add documentation (strongly recommended).** If the user has specs, API docs, design documents, or community documentation, put them in a `docs_gathered/` directory in the repo. Documentation-enriched runs find significantly more bugs and higher-confidence bugs than code-only runs. The playbook works without docs, but it works much better with them.
 
@@ -92,7 +92,7 @@ for repo in "$@"; do
     mkdir -p "${dst}/references"
     cp "${SKILL_DIR}/SKILL.md" "${dst}/SKILL.md"
     # iteration.md is now in references/ — copied by the wildcard below
-    cp "${SKILL_DIR}/quality_gate.sh" "${dst}/quality_gate.sh"
+    cp "${SKILL_DIR}/.github/skills/quality_gate/quality_gate.py" "${dst}/quality_gate.py"
     cp "${SKILL_DIR}/references/"*.md "${dst}/references/"
     echo "Set up ${repo}"
 done
@@ -274,7 +274,7 @@ Post-review reconciliation closes the loop: every bug from code review and spec 
 
 The TDD cycle is the strongest evidence a bug is real. A reviewer can disagree with the analysis, but they can't argue with a reproducing test that fails without the patch and passes with it.
 
-**TDD enforcement applies to all runs including iterations (v1.3.49).** Every newly confirmed bug in every run must produce red-phase and green-phase logs. `quality_gate.sh` checks for these files and FAILs if they're missing. If the test runner is not available for the project's language, the log file is still created with `NOT_RUN` on the first line and an explanation — the obligation is acknowledged, not silently skipped.
+**TDD enforcement applies to all runs including iterations (v1.3.49).** Every newly confirmed bug in every run must produce red-phase and green-phase logs. `quality_gate.py` checks for these files and FAILs if they're missing. If the test runner is not available for the project's language, the log file is still created with `NOT_RUN` on the first line and an explanation — the obligation is acknowledged, not silently skipped.
 
 ### Phase 6: Self-verification
 
@@ -373,12 +373,12 @@ git apply quality/patches/BUG-NNN-fix.patch
 <test command for your language>
 ```
 
-### quality_gate.sh
+### quality_gate.py
 
 The gate script validates all artifacts mechanically. Run it after the playbook completes:
 
 ```bash
-bash .github/skills/quality_gate.sh .
+python3 .github/skills/quality_gate.py .
 ```
 
 If it reports FAIL results, the most common causes:
@@ -497,7 +497,7 @@ If no docs exist, the playbook derives requirements from the code itself — com
 - Move the target repo to an isolated directory before opening in Cursor.
 - Or open only the repo folder, not a parent directory.
 
-**quality_gate.sh fails:**
+**quality_gate.py fails:**
 - Read the output carefully — each FAIL line tells you exactly what's wrong.
 - The most common fix: missing patch files. Ask the agent to generate them.
 - Second most common: heading format. BUGS.md must use `### BUG-NNN` (three hashes), not `## BUG-NNN`.

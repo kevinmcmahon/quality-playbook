@@ -112,24 +112,39 @@ When the playbook misses a bug, the miss falls on one of three axes. Identifying
 
 ### Benchmark repos
 
-The benchmark suite uses open-source codebases across multiple languages. Each repo is cloned once into `repos/clean/` and never modified. For each skill version, `setup_repos.sh` creates a working copy (e.g., `chi-1.3.47`) with the skill files installed.
+The benchmark suite uses open-source codebases across multiple languages. Each repo is cloned once into `repos/clean/` and never modified. For each skill version, `setup_repos.sh` creates a working copy (e.g., `chi-1.4.4`) with the skill files installed.
 
-Default benchmark repos (3 actively used by the Python runner):
-- **C:** virtio (Linux kernel driver — hardest repo, reference target for parity strategy)
-- **Go:** chi, cobra
+Active benchmark set (four targets):
 
-Additional versioned repos remain available in `repos/` and `repos/clean/` for expanded benchmarking, and `python3 bin/run_playbook.py` still accepts arbitrary short repo names as positional args.
+- **bootstrap** — the playbook running against its own codebase (self-audit). Bootstrap artifacts live at `quality/` at the QPB repo root, not in `repos/`. Always included; see "Why bootstrap is a benchmark target" below.
+- **chi** (Go) — small HTTP router; quick sanity-check runs.
+- **cobra** (Go) — larger CLI framework; exercises iteration strategies more heavily.
+- **virtio** (C / Linux kernel driver) — hardest repo; reference target for parity strategy and the historical home of the mechanical-verification rules.
+
+60+ additional repos remain in `repos/clean/` for expanded benchmarking when a specific change calls for it (e.g., language-specific regressions, framework-specific exploration patterns). They are not part of the default validation loop for skill changes. `python3 bin/run_playbook.py` accepts arbitrary short repo names as positional args.
+
+#### Why bootstrap is a benchmark target
+
+Bootstrap is the playbook running against `/Users/andrewstellman/Documents/QPB` itself. It's always included in the active benchmark set because:
+
+1. **Self-referential edge cases.** The gate script validates its own artifacts. SKILL.md is both the instruction set and the subject under audit. Changes to rules about enum validation, heading format, or script-verified closure can break on the very script that enforces them — and only bootstrap catches that class of bug.
+2. **Perfect verification.** We wrote the skill and the gate, so we can verify any finding against our own intent quickly. For other repos, we spot-check; for bootstrap, we can confirm every bug.
+3. **Reproducibility.** The codebase is stable between runs (our own commits), so convergence trends cleanly across model/runner combinations.
+
+Bootstrap artifacts live at `quality/` at the QPB repo root rather than under `repos/`. To run bootstrap, the agent treats the QPB root as the target directory; the existing `quality/` is the prior-run evidence (phase 0 seed source).
 
 ### Running benchmarks
 
 ```bash
 cd repos/
-./setup_repos.sh <repo-names>           # copy skill files
+./setup_repos.sh chi cobra virtio        # copy skill files into the three repo-based targets
 cd ..
-python3 bin/run_playbook.py <repo-names>          # baseline runs (Copilot default)
-python3 bin/run_playbook.py --claude <repo-names> # baseline runs (Claude Code)
-python3 bin/run_playbook.py --next-iteration --strategy all <repo-names>  # full iteration cycle
+python3 bin/run_playbook.py chi cobra virtio          # baseline runs (Copilot default)
+python3 bin/run_playbook.py --claude chi cobra virtio # baseline runs (Claude Code)
+python3 bin/run_playbook.py --next-iteration --strategy all chi cobra virtio  # full iteration cycle
 ```
+
+Bootstrap is the fourth active target but isn't run through `run_playbook.py`. Invoke the agent directly with `/Users/andrewstellman/Documents/QPB` as the target directory — the QPB repo already has SKILL.md and references at their canonical locations, so `setup_repos.sh` does not apply.
 
 ### Interpreting results
 
@@ -169,7 +184,7 @@ Council review artifacts go in `council-reviews/`. Each review has:
 - **v1.3.46:** Demoted Candidates Manifest, parity sub-type checklist, adversarial bar adjustment, TDD execution enforcement.
 - **v1.3.47:** TDD log enforcement — six insertion points from Cursor diagnostic (artifact contract, closure gate, bash template, progress checkbox, file-existence gate, sidecar contradiction check).
 - **v1.4.0** (promoted from v1.3.50)**:** Six-phase interactive architecture (renumbered from 3 phases to 6), interactive phase-by-phase execution with end-of-phase messages, `--phase` flag in runner, quality gate script, four iteration strategies with 40-60% yield boost, TDD enforcement, documentation warning, help system, "keep going" continuation, O'Reilly Radar article, moved ITERATION.md to references/iteration.md, orchestrator agents for Claude Code and Copilot. Benchmarked: Express.js (14 bugs), Gson (9 bugs), Linux virtio (8 bugs) — all with 100% TDD coverage and 0 gate failures.
-- **v1.4.1:** Recheck mode for lightweight fix verification (reads BUGS.md, checks each bug against current source, outputs recheck-results.json and recheck-summary.md). Fixed 19 bugs from bootstrap self-audit (second run): eval injection in quality_gate.sh, bash 3.2 empty array crashes, required artifacts downgraded to WARN, json_key_count false positives, missing artifact checks, documentation inconsistencies. All fixes verified by recheck (19/19 FIXED).
+- **v1.4.1:** Recheck mode for lightweight fix verification (reads BUGS.md, checks each bug against current source, outputs recheck-results.json and recheck-summary.md). Fixed 19 bugs from bootstrap self-audit (second run): eval injection in the gate script (then `quality_gate.sh`, now `quality_gate.py`), bash 3.2 empty array crashes, required artifacts downgraded to WARN, json_key_count false positives, missing artifact checks, documentation inconsistencies. All fixes verified by recheck (19/19 FIXED).
 - **v1.4.2:** Fixed 25 bugs from Sonnet 4.6 bootstrap self-audit (3 HIGH, 8 MEDIUM, 14 LOW). Key fixes: nullglob-safe artifact detection (find replaces ls-glob across 7 locations), severity-prefixed bug ID support (BUG-H1/BUG-M3/BUG-L6), TDD sidecar-to-log cross-validation, recheck-results.json gate validation, Phase 5 entry gate, SEED_CHECKS.md in artifact contract table, integration enum validation. Added run metadata JSON spec (`quality/results/run-YYYY-MM-DDTHH-MM-SS.json`) for multi-model comparison — records model, provider, runner, timestamps, phase timings, bug counts, and gate results. All 25 fixes verified by Sonnet recheck (25/25 FIXED). Multi-model comparison: Sonnet found 25 bugs (3 HIGH) at ~3% weekly usage vs Opus's 19 bugs (1 HIGH) at ~8% — Sonnet is the recommended default for playbook runs.
 
 ## Current known issues
@@ -188,7 +203,7 @@ Council review artifacts go in `council-reviews/`. Each review has:
 
 **Test on at least 2 repos after changes.** One large (virtio or cobra) and one small (express or httpx). Check both baseline and at least one iteration strategy.
 
-**Update the version.** The `version:` field in SKILL.md metadata must be bumped for every change. All generated artifacts stamp this version, and mismatches cause quality_gate.sh failures.
+**Update the version.** The `version:` field in SKILL.md metadata must be bumped for every change. All generated artifacts stamp this version, and mismatches cause quality_gate.py failures.
 
 **Run quality_gate.py after testing.** The gate validates artifact conformance mechanically. If it passes on your test repos, the change is safe to commit.
 
