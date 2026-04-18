@@ -18,7 +18,7 @@
 #   3  Code review + regression tests → BUGS.md, patches/
 #   4  Spec audit + triage → spec_audits/, triage_probes.sh
 #   5  Reconciliation + TDD → writeups/, tdd-results.json, red/green logs
-#   6  Verification → quality_gate.sh, phase6-verification.log
+#   6  Verification → quality_gate.py, phase6-verification.log
 #
 # Usage:
 #   ./run_playbook.sh virtio chi httpx gson              # defaults: all phases, single prompt
@@ -443,7 +443,7 @@ Execute Phase 5: Reconciliation + TDD + Closure.
 
 Mark Phase 5 complete in PROGRESS.md.
 
-IMPORTANT: Do NOT skip writeup inline diffs or TDD logs. The next phase runs quality_gate.sh which will FAIL on missing patches, missing diffs, or missing TDD logs.
+IMPORTANT: Do NOT skip writeup inline diffs or TDD logs. The next phase runs quality_gate.py which will FAIL on missing patches, missing diffs, or missing TDD logs.
 PROMPT
 }
 
@@ -454,14 +454,14 @@ You are a quality engineer doing the verification phase of a quality playbook ru
 Read .github/skills/SKILL.md — the Phase 6 section ("Phase 6: Verify"). Follow the incremental verification steps (6.1 through 6.5).
 
 Step 6.1: If quality/mechanical/verify.sh exists, run it. Record exit code.
-Step 6.2: Run quality_gate.sh:
-  bash .github/skills/quality_gate.sh .
+Step 6.2: Run quality_gate.py:
+  python3 .github/skills/quality_gate.py .
 Read the output carefully. For every FAIL result, fix the issue:
 - Missing regression-test patches: generate quality/patches/BUG-NNN-regression-test.patch
 - Missing inline diffs in writeups: add a \`\`\`diff block
 - Non-canonical JSON fields: fix tdd-results.json (use 'id' not 'bug_id', etc.)
 - Missing files: create them
-After fixing all FAILs, run quality_gate.sh again. Repeat until 0 FAIL.
+After fixing all FAILs, run quality_gate.py again. Repeat until 0 FAIL.
 Save final output to quality/results/quality-gate.log.
 
 Step 6.3: Run functional tests if a test runner is available.

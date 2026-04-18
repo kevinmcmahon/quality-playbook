@@ -85,7 +85,7 @@ The two critical deliverables are the requirements file and the functional test 
 
 ### Complete Artifact Contract
 
-The quality gate (`quality_gate.sh`) validates these artifacts. If the gate checks for it, this skill must instruct its creation. This is the canonical list — any artifact not listed here should not be gate-enforced, and any gate check should trace to an artifact listed here.
+The quality gate (`quality_gate.py`) validates these artifacts. If the gate checks for it, this skill must instruct its creation. This is the canonical list — any artifact not listed here should not be gate-enforced, and any gate check should trace to an artifact listed here.
 
 | Artifact | Location | Required? | Created In |
 |----------|----------|-----------|------------|
@@ -1125,7 +1125,7 @@ This is an early filter that catches the most obvious false positives at confirm
 **Spec basis (mandatory field per bug):** Cite the specific documentation passage that establishes the expected behavior — the gathered doc filename, section/page, and the behavioral contract it defines. If no gathered doc covers the behavior, check whether the project's own comments, README, or API docs define it. If no documentation exists for the expected behavior, classify the bug as a "code inconsistency" rather than a "spec violation" and note this in the severity assessment. A spec violation is a stronger finding than a code inconsistency — it means the code contradicts an authoritative source, not just that the code looks wrong. This distinction matters when reporting upstream: maintainers respond to "your code violates section X.Y of your own spec" differently than "this looks like it might be a bug."
 
 **Patch files (mandatory for every confirmed bug).** For each confirmed bug, generate:
-- `quality/patches/BUG-NNN-regression-test.patch` — a `git diff` that adds a test demonstrating the bug. **This patch is mandatory, not optional.** It is the strongest evidence a bug exists — independent of any opinion about the fix. A confirmed bug without a regression-test patch is incomplete and will cause `quality_gate.sh` to FAIL. Generate this patch immediately after confirming the bug, before moving to the next bug.
+- `quality/patches/BUG-NNN-regression-test.patch` — a `git diff` that adds a test demonstrating the bug. **This patch is mandatory, not optional.** It is the strongest evidence a bug exists — independent of any opinion about the fix. A confirmed bug without a regression-test patch is incomplete and will cause `quality_gate.py` to FAIL. Generate this patch immediately after confirming the bug, before moving to the next bug.
 - `quality/patches/BUG-NNN-fix.patch` (optional but strongly encouraged) — a `git diff` with the proposed fix. For bugs where the fix is a single-line or few-line change (e.g., adding a case label, fixing an argument), generate the fix patch — these are low-effort and high-value.
 
 **How to generate patch files.** Use `git diff` format. The simplest approach: write the patch content directly as a unified diff. Example for a regression test patch:
@@ -1233,7 +1233,7 @@ Exit code: [exit code]
 [full stdout/stderr from test execution]
 ```
 
-The status tag (`RED`, `GREEN`, `NOT_RUN`, `ERROR`) on the first line is machine-readable — `quality_gate.sh` will check for its presence. The `NOT_RUN` status is acceptable when the test runner is unavailable (e.g., a C project where the kernel build environment is not present), but the log file must still exist with an explanation of why the test could not be executed.
+The status tag (`RED`, `GREEN`, `NOT_RUN`, `ERROR`) on the first line is machine-readable — `quality_gate.py` will check for its presence. The `NOT_RUN` status is acceptable when the test runner is unavailable (e.g., a C project where the kernel build environment is not present), but the log file must still exist with an explanation of why the test could not be executed.
 
 **Ready-to-run TDD log template.** For each confirmed BUG-NNN, execute this sequence (adapt the test command for the project's language per the table above):
 
@@ -1538,7 +1538,7 @@ The generated protocol must include:
 
    **Writeup generation for all confirmed bugs (mandatory).** Generate a writeup at `quality/writeups/BUG-NNN.md` for every confirmed bug — both TDD-verified and confirmed-open. Use the numbered section template above (sections 1–8). For confirmed-open bugs, follow the same template including a proposed fix diff in section 6 (the diff is always required even without a separate `.patch` file). The writeup threshold is bug confirmation, not TDD completion. A run with confirmed bugs and no writeups directory is incomplete.
 
-   **Inline diff is gate-enforced.** The `quality_gate.sh` script checks that every writeup contains a ` ```diff ` block. A writeup without an inline diff will cause the gate to FAIL. Do not write "see patch file" — paste the actual diff inline in the writeup body, inside a fenced ` ```diff ` code block. This is the single most important element of the writeup because it makes the bug actionable for a maintainer reading just the writeup.
+   **Inline diff is gate-enforced.** The `quality_gate.py` script checks that every writeup contains a ` ```diff ` block. A writeup without an inline diff will cause the gate to FAIL. Do not write "see patch file" — paste the actual diff inline in the writeup body, inside a fenced ` ```diff ` code block. This is the single most important element of the writeup because it makes the bug actionable for a maintainer reading just the writeup.
 
 ### Checkpoint: Update PROGRESS.md after artifact generation
 
@@ -1748,9 +1748,9 @@ For each missing file, create it now. Do not mark Phase 5 complete with missing 
 
 **Sidecar JSON post-write validation (mandatory).** After writing `quality/results/tdd-results.json` and/or `quality/results/integration-results.json`, immediately reopen each file and verify it contains all required keys. For `tdd-results.json`, the required root keys are: `schema_version`, `skill_version`, `date`, `project`, `bugs`, `summary`. Each entry in `bugs` must have: `id`, `requirement`, `red_phase`, `green_phase`, `verdict`, `fix_patch_present`, `writeup_path`. The `summary` object must include `confirmed_open` alongside `verified`, `red_failed`, `green_failed`. For `integration-results.json`, the required root keys are: `schema_version`, `skill_version`, `date`, `project`, `recommendation`, `groups`, `summary`, `uc_coverage`. Both files must have `schema_version: "1.1"`. If any key is missing, add it now — do not leave a non-conformant JSON file on disk. This validation exists because v1.3.25 benchmarking showed 6 of 8 repos with non-conformant sidecar JSON: httpx invented an alternate schema, serde used legacy shape, javalin omitted `summary` and per-bug fields, and others used invalid enum values.
 
-**Script-verified closure gate (mandatory, final step before marking Phase 5 complete).** Locate `quality_gate.sh` using the same fallback as reference files (check `quality_gate.sh`, `.claude/skills/quality-playbook/quality_gate.sh`, `.github/skills/quality_gate.sh` in order) and run it from the project root directory. This script mechanically validates: file existence, BUGS.md heading format, sidecar JSON required keys AND per-bug field names (`id`, `requirement`, `red_phase`, `green_phase`, `verdict`, `fix_patch_present`, `writeup_path`) AND enum values AND summary consistency, use case identifiers, terminal gate section, mechanical verification receipts, version stamps, writeup completeness, **regression-test patch presence for every confirmed bug**, and **inline fix diffs in every writeup** (every `quality/writeups/BUG-NNN.md` must contain a ` ```diff ` block). If the script reports any FAIL results, fix each failing check before proceeding — the most common FAILs are: (1) missing `quality/patches/BUG-NNN-regression-test.patch` files, (2) non-canonical JSON field names like `bug_id` instead of `id`, (3) missing `confirmed_open` in the TDD summary, (4) writeups without inline fix diffs (section 6 must include a concrete diff, not just "see patch file"). Do not mark Phase 5 complete until `quality_gate.sh` exits 0. Append the script's full output to `quality/results/quality-gate.log`.
+**Script-verified closure gate (mandatory, final step before marking Phase 5 complete).** Locate `quality_gate.py` using the same fallback as reference files (check `quality_gate.py`, `.claude/skills/quality-playbook/quality_gate.py`, `.github/skills/quality_gate.py` in order) and run it from the project root directory. This script mechanically validates: file existence, BUGS.md heading format, sidecar JSON required keys AND per-bug field names (`id`, `requirement`, `red_phase`, `green_phase`, `verdict`, `fix_patch_present`, `writeup_path`) AND enum values AND summary consistency, use case identifiers, terminal gate section, mechanical verification receipts, version stamps, writeup completeness, **regression-test patch presence for every confirmed bug**, and **inline fix diffs in every writeup** (every `quality/writeups/BUG-NNN.md` must contain a ` ```diff ` block). If the script reports any FAIL results, fix each failing check before proceeding — the most common FAILs are: (1) missing `quality/patches/BUG-NNN-regression-test.patch` files, (2) non-canonical JSON field names like `bug_id` instead of `id`, (3) missing `confirmed_open` in the TDD summary, (4) writeups without inline fix diffs (section 6 must include a concrete diff, not just "see patch file"). Do not mark Phase 5 complete until `quality_gate.py` exits 0. Append the script's full output to `quality/results/quality-gate.log`.
 
-**Use case identifier format.** REQUIREMENTS.md must use canonical use case identifiers in the format `UC-01`, `UC-02`, etc. for all derived use cases. Each use case must be labeled with its identifier. This is required for machine-readable traceability — the identifier format enables `quality_gate.sh` and downstream tooling to count and cross-reference use cases programmatically. Use cases written as prose paragraphs without identifiers are non-conformant.
+**Use case identifier format.** REQUIREMENTS.md must use canonical use case identifiers in the format `UC-01`, `UC-02`, etc. for all derived use cases. Each use case must be labeled with its identifier. This is required for machine-readable traceability — the identifier format enables `quality_gate.py` and downstream tooling to count and cross-reference use cases programmatically. Use cases written as prose paragraphs without identifiers are non-conformant.
 
 Update PROGRESS.md: mark Phase 5 complete. The BUG tracker should now show closure status for every entry.
 
@@ -1803,20 +1803,20 @@ Record in PROGRESS.md under `## Phase 6 Mechanical Closure` and append to `quali
 
 **Why this is non-substitutable:** In v1.3.23, the model replaced `bash verify.sh` with `python3 -c "from pathlib import Path; ..."` that read the (forged) artifact file and asserted on its contents — a circular check that passed despite the artifact being fabricated. The only trustworthy verification is re-running the same shell pipeline that produced the artifact and diffing the results. Any other method can be fooled by a corrupted intermediate file.
 
-### Step 6.2: Run quality_gate.sh (script-verified checks)
+### Step 6.2: Run quality_gate.py (script-verified checks)
 
 Run the mechanical validation gate:
 
 ```bash
-bash quality_gate.sh . > quality/results/quality-gate.log 2>&1  # locate via fallback: quality_gate.sh, .claude/skills/quality-playbook/quality_gate.sh, .github/skills/quality_gate.sh
+python3 quality_gate.py . > quality/results/quality-gate.log 2>&1  # locate via fallback: quality_gate.py, .claude/skills/quality-playbook/quality_gate.py, .github/skills/quality_gate.py
 echo $? >> quality/results/phase6-verification.log
 ```
 
-Read `quality/results/quality-gate.log`. If it reports any FAIL results, fix each failing check before proceeding. The most common FAILs are: (1) missing `quality/patches/BUG-NNN-regression-test.patch` files, (2) non-canonical JSON field names like `bug_id` instead of `id`, (3) missing `confirmed_open` in the TDD summary, (4) writeups without inline fix diffs, (5) missing TDD red/green log files. Do not proceed until `quality_gate.sh` exits 0.
+Read `quality/results/quality-gate.log`. If it reports any FAIL results, fix each failing check before proceeding. The most common FAILs are: (1) missing `quality/patches/BUG-NNN-regression-test.patch` files, (2) non-canonical JSON field names like `bug_id` instead of `id`, (3) missing `confirmed_open` in the TDD summary, (4) writeups without inline fix diffs, (5) missing TDD red/green log files. Do not proceed until `quality_gate.py` exits 0.
 
 Append to `quality/results/phase6-verification.log`:
 ```
-[Step 6.2] quality_gate.sh: PASS (exit 0) — N checks passed, 0 FAIL, 0 WARN
+[Step 6.2] quality_gate.py: PASS (exit 0) — N checks passed, 0 FAIL, 0 WARN
 ```
 
 This step covers verification benchmarks: 14 (sidecar JSON), 17 (test file extension), 18 (use case count), 20 (writeups), 23 (mechanical artifacts), 26 (version stamps), 27 (mechanical directory), 29 (triage-to-BUGS sync), 34 (BUGS.md exists), 38 (individual auditor reports), 39 (BUGS.md heading format), 40 (artifact file existence), 41 (sidecar JSON validation), 42 (script-verified closure), 43 (use case identifiers), 44 (regression-test patches), 45 (writeup inline diffs).
@@ -2116,7 +2116,7 @@ Also write a human-readable summary to `quality/results/recheck-summary.md`:
 | Bug | Severity | Status | Evidence |
 |-----|----------|--------|----------|
 | BUG-001 | HIGH | FIXED | Reverse-apply succeeded, regression test passes |
-| BUG-002 | MEDIUM | STILL_OPEN | Original code unchanged at quality_gate.sh:125 |
+| BUG-002 | MEDIUM | STILL_OPEN | Original code unchanged at quality_gate.py:125 |
 | ... | ... | ... | ... |
 
 ## Still Open — Details
