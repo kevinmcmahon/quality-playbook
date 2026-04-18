@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Install the Quality Playbook skill (and orchestrator agent) into a target
-# project directory for use with Claude Code.
+# Install the Quality Playbook skill into a target project directory for use
+# with Claude Code. Mirrors the install steps documented in README.md Step 2.
 #
 # Usage: ./install-claude-code.sh <target-project-dir>
 
@@ -28,7 +28,7 @@ if [[ ! -d "$src" ]]; then
 Error: quality-playbook source directory not found: $src
 
 This script expects to live inside a clone of the quality-playbook repo
-(alongside SKILL.md, references/, and agents/). Clone it with:
+(alongside SKILL.md and references/). Clone it with:
 
     git clone https://github.com/andrewstellman/quality-playbook.git
 
@@ -40,7 +40,7 @@ EOF
     exit 1
 fi
 
-for required in SKILL.md LICENSE.txt references agents/quality-playbook-claude.agent.md; do
+for required in SKILL.md references; do
     if [[ ! -e "$src/$required" ]]; then
         echo "Error: missing source file: $src/$required" >&2
         exit 1
@@ -48,17 +48,13 @@ for required in SKILL.md LICENSE.txt references agents/quality-playbook-claude.a
 done
 
 skill_dir="$target/.claude/skills/quality-playbook"
-agent_dir="$target/.claude/agents"
 
-mkdir -p "$skill_dir/references" "$agent_dir"
+mkdir -p "$skill_dir/references"
 
 cp "$src/SKILL.md" "$skill_dir/SKILL.md"
-cp "$src/LICENSE.txt" "$skill_dir/LICENSE.txt"
 cp "$src/references/"* "$skill_dir/references/"
-cp "$src/agents/quality-playbook-claude.agent.md" "$agent_dir/"
 
 echo "Installed Quality Playbook into: $target"
 echo "  skill: $skill_dir"
-echo "  agent: $agent_dir/quality-playbook-claude.agent.md"
 echo ""
-echo "Next: open Claude Code in '$target' and say \"Run the full playbook\"."
+echo "Next: open Claude Code in '$target' and say \"Read SKILL.md and run the quality playbook on this project.\""
