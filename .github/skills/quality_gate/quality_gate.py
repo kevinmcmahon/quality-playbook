@@ -180,12 +180,10 @@ def detect_skill_version(locations):
             try:
                 with open(loc, "r", encoding="utf-8", errors="replace") as f:
                     for line in f:
-                        if "version:" in line:
-                            v = re.sub(r".*version:\s*", "", line, count=1)
-                            v = v.replace(" ", "").rstrip("\n").rstrip("\r")
-                            if v:
-                                return v
-                            break
+                        m = re.match(r"^\s*(?:version:|\*\*Version:\*\*)\s*([0-9]+(?:\.[0-9]+)+)\b",
+                                     line, re.IGNORECASE)
+                        if m:
+                            return m.group(1)
             except OSError:
                 continue
     return ""
@@ -223,7 +221,7 @@ def detect_project_language(repo_dir):
         ("c", ".c"),
         ("agc", ".agc"),
     ]
-    excluded = {"vendor", "node_modules", ".git", "quality"}
+    excluded = {"vendor", "node_modules", ".git", "quality", "repos"}
 
     def present(base, target_ext):
         stack = [(Path(base), 1)]

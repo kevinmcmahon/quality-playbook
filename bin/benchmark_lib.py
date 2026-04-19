@@ -40,6 +40,7 @@ SKILL_INSTALL_LOCATIONS = (
     Path(".github") / "skills" / "SKILL.md",
     Path(".claude") / "skills" / "quality-playbook" / "SKILL.md",
     Path("SKILL.md"),
+    Path(".github") / "skills" / "quality-playbook" / "SKILL.md",
 )
 
 
@@ -102,15 +103,9 @@ def skill_version() -> Optional[str]:
     try:
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             for line in f:
-                stripped = line.lstrip()
-                if not stripped.startswith("version:"):
-                    continue
-                # Strip the "version:" prefix, then split on whitespace.
-                remainder = stripped[len("version:"):].strip()
-                if not remainder:
-                    return None
-                token = remainder.split()[0]
-                return token or None
+                m = VERSION_PATTERN.match(line)
+                if m:
+                    return m.group(1)
     except OSError:
         return None
     return None
