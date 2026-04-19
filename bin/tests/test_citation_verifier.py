@@ -1,0 +1,381 @@
+"""Tests for bin/citation_verifier.py (schemas.md §5.4 and §5.5)."""
+
+from __future__ import annotations
+
+import hashlib
+import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from bin import citation_verifier as cv
+
+
+# ---------------------------------------------------------------------------
+# Shared fixture text — a tiny plaintext document exercising the extraction
+# algorithm at known anchor points.
+#
+# Line numbers (1-based) of interest:
+#   L1: "Intro"
+#   L2: ""
+#   L3: "2.4 Device initialization"
+#   L4: "The driver MUST..."
+#   L10: "RESET has completed."
+#   L11: ""
+#   L12: "2.5 Reserved"
+#   L13: "Reserved..."
+# ---------------------------------------------------------------------------
+
+_FIXTURE_TXT = (
+    "Intro\n"
+    "\n"
+    "2.4 Device initialization\n"
+    "The driver MUST perform the following steps, in order, before the\n"
+    "device is considered operational. Each step has specific precondition\n"
+    "and failure-recovery semantics which the driver MUST honor.\n"
+    "On failure of VIRTIO_F_VERSION_1 feature negotiation, the device\n"
+    "MUST reset itself and MUST NOT accept further driver writes until\n"
+    "RESET has completed.\n"
+    "\n"
+    "2.5 Reserved\n"
+    "Reserved for future versions of the specification.\n"
+)
+
+_FIXTURE_EXPECTED_24_EXCERPT = (
+    "2.4 Device initialization\n"
+    "The driver MUST perform the following steps, in order, before the\n"
+    "device is considered operational. Each step has specific precondition\n"
+    "and failure-recovery semantics which the driver MUST honor.\n"
+    "On failure of VIRTIO_F_VERSION_1 feature negotiation, the device\n"
+    "MUST reset itself and MUST NOT accept further driver writes until\n"
+    "RESET has completed."
+)
+
+
+class ExtractExcerptTests(unittest.TestCase):
+    """§5.4 deterministic excerpt extraction."""
+
+    def test_txt_happy_path_by_section(self) -> None:
+        excerpt = cv.extract_excerpt(
+            _FIXTURE_TXT.encode("utf-8"),
+            ".txt",
+            "2.4",
+            None,
+        )
+        self.assertEqual(excerpt, _FIXTURE_EXPECTED_24_EXCERPT)
+
+    def test_txt_happy_path_by_line(self) -> None:
+        excerpt = cv.extract_excerpt(
+            _FIXTURE_TXT.encode("utf-8"),
+            ".txt",
+            None,
+            3,
+        )
+        self.assertEqual(excerpt, _FIXTURE_EXPECTED_24_EXCERPT)
+
+    def test_line_ending_determinism(self) -> None:
+        """\\n, \\r\\n, and \\r variants all produce byte-identical excerpts."""
+        unix = _FIXTURE_TXT.encode("utf-8")
+        windows = _FIXTURE_TXT.replace("\n", "\r\n").encode("utf-8")
+        mac_classic = _FIXTURE_TXT.replace("\n", "\r").encode("utf-8")
+        e1 = cv.extract_excerpt(unix, ".txt", None, 3)
+        e2 = cv.extract_excerpt(windows, ".txt", None, 3)
+        e3 = cv.extract_excerpt(mac_classic, ".txt", None, 3)
+        self.assertEqual(e1, e2)
+        self.assertEqual(e1, e3)
+        self.assertEqual(e1, _FIXTURE_EXPECTED_24_EXCERPT)
+
+    def test_ten_line_cap(self) -> None:
+        """A 30-line non-blank paragraph returns exactly 10 lines."""
+        lines = [f"line {i}" for i in range(1, 31)]
+        doc = ("\n".join(lines)).encode("utf-8")
+        excerpt = cv.extract_excerpt(doc, ".txt", None, 1)
+        self.assertEqual(excerpt.count("\n"), 9)  # 10 lines joined by "\n"
+        self.assertEqual(excerpt.splitlines(), lines[:10])
+
+    def test_blank_line_boundary_exact(self) -> None:
+        """A 4-line paragraph followed by a blank returns exactly 4 lines."""
+        doc = "one\ntwo\nthree\nfour\n\ntail\n".encode("utf-8")
+        excerpt = cv.extract_excerpt(doc, ".txt", None, 1)
+        self.assertEqual(excerpt, "one\ntwo\nthree\nfour")
+
+    def test_anchor_at_eof_returns_single_line(self) -> None:
+        doc = "alpha\nbeta\ngamma".encode("utf-8")
+        excerpt = cv.extract_excerpt(doc, ".txt", None, 3)
+        self.assertEqual(excerpt, "gamma")
+
+    def test_blank_anchor_fails(self) -> None:
+        with self.assertRaises(cv.CitationResolutionError) as ctx:
+            cv.extract_excerpt(_FIXTURE_TXT.encode("utf-8"), ".txt", None, 2)
+        self.assertEqual(ctx.exception.code, cv.ERROR_BLANK_ANCHOR)
+
+    def test_line_past_eof_fails(self) -> None:
+        with self.assertRaises(cv.CitationResolutionError) as ctx:
+            cv.extract_excerpt(_FIXTURE_TXT.encode("utf-8"), ".txt", None, 999)
+        self.assertEqual(ctx.exception.code, cv.ERROR_LOCATOR_OUT_OF_RANGE)
+
+    def test_line_zero_or_negative_fails(self) -> None:
+        with self.assertRaises(cv.CitationResolutionError) as ctx:
+            cv.extract_excerpt(_FIXTURE_TXT.encode("utf-8"), ".txt", None, 0)
+        self.assertEqual(ctx.exception.code, cv.ERROR_LOCATOR_OUT_OF_RANGE)
+
+    def test_no_locator_fails(self) -> None:
+        with self.assertRaises(cv.CitationResolutionError) as ctx:
+            cv.extract_excerpt(_FIXTURE_TXT.encode("utf-8"), ".txt", None, None)
+        self.assertEqual(ctx.exception.code, cv.ERROR_LOCATOR_MISSING)
+
+    def test_empty_section_string_fails(self) -> None:
+        with self.assertRaises(cv.CitationResolutionError) as ctx:
+            cv.extract_excerpt(_FIXTURE_TXT.encode("utf-8"), ".txt", "", None)
+        self.assertEqual(ctx.exception.code, cv.ERROR_LOCATOR_MISSING)
+
+    def test_bom_tolerance(self) -> None:
+        """A leading UTF-8 BOM is stripped; other bytes are preserved."""
+        with_bom = b"\xef\xbb\xbf" + _FIXTURE_TXT.encode("utf-8")
+        excerpt = cv.extract_excerpt(with_bom, ".txt", None, 3)
+        self.assertEqual(excerpt, _FIXTURE_EXPECTED_24_EXCERPT)
+
+    def test_bom_only_at_position_zero(self) -> None:
+        """A BOM byte sequence mid-file stays; it is not stripped."""
+        # Line 1 "hello", line 2 blank, line 3 starts with U+FEFF, line 4 "tail".
+        # Python str "\ufeff" encodes to UTF-8 bytes b"\xef\xbb\xbf" mid-file.
+        doc = "hello\n\n\ufeffworld\ntail".encode("utf-8")
+        # Sanity: BOM bytes exist mid-file (not stripped by _decode_document).
+        self.assertEqual(doc[:5], b"hello")
+        self.assertIn(b"\xef\xbb\xbf", doc[5:])
+        # Anchor at line 1 returns only "hello" (next line is blank).
+        excerpt_first = cv.extract_excerpt(doc, ".txt", None, 1)
+        self.assertEqual(excerpt_first, "hello")
+        # Anchor at line 3 preserves the mid-file BOM character.
+        excerpt_mid = cv.extract_excerpt(doc, ".txt", None, 3)
+        self.assertTrue(excerpt_mid.startswith("\ufeff"))
+        self.assertIn("world", excerpt_mid)
+
+    def test_invalid_utf8_fails(self) -> None:
+        doc = b"valid\n\xff\xfe not utf-8\n"
+        with self.assertRaises(cv.CitationResolutionError) as ctx:
+            cv.extract_excerpt(doc, ".txt", None, 1)
+        self.assertEqual(ctx.exception.code, cv.ERROR_INVALID_UTF8)
+
+    def test_line_authoritative_over_section_when_both_provided(self) -> None:
+        """When both line and section are given, line wins (verify_citation emits a warning)."""
+        # section "2.4" resolves to line 3; but we pass line=11 (the "2.5 Reserved" header).
+        excerpt = cv.extract_excerpt(
+            _FIXTURE_TXT.encode("utf-8"),
+            ".txt",
+            "2.4",
+            11,
+        )
+        self.assertEqual(excerpt.splitlines()[0], "2.5 Reserved")
+
+    def test_unsupported_extension_fails(self) -> None:
+        with self.assertRaises(cv.CitationResolutionError) as ctx:
+            cv.extract_excerpt(b"hello", ".rtf", "1", None)
+        self.assertEqual(ctx.exception.code, cv.ERROR_UNSUPPORTED_EXTENSION)
+
+
+class ResolveSectionTests(unittest.TestCase):
+    """§5.5 deterministic section resolution."""
+
+    def test_markdown_heading_matches(self) -> None:
+        lines = [
+            "# Introduction",
+            "",
+            "Body text here.",
+            "",
+            "## 2.4 Device initialization",
+            "",
+            "More body text.",
+        ]
+        self.assertEqual(cv.resolve_section(lines, ".md", "2.4"), 5)
+
+    def test_markdown_body_does_not_match(self) -> None:
+        """`2.4` appearing in body text does NOT match without leading `#`."""
+        lines = [
+            "# Overview",
+            "",
+            "Section 2.4 covers device initialization per the spec.",
+            "2.4 is also mentioned here",
+            "but without the hash-prefix it is body text.",
+        ]
+        with self.assertRaises(cv.CitationResolutionError) as ctx:
+            cv.resolve_section(lines, ".md", "2.4")
+        self.assertEqual(ctx.exception.code, cv.ERROR_SECTION_NOT_FOUND)
+
+    def test_markdown_matches_with_trailing_title(self) -> None:
+        """`## 2.4 Device initialization` resolves under section "2.4"."""
+        lines = ["## 2.4 Device initialization"]
+        self.assertEqual(cv.resolve_section(lines, ".md", "2.4"), 1)
+
+    def test_markdown_requires_space_after_hashes(self) -> None:
+        lines = ["##2.4 No space"]
+        with self.assertRaises(cv.CitationResolutionError) as ctx:
+            cv.resolve_section(lines, ".md", "2.4")
+        self.assertEqual(ctx.exception.code, cv.ERROR_SECTION_NOT_FOUND)
+
+    def test_markdown_allows_h1_through_h6(self) -> None:
+        for prefix in ("#", "##", "###", "####", "#####", "######"):
+            lines = [f"{prefix} 7.2 Test"]
+            self.assertEqual(cv.resolve_section(lines, ".md", "7.2"), 1)
+
+    def test_plaintext_matches_bare_and_with_title(self) -> None:
+        lines = ["2.4 Device initialization"]
+        self.assertEqual(cv.resolve_section(lines, ".txt", "2.4"), 1)
+
+    def test_plaintext_lstrips_indent(self) -> None:
+        lines = ["   2.4 Device initialization"]
+        self.assertEqual(cv.resolve_section(lines, ".txt", "2.4"), 1)
+
+    def test_plaintext_body_does_not_match(self) -> None:
+        lines = ["Section 2.4 covers device initialization."]
+        with self.assertRaises(cv.CitationResolutionError) as ctx:
+            cv.resolve_section(lines, ".txt", "2.4")
+        self.assertEqual(ctx.exception.code, cv.ERROR_SECTION_NOT_FOUND)
+
+    def test_zero_matches_fail(self) -> None:
+        lines = ["Alpha", "Bravo"]
+        with self.assertRaises(cv.CitationResolutionError) as ctx:
+            cv.resolve_section(lines, ".txt", "9.9")
+        self.assertEqual(ctx.exception.code, cv.ERROR_SECTION_NOT_FOUND)
+
+    def test_two_matches_fail(self) -> None:
+        lines = [
+            "2.4 First occurrence",
+            "unrelated line",
+            "2.4 Second occurrence",
+        ]
+        with self.assertRaises(cv.CitationResolutionError) as ctx:
+            cv.resolve_section(lines, ".txt", "2.4")
+        self.assertEqual(ctx.exception.code, cv.ERROR_SECTION_AMBIGUOUS)
+
+    def test_regex_injection_is_escaped(self) -> None:
+        """`section="2.4.*"` must not match "2.4 ..." body via regex wildcard."""
+        lines = [
+            "2.4 Real heading",
+            "2.4.* Literal heading",
+        ]
+        # "2.4.*" as a literal should match only the second line.
+        self.assertEqual(cv.resolve_section(lines, ".txt", "2.4.*"), 2)
+
+    def test_dot_in_section_matches_literal_dot_only(self) -> None:
+        """`section="2.4"` must not match `2X4` via regex `.`."""
+        lines = [
+            "2X4 body content",
+            "2.4 Real heading",
+        ]
+        self.assertEqual(cv.resolve_section(lines, ".txt", "2.4"), 2)
+
+    def test_section_with_dash_and_letters(self) -> None:
+        lines = ["A.2-bis Appendix Two Bis"]
+        self.assertEqual(cv.resolve_section(lines, ".txt", "A.2-bis"), 1)
+
+
+class VerifyCitationTests(unittest.TestCase):
+    """End-to-end verify_citation convenience entry point."""
+
+    def _write_doc(self, root: Path, relative: str, text: str) -> Path:
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(text.encode("utf-8"))
+        return path
+
+    def test_happy_path_returns_fresh_excerpt(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            doc_path = self._write_doc(root, "formal_docs/x.txt", _FIXTURE_TXT)
+            sha = hashlib.sha256(doc_path.read_bytes()).hexdigest()
+            formal_doc = {"source_path": "formal_docs/x.txt", "document_sha256": sha, "tier": 2}
+            citation = {
+                "document": "formal_docs/x.txt",
+                "document_sha256": sha,
+                "section": "2.4",
+            }
+            result = cv.verify_citation(citation, formal_doc, root)
+            self.assertTrue(result.ok, result.error_message)
+            self.assertEqual(result.excerpt, _FIXTURE_EXPECTED_24_EXCERPT)
+            self.assertEqual(result.warnings, ())
+
+    def test_byte_equal_check_passes_when_excerpt_matches(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            doc_path = self._write_doc(root, "formal_docs/x.txt", _FIXTURE_TXT)
+            sha = hashlib.sha256(doc_path.read_bytes()).hexdigest()
+            formal_doc = {"source_path": "formal_docs/x.txt", "document_sha256": sha, "tier": 2}
+            citation = {
+                "document": "formal_docs/x.txt",
+                "document_sha256": sha,
+                "section": "2.4",
+                "citation_excerpt": _FIXTURE_EXPECTED_24_EXCERPT,
+            }
+            result = cv.verify_citation(citation, formal_doc, root)
+            self.assertTrue(result.ok, result.error_message)
+
+    def test_byte_equal_check_rejects_tampered_excerpt(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            doc_path = self._write_doc(root, "formal_docs/x.txt", _FIXTURE_TXT)
+            sha = hashlib.sha256(doc_path.read_bytes()).hexdigest()
+            formal_doc = {"source_path": "formal_docs/x.txt", "document_sha256": sha, "tier": 2}
+            citation = {
+                "document": "formal_docs/x.txt",
+                "document_sha256": sha,
+                "section": "2.4",
+                "citation_excerpt": "A totally made-up paraphrase that reads well.",
+            }
+            result = cv.verify_citation(citation, formal_doc, root)
+            self.assertFalse(result.ok)
+            self.assertEqual(result.error_code, cv.ERROR_EXCERPT_MISMATCH)
+            self.assertEqual(result.excerpt, _FIXTURE_EXPECTED_24_EXCERPT)
+
+    def test_document_not_found(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            formal_doc = {"source_path": "formal_docs/missing.txt", "document_sha256": "0" * 64, "tier": 2}
+            citation = {
+                "document": "formal_docs/missing.txt",
+                "document_sha256": "0" * 64,
+                "line": 1,
+            }
+            result = cv.verify_citation(citation, formal_doc, root)
+            self.assertFalse(result.ok)
+            self.assertEqual(result.error_code, cv.ERROR_DOCUMENT_NOT_FOUND)
+
+    def test_hash_mismatch_against_formal_doc(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_doc(root, "formal_docs/x.txt", _FIXTURE_TXT)
+            formal_doc = {
+                "source_path": "formal_docs/x.txt",
+                "document_sha256": "f" * 64,  # wrong
+                "tier": 2,
+            }
+            citation = {
+                "document": "formal_docs/x.txt",
+                "document_sha256": "f" * 64,
+                "section": "2.4",
+            }
+            result = cv.verify_citation(citation, formal_doc, root)
+            self.assertFalse(result.ok)
+            self.assertEqual(result.error_code, cv.ERROR_HASH_MISMATCH)
+
+    def test_line_vs_section_mismatch_emits_warning_but_succeeds(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            doc_path = self._write_doc(root, "formal_docs/x.txt", _FIXTURE_TXT)
+            sha = hashlib.sha256(doc_path.read_bytes()).hexdigest()
+            formal_doc = {"source_path": "formal_docs/x.txt", "document_sha256": sha, "tier": 2}
+            citation = {
+                "document": "formal_docs/x.txt",
+                "document_sha256": sha,
+                "section": "2.4",  # resolves to line 3
+                "line": 11,        # "2.5 Reserved"
+            }
+            result = cv.verify_citation(citation, formal_doc, root)
+            self.assertTrue(result.ok, result.error_message)
+            self.assertEqual(result.excerpt.splitlines()[0], "2.5 Reserved")
+            self.assertEqual(len(result.warnings), 1)
+            self.assertIn("line 11", result.warnings[0])
+            self.assertIn("section", result.warnings[0])
+
+
+if __name__ == "__main__":
+    unittest.main()
