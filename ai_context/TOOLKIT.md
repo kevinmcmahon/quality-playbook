@@ -395,9 +395,9 @@ If it reports FAIL results, the most common causes:
 - Missing fields in `tdd-results.json`
 - Writeups without inline fix diffs
 - Missing red-phase or green-phase log files (v1.3.49+)
-- Missing `quality/results/run-YYYY-MM-DDTHH-MM-SS.json` run-metadata file (v1.4.5 fix — `check_run_metadata` now enforces this)
-- `EXPLORATION.md` missing one of the five required section headings: `## Open Exploration Findings`, `## Quality Risks`, `## Pattern Applicability Matrix`, `## Candidate Bugs for Phase 2`, `## Gate Self-Check` (v1.4.5 fix — `_check_exploration_sections` enforces these)
-- Zero-bug runs where `BUGS.md` doesn't carry an anchored `## No confirmed bugs` heading (v1.4.5 fix — the sentinel no longer matches free prose containing the word "zero")
+- Missing `quality/results/run-YYYY-MM-DDTHH-MM-SS.json` run-metadata file (v1.4.6 fix — `check_run_metadata` now enforces this)
+- `EXPLORATION.md` missing one of the five required section headings: `## Open Exploration Findings`, `## Quality Risks`, `## Pattern Applicability Matrix`, `## Candidate Bugs for Phase 2`, `## Gate Self-Check` (v1.4.6 fix — `_check_exploration_sections` enforces these)
+- Zero-bug runs where `BUGS.md` doesn't carry an anchored `## No confirmed bugs` heading (v1.4.6 fix — the sentinel no longer matches free prose containing the word "zero")
 - Functional/regression test files whose extension doesn't match the detected project language — both `test_functional.*` and language-native names like `FunctionalTest.java`, `FunctionalSpec.scala`, `functional.test.ts`, `functional_test.go` are now gate-checked for extension match
 
 ---

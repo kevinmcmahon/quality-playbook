@@ -2,7 +2,7 @@
 
 Point an AI coding tool at any codebase. Get a complete quality engineering infrastructure: requirements derived from the actual intent of the code, functional tests traced to those requirements, a three-pass code review protocol, and a multi-model spec audit that catches bugs no single reviewer can find alone.
 
-**Version:** 1.4.5 | **Author:** [Andrew Stellman](https://github.com/andrewstellman) | **License:** Apache 2.0
+**Version:** 1.4.6 | **Author:** [Andrew Stellman](https://github.com/andrewstellman) | **License:** Apache 2.0
 
 ## Find the 35% of bugs that code review misses
 
@@ -174,13 +174,17 @@ The playbook's value comes from requirement derivation. AI code reviewers are bo
 
 Adding community documentation to the pipeline produces measurably better results. In a controlled experiment across multiple repositories, documentation-enriched runs found more bugs, different bugs, and higher-confidence bugs than code-only baselines. The documentation gives auditors spec language to check against, turning "this code looks odd" into "this code contradicts the documented behavior."
 
+### What's new in v1.4.6
+
+- **27 bugs fixed from the v1.4.5 bootstrap self-audit.** The Opus self-audit over v1.4.5 baseline + four iteration strategies (gap, unfiltered, parity, adversarial) confirmed 27 real defects spanning version parsers, phase entry gates, archive atomicity, runner reliability, quality-gate validation, prompt portability, and orchestrator bootstrap. All 27 shipped as fixes with passing regression tests; recheck reports 27/27 FIXED. Shipped in seven thematic commits. Highlights: the Phase 2 gate now FAILs below 120 lines instead of WARNing at 80 (matching SKILL.md §Phase 1 completion gate); the Phase 3 gate checks all nine Phase 2 artifacts instead of four; the Phase 5 gate enforces SKILL.md's hard-stop (`*triage*` + `*auditor*` files + Phase 4 `[x]`); `archive_previous_run` stages into `previous_runs/<ts>.partial/` then atomically renames and preserves `control_prompts/` instead of deleting it; `cleanup_repo` adds `AGENTS.md` to the protected-path set; child-process exit codes propagate through `run_one_phase` / `run_one_singlepass`; missing `docs_gathered/` WARNs and continues with code-only analysis instead of blocking; runner prompts now advertise all four documented install paths via a new `SKILL_FALLBACK_GUIDE` constant; `check_run_metadata` and `_check_exploration_sections` plug two long-standing gate gaps; `validate_iso_date` accepts ISO 8601 datetimes; `_parse_porcelain_path` unwraps Git's quoted paths; `detect_project_language` skips nested benchmark fixture repos. Full per-bug detail in `quality/results/recheck-summary.md`.
+- **Bootstrap artifacts tracked in git.** `quality/`, `previous_runs/`, and `control_prompts/` are now in version control as project history. Earlier they were untracked to avoid `cleanup_repo`'s `git checkout .` wiping them; now `cleanup_repo` protects those prefixes explicitly, so the trees can be tracked without risk. Future iterations can diff against them.
+
 ### What's new in v1.4.5
 
 - **Python runner with a path-based interface.** `bin/run_playbook.py` treats every positional argument as a directory path (relative or absolute) and defaults to the current directory when none are given. No more short-name resolution, no hardcoded `repos/` lookups — the runner works against any project you point it at. A narrow version-append fallback kicks in only for bare names (no path separators): if `chi` isn't a directory, the runner retries `chi-<skill_version>` once, using the `version:` line from `SKILL.md`. Log files live next to each target (`{parent}/{target-name}-playbook-{timestamp}.log`). Missing SKILL.md is a warning, not a fatal error, so first-time installs aren't blocked. 92 stdlib-only unit tests.
 - **Python gate is the sole mechanical gate.** `quality_gate.sh` has been retired. `quality_gate.py` now handles JSON with `json.load` instead of grep-style parsing and lives at `.github/skills/quality_gate/` as a proper package with a 108-test unit-test suite. A stable symlink at `.github/skills/quality_gate.py` preserves the previous invocation path.
 - **Benchmark set reduced to four targets** — bootstrap, chi, cobra, virtio — so full validation loops finish in a reasonable window. Bootstrap always runs last because fixes from the other three need to land before the playbook audits itself.
 - **Rate limit warning added.** The README and runner docs now call out that running many targets in parallel with single-prompt mode can trigger multi-day Copilot cooldowns; `--phase all` with `--sequential` is the recommended mode.
-- **27 bugs fixed from the bootstrap self-audit.** The Opus self-audit over v1.4.5 baseline + four iteration strategies confirmed 27 real defects spanning version parsers, phase entry gates, archive atomicity, runner reliability, quality-gate validation, prompt portability, and orchestrator bootstrap. All 27 shipped as fixes with passing regression tests. Highlights: the Phase 2 gate now FAILs below 120 lines instead of WARNing at 80; the Phase 3 gate checks all nine Phase 2 artifacts instead of four; the Phase 5 gate enforces SKILL.md's hard-stop (triage + auditor files + Phase 4 checkbox); `archive_previous_run` is now atomic and preserves `control_prompts/`; child-process exit codes propagate through `run_one_phase`/`run_one_singlepass`; missing `docs_gathered/` WARNs and continues instead of blocking; runner prompts now advertise all four documented install paths; `check_run_metadata` and `_check_exploration_sections` plug two long-standing gate gaps; `validate_iso_date` accepts ISO 8601 datetimes; `_parse_porcelain_path` handles quoted paths. Full per-bug detail in `quality/results/recheck-summary.md`.
 
 ### What's new in v1.4.4
 
@@ -247,8 +251,8 @@ For benchmark use, run from the `repos/` folder so relative paths resolve to the
 
 ```bash
 cd repos
-python3 ../bin/run_playbook.py --phase all --sequential chi-1.4.5
-python3 ../bin/run_playbook.py chi     # resolves to chi-1.4.5 via SKILL.md version
+python3 ../bin/run_playbook.py --phase all --sequential chi-1.4.6
+python3 ../bin/run_playbook.py chi     # resolves to chi-1.4.6 via SKILL.md version
 ```
 
 **Rate limit warning:** Running multiple targets in parallel with single-prompt mode (no `--phase`) sends long autonomous prompts that consume large amounts of API quota. In testing, running 8 targets in parallel single-prompt mode triggered a 54-hour Copilot rate limit. Use `--phase all` instead — it runs each phase as a separate, shorter prompt with exit gates between phases. This uses less quota per prompt, produces better results (each phase gets a full context window), and is easier to resume if interrupted. For the same reason, prefer `--sequential` over `--parallel` unless you're confident in your rate limit headroom.
