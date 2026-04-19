@@ -15,6 +15,7 @@ from typing import List, Optional
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--collect-only", action="store_true")
     parser.add_argument("paths", nargs="*")
     known, _unknown = parser.parse_known_args(argv)
 
@@ -22,6 +23,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     suite = unittest.TestSuite()
     paths = known.paths or ["."]
     for raw_path in paths:
+        if "::" in raw_path:
+            print("pytest node IDs are not supported by the local unittest shim", file=sys.stderr)
+            return 2
         path = Path(raw_path)
         if path.is_dir():
             suite.addTests(loader.discover(str(path)))
@@ -30,6 +34,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         else:
             suite.addTests(loader.discover(str(path)))
 
+    if known.collect_only:
+        for test in suite:
+            print(test)
+        return 0
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     return 0 if result.wasSuccessful() else 1
 

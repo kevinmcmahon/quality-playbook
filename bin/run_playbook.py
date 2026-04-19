@@ -629,7 +629,10 @@ def run_one_phase(repo_dir: Path, phase: str, phase_list: Sequence[str], args: a
     prompt = build_phase_prompt(phase, no_seeds=args.no_seeds)
     output_file = repo_dir / "control_prompts" / f"phase{phase}.output.txt"
     lib.logboth(log_file, lib.log(f"  Phase {phase_index}/{len(phase_list)} ({phase_label(phase)}): {repo_dir.name}"))
-    run_prompt(repo_dir, prompt, f"phase{phase}", output_file, log_file, args.runner, args.model)
+    exit_code = run_prompt(repo_dir, prompt, f"phase{phase}", output_file, log_file, args.runner, args.model)
+    if exit_code:
+        lib.logboth(log_file, lib.log(f"  ABORT Phase {phase}: child runner exited {exit_code}"))
+        return False
 
     quality_dir = repo_dir / "quality"
     if phase == "1":
@@ -668,8 +671,7 @@ def run_one_phase(repo_dir: Path, phase: str, phase_list: Sequence[str], args: a
 def run_one_phased(repo_dir: Path, phase_list: Sequence[str], args: argparse.Namespace, timestamp: str) -> int:
     log_file = log_file_for(repo_dir, timestamp)
     if not docs_present(repo_dir):
-        print(lib.log(f"SKIP: {repo_dir.name} - docs_gathered/ is missing or empty"))
-        return 1
+        print(lib.log(f"WARN: {repo_dir.name} - docs_gathered/ is missing or empty; proceeding with code-only analysis"))
 
     if "1" in phase_list:
         archive_previous_run(repo_dir, timestamp)
@@ -694,8 +696,7 @@ def run_one_phased(repo_dir: Path, phase_list: Sequence[str], args: argparse.Nam
 def run_one_singlepass(repo_dir: Path, args: argparse.Namespace, timestamp: str) -> int:
     log_file = log_file_for(repo_dir, timestamp)
     if not docs_present(repo_dir):
-        print(lib.log(f"SKIP: {repo_dir.name} - docs_gathered/ is missing or empty"))
-        return 1
+        print(lib.log(f"WARN: {repo_dir.name} - docs_gathered/ is missing or empty; proceeding with code-only analysis"))
 
     if args.next_iteration:
         if not (repo_dir / "quality" / "EXPLORATION.md").is_file():
@@ -716,7 +717,10 @@ def run_one_singlepass(repo_dir: Path, args: argparse.Namespace, timestamp: str)
     control_prompts = repo_dir / "control_prompts"
     control_prompts.mkdir(parents=True, exist_ok=True)
     output_file = control_prompts / "playbook_run.output.txt"
-    run_prompt(repo_dir, prompt, pass_label, output_file, log_file, args.runner, args.model)
+    exit_code = run_prompt(repo_dir, prompt, pass_label, output_file, log_file, args.runner, args.model)
+    if exit_code:
+        lib.logboth(log_file, lib.log(f"ABORT: child runner exited {exit_code}"))
+        return exit_code
     lib.logboth(log_file, lib.log(f"Playbook complete: {repo_dir.name}"))
 
     missing = final_artifact_gaps(repo_dir)
@@ -834,6 +838,7 @@ def _pkill_fallback() -> None:
         "bin/run_playbook.py",
         "claude -p",
         "claude --model",
+        "gh copilot -p",
     ]
     for pattern in patterns:
         try:
@@ -955,7 +960,7 @@ def execute_run(args: argparse.Namespace, repo_dirs: Sequence[Path], timestamp: 
         print(f"\n=== Parallel run complete. {failures} failures out of {len(repo_dirs)} targets. ===")
         print(lib.print_summary(repo_dirs))
         if not suppress_suggestion:
-            print_suggested_next_command(args)
+            print_suggested_next_command(args, failures_occurred=failures > 0)
         return 1 if failures else 0
 
     overall_status = 0
@@ -965,11 +970,14 @@ def execute_run(args: argparse.Namespace, repo_dirs: Sequence[Path], timestamp: 
 
     print(lib.print_summary(repo_dirs))
     if not suppress_suggestion:
-        print_suggested_next_command(args)
+        print_suggested_next_command(args, failures_occurred=overall_status > 0)
     return overall_status
 
 
-def print_suggested_next_command(args: argparse.Namespace) -> None:
+def print_suggested_next_command(args: argparse.Namespace, failures_occurred: bool = False) -> None:
+    if failures_occurred:
+        print("  Run finished with errors — inspect control_prompts/ and re-run with --phase <N>")
+        return
     runner_flag = " --claude" if args.runner == "claude" else ""
     model_flag = f" --model {shlex.quote(args.model)}" if getattr(args, "model", None) else ""
     interpreter = os.path.basename(sys.executable) if sys.executable else "python"

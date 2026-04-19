@@ -229,29 +229,6 @@ class GapIterationBootstrapTests(unittest.TestCase):
         self.assertIn("Run Phase 1 in the current session.", source)
 
 
-class PytestShimContractTests(unittest.TestCase):
-    """REQ-020. Source: pytest/__main__.py, SKILL.md TDD commands."""
-
-    def test_collect_only_currently_still_executes_runner(self):
-        """REQ-020: document current collect-only semantic drift."""
-        shim = _load_pytest_shim()
-        fake_result = mock.Mock()
-        fake_result.wasSuccessful.return_value = True
-        with mock.patch("unittest.TextTestRunner.run", return_value=fake_result) as run_mock:
-            exit_code = shim.main(["--collect-only", ".github/skills/quality_gate/tests/test_quality_gate.py"])
-        self.assertEqual(exit_code, 0)
-        run_mock.assert_called_once()
-
-    def test_nodeid_currently_crashes_with_import_error(self):
-        """REQ-020: document current node-id crash path through unittest discovery."""
-        shim = _load_pytest_shim()
-        with self.assertRaises(ImportError):
-            shim.main([
-                ".github/skills/quality_gate/tests/test_quality_gate.py::"
-                "TestValidateIsoDate::test_valid_today"
-            ])
-
-
 class PhaseGateTests(unittest.TestCase):
     """REQ-004, REQ-010. Source: run_playbook.py:445-483."""
 
@@ -787,48 +764,6 @@ class ClosedSetCrossReferenceTests(unittest.TestCase):
         """REQ-002: library declares SKILL_INSTALL_LOCATIONS."""
         self.assertTrue(hasattr(lib, "SKILL_INSTALL_LOCATIONS"))
 
-class SuggestedNextCommandTests(unittest.TestCase):
-    """REQ-014. Source: run_playbook.py:930-991."""
-
-    def test_suggestion_prints_independent_of_failures(self):
-        """REQ-014: documents that print_suggested_next_command is called
-        regardless of failures in execute_run.
-
-        The function's signature takes only `args`, not a failure count —
-        so it cannot branch on failure state today. REQ-014 requires a
-        failure-aware parameter.
-        """
-        import inspect
-        sig = inspect.signature(run_playbook.print_suggested_next_command)
-        # Current signature has only (args).
-        self.assertEqual(list(sig.parameters.keys()), ["args"],
-                         "Current: no failure-count parameter. REQ-014 adds one.")
-
-
-class DocumentationWarningBehaviorTests(unittest.TestCase):
-    """REQ-021. Source: run_playbook.py:645-675."""
-
-    def test_run_one_phased_currently_skips_without_docs(self):
-        """REQ-021: phase mode currently skips before any child prompt runs."""
-        with TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            args = _make_args()
-            with mock.patch.object(run_playbook, "run_prompt") as run_prompt_mock:
-                exit_code = run_playbook.run_one_phased(repo, ["1"], args, "2026-04-19T12-00-00")
-        self.assertEqual(exit_code, 1)
-        run_prompt_mock.assert_not_called()
-
-    def test_run_one_singlepass_currently_skips_without_docs(self):
-        """REQ-021: single-pass mode currently returns 1 before `run_prompt()`."""
-        with TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            args = _make_args()
-            with mock.patch.object(run_playbook, "run_prompt") as run_prompt_mock:
-                exit_code = run_playbook.run_one_singlepass(repo, args, "2026-04-19T12-00-00")
-        self.assertEqual(exit_code, 1)
-        run_prompt_mock.assert_not_called()
-
-
 class PromptPathFallbackTests(unittest.TestCase):
     """REQ-022. Source: run_playbook.py:258-427."""
 
@@ -853,33 +788,6 @@ class PromptPathFallbackTests(unittest.TestCase):
         self.assertIn(".github/skills/SKILL.md", iteration)
         self.assertNotIn(".claude/skills/quality-playbook/SKILL.md", single_pass)
         self.assertNotIn("documented install-location fallback list", iteration)
-
-
-class ChildExitHandlingBehaviorTests(unittest.TestCase):
-    """REQ-023. Source: run_playbook.py:516-705."""
-
-    def test_run_one_phase_currently_ignores_child_exit_code(self):
-        """REQ-023: `run_one_phase()` currently logs success after child failure."""
-        with TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            args = _make_args()
-            log_file = repo / "phase.log"
-            with mock.patch.object(run_playbook, "run_prompt", return_value=17):
-                result = run_playbook.run_one_phase(repo, "1", ["1"], args, log_file)
-        self.assertTrue(result)
-
-    def test_run_one_singlepass_currently_returns_success_after_child_failure(self):
-        """REQ-023: single-pass mode currently returns zero after child failure."""
-        with TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            (repo / "docs_gathered").mkdir()
-            _write(repo / "docs_gathered" / "README.md", "real docs\n")
-            args = _make_args()
-            with mock.patch.object(run_playbook, "run_prompt", return_value=23), \
-                 mock.patch.object(run_playbook, "archive_previous_run"), \
-                 mock.patch.object(lib, "cleanup_repo"):
-                exit_code = run_playbook.run_one_singlepass(repo, args, "2026-04-19T12-00-00")
-        self.assertEqual(exit_code, 0)
 
 
 class FunctionalTestNamingParityBehaviorTests(unittest.TestCase):

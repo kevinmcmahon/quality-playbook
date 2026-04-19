@@ -348,7 +348,6 @@ class RegressionTests(unittest.TestCase):
     # BUG-009 / REQ-012: _pkill_fallback patterns must include gh copilot
     # ------------------------------------------------------------------ #
 
-    @unittest.expectedFailure
     def test_reg_cb9_pkill_misses_copilot(self):
         """BUG-009 / REQ-012: _pkill_fallback patterns must include "gh copilot -p".
         Copilot workers are orphaned after parent crash without this pattern.
@@ -435,7 +434,6 @@ class RegressionTests(unittest.TestCase):
     # BUG-008 / REQ-014: Suggestion must NOT print after failure
     # ------------------------------------------------------------------ #
 
-    @unittest.expectedFailure
     def test_reg_cb8_suggest_after_failure(self):
         """BUG-008 / REQ-014: When run fails (failures > 0), output must NOT
         contain the normal iteration suggestion. A failure-specific message
@@ -676,7 +674,6 @@ class GapIterationRegressions(unittest.TestCase):
             "general orchestrator must not contradict its own phase-execution ownership"
         )
 
-    @unittest.expectedFailure
     def test_reg_gap19_collect_only_does_not_execute_tests(self):
         """BUG-019 / REQ-020: `python -m pytest --collect-only` must not execute
         the unittest runner.
@@ -693,7 +690,6 @@ class GapIterationRegressions(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         run_mock.assert_not_called()
 
-    @unittest.expectedFailure
     def test_reg_gap19_nodeid_is_handled_without_importerror(self):
         """BUG-019 / REQ-020: pytest node IDs must be handled explicitly instead of
         crashing inside unittest discovery.
@@ -714,7 +710,6 @@ class GapIterationRegressions(unittest.TestCase):
 class UnfilteredIterationRegressions(unittest.TestCase):
     """Regression tests for unfiltered-iteration net-new bugs (BUG-020..BUG-023)."""
 
-    @unittest.expectedFailure
     def test_reg_unfiltered20_phase_mode_warns_not_skips(self):
         """BUG-020 / REQ-021: phase mode must continue with code-only analysis when
         docs are absent.
@@ -729,7 +724,6 @@ class UnfilteredIterationRegressions(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         run_prompt_mock.assert_called_once()
 
-    @unittest.expectedFailure
     def test_reg_unfiltered20_single_pass_warns_not_skips(self):
         """BUG-020 / REQ-021: single-pass mode must also continue code-only."""
         with TemporaryDirectory() as tmp:
@@ -761,7 +755,6 @@ class UnfilteredIterationRegressions(unittest.TestCase):
         self.assertIn(".claude/skills/quality-playbook/SKILL.md", single_pass)
         self.assertIn("documented install-location fallback list", iteration)
 
-    @unittest.expectedFailure
     def test_reg_unfiltered22_run_one_phase_propagates_child_failure(self):
         """BUG-022 / REQ-023: `run_one_phase()` must return False on child failure."""
         with TemporaryDirectory() as tmp:
@@ -772,7 +765,6 @@ class UnfilteredIterationRegressions(unittest.TestCase):
                 result = run_playbook.run_one_phase(repo, "1", ["1"], args, log_file)
         self.assertFalse(result)
 
-    @unittest.expectedFailure
     def test_reg_unfiltered22_run_one_singlepass_propagates_child_failure(self):
         """BUG-022 / REQ-023: single-pass mode must return non-zero on child failure."""
         with TemporaryDirectory() as tmp:
