@@ -215,13 +215,13 @@ Every playbook run creates a timestamped metadata file at `quality/results/run-Y
 
 **After every phase and every iteration, STOP and print guidance.** Use a `#` header so it's prominent in the chat. The guidance must include: what just happened (one line), what the key outputs are, and the exact prompt to continue. See the end-of-phase messages defined after each phase section below.
 
-**If the user says "keep going", "continue", "next phase", "next", or anything similar**, run the next phase in sequence. If all 6 phases are complete, suggest the first iteration strategy (gap). If an iteration just finished, suggest the next strategy in the recommended cycle.
+**If the user says "keep going", "continue", "next phase", "next", or anything similar**, run the next phase in sequence. If all phases are complete, suggest the first iteration strategy (gap). If an iteration just finished, suggest the next strategy in the recommended cycle.
 
 **If the user says "run all phases", "run everything", or "run the full pipeline"**, run all phases sequentially in a single session. This uses more context but some users prefer it.
 
 **If the user asks "help", "how does this work", "what is this", or any similar phrasing**, respond with this explanation (adapt the wording naturally, don't copy verbatim):
 
-> The Quality Playbook finds bugs that structural code review alone can't catch — the 35% of real defects that require understanding what the code is *supposed* to do. It works in six phases:
+> The Quality Playbook finds bugs that structural code review alone can't catch — the 35% of real defects that require understanding what the code is *supposed* to do. It works phase by phase:
 >
 > - **Phase 1 (Explore):** Understand the codebase — architecture, risks, failure modes, specifications
 > - **Phase 2 (Generate):** Produce quality artifacts — requirements, tests, review protocols
@@ -230,7 +230,7 @@ Every playbook run creates a timestamped metadata file at `quality/results/run-Y
 > - **Phase 5 (Reconciliation):** Close the loop — TDD red-green verification for every bug
 > - **Phase 6 (Verify):** Self-check benchmarks validate all generated artifacts
 >
-> After all six phases, you can run iteration strategies (gap, unfiltered, parity, adversarial) to find additional bugs — iterations typically add 40-60% more confirmed bugs on top of the baseline.
+> After the numbered phases complete, you can run iteration strategies (gap, unfiltered, parity, adversarial) to find additional bugs — iterations typically add 40-60% more confirmed bugs on top of the baseline.
 >
 > The playbook works best when you provide documentation alongside the code — specs, API docs, design documents, community documentation. It also gets significantly better results when you run each phase separately rather than all at once.
 >
@@ -613,7 +613,7 @@ This is the most important step for the code review protocol. Everything found d
 **The five-phase pipeline:**
 
 1. **Phase A — Contract extraction.** Read all source files, list every behavioral contract. Write to `quality/CONTRACTS.md`. This is discovery — list everything, even if it seems obvious.
-2. **Phase B — Requirement derivation.** Read CONTRACTS.md and documentation. Group related contracts, enrich with user intent, write formal requirements. Write REQ records to `quality/requirements_manifest.json` (source of truth) and render to `quality/REQUIREMENTS.md`. For each requirement, record the `tier` (1–5 per schemas.md §3.1) and — when `tier ∈ {1, 2}` — the `citation` block produced by `bin/citation_verifier.py` per schemas.md §5.4 / §5.5. For Tier 3 REQs (code-is-the-spec), cite the source `file:line` in the `description`; citations are for FORMAL_DOC references only and must not appear on Tier 3/4/5 REQs. The tier + citation pair creates the forward link in the traceability chain: formal_docs → requirements → bugs → tests. See the tier/citation framing block later in this step for the full field list and the Tier-1-wins-over-Tier-2 rule.
+2. **Phase B — Requirement derivation.** Read CONTRACTS.md and documentation. Group related contracts, enrich with user intent, write formal requirements. Write REQ records to `quality/requirements_manifest.json` (source of truth) and render to `quality/REQUIREMENTS.md`. For each requirement, record the `tier` (1–5 per schemas.md §3.1) and — when `tier ∈ {1, 2}` — the `citation` block produced by `bin/formal_docs_ingest` invoking `bin/citation_verifier` per schemas.md §5.4 / §5.5. The LLM does not shell out to `citation_verifier` directly; the excerpt is a product of the ingest pipeline and is re-verified by `quality_gate.py` at gate time. For Tier 3 REQs (code-is-the-spec), cite the source `file:line` in the `description`; citations are for FORMAL_DOC references only and must not appear on Tier 3/4/5 REQs. The tier + citation pair creates the forward link in the traceability chain: formal_docs → requirements → bugs → tests. See the tier/citation framing block later in this step for the full field list and the Tier-1-wins-over-Tier-2 rule.
 
    **Primary-source extraction rule for code-presence claims.** When writing a requirement that asserts specific constants, values, or labels are handled by a specific function (e.g., "the whitelist must preserve X, Y, and Z"), the requirement must distinguish between what the **spec says should be there** and what the **code actually contains**. Extract the actual contents from the code (case labels, map keys, if-else branches) and compare to the spec's list. If a constant appears in the spec but NOT in the code, write the requirement as "must handle X — **[NOT IN CODE]**: defined in header.h:NN but absent from function() at file.c:NN-NN." Do not write "must preserve X" without verifying X is actually preserved. This prevents a contamination chain where a requirement asserts code presence, the code review copies the assertion, the spec audit inherits it, and the triage accepts it — all without anyone reading the actual code. This exact chain was observed in v1.3.17 virtio testing: REQUIREMENTS.md asserted RING_RESET was preserved in a switch, the code review copied the list, three spec auditors inherited the claim, and the bug went undetected.
    **Mechanical verification artifact for dispatch functions (mandatory).** When a contract asserts that a function handles, preserves, or dispatches a set of named constants (feature bits, enum values, opcode tables, event types, handler registries), you must generate and execute a shell command or script that mechanically extracts the actual case labels/branches from the function body **before writing the contract line**. Save the raw output to `quality/mechanical/<function>_cases.txt`. The command must be a non-interactive pipeline (e.g., `awk` + `grep`) that cannot hallucinate — it reads file bytes and prints matches. Example:
@@ -704,11 +704,11 @@ Follow the use cases with the individual requirements.
 - **Tier 4** — informal documentation loaded by `bin/informal_docs_loader.py` (AI chats, design notes).
 - **Tier 5** — inferred from code behavior with no documentation backing.
 
-For `tier ∈ {1, 2}`, the REQ also carries a `citation` block per `schemas.md` §5 with `document`, `document_sha256`, at least one of `section`/`line`, and a mechanically-extracted `citation_excerpt`. Do NOT write the excerpt by hand. The excerpt is produced by `bin/citation_verifier.py` per the deterministic algorithm in `schemas.md` §5.4 (with section resolution per §5.5) — ingest-time extraction is how Layer 1 of the hallucination gate works. If you cannot cite a document in `quality/formal_docs_manifest.json` (with hash and locator), the REQ is at most Tier 3. `page`-only locators are diagnostic-only and are never sufficient.
+For `tier ∈ {1, 2}`, the REQ also carries a `citation` block per `schemas.md` §5 with `document`, `document_sha256`, at least one of `section`/`line`, and a mechanically-extracted `citation_excerpt`. Do NOT write the excerpt by hand. The excerpt is produced at ingest time by `bin/formal_docs_ingest` invoking `bin/citation_verifier` per the deterministic algorithm in `schemas.md` §5.4 (with section resolution per §5.5) — the LLM consumes the excerpt from `formal_docs_manifest.json`; it never shells out to the verifier directly. Ingest-time extraction is how Layer 1 of the hallucination gate works. If you cannot cite a document in `quality/formal_docs_manifest.json` (with hash and locator), the REQ is at most Tier 3. `page`-only locators are diagnostic-only and are never sufficient.
 
 **Tier-1-wins-over-Tier-2 rule.** When a project's own spec (Tier 1) and an external standard (Tier 2) contradict each other, record the REQ at Tier 1 citing the project's position. A project's documented deviation from an external standard is authoritative intent, not a defect — the `upstream-spec-issue` disposition applies only when the project's spec is silent on the conflict.
 
-**Spec-Gap degradation (valid output state).** If `formal_docs_manifest.json` contains zero `FORMAL_DOC` records covering the project's own behavior, every REQ ends up at Tier 3/4/5 and the run degrades gracefully into a Spec Gap Analyzer. Report the meta-finding "0 Tier 1/2 requirements" in the completeness report as a metric, not a failure. Do NOT fabricate citations to make the tier distribution look richer — the mechanical gate re-runs `citation_verifier.extract_excerpt` per §5.4 at verification time and rejects any Tier 1/2 REQ whose `citation_excerpt` does not byte-equal the fresh extraction (schemas.md §10 invariant #11).
+**Spec-Gap degradation (valid output state).** If `formal_docs_manifest.json` contains zero `FORMAL_DOC` records covering the project's own behavior, every REQ ends up at Tier 3/4/5 and the run degrades gracefully into a Spec Gap Analyzer. Report the meta-finding "0 Tier 1/2 requirements" in the completeness report as a metric, not a failure. Do NOT fabricate citations to make the tier distribution look richer — `quality_gate.py` re-invokes `bin/citation_verifier` (via `extract_excerpt`) per §5.4 at verification time and rejects any Tier 1/2 REQ whose `citation_excerpt` does not byte-equal the fresh extraction (schemas.md §10 invariant #11).
 
 **`functional_section` is a required field.** Every REQ carries a short `functional_section` string (e.g., `"Authentication"`, `"Bus enumeration"`) that groups related REQs. This is LLM-derived from the code and documentation; there is no predefined ontology. Phase 2's rendering groups REQs under these sections (with a short intro paragraph per section) and the Phase 4 Council reviews the grouping for coherence. See `schemas.md` §6.1.
 
@@ -720,7 +720,7 @@ For `tier ∈ {1, 2}`, the REQ also carries a `citation` block per `schemas.md` 
 - **Title**: Short, one-line statement.
 - **Tier**: Integer 1–5 per schemas.md §3.1.
 - **Functional section**: Short LLM-derived string (see above).
-- **Citation** (required when `tier ∈ {1, 2}`): produced by `bin/citation_verifier.py`; never hand-authored. Shape per schemas.md §5.1.
+- **Citation** (required when `tier ∈ {1, 2}`): produced by `bin/formal_docs_ingest` invoking `bin/citation_verifier`; never hand-authored and never invoked directly by the LLM. Shape per schemas.md §5.1.
 - **Summary / Description**: State the requirement as a testable assertion: "X must satisfy Y" or "When A, the system must B".
 - **User story**: Frame it from the caller's perspective: "As a [role] doing [action], I expect [behavior] **so that** [outcome]." The "so that" clause is mandatory — it forces you to articulate the intent behind the requirement.
 - **Implementation note**: How the code achieves this requirement — the mechanism, the relevant code paths, the design choice.
@@ -1055,7 +1055,7 @@ Manifests live at:
 - `quality/bugs_manifest.json` — authoritative BUG records per schemas.md §8. Written after Phase 3/4/5 confirm bugs.
 - `quality/citation_semantic_check.json` — Phase 4 Council Layer 2 verdicts (see Phase 4 below).
 
-Every manifest follows the §1.6 wrapper:
+Every manifest follows the §1.6 wrapper with `schema_version`, `generated_at`, and a top-level records array. The four record-shaped manifests (`formal_docs_manifest.json`, `requirements_manifest.json`, `use_cases_manifest.json`, `bugs_manifest.json`) use `records` as the array key:
 
 ```json
 {
@@ -1064,6 +1064,8 @@ Every manifest follows the §1.6 wrapper:
   "records": [ /* per-schema records, per schemas.md §4–§8 */ ]
 }
 ```
+
+**Exception — `citation_semantic_check.json` uses `reviews` instead of `records`** per `schemas.md` §9.1. Same wrapper shape, different array key; the records inside are Council review entries, not REQ/UC/BUG records. If you find yourself writing `records` into `citation_semantic_check.json`, stop and re-read schemas.md §9 — the gate rejects this file as a manifest-wrapper violation (schemas.md §10 invariant #13) when the key is wrong.
 
 `schema_version` MUST equal this skill's `metadata.version` at generation time — read it from SKILL.md, do not hardcode. `generated_at` uses `datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")`. Record shapes and invariants are defined in `schemas.md` — do not redefine them in this skill. `quality_gate.py` (Phase 5/6) validates manifests field-by-field against those schemas.
 
@@ -1692,7 +1694,7 @@ Run the spec audit protocol as described in File 5. The triage report **must** i
 
 ### Layer 2 — Semantic Citation Check (v1.5.0 Council sub-pass)
 
-After the main spec audit triage, each Council member runs a per-REQ verdict against every Tier 1/2 REQ's `citation_excerpt`. This is **Layer 2** of the hallucination gate: Layer 1 is the mechanical byte-equality check in `bin/citation_verifier.py` re-run by `quality_gate.py`; Layer 2 is semantic — the reviewer decides whether the excerpt actually supports the requirement as stated, or whether the requirement overreaches what the excerpt says.
+After the main spec audit triage, each Council member runs a per-REQ verdict against every Tier 1/2 REQ's `citation_excerpt`. This is **Layer 2** of the hallucination gate: Layer 1 is the mechanical byte-equality check — `bin/citation_verifier` is invoked by `bin/formal_docs_ingest` at ingest time and re-invoked by `quality_gate.py` at gate time; the LLM never shells out to it directly. Layer 2 is semantic — the reviewer decides whether the excerpt actually supports the requirement as stated, or whether the requirement overreaches what the excerpt says.
 
 **Protocol.**
 
