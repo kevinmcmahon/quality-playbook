@@ -175,6 +175,7 @@ PROTECTED_PREFIXES = (
     "previous_runs/",
     "docs_gathered/",
 )
+PROTECTED_EXACT = ("AGENTS.md",)
 
 
 def _parse_porcelain_path(line: str) -> Optional[str]:
@@ -193,7 +194,7 @@ def _parse_porcelain_path(line: str) -> Optional[str]:
 
 def _is_protected(path: str) -> bool:
     """True if a porcelain path falls under a run-output directory we must not revert."""
-    return any(path.startswith(prefix) for prefix in PROTECTED_PREFIXES)
+    return path in PROTECTED_EXACT or any(path.startswith(prefix) for prefix in PROTECTED_PREFIXES)
 
 
 def cleanup_repo(repo_dir: Path) -> bool:

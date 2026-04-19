@@ -330,15 +330,6 @@ class ProtectedPrefixesTests(unittest.TestCase):
         """REQ-006: a path under control_prompts/ is protected."""
         self.assertTrue(lib._is_protected("control_prompts/phase1.output.txt"))
 
-    def test_is_protected_agents_md_unprotected(self):
-        """REQ-006: AGENTS.md at project root is NOT under any protected prefix.
-
-        This documents the current gap: AGENTS.md is a Required artifact
-        (SKILL.md:106,122) but `cleanup_repo` will revert any tracked
-        modification to it. REQ-006 fixes this.
-        """
-        self.assertFalse(lib._is_protected("AGENTS.md"))
-
     def test_is_protected_skill_md_unprotected(self):
         """REQ-006: SKILL.md at project root is NOT protected.
 
@@ -416,27 +407,6 @@ class CleanupRepoTests(unittest.TestCase):
             self.assertEqual(quality_file.read_text(encoding="utf-8"),
                              "new phase 1 findings\n")
 
-    def test_cleanup_current_behavior_reverts_agents_md(self):
-        """REQ-006: documents that AGENTS.md is currently reverted by cleanup.
-
-        Bootstrap self-audit regression target. AGENTS.md is Required
-        per SKILL.md:106,122 but lives outside all four protected
-        prefixes. Phase 3 regression test will mark this xfail.
-        """
-        with TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            self._git_init(repo)
-            agents = repo / "AGENTS.md"
-            _write(agents, "original agents\n")
-            subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
-            subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            _write(agents, "updated agents from phase 2\n")
-            lib.cleanup_repo(repo)
-            self.assertEqual(agents.read_text(encoding="utf-8"), "original agents\n",
-                             "Current behavior: AGENTS.md is reverted. REQ-006 fixes this.")
-
-
 class DocsPresentTests(unittest.TestCase):
     """REQ-011. Source: run_playbook.py:560-562."""
 
@@ -489,23 +459,6 @@ class ArchivePreviousRunTests(unittest.TestCase):
             repo = Path(tmp)
             run_playbook.archive_previous_run(repo, "ts")
             self.assertFalse((repo / "previous_runs").exists())
-
-    def test_archive_discards_control_prompts_current_behavior(self):
-        """REQ-009: documents current behavior — control_prompts/ is DELETED, not archived.
-
-        Archive is destructive on control_prompts/. The directory is
-        removed without being preserved in previous_runs/. Debugging
-        a failed run is impaired. REQ-009 fixes this.
-        """
-        with TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            _write(repo / "quality" / "file.md", "q\n")
-            _write(repo / "control_prompts" / "phase1.output.txt", "diagnostic\n")
-            run_playbook.archive_previous_run(repo, "ts")
-            self.assertFalse((repo / "control_prompts").exists(),
-                             "Current: control_prompts deleted")
-            self.assertFalse((repo / "previous_runs" / "ts" / "control_prompts").exists(),
-                             "Current: control_prompts NOT archived. REQ-009 wants it archived.")
 
     def test_archive_overwrites_existing(self):
         """REQ-009: archive with an existing target removes the old first."""

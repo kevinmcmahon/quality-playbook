@@ -584,11 +584,17 @@ def archive_previous_run(repo_dir: Path, timestamp: str) -> None:
     control_prompts_dir = repo_dir / "control_prompts"
     if not quality_dir.is_dir():
         return
-    archive_dir = repo_dir / "previous_runs" / timestamp / "quality"
-    archive_dir.parent.mkdir(parents=True, exist_ok=True)
-    if archive_dir.exists():
-        shutil.rmtree(archive_dir)
-    shutil.copytree(quality_dir, archive_dir)
+    archive_root = repo_dir / "previous_runs" / timestamp
+    partial_dir = repo_dir / "previous_runs" / (timestamp + ".partial")
+    archive_root.parent.mkdir(parents=True, exist_ok=True)
+    if archive_root.exists():
+        shutil.rmtree(archive_root)
+    if partial_dir.exists():
+        shutil.rmtree(partial_dir)
+    shutil.copytree(quality_dir, partial_dir / "quality")
+    if control_prompts_dir.is_dir():
+        shutil.copytree(control_prompts_dir, partial_dir / "control_prompts")
+    partial_dir.rename(archive_root)
     shutil.rmtree(quality_dir, ignore_errors=True)
     shutil.rmtree(control_prompts_dir, ignore_errors=True)
 

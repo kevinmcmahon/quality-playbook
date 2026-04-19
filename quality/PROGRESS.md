@@ -88,8 +88,8 @@ Iterations completed: baseline + `gap` + `unfiltered` + `parity` + `adversarial`
 | 1 | CB-1 | benchmark_lib.py:106 | skill_version rejects bold form | HIGH | fixed (test passes) | test_reg_cb1_version_parser_divergence |
 | 2 | CB-2 | benchmark_lib.py:39-43 | SKILL_INSTALL_LOCATIONS missing 4th path | HIGH | fixed (test passes) | test_reg_cb2_missing_fourth_install_path |
 | 3 | CB-3 | run_playbook.py:455-457 | Phase 2 gate threshold 80 WARN vs 120 FAIL | HIGH | fixed (test passes) | test_reg_cb3_line_count_threshold_drift |
-| 4 | CB-4 | run_playbook.py:565-576 | archive_previous_run non-atomic; control_prompts deleted | HIGH | confirmed open (xfail) | test_reg_cb4_archive_not_atomic |
-| 5 | CB-5 | benchmark_lib.py:177-182 | PROTECTED_PREFIXES missing AGENTS.md | MEDIUM | confirmed open (xfail) | test_reg_cb5_agents_md_cleanup_reversion |
+| 4 | CB-4 | run_playbook.py:565-576 | archive_previous_run non-atomic; control_prompts deleted | HIGH | fixed (test passes) | test_reg_cb4_archive_not_atomic |
+| 5 | CB-5 | benchmark_lib.py:177-182 | PROTECTED_PREFIXES missing AGENTS.md | MEDIUM | fixed (test passes) | test_reg_cb5_agents_md_cleanup_reversion |
 | 6 | CB-6 | run_playbook.py:459-463 | Phase 3 gate checks only 4 of 9 required artifacts | MEDIUM | fixed (test passes) | test_reg_cb6_phase3_gate_incomplete |
 | 7 | CB-7 | run_playbook.py:560-562 | docs_present accepts .DS_Store / noise files | MEDIUM | confirmed open (xfail) | test_reg_cb7_docs_present_noise |
 | 8 | CB-8 | run_playbook.py:930-946 | Iteration suggestion printed even on failure | MEDIUM | confirmed open (xfail) | test_reg_cb8_suggest_after_failure |

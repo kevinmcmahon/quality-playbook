@@ -225,7 +225,6 @@ class RegressionTests(unittest.TestCase):
     # BUG-005 / REQ-006: _is_protected must return True for AGENTS.md
     # ------------------------------------------------------------------ #
 
-    @unittest.expectedFailure
     def test_reg_cb5_agents_md_cleanup_reversion(self):
         """BUG-005 / REQ-006: lib._is_protected("AGENTS.md") must return True.
         AGENTS.md is a required artifact that cleanup_repo must not revert.
@@ -276,7 +275,6 @@ class RegressionTests(unittest.TestCase):
     # BUG-004 / REQ-009: archive must preserve control_prompts/
     # ------------------------------------------------------------------ #
 
-    @unittest.expectedFailure
     def test_reg_cb4_archive_not_atomic(self):
         """BUG-004 / REQ-009: After archive_previous_run, control_prompts/ must
         exist in the archive directory.
