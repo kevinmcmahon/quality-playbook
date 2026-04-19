@@ -215,26 +215,6 @@ class InstallLocationsTests(unittest.TestCase):
             self.assertIsNone(lib.find_installed_skill(Path(tmp)))
 
 
-class GapIterationBootstrapTests(unittest.TestCase):
-    """REQ-018, REQ-019. Source: agents/*.md, README.md."""
-
-    def test_general_agent_currently_omits_repo_root_skill(self):
-        """REQ-018: document current general-agent omission of plain repo-root SKILL.md."""
-        source = (QPB_ROOT / "agents" / "quality-playbook.agent.md").read_text(encoding="utf-8")
-        self.assertNotIn("1. `SKILL.md`", source)
-
-    def test_claude_agent_currently_omits_repo_root_skill(self):
-        """REQ-018: document current Claude-agent omission of plain repo-root SKILL.md."""
-        source = (QPB_ROOT / "agents" / "quality-playbook-claude.agent.md").read_text(encoding="utf-8")
-        self.assertNotIn("1. `SKILL.md`", source)
-
-    def test_general_agent_currently_contradicts_phase_execution_ownership(self):
-        """REQ-019: document current contradiction between role and Mode 1 instructions."""
-        source = (QPB_ROOT / "agents" / "quality-playbook.agent.md").read_text(encoding="utf-8")
-        self.assertIn("You do NOT execute phase logic yourself.", source)
-        self.assertIn("Run Phase 1 in the current session.", source)
-
-
 class PhaseGateTests(unittest.TestCase):
     """REQ-004, REQ-010. Source: run_playbook.py:445-483."""
 

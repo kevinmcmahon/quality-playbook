@@ -628,7 +628,6 @@ class TestSpecAuditRegressions(unittest.TestCase):
 class GapIterationRegressions(unittest.TestCase):
     """Regression tests for gap-iteration net-new bugs (BUG-017..BUG-019)."""
 
-    @unittest.expectedFailure
     def test_reg_gap17_agents_support_repo_root_skill(self):
         """BUG-017 / REQ-018: both orchestrator agents must list repo-root
         `SKILL.md` as a setup location for source-checkout launches.
@@ -642,7 +641,6 @@ class GapIterationRegressions(unittest.TestCase):
         self.assertIn("`SKILL.md`", general)
         self.assertIn("`SKILL.md`", claude)
 
-    @unittest.expectedFailure
     def test_reg_gap18_general_agent_keeps_context_ownership_consistent(self):
         """BUG-018 / REQ-019: the general orchestrator must not both forbid and
         require in-session phase execution.

@@ -46,9 +46,10 @@ Any of these means you're about to replicate the casbin failure. Spawn the sub-a
 
 Look for SKILL.md in these locations, in order:
 
-1. `.claude/skills/quality-playbook/SKILL.md`
-2. `.github/skills/quality-playbook/SKILL.md`
-3. `.github/skills/SKILL.md`
+1. `SKILL.md`
+2. `.claude/skills/quality-playbook/SKILL.md`
+3. `.github/skills/quality-playbook/SKILL.md`
+4. `.github/skills/SKILL.md`
 
 Also check for a `references/` directory alongside SKILL.md.
 

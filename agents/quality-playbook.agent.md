@@ -36,9 +36,10 @@ Any of these means you're about to replicate the casbin failure. Spawn the sub-a
 
 Check that the quality playbook skill is installed. Look for SKILL.md in these locations, in order:
 
-1. `.claude/skills/quality-playbook/SKILL.md` (Claude Code)
-2. `.github/skills/SKILL.md` (Copilot, flat layout)
-3. `.github/skills/quality-playbook/SKILL.md` (Copilot, nested layout)
+1. `SKILL.md` (source checkout / repo root)
+2. `.claude/skills/quality-playbook/SKILL.md` (Claude Code)
+3. `.github/skills/SKILL.md` (Copilot, flat layout)
+4. `.github/skills/quality-playbook/SKILL.md` (Copilot, nested layout)
 
 Also check for a `references/` directory alongside SKILL.md. It should contain .md files (the full set includes iteration.md, review_protocols.md, spec_audit.md, verification.md, requirements_pipeline.md, exploration_patterns.md, defensive_patterns.md, schema_mapping.md, constitution.md, functional_tests.md, orchestrator_protocol.md, and others). Verify the directory exists and has at least 6 .md files.
 
@@ -76,7 +77,7 @@ The playbook has two modes. Ask the user which they want, or infer from their pr
 
 ### Mode 1: Phase by phase (recommended for first run)
 
-Run Phase 1 in the current session. When it completes, show the end-of-phase summary and tell the user to say "keep going" or "run phase N" to continue. Each subsequent phase should run in a **new session or context window** so it gets maximum depth.
+Start a fresh session or context for Phase 1. When it completes, show the end-of-phase summary and tell the user to say "keep going" or "run phase N" to continue. Each subsequent phase should also run in a **new session or context window** so it gets maximum depth.
 
 This is the default if the user says "run the quality playbook."
 
