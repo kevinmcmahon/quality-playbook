@@ -69,7 +69,7 @@ For benchmark use, run from the `repos/` folder so relative paths work naturally
 
 ```bash
 cd repos
-python3 ../bin/run_playbook.py --phase all --sequential chi-1.4.5
+python3 ../bin/run_playbook.py --phase all --sequential chi-1.4.6
 ```
 
 Key properties:

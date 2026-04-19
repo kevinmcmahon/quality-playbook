@@ -134,7 +134,7 @@ When the playbook misses a bug, the miss falls on one of three axes. Identifying
 
 ### Benchmark repos
 
-The benchmark suite uses open-source codebases across multiple languages. Each repo is cloned once into `repos/clean/` and never modified. For each skill version, `setup_repos.sh` creates a working copy (e.g., `chi-1.4.5`) with the skill files installed.
+The benchmark suite uses open-source codebases across multiple languages. Each repo is cloned once into `repos/clean/` and never modified. For each skill version, `setup_repos.sh` creates a working copy (e.g., `chi-1.4.6`) with the skill files installed.
 
 Active benchmark set (four targets):
 
@@ -159,14 +159,14 @@ Bootstrap artifacts live at `quality/` at the QPB repo root rather than under `r
 
 See `ai_context/BENCHMARK_PROTOCOL.md` for the clean-folder run protocol. Benchmark runs must be isolated (no sibling runs visible to the agent) or findings leak between runs and the tuning signal is corrupted.
 
-Positional arguments are directory paths (relative or absolute) — the runner does no short-name resolution and no benchmark-folder lookup. Run from `repos/` so the working-copy directory names produced by `setup_repos.sh` (e.g. `chi-1.4.5`) can be passed as plain relative paths:
+Positional arguments are directory paths (relative or absolute) — the runner does no short-name resolution and no benchmark-folder lookup. Run from `repos/` so the working-copy directory names produced by `setup_repos.sh` (e.g. `chi-1.4.6`) can be passed as plain relative paths:
 
 ```bash
 cd repos/
 ./setup_repos.sh chi cobra virtio                     # copy skill files into the three repo-based targets
-python3 ../bin/run_playbook.py chi-1.4.5 cobra-1.4.5 virtio-1.4.5          # baseline runs (Copilot default)
-python3 ../bin/run_playbook.py --claude chi-1.4.5 cobra-1.4.5 virtio-1.4.5 # baseline runs (Claude Code)
-python3 ../bin/run_playbook.py --next-iteration --strategy all chi-1.4.5 cobra-1.4.5 virtio-1.4.5  # full iteration cycle
+python3 ../bin/run_playbook.py chi-1.4.6 cobra-1.4.6 virtio-1.4.6          # baseline runs (Copilot default)
+python3 ../bin/run_playbook.py --claude chi-1.4.6 cobra-1.4.6 virtio-1.4.6 # baseline runs (Claude Code)
+python3 ../bin/run_playbook.py --next-iteration --strategy all chi-1.4.6 cobra-1.4.6 virtio-1.4.6  # full iteration cycle
 ```
 
 With no positional args the runner operates on the current directory, which is how bootstrap is invoked:
@@ -221,7 +221,7 @@ Council review artifacts go in `council-reviews/`. Each review has:
 - **v1.4.3:** Challenge gate added for false-positive detection — forces triage to reconsider CRITICAL findings with common-sense review before closure (motivated by edgequake benchmarking where 6/7 "CRITICAL" findings turned out to be documented feature gaps or placeholders). Functional-test reference refactored: split into per-language files, then re-merged into a single `references/functional_tests.md` with import patterns folded in. First pass of orchestrator hardening: `references/orchestrator_protocol.md` extracted as a shared reference imported by both agent files, with critical rules duplicated inline for safety.
 - **v1.4.4:** Orchestrator hardening pass — "You are the orchestrator" architecture. Fixes three failure modes observed on casbin benchmarking: (1) single-context collapse (all six phases executed in one context, producing shallow summaries and zero files on disk), (2) `claude -p` subprocess spawning (orchestrator trying to fork fresh CLI processes instead of using the Agent tool), (3) nested Agent-tool stripping (Claude Code strips the Agent tool from nested sub-agents, so the orchestrator must be single-level). The session that reads the agent file IS the orchestrator — it never spawns a new session, only sub-agents. Protocol lives at `references/orchestrator_protocol.md`; critical rules are duplicated inline in each agent file.
 - **v1.4.5:** Tooling rebuild plus surface cleanup:
-    - **Runner rewritten in Python.** `bin/run_playbook.py` + `bin/benchmark_lib.py` replace the old `repos/run_playbook.sh` (deleted). `repos/_benchmark_lib.sh` remains in use by `setup_repos.sh` and `run_tdd.sh`. Standard library only, Python 3.8+, 92 stdlib-only tests.
+    - **Runner rewritten in Python.** `bin/run_playbook.py` + `bin/benchmark_lib.py` replace the old `repos/run_playbook.sh` (deleted). `repos/_benchmark_lib.sh` remains in use by `setup_repos.sh` and `run_tdd.sh`. Standard library only, Python 3.8+, 36 stdlib-only tests at release (grew to 92 with v1.4.6 regression coverage).
     - **Runner interface redesign.** Positional args are directory paths, not short names. Default is the current directory. No more `DEFAULT_REPO_NAMES`, `REPOS_DIR`, `SHORT_VERSIONED_DIR_PATTERN`, `find_repo_dir`, `resolve_repos`, `repo_short_name`, or version-resolution logic. Missing SKILL.md is a warning rather than a fatal error. Log files live beside each target at `{parent}/{target-name}-playbook-{timestamp}.log` instead of being forced into `repos/`. A narrow **version-append fallback** retries `<name>-<skill_version>` once when a bare name doesn't resolve — lets `cd repos/ && python3 ../bin/run_playbook.py chi` pick up `chi-<version>` without reintroducing the old short-name tables.
     - **Python gate is sole mechanical gate.** `quality_gate.sh` retired; `quality_gate.py` handles JSON via `json.load` instead of grep-style parsing. Moved to `.github/skills/quality_gate/` as a proper package with `__init__.py` and a 108-test `tests/` subdirectory. The stable invocation path `.github/skills/quality_gate.py` is a symlink to the package module.
     - **Benchmark set reduced to four targets.** bootstrap, chi, cobra, virtio — down from 10. Bootstrap runs last because fixes from the first three land before the playbook audits itself. 60+ additional repos remain in `repos/clean/` for expanded benchmarking but aren't part of the default validation loop.
