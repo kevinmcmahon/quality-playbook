@@ -391,19 +391,6 @@ class DocsPresentTests(unittest.TestCase):
             (Path(tmp) / "docs_gathered").mkdir()
             self.assertFalse(run_playbook.docs_present(Path(tmp)))
 
-    def test_docs_present_true_on_any_entry_current_behavior(self):
-        """REQ-011: documents current behavior — ANY entry satisfies the check.
-
-        Current: `any(iterdir())` is True for `.DS_Store`, an empty
-        subdir, a zero-byte file, etc. REQ-011 requires at least one
-        non-hidden, non-empty documentation file.
-        """
-        with TemporaryDirectory() as tmp:
-            (Path(tmp) / "docs_gathered").mkdir()
-            _write(Path(tmp) / "docs_gathered" / ".DS_Store", "")
-            self.assertTrue(run_playbook.docs_present(Path(tmp)),
-                            "Current: .DS_Store satisfies the check. REQ-011 wants it rejected.")
-
     def test_docs_present_true_with_real_document(self):
         """REQ-011: a real document makes docs_present True."""
         with TemporaryDirectory() as tmp:
@@ -737,65 +724,6 @@ class ClosedSetCrossReferenceTests(unittest.TestCase):
 class PromptPathFallbackTests(unittest.TestCase):
     """REQ-022. Source: run_playbook.py:258-427."""
 
-    def test_phase_prompts_currently_hardcode_github_skill_path(self):
-        """REQ-022: phase prompts currently cite only `.github/skills/SKILL.md`."""
-        prompts = [
-            run_playbook.phase1_prompt(no_seeds=False),
-            run_playbook.phase2_prompt(),
-            run_playbook.phase3_prompt(),
-            run_playbook.phase4_prompt(),
-            run_playbook.phase5_prompt(),
-            run_playbook.phase6_prompt(),
-        ]
-        self.assertTrue(all(".github/skills/SKILL.md" in prompt for prompt in prompts))
-        self.assertTrue(all(".claude/skills/quality-playbook/SKILL.md" not in prompt for prompt in prompts))
-
-    def test_single_pass_and_iteration_prompts_currently_hardcode_github_skill_path(self):
-        """REQ-022: single-pass and iteration entrypoints also hardcode one path."""
-        single_pass = run_playbook.single_pass_prompt(no_seeds=False)
-        iteration = run_playbook.iteration_prompt("unfiltered")
-        self.assertIn(".github/skills/SKILL.md", single_pass)
-        self.assertIn(".github/skills/SKILL.md", iteration)
-        self.assertNotIn(".claude/skills/quality-playbook/SKILL.md", single_pass)
-        self.assertNotIn("documented install-location fallback list", iteration)
-
-
-class FunctionalTestNamingParityBehaviorTests(unittest.TestCase):
-    """REQ-025, REQ-026. Source: quality_gate.py:299-303, 795-839."""
-
-    def test_check_test_file_extension_currently_warns_on_functionaltest_java(self):
-        """REQ-026: `FunctionalTest.java` currently bypasses extension validation."""
-        qg = _load_quality_gate()
-        qg._reset_counters()
-        with TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            q = repo / "quality"
-            q.mkdir(parents=True, exist_ok=True)
-            _write(repo / "App.java", "class App {}\n")
-            _write(q / "FunctionalTest.java", "class FunctionalTest {}\n")
-            with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
-                qg.check_test_file_extension(repo, q)
-                output = stdout.getvalue()
-        self.assertEqual(qg.FAIL, 0)
-        self.assertEqual(qg.WARN, 1)
-        self.assertIn("No test_functional.* found", output)
-
-    def test_check_test_file_extension_currently_warns_on_functional_spec_ts_name(self):
-        """REQ-026: `functional.test.ts` currently bypasses extension validation too."""
-        qg = _load_quality_gate()
-        qg._reset_counters()
-        with TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            q = repo / "quality"
-            q.mkdir(parents=True, exist_ok=True)
-            _write(repo / "index.ts", "export const ok = true;\n")
-            _write(q / "functional.test.ts", "export const test = true;\n")
-            with mock.patch("sys.stdout", new_callable=io.StringIO):
-                qg.check_test_file_extension(repo, q)
-        self.assertEqual(qg.FAIL, 0)
-        self.assertEqual(qg.WARN, 1)
-
-
 class SchemaVersionContractTests(unittest.TestCase):
     """REQ-017 / C-7. Sidecar schema versions."""
 
@@ -808,33 +736,6 @@ class SchemaVersionContractTests(unittest.TestCase):
         """C-7: SKILL.md declares schema_version '1.0' for recheck-results.json."""
         skill = (QPB_ROOT / ".github" / "skills" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn('"schema_version": "1.0"', skill)
-
-
-class AdversarialIterationHelperContractTests(unittest.TestCase):
-    """REQ-027, REQ-028. Source: benchmark_lib.py:19-33, run_playbook.py:592-594."""
-
-    def test_final_artifact_gaps_currently_accepts_test_functional_test_alias(self):
-        """REQ-027: helper currently treats `test_functional_test.*` as a functional artifact."""
-        with TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            for name in ["REQUIREMENTS.md", "CONTRACTS.md", "COVERAGE_MATRIX.md",
-                         "COMPLETENESS_REPORT.md", "PROGRESS.md", "QUALITY.md",
-                         "RUN_CODE_REVIEW.md", "RUN_INTEGRATION_TESTS.md",
-                         "RUN_SPEC_AUDIT.md", "RUN_TDD_TESTS.md"]:
-                _write(repo / "quality" / name, "stub\n")
-            _write(repo / "quality" / "test_functional_test.py", "# undocumented alias\n")
-            self.assertEqual(run_playbook.final_artifact_gaps(repo), [],
-                             "Current behavior suppresses the missing functional-test artifact when only test_functional_test.py exists")
-
-    def test_build_summary_rows_currently_counts_regressiontest_java_as_regression(self):
-        """REQ-028: helper summary currently treats `RegressionTest.java` as regression coverage."""
-        with TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            _write(repo / "quality" / "REQUIREMENTS.md", "### REQ-001\n[Tier 1]\n")
-            _write(repo / "quality" / "RegressionTest.java", "class RegressionTest {}\n")
-            row = lib.build_summary_rows([repo])[0]
-        self.assertEqual(row.regression, "Y",
-                         "Current helper summary marks RegressionTest.java as present regression coverage")
 
 
 if __name__ == "__main__":

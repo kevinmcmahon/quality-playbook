@@ -799,11 +799,13 @@ def check_use_cases(repo_dir, q, strictness):
 def check_test_file_extension(repo_dir, q):
     """Test file extension matches project language (benchmark 47)."""
     print("[Test File Extension]")
-    func_test = first_file_matching(q, ["test_functional.*"])
+    func_test = first_file_matching(q, ["test_functional.*", "functional_test.*",
+                                        "FunctionalSpec.*", "FunctionalTest.*",
+                                        "functional.test.*"])
     reg_test = first_file_matching(q, ["test_regression.*"])
 
     if func_test is None:
-        warn("No test_functional.* found")
+        warn("No functional test file found across the supported naming matrix")
         return
 
     ext = func_test.suffix.lstrip(".") if func_test.suffix else ""
@@ -830,9 +832,9 @@ def check_test_file_extension(repo_dir, q):
     primary = valid_list[0] if valid_list else ""
 
     if ext in valid_list:
-        pass_(f"test_functional.{ext} matches project language ({detected_lang})")
+        pass_(f"{func_test.name} matches project language ({detected_lang})")
     else:
-        fail(f"test_functional.{ext} does not match project language ({detected_lang}) — expected .{primary}")
+        fail(f"{func_test.name} does not match project language ({detected_lang}) — expected .{primary}")
 
     if reg_test is not None:
         reg_ext = reg_test.suffix.lstrip(".") if reg_test.suffix else ""

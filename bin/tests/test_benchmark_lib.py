@@ -56,9 +56,9 @@ class BenchmarkLibTests(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             repo_dir = Path(temp_dir) / "virtio-1.4.2"
             write(repo_dir / "quality" / "node_modules" / "test_functional.py", "ignored")
-            write(repo_dir / "quality" / "target" / "RegressionTest.java", "ignored")
+            write(repo_dir / "quality" / "target" / "test_regression.py", "ignored")
             functional = repo_dir / "quality" / "test_functional.py"
-            regression = repo_dir / "quality" / "RegressionTest.java"
+            regression = repo_dir / "quality" / "test_regression.py"
             write(functional, "ok")
             write(regression, "ok")
 

@@ -22,14 +22,10 @@ FUNCTIONAL_TEST_PATTERNS = (
     "functional_test.*",
     "FunctionalTest.*",
     "FunctionalSpec.*",
-    "test_functional_test.*",
 )
 
 REGRESSION_TEST_PATTERNS = (
     "test_regression.*",
-    "regression_test.*",
-    "test_regression_test.*",
-    "RegressionTest.*",
 )
 
 EXCLUDED_PARTS = {"target", "node_modules", "__pycache__"}

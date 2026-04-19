@@ -255,12 +255,20 @@ def phase_label(phase: str) -> str:
     }[phase]
 
 
+SKILL_FALLBACK_GUIDE = (
+    "Read the quality playbook skill using the documented install-location fallback list: "
+    "SKILL.md, .claude/skills/quality-playbook/SKILL.md, "
+    ".github/skills/SKILL.md, .github/skills/quality-playbook/SKILL.md. "
+    "Resolve reference files using the same documented fallback order."
+)
+
+
 def phase1_prompt(no_seeds: bool) -> str:
     seed_instruction = ""
     if no_seeds:
         seed_instruction = "Skip Phase 0 and Phase 0b entirely - do not look for previous_runs/ or sibling versioned directories. This is a clean benchmark run. Start directly at Phase 1."
 
-    return f"""You are a quality engineer. Read the skill at .github/skills/SKILL.md - but ONLY the sections up through Phase 1 (stop at the \"---\" line before \"Phase 2\"). Also read the reference files in .github/skills/references/ that are relevant to exploration.
+    return f"""You are a quality engineer. {SKILL_FALLBACK_GUIDE} For this phase read ONLY the sections up through Phase 1 (stop at the \"---\" line before \"Phase 2\"). Also read the reference files (under whichever references/ directory matches the install path you resolved) that are relevant to exploration.
 
 {seed_instruction}
 
@@ -420,11 +428,11 @@ def build_phase_prompt(phase: str, no_seeds: bool) -> str:
 
 def single_pass_prompt(no_seeds: bool) -> str:
     seed_instruction = " Skip Phase 0 and Phase 0b - start directly at Phase 1." if no_seeds else ""
-    return f"Read the quality playbook skill at .github/skills/SKILL.md and execute the quality playbook for this project.{seed_instruction}"
+    return f"{SKILL_FALLBACK_GUIDE} Execute the quality playbook for this project.{seed_instruction}"
 
 
 def iteration_prompt(strategy: str) -> str:
-    return f"Read the quality playbook skill at .github/skills/SKILL.md and run the next iteration using the {strategy} strategy."
+    return f"{SKILL_FALLBACK_GUIDE} Run the next iteration using the {strategy} strategy."
 
 
 def next_strategy(strategy: str) -> str:
@@ -576,7 +584,12 @@ def ensure_runner_available(runner: str) -> bool:
 
 def docs_present(repo_dir: Path) -> bool:
     docs_dir = repo_dir / "docs_gathered"
-    return docs_dir.is_dir() and any(docs_dir.iterdir())
+    if not docs_dir.is_dir():
+        return False
+    return any(
+        f for f in docs_dir.iterdir()
+        if f.is_file() and not f.name.startswith(".") and f.stat().st_size > 0
+    )
 
 
 def archive_previous_run(repo_dir: Path, timestamp: str) -> None:

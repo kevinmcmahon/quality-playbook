@@ -331,7 +331,6 @@ class RegressionTests(unittest.TestCase):
     # BUG-007 / REQ-011: docs_present must reject .DS_Store-only directory
     # ------------------------------------------------------------------ #
 
-    @unittest.expectedFailure
     def test_reg_cb7_docs_present_noise(self):
         """BUG-007 / REQ-011: docs_present must return False for a directory
         containing only ".DS_Store".
@@ -720,7 +719,6 @@ class UnfilteredIterationRegressions(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         run_prompt_mock.assert_called_once()
 
-    @unittest.expectedFailure
     def test_reg_unfiltered21_phase_prompt_mentions_fallback_layouts(self):
         """BUG-021 / REQ-022: phase prompts must describe repo-root and Claude
         fallback layouts.
@@ -729,7 +727,6 @@ class UnfilteredIterationRegressions(unittest.TestCase):
         self.assertIn(".claude/skills/quality-playbook/SKILL.md", prompt)
         self.assertIn(".github/skills/quality-playbook/SKILL.md", prompt)
 
-    @unittest.expectedFailure
     def test_reg_unfiltered21_single_pass_prompt_mentions_fallback_layouts(self):
         """BUG-021 / REQ-022: single-pass and iteration prompts must stop naming only
         `.github/skills/SKILL.md`.
@@ -789,7 +786,6 @@ class ParityIterationRegressions(unittest.TestCase):
                 qg.check_file_existence(repo, q, "benchmark")
         self.assertEqual(qg.FAIL, 0)
 
-    @unittest.expectedFailure
     def test_reg_parity25_extension_check_accepts_functionaltest_java(self):
         """BUG-025 / REQ-026: `FunctionalTest.java` must be extension-validated, not skipped."""
         qg = _load_quality_gate()
@@ -811,7 +807,6 @@ class ParityIterationRegressions(unittest.TestCase):
 class AdversarialIterationRegressions(unittest.TestCase):
     """Regression tests for adversarial-iteration net-new bugs (BUG-026..BUG-027)."""
 
-    @unittest.expectedFailure
     def test_reg_adv26_final_artifact_gaps_rejects_test_functional_test_alias(self):
         """BUG-026 / REQ-027: helper artifact discovery must reject undocumented
         `test_functional_test.*` aliases.
@@ -828,7 +823,6 @@ class AdversarialIterationRegressions(unittest.TestCase):
         self.assertIn("functional test", missing,
                       "final_artifact_gaps() must still report a missing functional test when only test_functional_test.py exists")
 
-    @unittest.expectedFailure
     def test_reg_adv27_summary_ignores_noncanonical_regression_aliases(self):
         """BUG-027 / REQ-028: helper summaries must not count `RegressionTest.java`
         as canonical regression coverage.

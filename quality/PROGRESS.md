@@ -91,7 +91,7 @@ Iterations completed: baseline + `gap` + `unfiltered` + `parity` + `adversarial`
 | 4 | CB-4 | run_playbook.py:565-576 | archive_previous_run non-atomic; control_prompts deleted | HIGH | fixed (test passes) | test_reg_cb4_archive_not_atomic |
 | 5 | CB-5 | benchmark_lib.py:177-182 | PROTECTED_PREFIXES missing AGENTS.md | MEDIUM | fixed (test passes) | test_reg_cb5_agents_md_cleanup_reversion |
 | 6 | CB-6 | run_playbook.py:459-463 | Phase 3 gate checks only 4 of 9 required artifacts | MEDIUM | fixed (test passes) | test_reg_cb6_phase3_gate_incomplete |
-| 7 | CB-7 | run_playbook.py:560-562 | docs_present accepts .DS_Store / noise files | MEDIUM | confirmed open (xfail) | test_reg_cb7_docs_present_noise |
+| 7 | CB-7 | run_playbook.py:560-562 | docs_present accepts .DS_Store / noise files | MEDIUM | fixed (test passes) | test_reg_cb7_docs_present_noise |
 | 8 | CB-8 | run_playbook.py:930-946 | Iteration suggestion printed even on failure | MEDIUM | fixed (test passes) | test_reg_cb8_suggest_after_failure |
 | 9 | CB-9 | run_playbook.py:808-829 | _pkill_fallback missing gh copilot -p pattern | MEDIUM | fixed (test passes) | test_reg_cb9_pkill_misses_copilot |
 | 10 | CB-10 | quality_gate.py:1027-1053 | check_run_metadata never called | LOW | fixed (test passes) | test_reg_cb10_run_metadata_ungated |
@@ -105,13 +105,13 @@ Iterations completed: baseline + `gap` + `unfiltered` + `parity` + `adversarial`
 | 18 | gap review | agents/quality-playbook.agent.md:11-14; 77-81 | General orchestrator contradicts phase ownership model | MEDIUM | confirmed open (xfail) | test_reg_gap18_general_agent_keeps_context_ownership_consistent |
 | 19 | gap review | pytest/__main__.py:16-34 | Local pytest shim mis-handles documented CLI forms | MEDIUM | fixed (test passes) | test_reg_gap19_collect_only_does_not_execute_tests, test_reg_gap19_nodeid_is_handled_without_importerror |
 | 20 | unfiltered review | run_playbook.py:645-649; 671-675 | Missing docs block code-only runs | HIGH | fixed (test passes) | test_reg_unfiltered20_phase_mode_warns_not_skips, test_reg_unfiltered20_single_pass_warns_not_skips |
-| 21 | unfiltered review | run_playbook.py:258-309; 312-407; 421-427 | Runner-generated prompts hardcode one skill-install layout | MEDIUM | confirmed open (xfail) | test_reg_unfiltered21_phase_prompt_mentions_fallback_layouts, test_reg_unfiltered21_single_pass_prompt_mentions_fallback_layouts |
+| 21 | unfiltered review | run_playbook.py:258-309; 312-407; 421-427 | Runner-generated prompts hardcode one skill-install layout | MEDIUM | fixed (test passes) | test_reg_unfiltered21_phase_prompt_mentions_fallback_layouts, test_reg_unfiltered21_single_pass_prompt_mentions_fallback_layouts |
 | 22 | unfiltered review | run_playbook.py:516-551; 600-705 | Child runner failures are reported as successful phases/runs | HIGH | fixed (test passes) | test_reg_unfiltered22_run_one_phase_propagates_child_failure, test_reg_unfiltered22_run_one_singlepass_propagates_child_failure |
 | 23 | unfiltered review | .github/skills/quality_gate/quality_gate.py:209-250; 795-839 | quality_gate.py misclassifies the bootstrap repo because of fixture repos | MEDIUM | fixed (test passes) | test_reg_unfiltered23_language_detection_ignores_fixture_repos |
 | 24 | parity review | .github/skills/quality_gate/quality_gate.py:299-303; bin/benchmark_lib.py:19-26 | File-existence gate omits valid functional-test filenames such as `functional_test.go` | MEDIUM | fixed (test passes) | test_reg_parity24_file_existence_accepts_functional_test_go |
-| 25 | parity review | .github/skills/quality_gate/quality_gate.py:795-839 | Extension checker only validates `test_functional.*` / `test_regression.*` names | MEDIUM | confirmed open (xfail) | test_reg_parity25_extension_check_accepts_functionaltest_java |
-| 26 | adversarial review | bin/benchmark_lib.py:19-26; 164-169; bin/run_playbook.py:592-594 | Helper functional discovery accepts undocumented `test_functional_test.*` | MEDIUM | confirmed open (xfail) | test_reg_adv26_final_artifact_gaps_rejects_test_functional_test_alias |
-| 27 | adversarial review | bin/benchmark_lib.py:28-33; 168-169; 284-308 | Helper summary counts non-canonical regression aliases as coverage | LOW | confirmed open (xfail) | test_reg_adv27_summary_ignores_noncanonical_regression_aliases |
+| 25 | parity review | .github/skills/quality_gate/quality_gate.py:795-839 | Extension checker only validates `test_functional.*` / `test_regression.*` names | MEDIUM | fixed (test passes) | test_reg_parity25_extension_check_accepts_functionaltest_java |
+| 26 | adversarial review | bin/benchmark_lib.py:19-26; 164-169; bin/run_playbook.py:592-594 | Helper functional discovery accepts undocumented `test_functional_test.*` | MEDIUM | fixed (test passes) | test_reg_adv26_final_artifact_gaps_rejects_test_functional_test_alias |
+| 27 | adversarial review | bin/benchmark_lib.py:28-33; 168-169; 284-308 | Helper summary counts non-canonical regression aliases as coverage | LOW | fixed (test passes) | test_reg_adv27_summary_ignores_noncanonical_regression_aliases |
 
 ## Terminal Gate Verification
 
