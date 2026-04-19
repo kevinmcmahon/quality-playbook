@@ -269,15 +269,6 @@ class PhaseGateTests(unittest.TestCase):
             self.assertFalse(result.ok)
             self.assertTrue(any("EXPLORATION.md" in m for m in result.messages))
 
-    def test_phase2_gate_current_threshold_is_80_as_warn(self):
-        """REQ-004: documents current 80-line WARN threshold (REQ-004 wants 120 FAIL)."""
-        with TemporaryDirectory() as tmp:
-            path = Path(tmp) / "quality" / "EXPLORATION.md"
-            _write(path, "thin content\n" * 50)  # 50 lines
-            result = run_playbook.check_phase_gate(Path(tmp), "2")
-            self.assertTrue(result.ok, "Current behavior: sub-80 is only a WARN, gate still OK")
-            self.assertTrue(any("only" in m and "lines" in m for m in result.messages))
-
     def test_phase2_gate_passes_at_threshold(self):
         """REQ-004: at/above 80 lines the gate has no WARN."""
         with TemporaryDirectory() as tmp:
@@ -297,18 +288,6 @@ class PhaseGateTests(unittest.TestCase):
             self.assertIn("QUALITY.md", joined)
             self.assertIn("CONTRACTS.md", joined)
             self.assertIn("RUN_CODE_REVIEW.md", joined)
-
-    def test_phase3_gate_current_check_set_is_minimal(self):
-        """REQ-010: documents current 4-file check set (REQ-010 wants all 9)."""
-        with TemporaryDirectory() as tmp:
-            quality = Path(tmp) / "quality"
-            for name in ["REQUIREMENTS.md", "QUALITY.md", "CONTRACTS.md", "RUN_CODE_REVIEW.md"]:
-                _write(quality / name, "stub\n")
-            # Current behavior: phase 3 passes with ONLY these four — even though
-            # RUN_INTEGRATION_TESTS.md, RUN_SPEC_AUDIT.md, RUN_TDD_TESTS.md,
-            # COVERAGE_MATRIX.md, and COMPLETENESS_REPORT.md are missing.
-            result = run_playbook.check_phase_gate(Path(tmp), "3")
-            self.assertTrue(result.ok, "Current behavior: Phase 3 gate passes without full Phase 2 output")
 
     def test_phase4_gate_requires_requirements_and_spec_audit(self):
         """REQ-010: Phase 4 gate requires REQUIREMENTS.md and RUN_SPEC_AUDIT.md."""

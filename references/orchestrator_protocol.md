@@ -32,13 +32,13 @@ If `ai_context/DEVELOPMENT_CONTEXT.md` exists in the skill repo or the working d
 
 After each sub-agent returns, confirm that the expected output files exist and contain real content — not empty scaffolding or placeholder text. If any required file is missing or trivially small, the phase failed regardless of what the sub-agent reported. The sub-agent's claim of completion is insufficient evidence — only files on disk count.
 
-Express each check as content criteria ("verify that `quality/EXPLORATION.md` exists and has more than 80 lines"), not as specific tool invocations. Use whatever file-reading and directory-listing capability is available.
+Express each check as content criteria ("verify that `quality/EXPLORATION.md` exists and has at least 120 lines"), not as specific tool invocations. Use whatever file-reading and directory-listing capability is available.
 
 ### Expected outputs per phase
 
 Cross-reference SKILL.md's Complete Artifact Contract for the authoritative list.
 
-- **Phase 1 (Explore):** `quality/EXPLORATION.md` exists with more than 80 lines of substantive content; `quality/PROGRESS.md` exists with Phase 1 marked complete.
+- **Phase 1 (Explore):** `quality/EXPLORATION.md` exists with at least 120 lines of substantive content; `quality/PROGRESS.md` exists with Phase 1 marked complete.
 - **Phase 2 (Generate):** All of these exist: `quality/REQUIREMENTS.md`, `quality/QUALITY.md`, `quality/CONTRACTS.md`, `quality/COVERAGE_MATRIX.md`, `quality/COMPLETENESS_REPORT.md`, `quality/RUN_CODE_REVIEW.md`, `quality/RUN_INTEGRATION_TESTS.md`, `quality/RUN_SPEC_AUDIT.md`, `quality/RUN_TDD_TESTS.md`. A functional test file exists in `quality/` (naming varies by language). `AGENTS.md` exists at the project root.
 - **Phase 3 (Code Review):** `quality/code_reviews/` contains at least one review file. If bugs were confirmed: `quality/BUGS.md` has at least one `### BUG-` entry, `quality/patches/` contains a regression-test patch per confirmed bug, and `quality/test_regression.*` exists.
 - **Phase 4 (Spec Audit):** `quality/spec_audits/` contains at least one triage file AND at least one individual auditor file.

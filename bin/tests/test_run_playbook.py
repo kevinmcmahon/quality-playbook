@@ -302,15 +302,22 @@ class RunPlaybookTests(unittest.TestCase):
             self.assertEqual(phase1.messages, [])
 
             write(quality_dir / "EXPLORATION.md", "x\n" * 10)
-            phase2_warn = run_playbook.check_phase_gate(temp_path, "2")
-            self.assertTrue(phase2_warn.ok)
-            self.assertEqual(len(phase2_warn.messages), 1)
-            self.assertIn("expected 80+", phase2_warn.messages[0])
+            phase2_fail = run_playbook.check_phase_gate(temp_path, "2")
+            self.assertFalse(phase2_fail.ok)
+            self.assertEqual(len(phase2_fail.messages), 1)
+            self.assertIn("expected 120+", phase2_fail.messages[0])
 
-            write(quality_dir / "QUALITY.md", "ok")
-            write(quality_dir / "CONTRACTS.md", "ok")
-            write(quality_dir / "RUN_CODE_REVIEW.md", "ok")
-            write(quality_dir / "REQUIREMENTS.md", "ok")
+            write(quality_dir / "EXPLORATION.md", "x\n" * 200)
+            phase2_ok = run_playbook.check_phase_gate(temp_path, "2")
+            self.assertTrue(phase2_ok.ok)
+            self.assertEqual(phase2_ok.messages, [])
+
+            for name in [
+                "QUALITY.md", "CONTRACTS.md", "RUN_CODE_REVIEW.md", "REQUIREMENTS.md",
+                "COVERAGE_MATRIX.md", "COMPLETENESS_REPORT.md",
+                "RUN_INTEGRATION_TESTS.md", "RUN_SPEC_AUDIT.md", "RUN_TDD_TESTS.md",
+            ]:
+                write(quality_dir / name, "ok")
             phase3_ok = run_playbook.check_phase_gate(temp_path, "3")
             self.assertTrue(phase3_ok.ok)
             self.assertEqual(phase3_ok.messages, [])
@@ -327,10 +334,14 @@ class RunPlaybookTests(unittest.TestCase):
             self.assertTrue(phase4_ok.ok)
             self.assertEqual(phase4_ok.messages, [])
 
-            write(quality_dir / "PROGRESS.md", "ok")
+            write(quality_dir / "PROGRESS.md", "- [x] Phase 4\n")
+            spec_audits = quality_dir / "spec_audits"
+            spec_audits.mkdir(parents=True, exist_ok=True)
+            write(spec_audits / "2026-04-19-triage.md", "ok")
+            write(spec_audits / "2026-04-19-auditor-1.md", "ok")
             phase5_warn = run_playbook.check_phase_gate(temp_path, "5")
             self.assertTrue(phase5_warn.ok)
-            self.assertEqual(phase5_warn.messages, ["GATE WARN Phase 5: no BUGS.md and no spec_audits/ - Phases 3-4 may not have run"])
+            self.assertEqual(phase5_warn.messages, ["GATE WARN Phase 5: no BUGS.md - Phase 3 may not have run"])
 
             write(quality_dir / "BUGS.md", "ok")
             phase5_ok = run_playbook.check_phase_gate(temp_path, "5")

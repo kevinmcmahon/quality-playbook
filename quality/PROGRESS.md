@@ -87,10 +87,10 @@ Iterations completed: baseline + `gap` + `unfiltered` + `parity` + `adversarial`
 |---|--------|-----------|-------------|----------|----------------|----------------|
 | 1 | CB-1 | benchmark_lib.py:106 | skill_version rejects bold form | HIGH | fixed (test passes) | test_reg_cb1_version_parser_divergence |
 | 2 | CB-2 | benchmark_lib.py:39-43 | SKILL_INSTALL_LOCATIONS missing 4th path | HIGH | fixed (test passes) | test_reg_cb2_missing_fourth_install_path |
-| 3 | CB-3 | run_playbook.py:455-457 | Phase 2 gate threshold 80 WARN vs 120 FAIL | HIGH | confirmed open (xfail) | test_reg_cb3_line_count_threshold_drift |
+| 3 | CB-3 | run_playbook.py:455-457 | Phase 2 gate threshold 80 WARN vs 120 FAIL | HIGH | fixed (test passes) | test_reg_cb3_line_count_threshold_drift |
 | 4 | CB-4 | run_playbook.py:565-576 | archive_previous_run non-atomic; control_prompts deleted | HIGH | confirmed open (xfail) | test_reg_cb4_archive_not_atomic |
 | 5 | CB-5 | benchmark_lib.py:177-182 | PROTECTED_PREFIXES missing AGENTS.md | MEDIUM | confirmed open (xfail) | test_reg_cb5_agents_md_cleanup_reversion |
-| 6 | CB-6 | run_playbook.py:459-463 | Phase 3 gate checks only 4 of 9 required artifacts | MEDIUM | confirmed open (xfail) | test_reg_cb6_phase3_gate_incomplete |
+| 6 | CB-6 | run_playbook.py:459-463 | Phase 3 gate checks only 4 of 9 required artifacts | MEDIUM | fixed (test passes) | test_reg_cb6_phase3_gate_incomplete |
 | 7 | CB-7 | run_playbook.py:560-562 | docs_present accepts .DS_Store / noise files | MEDIUM | confirmed open (xfail) | test_reg_cb7_docs_present_noise |
 | 8 | CB-8 | run_playbook.py:930-946 | Iteration suggestion printed even on failure | MEDIUM | confirmed open (xfail) | test_reg_cb8_suggest_after_failure |
 | 9 | CB-9 | run_playbook.py:808-829 | _pkill_fallback missing gh copilot -p pattern | MEDIUM | confirmed open (xfail) | test_reg_cb9_pkill_misses_copilot |
@@ -100,7 +100,7 @@ Iterations completed: baseline + `gap` + `unfiltered` + `parity` + `adversarial`
 | 13 | new | quality_gate.py:182-187 | detect_skill_version uses substring match, no anchor | MEDIUM | fixed (test passes) | test_reg_version_parser_substring_reject |
 | 14 | new | quality_gate.py:156-173 | validate_iso_date rejects valid ISO 8601 datetimes | MEDIUM | confirmed open (xfail) | test_reg_iso_datetime_grammar |
 | 15 | new | benchmark_lib.py:185-196 | _parse_porcelain_path returns quoted path with quotes | MEDIUM | confirmed open (xfail) | test_reg_porcelain_quoted_paths |
-| 16 | spec-audit CF-1 | run_playbook.py:473-478 | Phase 5 gate missing Phase 4 completion enforcement | MEDIUM | confirmed open (xfail) | test_reg_sa16_phase5_gate_missing_triage, test_reg_sa16_phase5_gate_missing_phase4_checkbox |
+| 16 | spec-audit CF-1 | run_playbook.py:473-478 | Phase 5 gate missing Phase 4 completion enforcement | MEDIUM | fixed (test passes) | test_reg_sa16_phase5_gate_missing_triage, test_reg_sa16_phase5_gate_missing_phase4_checkbox |
 | 17 | gap review | agents/quality-playbook.agent.md:35-43; agents/quality-playbook-claude.agent.md:45-55 | Orchestrator setup omits repo-root SKILL.md | MEDIUM | confirmed open (xfail) | test_reg_gap17_agents_support_repo_root_skill |
 | 18 | gap review | agents/quality-playbook.agent.md:11-14; 77-81 | General orchestrator contradicts phase ownership model | MEDIUM | confirmed open (xfail) | test_reg_gap18_general_agent_keeps_context_ownership_consistent |
 | 19 | gap review | pytest/__main__.py:16-34 | Local pytest shim mis-handles documented CLI forms | MEDIUM | confirmed open (xfail) | test_reg_gap19_collect_only_does_not_execute_tests, test_reg_gap19_nodeid_is_handled_without_importerror |

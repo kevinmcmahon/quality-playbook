@@ -172,7 +172,6 @@ class RegressionTests(unittest.TestCase):
     # BUG-003 / REQ-004: Phase 2 gate must FAIL at 119 lines
     # ------------------------------------------------------------------ #
 
-    @unittest.expectedFailure
     def test_reg_cb3_line_count_threshold_drift(self):
         """BUG-003 / REQ-004: check_phase_gate("2") must return ok=False for a
         119-line EXPLORATION.md. SKILL.md:906 requires 120 as the FAIL threshold.
@@ -307,7 +306,6 @@ class RegressionTests(unittest.TestCase):
     # BUG-006 / REQ-010: Phase 3 gate must fail without COVERAGE_MATRIX.md
     # ------------------------------------------------------------------ #
 
-    @unittest.expectedFailure
     def test_reg_cb6_phase3_gate_incomplete(self):
         """BUG-006 / REQ-010: check_phase_gate("3") must fail when
         COVERAGE_MATRIX.md is absent. Only the currently-checked 4 files are
@@ -563,7 +561,6 @@ class TestSpecAuditRegressions(unittest.TestCase):
     # BUG-016 / REQ-010: Phase 5 gate must enforce Phase 4 completion
     # ------------------------------------------------------------------ #
 
-    @unittest.expectedFailure
     def test_reg_sa16_phase5_gate_missing_triage(self):
         """BUG-016 / REQ-010: check_phase_gate("5") must return ok=False when
         spec_audits/ directory exists but contains no triage file.
@@ -591,7 +588,6 @@ class TestSpecAuditRegressions(unittest.TestCase):
                 f"got ok={result.ok}, messages={result.messages}"
             )
 
-    @unittest.expectedFailure
     def test_reg_sa16_phase5_gate_missing_phase4_checkbox(self):
         """BUG-016 / REQ-010: check_phase_gate("5") must return ok=False when
         PROGRESS.md Phase 4 line is not marked [x].
