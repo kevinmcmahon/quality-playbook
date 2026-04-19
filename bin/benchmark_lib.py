@@ -189,7 +189,10 @@ def _parse_porcelain_path(line: str) -> Optional[str]:
     rest = line[3:]
     if "->" in rest:
         rest = rest.split("->", 1)[1].strip()
-    return rest.strip()
+    stripped = rest.strip()
+    if len(stripped) >= 2 and stripped[0] == '"' and stripped[-1] == '"':
+        stripped = stripped[1:-1].replace('\\"', '"')
+    return stripped
 
 
 def _is_protected(path: str) -> bool:

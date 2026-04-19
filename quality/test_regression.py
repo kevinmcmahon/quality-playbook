@@ -77,9 +77,15 @@ def _seed_gate_repo(repo: Path) -> Path:
         "RUN_SPEC_AUDIT.md",
         "RUN_INTEGRATION_TESTS.md",
         "RUN_TDD_TESTS.md",
-        "EXPLORATION.md",
     ]:
         _write(q / name, "placeholder\n")
+    _write(q / "EXPLORATION.md",
+           "# Exploration\n\n"
+           "## Open Exploration Findings\nstub\n\n"
+           "## Quality Risks\nstub\n\n"
+           "## Pattern Applicability Matrix\nstub\n\n"
+           "## Candidate Bugs for Phase 2\nstub\n\n"
+           "## Gate Self-Check\nstub\n")
     _write(repo / "AGENTS.md", "# AGENTS\n")
     _write(q / "code_reviews" / "review.md", "# review\n")
     _write(q / "spec_audits" / "2026-04-19-triage.md", "# triage\n")
@@ -240,7 +246,6 @@ class RegressionTests(unittest.TestCase):
     # BUG-014 / REQ-007: validate_iso_date must accept ISO 8601 datetimes
     # ------------------------------------------------------------------ #
 
-    @unittest.expectedFailure
     def test_reg_iso_datetime_grammar(self):
         """BUG-014 / REQ-007: validate_iso_date("2026-04-18T23:43:14Z") must
         return "valid". Run-metadata start_time uses datetime form.
@@ -257,7 +262,6 @@ class RegressionTests(unittest.TestCase):
     # BUG-010 / REQ-008: quality_gate must have check_run_metadata attribute
     # ------------------------------------------------------------------ #
 
-    @unittest.expectedFailure
     def test_reg_cb10_run_metadata_ungated(self):
         """BUG-010 / REQ-008: quality_gate must have attribute check_run_metadata.
         Run-metadata JSON must be validated by the gate.
@@ -384,7 +388,6 @@ class RegressionTests(unittest.TestCase):
     # BUG-011 / REQ-013: gate must FAIL when EXPLORATION.md lacks ## Quality Risks
     # ------------------------------------------------------------------ #
 
-    @unittest.expectedFailure
     def test_reg_cb11_exploration_structure_ungated(self):
         """BUG-011 / REQ-013: quality_gate must FAIL when EXPLORATION.md lacks
         required section "## Quality Risks".
@@ -414,19 +417,11 @@ class RegressionTests(unittest.TestCase):
                          "PROGRESS.md", "test_functional.py"]:
                 _write(quality / name, "stub\n")
 
-            fails = []
-            passes = []
-
-            def fail_(msg): fails.append(msg)
-            def pass_(msg): passes.append(msg)
-            def warn_(msg): pass
-
-            # Call the file-existence check which should also check structure
+            qg._reset_counters()
             qg.check_file_existence(repo, quality, "strict")
 
-        # Desired: at least one FAIL for missing ## Quality Risks section
         self.assertGreater(
-            len(fails), 0,
+            qg.FAIL, 0,
             "check_file_existence must FAIL when EXPLORATION.md is missing ## Quality Risks"
         )
 
@@ -459,7 +454,6 @@ class RegressionTests(unittest.TestCase):
     # BUG-012 / REQ-015: Zero-bug sentinel must not match free prose "zero"
     # ------------------------------------------------------------------ #
 
-    @unittest.expectedFailure
     def test_reg_cb12_zero_bug_loose_regex(self):
         """BUG-012 / REQ-015: A BUGS.md with prose "the zero analysis shows no
         problems" and no BUG headings must NOT pass the zero-bug sentinel.
@@ -470,47 +464,37 @@ class RegressionTests(unittest.TestCase):
         """
         qg = _load_quality_gate()
 
-        # BUGS.md with "zero" in prose, but NO structured zero-bug heading
         bugs_content = (
             "# Bugs\n\n"
             "The zero analysis of this project shows no obvious problems.\n"
             "We found zero issues during review.\n"
         )
 
-        fails = []
-        passes = []
-        warns = []
-
-        def fail_(msg): fails.append(msg)
-        def pass_(msg): passes.append(msg)
-        def warn_(msg): warns.append(msg)
-
-        # Monkey-patch the collector functions used inside check_bugs_heading
         with TemporaryDirectory() as tmp:
             quality = Path(tmp) / "quality"
             quality.mkdir(parents=True, exist_ok=True)
             _write(quality / "BUGS.md", bugs_content)
 
-            # Call check_bugs_heading and collect the result
-            bug_count, bug_ids = qg.check_bugs_heading(quality)
+            qg._reset_counters()
+            captured = io.StringIO()
+            with mock.patch("sys.stdout", captured):
+                qg.check_bugs_heading(quality)
+            output = captured.getvalue()
 
-        # Desired: the zero-bug sentinel must NOT be triggered by free prose.
-        # The function should either warn or the bug_count should be None/non-zero
-        # to indicate the sentinel was not cleanly matched.
-        # We assert that a truly empty (no headings, no proper sentinel) BUGS.md
-        # does NOT return bug_count=0 as a clean zero-bug pass.
-        # The test fails currently because "zero" in prose triggers the sentinel.
-        self.assertNotEqual(
-            bug_count, 0,
-            "check_bugs_heading must not return 0 bugs when BUGS.md only contains "
-            "the word 'zero' in prose — structured heading required"
+        self.assertNotIn(
+            "Zero-bug run", output,
+            "Zero-bug sentinel must not match free prose 'zero'; "
+            "anchored '## No confirmed bugs' heading is required"
+        )
+        self.assertIn(
+            "No ### BUG-NNN headings found", output,
+            "Loose-prose 'zero' should fall through to the WARN branch"
         )
 
     # ------------------------------------------------------------------ #
     # BUG-015 / REQ-016: _parse_porcelain_path must strip surrounding quotes
     # ------------------------------------------------------------------ #
 
-    @unittest.expectedFailure
     def test_reg_porcelain_quoted_paths(self):
         """BUG-015 / REQ-016: _parse_porcelain_path(' M "file with space.txt"')
         must return 'file with space.txt' (no surrounding quotes).
@@ -792,7 +776,6 @@ class UnfilteredIterationRegressions(unittest.TestCase):
 class ParityIterationRegressions(unittest.TestCase):
     """Regression tests for parity-iteration net-new bugs (BUG-024..BUG-025)."""
 
-    @unittest.expectedFailure
     def test_reg_parity24_file_existence_accepts_functional_test_go(self):
         """BUG-024 / REQ-025: `functional_test.go` must satisfy the file-existence gate."""
         qg = _load_quality_gate()

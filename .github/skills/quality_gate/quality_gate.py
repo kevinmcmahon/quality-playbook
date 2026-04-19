@@ -165,10 +165,13 @@ def validate_iso_date(date_str):
         return "empty"
     if date_str in ("YYYY-MM-DD", "0000-00-00"):
         return "placeholder"
-    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_str):
+    date_part = date_str[:10]
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_part):
+        return "bad_format"
+    if len(date_str) > 10 and not re.fullmatch(r"T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})?", date_str[10:]):
         return "bad_format"
     today = date.today().isoformat()
-    if date_str > today:
+    if date_part > today:
         return "future"
     return "valid"
 
@@ -294,11 +297,12 @@ def check_file_existence(repo_dir, q, strictness):
         else:
             fail(f"{f} missing")
 
-    if has_file_matching(q, ["test_functional.*", "FunctionalSpec.*",
-                             "FunctionalTest.*", "functional.test.*"]):
+    if has_file_matching(q, ["test_functional.*", "functional_test.*",
+                             "FunctionalSpec.*", "FunctionalTest.*",
+                             "functional.test.*"]):
         pass_("functional test file exists")
     else:
-        fail("functional test file missing (test_functional.*, FunctionalSpec.*, FunctionalTest.*, functional.test.*)")
+        fail("functional test file missing (test_functional.*, functional_test.*, FunctionalSpec.*, FunctionalTest.*, functional.test.*)")
 
     if (repo_dir / "AGENTS.md").is_file():
         pass_("AGENTS.md exists")
@@ -307,6 +311,7 @@ def check_file_existence(repo_dir, q, strictness):
 
     if (q / "EXPLORATION.md").is_file():
         pass_("EXPLORATION.md exists")
+        _check_exploration_sections(q / "EXPLORATION.md")
     else:
         fail("EXPLORATION.md missing")
 
@@ -392,7 +397,8 @@ def check_bugs_heading(q):
         if bullet_headings > 0:
             fail(f"{bullet_headings} heading(s) use - BUG- format")
         if correct_headings == 0 and wrong_headings == 0:
-            if re.search(r"(No confirmed|zero|0 confirmed)", bugs_content):
+            if re.search(r"^##\s+(No confirmed bugs|Zero confirmed bugs)\s*$",
+                         bugs_content, re.MULTILINE | re.IGNORECASE):
                 pass_("Zero-bug run — no headings expected")
             else:
                 bug_count = wrong_headings + deep_headings + bold_headings + bullet_headings
@@ -1019,6 +1025,52 @@ def check_cross_run_contamination(repo_dir, q, version_arg, skill_version):
             fail(f"tdd-results.json skill_version '{json_sv}' != SKILL.md '{skill_version}' — stale artifacts from prior run?")
 
 
+def _check_exploration_sections(path):
+    """Check that EXPLORATION.md contains all required section titles."""
+    required_sections = [
+        "## Open Exploration Findings",
+        "## Quality Risks",
+        "## Pattern Applicability Matrix",
+        "## Candidate Bugs for Phase 2",
+        "## Gate Self-Check",
+    ]
+    try:
+        content = path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        fail(f"EXPLORATION.md unreadable: {exc}")
+        return
+    for section in required_sections:
+        if section not in content:
+            fail(f"EXPLORATION.md missing required section: {section!r}")
+
+
+def check_run_metadata(q):
+    """Validate the run-metadata sidecar JSON (run-YYYY-MM-DDTHH-MM-SS.json)."""
+    print("[Run Metadata]")
+    results_dir = q / "results"
+    pattern = str(results_dir / "run-*.json")
+    import glob as _glob
+    matches = _glob.glob(pattern)
+    if not matches:
+        fail("run-metadata JSON missing (expected quality/results/run-YYYY-MM-DDTHH-MM-SS.json)")
+        return
+    if len(matches) > 1:
+        warn(f"Multiple run-metadata files found: {len(matches)}")
+    filename_re = re.compile(r"run-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.json$")
+    for path in matches:
+        if not filename_re.search(path):
+            fail(f"run-metadata filename does not match expected format: {path}")
+        data = load_json(Path(path))
+        if data is None:
+            fail(f"run-metadata JSON parse error: {path}")
+            continue
+        required_fields = ("schema_version", "skill_version", "project", "model", "runner", "start_time")
+        for field in required_fields:
+            if not data.get(field):
+                fail(f"run-metadata missing or empty field: {field!r}")
+    pass_("run-metadata JSON present")
+
+
 # --- Per-repo entry point ---
 
 
@@ -1047,6 +1099,7 @@ def check_repo(repo_dir, version_arg, strictness):
     check_writeups(q, bug_count)
     skill_version = check_version_stamps(repo_dir, q)
     check_cross_run_contamination(repo_dir, q, version_arg, skill_version)
+    check_run_metadata(q)
 
     print("")
 

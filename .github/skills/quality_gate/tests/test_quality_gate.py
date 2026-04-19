@@ -61,11 +61,19 @@ def future_iso():
 
 def minimal_zero_bug_tree(version="1.4.4"):
     """Return a dict describing a zero-bug all-pass repo tree."""
+    run_metadata = json.dumps({
+        "schema_version": "1.0",
+        "skill_version": version,
+        "project": "testproj",
+        "model": "test-model",
+        "runner": "test-runner",
+        "start_time": "2026-01-01T00:00:00Z",
+    })
     return {
         "SKILL.md": f"---\nversion: {version}\n---\n",
         "AGENTS.md": "# Agents\n",
         "main.py": "print('hi')\n",  # a source file so language detection finds py
-        "quality/BUGS.md": "# Bugs\n\nNo confirmed source-code bugs found.\n",
+        "quality/BUGS.md": "# Bugs\n\n## No confirmed bugs\n",
         "quality/REQUIREMENTS.md": (
             "# Requirements\n\n"
             "UC-01 Foo\n"
@@ -86,11 +94,19 @@ def minimal_zero_bug_tree(version="1.4.4"):
         "quality/RUN_INTEGRATION_TESTS.md": "# RIT\n",
         "quality/RUN_TDD_TESTS.md": "# RTT\n",
         "quality/test_functional.py": "# test\n",
-        "quality/EXPLORATION.md": "# Exploration\n",
+        "quality/EXPLORATION.md": (
+            "# Exploration\n\n"
+            "## Open Exploration Findings\nstub\n\n"
+            "## Quality Risks\nstub\n\n"
+            "## Pattern Applicability Matrix\nstub\n\n"
+            "## Candidate Bugs for Phase 2\nstub\n\n"
+            "## Gate Self-Check\nstub\n"
+        ),
         "quality/code_reviews/r.md": "# Review\n",
         "quality/spec_audits/2026-01-01-triage.md": "# Triage\n",
         "quality/spec_audits/2026-01-01-auditor-1.md": "# Auditor\n",
         "quality/spec_audits/triage_probes.sh": "#!/bin/bash\n",
+        "quality/results/run-2026-01-01T00-00-00.json": run_metadata,
     }
 
 

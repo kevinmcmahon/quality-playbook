@@ -84,9 +84,15 @@ def _seed_gate_repo(repo: Path) -> Path:
         "RUN_SPEC_AUDIT.md",
         "RUN_INTEGRATION_TESTS.md",
         "RUN_TDD_TESTS.md",
-        "EXPLORATION.md",
     ]:
         _write(q / name, "placeholder\n")
+    _write(q / "EXPLORATION.md",
+           "# Exploration\n\n"
+           "## Open Exploration Findings\nstub\n\n"
+           "## Quality Risks\nstub\n\n"
+           "## Pattern Applicability Matrix\nstub\n\n"
+           "## Candidate Bugs for Phase 2\nstub\n\n"
+           "## Gate Self-Check\nstub\n")
     _write(repo / "AGENTS.md", "# AGENTS\n")
     _write(q / "code_reviews" / "review.md", "# review\n")
     _write(q / "spec_audits" / "2026-04-19-triage.md", "# triage\n")
@@ -332,19 +338,6 @@ class PorcelainPathTests(unittest.TestCase):
     def test_parse_porcelain_too_short(self):
         """REQ-016: lines shorter than 4 chars return None."""
         self.assertIsNone(lib._parse_porcelain_path("M"))
-
-    def test_parse_porcelain_quoted_path_current_behavior(self):
-        """REQ-016: documents that quoted paths are returned with quotes intact.
-
-        Current implementation does not strip the surrounding quotes Git
-        adds for paths with special characters. A downstream git checkout
-        with the quoted form will fail. REQ-016 requires quote-aware
-        parsing.
-        """
-        result = lib._parse_porcelain_path(' M "file with space.txt"')
-        self.assertEqual(result, '"file with space.txt"',
-                         "Current: quotes are preserved. REQ-016 wants them stripped.")
-
 
 class CleanupRepoTests(unittest.TestCase):
     """REQ-006, REQ-016. Source: benchmark_lib.py:204-250."""
@@ -707,29 +700,6 @@ class QualityGateVersionDetectionTests(unittest.TestCase):
         # Use a clearly-past date so we don't flake on the 'future' check.
         self.assertEqual(self.gate.validate_iso_date("2020-01-01"), "valid")
 
-    def test_gate_validate_iso_date_rejects_datetime_current_behavior(self):
-        """REQ-007: documents current datetime rejection.
-
-        Current: validate_iso_date regex is `\\d{4}-\\d{2}-\\d{2}`. A
-        full ISO 8601 datetime (as SKILL.md:187 uses for run-metadata
-        start_time) is reported as 'bad_format'. REQ-007 requires a
-        datetime-capable validator.
-        """
-        self.assertEqual(self.gate.validate_iso_date("2026-04-18T23:43:14Z"),
-                         "bad_format",
-                         "Current: datetime form is rejected. REQ-007 fixes this.")
-
-    def test_gate_has_no_check_run_metadata(self):
-        """REQ-008: documents that check_run_metadata does not exist.
-
-        The gate has check_tdd_sidecar, check_integration_sidecar,
-        check_recheck_sidecar, etc., but no check_run_metadata. Run
-        metadata JSON (SKILL.md:123,174-201) goes unvalidated.
-        """
-        self.assertFalse(hasattr(self.gate, "check_run_metadata"),
-                         "Current: no check_run_metadata. REQ-008 adds it.")
-
-
 class QualityGateEnumTests(unittest.TestCase):
     """REQ-017. Source: quality_gate.py:497-498, SKILL.md:154."""
 
@@ -792,19 +762,6 @@ class PromptPathFallbackTests(unittest.TestCase):
 
 class FunctionalTestNamingParityBehaviorTests(unittest.TestCase):
     """REQ-025, REQ-026. Source: quality_gate.py:299-303, 795-839."""
-
-    def test_check_file_existence_currently_rejects_functional_test_go(self):
-        """REQ-025: `functional_test.go` is currently omitted from the existence gate."""
-        qg = _load_quality_gate()
-        qg._reset_counters()
-        with TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            q = _seed_gate_repo(repo)
-            _write(repo / "main.go", "package main\n")
-            _write(q / "functional_test.go", "package quality\n")
-            with mock.patch("sys.stdout", new_callable=io.StringIO):
-                qg.check_file_existence(repo, q, "benchmark")
-        self.assertEqual(qg.FAIL, 1)
 
     def test_check_test_file_extension_currently_warns_on_functionaltest_java(self):
         """REQ-026: `FunctionalTest.java` currently bypasses extension validation."""
