@@ -17,21 +17,12 @@ The skill file is `SKILL.md`. The iteration reference is `references/iteration.m
 
 The user wants to run the quality playbook on a codebase. Here's what to do:
 
-1. **Copy skill files into the repo.** The playbook expects its files in your AI tool's skill directory inside the target repository:
+1. **Copy skill files into the repo.** The playbook expects its files in one of four documented install locations, and every component (runner, gate, orchestrator agents) checks all four in order:
 
-   **GitHub Copilot:**
-   ```
-   .github/skills/SKILL.md
-   .github/skills/references/          (all .md files from the references/ directory)
-   .github/skills/quality_gate.py      (standalone Python gate script — Python 3.8+)
-   ```
-
-   **Claude Code:**
-   ```
-   .claude/skills/quality-playbook/SKILL.md
-   .claude/skills/quality-playbook/references/    (all .md files from the references/ directory)
-   .claude/skills/quality-playbook/quality_gate.py
-   ```
+   1. **Repo root (source checkout):** `SKILL.md`, `references/`, `quality_gate.py` at the project root. Useful when running the playbook out of the quality-playbook checkout itself.
+   2. **Claude Code:** `.claude/skills/quality-playbook/SKILL.md`, `.claude/skills/quality-playbook/references/`, `.claude/skills/quality-playbook/quality_gate.py`.
+   3. **GitHub Copilot (flat):** `.github/skills/SKILL.md`, `.github/skills/references/`, `.github/skills/quality_gate.py`.
+   4. **GitHub Copilot (nested):** `.github/skills/quality-playbook/SKILL.md`, `.github/skills/quality-playbook/references/`, `.github/skills/quality-playbook/quality_gate.py`.
 
    Create the directories if they don't exist. Copy from wherever the user has the playbook files. The source tree has the gate script inside a package directory with tests (`.github/skills/quality_gate/quality_gate.py` plus a `tests/` subdirectory) — target repos only need the standalone `quality_gate.py` file itself, not the package. `repos/setup_repos.sh` handles this automatically: it copies just the module file into each target's `.github/skills/quality_gate.py`.
 
@@ -126,12 +117,16 @@ Positional arguments are **directory paths**. Version-append fallback: if a bare
 
 The runner writes one log file per target next to the target directory (at `{parent}/{target-name}-playbook-{timestamp}.log`), archives prior `quality/` runs before fresh baselines, and enforces phase prerequisite gates.
 
-The iteration prompt is:
+The iteration prompt is built from `SKILL_FALLBACK_GUIDE` in `bin/run_playbook.py`, so it advertises all four install locations instead of hardcoding one:
 ```
-Read the quality playbook skill at .github/skills/SKILL.md and run the next iteration using the <strategy> strategy.
+Read the quality playbook skill using the documented install-location fallback list:
+SKILL.md, .claude/skills/quality-playbook/SKILL.md,
+.github/skills/SKILL.md, .github/skills/quality-playbook/SKILL.md.
+Resolve reference files using the same documented fallback order.
+Run the next iteration using the <strategy> strategy.
 ```
 
-Replace `<strategy>` with: gap, unfiltered, parity, or adversarial.
+Replace `<strategy>` with: gap, unfiltered, parity, or adversarial. The same fallback preamble fronts the phase prompts and the single-pass prompt.
 
 If a user needs a custom wrapper for another environment, mirror the built-in Python runner rather than reviving the old shell script.
 
@@ -400,6 +395,10 @@ If it reports FAIL results, the most common causes:
 - Missing fields in `tdd-results.json`
 - Writeups without inline fix diffs
 - Missing red-phase or green-phase log files (v1.3.49+)
+- Missing `quality/results/run-YYYY-MM-DDTHH-MM-SS.json` run-metadata file (v1.4.5 fix — `check_run_metadata` now enforces this)
+- `EXPLORATION.md` missing one of the five required section headings: `## Open Exploration Findings`, `## Quality Risks`, `## Pattern Applicability Matrix`, `## Candidate Bugs for Phase 2`, `## Gate Self-Check` (v1.4.5 fix — `_check_exploration_sections` enforces these)
+- Zero-bug runs where `BUGS.md` doesn't carry an anchored `## No confirmed bugs` heading (v1.4.5 fix — the sentinel no longer matches free prose containing the word "zero")
+- Functional/regression test files whose extension doesn't match the detected project language — both `test_functional.*` and language-native names like `FunctionalTest.java`, `FunctionalSpec.scala`, `functional.test.ts`, `functional_test.go` are now gate-checked for extension match
 
 ---
 

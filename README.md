@@ -37,14 +37,21 @@ cp SKILL.md .claude/skills/quality-playbook/SKILL.md
 cp references/* .claude/skills/quality-playbook/references/
 ```
 
-**GitHub Copilot:**
+**GitHub Copilot (flat layout):**
 ```bash
 mkdir -p .github/skills/references
 cp SKILL.md .github/skills/SKILL.md
 cp references/* .github/skills/references/
 ```
 
-**Cursor, Windsurf, other tools:** Use either location above, or put `SKILL.md` and `references/` in your project root.
+**GitHub Copilot (nested layout):**
+```bash
+mkdir -p .github/skills/quality-playbook/references
+cp SKILL.md .github/skills/quality-playbook/SKILL.md
+cp references/* .github/skills/quality-playbook/references/
+```
+
+**Cursor, Windsurf, other tools:** Use any of the locations above, or put `SKILL.md` and `references/` in your project root. The runner, gate, and orchestrator agents check all four locations — repo-root `SKILL.md`, Claude's `.claude/skills/quality-playbook/`, and both Copilot layouts.
 
 ### Step 3: Run the playbook
 
@@ -169,10 +176,11 @@ Adding community documentation to the pipeline produces measurably better result
 
 ### What's new in v1.4.5
 
-- **Python runner with a path-based interface.** `bin/run_playbook.py` treats every positional argument as a directory path (relative or absolute) and defaults to the current directory when none are given. No more short-name resolution, no hardcoded `repos/` lookups — the runner works against any project you point it at. Log files live next to each target (`{parent}/{target-name}-playbook-{timestamp}.log`). Missing SKILL.md is a warning, not a fatal error, so first-time installs aren't blocked. 36 stdlib-only unit tests.
+- **Python runner with a path-based interface.** `bin/run_playbook.py` treats every positional argument as a directory path (relative or absolute) and defaults to the current directory when none are given. No more short-name resolution, no hardcoded `repos/` lookups — the runner works against any project you point it at. A narrow version-append fallback kicks in only for bare names (no path separators): if `chi` isn't a directory, the runner retries `chi-<skill_version>` once, using the `version:` line from `SKILL.md`. Log files live next to each target (`{parent}/{target-name}-playbook-{timestamp}.log`). Missing SKILL.md is a warning, not a fatal error, so first-time installs aren't blocked. 92 stdlib-only unit tests.
 - **Python gate is the sole mechanical gate.** `quality_gate.sh` has been retired. `quality_gate.py` now handles JSON with `json.load` instead of grep-style parsing and lives at `.github/skills/quality_gate/` as a proper package with a 108-test unit-test suite. A stable symlink at `.github/skills/quality_gate.py` preserves the previous invocation path.
 - **Benchmark set reduced to four targets** — bootstrap, chi, cobra, virtio — so full validation loops finish in a reasonable window. Bootstrap always runs last because fixes from the other three need to land before the playbook audits itself.
 - **Rate limit warning added.** The README and runner docs now call out that running many targets in parallel with single-prompt mode can trigger multi-day Copilot cooldowns; `--phase all` with `--sequential` is the recommended mode.
+- **27 bugs fixed from the bootstrap self-audit.** The Opus self-audit over v1.4.5 baseline + four iteration strategies confirmed 27 real defects spanning version parsers, phase entry gates, archive atomicity, runner reliability, quality-gate validation, prompt portability, and orchestrator bootstrap. All 27 shipped as fixes with passing regression tests. Highlights: the Phase 2 gate now FAILs below 120 lines instead of WARNing at 80; the Phase 3 gate checks all nine Phase 2 artifacts instead of four; the Phase 5 gate enforces SKILL.md's hard-stop (triage + auditor files + Phase 4 checkbox); `archive_previous_run` is now atomic and preserves `control_prompts/`; child-process exit codes propagate through `run_one_phase`/`run_one_singlepass`; missing `docs_gathered/` WARNs and continues instead of blocking; runner prompts now advertise all four documented install paths; `check_run_metadata` and `_check_exploration_sections` plug two long-standing gate gaps; `validate_iso_date` accepts ISO 8601 datetimes; `_parse_porcelain_path` handles quoted paths. Full per-bug detail in `quality/results/recheck-summary.md`.
 
 ### What's new in v1.4.4
 
@@ -304,7 +312,7 @@ quality-playbook/
 │   ├── __init__.py
 │   ├── benchmark_lib.py     # Shared logging, cleanup, artifact discovery, and summary helpers
 │   ├── run_playbook.py      # Main entry point — positional args are target directories; defaults to cwd
-│   └── tests/               # 36 stdlib-only unit tests (python3 -m pytest bin/tests/)
+│   └── tests/               # 92 stdlib-only unit tests (python3 -m pytest bin/tests/)
 ├── .github/skills/          # Installed-copy layout (also used in target repos)
 │   ├── quality_gate.py      # Symlink → quality_gate/quality_gate.py (stable invocation path)
 │   └── quality_gate/        # Gate script package (sole mechanical gate; bash version retired in v1.4.5)
