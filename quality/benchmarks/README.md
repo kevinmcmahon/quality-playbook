@@ -31,7 +31,7 @@ live exercise of the Phase 6 semantic-check pipeline end-to-end with real
 LLM responses.
 
 ```
-python3 -m bin.run_playbook --target <path-to-virtio-benchmark>
+python3 -m bin.run_playbook <path-to-virtio-benchmark>
 ```
 
 Follow the phase-by-phase prompts the orchestrator emits. At the end of
@@ -80,7 +80,7 @@ git commit -m "Phase 7 r2: live virtio pilot run (Phase 6 Task 5 closure)"
 Run each of chi, cobra, express, httpx the same way:
 
 ```
-python3 -m bin.run_playbook --target <path-to-repo>
+python3 -m bin.run_playbook <path-to-repo>
 ```
 
 These four repos have no formal spec. Expected behavior:
