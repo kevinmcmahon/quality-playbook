@@ -137,6 +137,26 @@ def _collect_documents(formal_docs_dir: Path) -> List[Path]:
     return docs
 
 
+def _normalize_manifest(
+    manifest: Dict[str, object],
+) -> Dict[str, Dict[str, object]]:
+    """Normalize a filename -> tier | entry-dict map to filename -> entry-dict.
+
+    Accepts already-normalized entries (the output of _load_manifest) as well
+    as the bare-int shape produced by callers that hand-build the mapping
+    (e.g. repos/stage_formal_docs.py reading formal_docs_tiers.json directly).
+    Silently drops entries with invalid tiers — callers validating via
+    _load_manifest will have raised before getting here.
+    """
+    normalized: Dict[str, Dict[str, object]] = {}
+    for filename, entry in manifest.items():
+        if isinstance(entry, int) and not isinstance(entry, bool):
+            normalized[filename] = {"tier": entry}
+        elif isinstance(entry, dict) and "tier" in entry:
+            normalized[filename] = dict(entry)
+    return normalized
+
+
 def _load_manifest(path: Path) -> Dict[str, Dict[str, object]]:
     """Load a manifest JSON. Accepts two shapes:
 
@@ -260,7 +280,7 @@ def setup_sidecars(
     if run_timestamp is None:
         run_timestamp = _backup_timestamp()
 
-    manifest = manifest or {}
+    manifest = _normalize_manifest(manifest or {})
     result = SetupResult()
 
     # Warn for manifest keys that don't correspond to any file. This is a
