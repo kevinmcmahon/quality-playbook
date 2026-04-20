@@ -29,6 +29,20 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
+# Allow soft import of bin/citation_verifier for v1.5.0 byte-equality checks.
+# The gate lives at .github/skills/quality_gate/quality_gate.py inside the QPB
+# install; the repo root is three parents up. When the gate is installed
+# standalone into a target repo without bin/, the import fails silently and
+# byte-equality is skipped with a WARN rather than a hard FAIL.
+_CITATION_VERIFIER = None
+try:
+    _QPB_ROOT = SCRIPT_DIR.parent.parent.parent
+    if str(_QPB_ROOT) not in sys.path:
+        sys.path.insert(0, str(_QPB_ROOT))
+    from bin import citation_verifier as _CITATION_VERIFIER  # noqa: E402
+except Exception:  # noqa: BLE001 — missing / misinstalled bin/ is tolerable
+    _CITATION_VERIFIER = None
+
 # Global counters — reset per invocation via main(). Tests that call check_repo
 # directly should reset these in setUp.
 FAIL = 0
@@ -1076,6 +1090,374 @@ def check_run_metadata(q):
 # --- Per-repo entry point ---
 
 
+# ---------------------------------------------------------------------------
+# v1.5.0 Layer-1 mechanical invariants (schemas.md §10).
+#
+# Each check gracefully no-ops on pre-v1.5.0 runs (absent manifests = legacy
+# repo; nothing to enforce). When the v1.5.0 artifacts are present every
+# invariant below is enforced mechanically and FAILs with a specific
+# <path>: <reason> message so the operator can fix the single artifact
+# without re-running the whole playbook.
+# ---------------------------------------------------------------------------
+
+_V150_VALID_DISPOSITIONS = (
+    "code-fix",
+    "spec-fix",
+    "upstream-spec-issue",
+    "mis-read",
+    "deferred",
+)
+_V150_VALID_FIX_TYPES = ("code", "spec", "both")
+_V150_ILLEGAL_FIX_PAIRS = {
+    ("code-fix", "spec"),
+    ("spec-fix", "code"),
+    ("upstream-spec-issue", "code"),
+    ("mis-read", "both"),
+}
+_V150_SUPPORTED_EXTENSIONS = (".txt", ".md")
+_V150_REQUIRED_INDEX_FIELDS = (
+    "run_timestamp_start",
+    "run_timestamp_end",
+    "duration_seconds",
+    "qpb_version",
+    "target_repo_path",
+    "target_repo_git_sha",
+    "target_project_type",
+    "phases_executed",
+    "summary",
+    "artifacts",
+)
+_V150_REQUIRED_SUMMARY_KEYS = ("requirements", "bugs", "gate_verdict")
+
+
+def _v150_manifest(q, name):
+    """Return the parsed top-level JSON object or None if absent/invalid."""
+    path = q / name
+    if not path.is_file():
+        return None
+    data = load_json(path)
+    if isinstance(data, dict):
+        return data
+    fail(f"{path.name}: not a valid JSON object (schemas.md §1.6)")
+    return None
+
+
+def check_v1_5_0_plaintext_extensions(repo_dir):
+    """§10 invariant #9 — formal_docs/ and informal_docs/ contain only .txt/.md."""
+    for folder_name in ("formal_docs", "informal_docs"):
+        folder = repo_dir / folder_name
+        if not folder.is_dir():
+            continue
+        any_file = False
+        for path in sorted(folder.rglob("*")):
+            if not path.is_file():
+                continue
+            any_file = True
+            if path.name == "README.md":
+                continue
+            if path.name.endswith(".meta.json"):
+                continue
+            ext = path.suffix.lower()
+            if ext not in _V150_SUPPORTED_EXTENSIONS:
+                rel = path.relative_to(repo_dir).as_posix()
+                fail(
+                    f"{rel}: unsupported extension {ext or '(none)'} under {folder_name}/ "
+                    "(schemas.md §2 allows only .txt, .md; §10 invariant #9)"
+                )
+        if any_file:
+            pass_(f"{folder_name}/: all files use supported extensions")
+
+
+def check_v1_5_0_manifest_wrappers(q):
+    """§10 invariant #13 — manifest wrapper shape.
+
+    Four record-shaped manifests (formal_docs / requirements / use_cases /
+    bugs) use `records`; citation_semantic_check.json uses `reviews`
+    (schemas.md §9.1). Every manifest must carry schema_version +
+    generated_at as non-empty strings.
+    """
+    record_shaped = (
+        "formal_docs_manifest.json",
+        "requirements_manifest.json",
+        "use_cases_manifest.json",
+        "bugs_manifest.json",
+    )
+    for name in record_shaped:
+        data = _v150_manifest(q, name)
+        if data is None:
+            continue
+        for key in ("schema_version", "generated_at"):
+            if not isinstance(data.get(key), str) or not data[key]:
+                fail(f"{name}: missing or empty top-level {key!r} (schemas.md §1.6)")
+        if not isinstance(data.get("records"), list):
+            fail(f"{name}: missing or non-array top-level 'records' (schemas.md §1.6)")
+        if "reviews" in data:
+            fail(
+                f"{name}: has 'reviews' key — reserved for citation_semantic_check.json "
+                "per schemas.md §9.1 / §10 invariant #13"
+            )
+        else:
+            pass_(f"{name}: manifest wrapper valid")
+
+    data = _v150_manifest(q, "citation_semantic_check.json")
+    if data is not None:
+        for key in ("schema_version", "generated_at"):
+            if not isinstance(data.get(key), str) or not data[key]:
+                fail(
+                    f"citation_semantic_check.json: missing or empty top-level {key!r} "
+                    "(schemas.md §1.6)"
+                )
+        if not isinstance(data.get("reviews"), list):
+            fail(
+                "citation_semantic_check.json: missing or non-array top-level 'reviews' "
+                "(schemas.md §9.1 — semantic check uses 'reviews', not 'records')"
+            )
+        if "records" in data:
+            fail(
+                "citation_semantic_check.json: has 'records' key — semantic check uses "
+                "'reviews' per schemas.md §9.1 / §10 invariant #13"
+            )
+        else:
+            pass_("citation_semantic_check.json: manifest wrapper valid")
+
+
+def _check_citation_block(repo_dir, req_id, citation, formal_docs_by_path, req_tier):
+    excerpt = citation.get("citation_excerpt")
+    if not isinstance(excerpt, str) or not excerpt:
+        fail(
+            f"requirements_manifest.json: {req_id} citation has empty or missing "
+            "citation_excerpt (schemas.md §10 invariant #4)"
+        )
+        return
+    doc_path_str = citation.get("document")
+    if not isinstance(doc_path_str, str) or not doc_path_str:
+        fail(f"requirements_manifest.json: {req_id} citation missing 'document' field")
+        return
+    section = citation.get("section")
+    line = citation.get("line")
+    has_section = isinstance(section, str) and section.strip()
+    has_line = isinstance(line, int) and not isinstance(line, bool)
+    if not has_section and not has_line:
+        fail(
+            f"requirements_manifest.json: {req_id} citation has no section or line "
+            "locator (page alone is insufficient; schemas.md §10 invariant #4)"
+        )
+        return
+
+    fd_rec = formal_docs_by_path.get(doc_path_str)
+    if fd_rec is None:
+        fail(
+            f"requirements_manifest.json: {req_id} citation document {doc_path_str!r} "
+            "not in formal_docs_manifest.json (schemas.md §10 invariant #2)"
+        )
+        return
+    fd_tier = fd_rec.get("tier")
+    if fd_tier != req_tier:
+        fail(
+            f"requirements_manifest.json: {req_id} tier={req_tier} does not match "
+            f"cited FORMAL_DOC tier={fd_tier!r} (schemas.md §10 invariant #14)"
+        )
+    fd_sha = fd_rec.get("document_sha256")
+    cite_sha = citation.get("document_sha256")
+    if isinstance(fd_sha, str) and isinstance(cite_sha, str) and fd_sha != cite_sha:
+        fail(
+            f"requirements_manifest.json: {req_id} citation.document_sha256 does not "
+            "match FORMAL_DOC (schemas.md §10 invariant #3 — citation_stale)"
+        )
+
+    if _CITATION_VERIFIER is None:
+        warn(
+            f"requirements_manifest.json: {req_id} byte-equality skipped — "
+            "bin/citation_verifier unavailable on this install"
+        )
+        return
+
+    doc_path = repo_dir / doc_path_str
+    if not doc_path.is_file():
+        fail(
+            f"requirements_manifest.json: {req_id} citation document not on disk: "
+            f"{doc_path_str}"
+        )
+        return
+    try:
+        bytes_ = doc_path.read_bytes()
+        fresh = _CITATION_VERIFIER.extract_excerpt(
+            bytes_, doc_path.suffix.lower(), section if has_section else None,
+            line if has_line else None,
+        )
+    except _CITATION_VERIFIER.CitationResolutionError as exc:
+        fail(
+            f"requirements_manifest.json: {req_id} citation location does not resolve "
+            f"in {doc_path_str}: {exc.message} (schemas.md §10 invariant #4)"
+        )
+        return
+    except Exception as exc:  # noqa: BLE001 — fail with a real message
+        fail(f"requirements_manifest.json: {req_id} citation verifier errored: {exc}")
+        return
+
+    if fresh != excerpt:
+        fail(
+            f"requirements_manifest.json: {req_id} citation_excerpt is not byte-equal "
+            f"to fresh extraction from {doc_path_str} "
+            "(schemas.md §10 invariant #11 — Layer-1 anti-hallucination)"
+        )
+
+
+def check_v1_5_0_requirements_manifest(repo_dir, q):
+    """§10 invariants #1, #4, #8, #11, #14 — REQ shape, citation gating, functional_section."""
+    req_data = _v150_manifest(q, "requirements_manifest.json")
+    if req_data is None:
+        return
+    records = req_data.get("records")
+    if not isinstance(records, list):
+        return  # wrapper check already reported
+    fd_data = _v150_manifest(q, "formal_docs_manifest.json")
+    formal_docs_by_path = {}
+    if fd_data and isinstance(fd_data.get("records"), list):
+        for rec in fd_data["records"]:
+            if isinstance(rec, dict) and isinstance(rec.get("source_path"), str):
+                formal_docs_by_path[rec["source_path"]] = rec
+
+    for idx, rec in enumerate(records):
+        if not isinstance(rec, dict):
+            fail(f"requirements_manifest.json record #{idx}: not a JSON object")
+            continue
+        req_id = rec.get("id", f"<#{idx}>")
+
+        fs = rec.get("functional_section")
+        if not isinstance(fs, str) or not fs.strip():
+            fail(
+                f"requirements_manifest.json: {req_id} has empty or missing "
+                "functional_section (schemas.md §10 invariant #8)"
+            )
+
+        tier = rec.get("tier")
+        citation = rec.get("citation")
+        if tier in (1, 2):
+            if not isinstance(citation, dict):
+                fail(
+                    f"requirements_manifest.json: {req_id} is tier {tier} but has no "
+                    "citation block (schemas.md §10 invariant #1)"
+                )
+                continue
+            _check_citation_block(repo_dir, req_id, citation, formal_docs_by_path, tier)
+        elif tier in (3, 4, 5):
+            if citation is not None:
+                fail(
+                    f"requirements_manifest.json: {req_id} is tier {tier} but carries "
+                    "a citation block (citations are for Tier 1/2 only per schemas.md "
+                    "§10 invariant #1)"
+                )
+        elif tier is None:
+            fail(f"requirements_manifest.json: {req_id} missing 'tier' field")
+        else:
+            fail(
+                f"requirements_manifest.json: {req_id} has invalid tier {tier!r} "
+                "(expected integer 1–5)"
+            )
+
+    pass_("requirements_manifest.json: v1.5.0 Layer-1 REQ checks complete")
+
+
+def check_v1_5_0_bugs_manifest(q):
+    """§10 invariants #7, #12 — disposition completeness + legal fix_type × disposition."""
+    data = _v150_manifest(q, "bugs_manifest.json")
+    if data is None:
+        return
+    records = data.get("records")
+    if not isinstance(records, list):
+        return
+    for idx, rec in enumerate(records):
+        if not isinstance(rec, dict):
+            continue
+        bug_id = rec.get("id", f"<#{idx}>")
+        disp = rec.get("disposition")
+        if disp not in _V150_VALID_DISPOSITIONS:
+            fail(
+                f"bugs_manifest.json: {bug_id} has invalid or missing disposition "
+                f"{disp!r} (schemas.md §10 invariant #7, valid: "
+                f"{', '.join(_V150_VALID_DISPOSITIONS)})"
+            )
+            continue
+        rationale = rec.get("disposition_rationale")
+        if not isinstance(rationale, str) or not rationale.strip():
+            fail(
+                f"bugs_manifest.json: {bug_id} has empty or missing "
+                "disposition_rationale (schemas.md §10 invariant #7)"
+            )
+        ft = rec.get("fix_type")
+        if ft not in _V150_VALID_FIX_TYPES:
+            fail(
+                f"bugs_manifest.json: {bug_id} has invalid or missing fix_type {ft!r}"
+            )
+            continue
+        if (disp, ft) in _V150_ILLEGAL_FIX_PAIRS:
+            fail(
+                f"bugs_manifest.json: {bug_id} illegal disposition × fix_type "
+                f"combination: ({disp}, {ft}) per schemas.md §3.4 / §10 invariant #12"
+            )
+
+    pass_("bugs_manifest.json: v1.5.0 Layer-1 BUG checks complete")
+
+
+def check_v1_5_0_index_md(q):
+    """§10 invariant #10 — quality/INDEX.md exists with all §11 required fields."""
+    path = q / "INDEX.md"
+    v150_artifacts = (
+        "formal_docs_manifest.json",
+        "requirements_manifest.json",
+        "use_cases_manifest.json",
+        "bugs_manifest.json",
+        "citation_semantic_check.json",
+    )
+    is_v150_run = any((q / name).is_file() for name in v150_artifacts)
+    if not path.is_file():
+        if is_v150_run:
+            fail(
+                "quality/INDEX.md does not exist (required on every v1.5.0 run per "
+                "schemas.md §10 invariant #10)"
+            )
+        return
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    match = re.search(r"```json\n(.*?)\n```", text, re.DOTALL)
+    if not match:
+        fail("quality/INDEX.md: no fenced JSON block found (schemas.md §11)")
+        return
+    try:
+        payload = json.loads(match.group(1))
+    except json.JSONDecodeError as exc:
+        fail(f"quality/INDEX.md: fenced JSON block invalid: {exc}")
+        return
+    if not isinstance(payload, dict):
+        fail("quality/INDEX.md: fenced JSON block is not a JSON object")
+        return
+    for key in _V150_REQUIRED_INDEX_FIELDS:
+        if key not in payload:
+            fail(f"quality/INDEX.md: missing required field {key!r} (schemas.md §11)")
+            continue
+        val = payload[key]
+        if isinstance(val, str) and not val:
+            fail(f"quality/INDEX.md: field {key!r} is empty string (schemas.md §11)")
+    summary = payload.get("summary")
+    if isinstance(summary, dict):
+        for sub in _V150_REQUIRED_SUMMARY_KEYS:
+            if sub not in summary:
+                fail(
+                    f"quality/INDEX.md: summary missing {sub!r} sub-key "
+                    "(schemas.md §11)"
+                )
+    pass_("quality/INDEX.md: §11 fields present")
+
+
+def check_v1_5_0_gate_invariants(repo_dir, q):
+    """Dispatcher that runs every Layer-1 mechanical check from schemas.md §10."""
+    check_v1_5_0_plaintext_extensions(repo_dir)
+    check_v1_5_0_manifest_wrappers(q)
+    check_v1_5_0_requirements_manifest(repo_dir, q)
+    check_v1_5_0_bugs_manifest(q)
+    check_v1_5_0_index_md(q)
+
+
 def check_repo(repo_dir, version_arg, strictness):
     """Run all checks for one repo. Writes output via pass_/fail_/warn/info."""
     repo_dir = Path(repo_dir)
@@ -1102,6 +1484,7 @@ def check_repo(repo_dir, version_arg, strictness):
     skill_version = check_version_stamps(repo_dir, q)
     check_cross_run_contamination(repo_dir, q, version_arg, skill_version)
     check_run_metadata(q)
+    check_v1_5_0_gate_invariants(repo_dir, q)
 
     print("")
 

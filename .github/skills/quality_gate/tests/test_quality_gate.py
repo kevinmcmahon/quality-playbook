@@ -1077,5 +1077,426 @@ class TestSkillVersionDetection(unittest.TestCase):
             )
 
 
+# ---------------------------------------------------------------------------
+# v1.5.0 Layer-1 checks — negative fixtures per schemas.md §10 invariants.
+# Each test targets one check function directly; fixtures are synthetic trees
+# and manifest JSON blobs crafted to exercise one invariant at a time.
+# ---------------------------------------------------------------------------
+
+
+import io
+from contextlib import redirect_stdout
+
+
+V150_VIRTIO_EXCERPT_TEXT = (
+    "Intro\n"
+    "\n"
+    "2.4 Device initialization\n"
+    "The driver MUST perform the following steps, in order, before the\n"
+    "device is considered operational.\n"
+)
+V150_VIRTIO_SHA = __import__("hashlib").sha256(V150_VIRTIO_EXCERPT_TEXT.encode("utf-8")).hexdigest()
+V150_VIRTIO_EXCERPT = (
+    "2.4 Device initialization\n"
+    "The driver MUST perform the following steps, in order, before the\n"
+    "device is considered operational."
+)
+
+
+def _capture_fail_output(func, *args, **kwargs):
+    """Run a gate check function and return (fail_count, full_stdout)."""
+    quality_gate.FAIL = 0
+    quality_gate.WARN = 0
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        func(*args, **kwargs)
+    return quality_gate.FAIL, buf.getvalue()
+
+
+class V150FixtureBase(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self._tmp.name)
+        self.q = self.repo / "quality"
+        self.q.mkdir(parents=True)
+        quality_gate.FAIL = 0
+        quality_gate.WARN = 0
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def write_manifest(self, name, records_key, payload, *, schema_version="1.4.6"):
+        wrapper = {
+            "schema_version": schema_version,
+            "generated_at": "2026-04-19T14:30:22Z",
+            records_key: payload,
+        }
+        (self.q / name).write_text(json.dumps(wrapper), encoding="utf-8")
+
+    def write_formal_doc(self):
+        (self.repo / "formal_docs").mkdir()
+        (self.repo / "formal_docs" / "virtio-excerpt.txt").write_text(
+            V150_VIRTIO_EXCERPT_TEXT, encoding="utf-8"
+        )
+        self.write_manifest(
+            "formal_docs_manifest.json",
+            "records",
+            [
+                {
+                    "source_path": "formal_docs/virtio-excerpt.txt",
+                    "document_sha256": V150_VIRTIO_SHA,
+                    "tier": 2,
+                }
+            ],
+        )
+
+    def good_req_record(self, req_id="REQ-001"):
+        return {
+            "id": req_id,
+            "tier": 2,
+            "functional_section": "Device initialization",
+            "citation": {
+                "document": "formal_docs/virtio-excerpt.txt",
+                "document_sha256": V150_VIRTIO_SHA,
+                "section": "2.4",
+                "citation_excerpt": V150_VIRTIO_EXCERPT,
+            },
+        }
+
+
+class TestV150PlaintextExtensions(V150FixtureBase):
+    def test_pdf_in_formal_docs_fails(self):
+        (self.repo / "formal_docs").mkdir()
+        (self.repo / "formal_docs" / "spec.pdf").write_text("%PDF", encoding="utf-8")
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_plaintext_extensions, self.repo
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("spec.pdf", out)
+        self.assertIn("schemas.md §2", out)
+
+    def test_docx_in_informal_docs_fails(self):
+        (self.repo / "informal_docs").mkdir()
+        (self.repo / "informal_docs" / "notes.docx").write_bytes(b"PK")
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_plaintext_extensions, self.repo
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("notes.docx", out)
+
+    def test_readme_skipped(self):
+        (self.repo / "formal_docs").mkdir()
+        (self.repo / "formal_docs" / "README.md").write_text("folder doc")
+        fails, _ = _capture_fail_output(
+            quality_gate.check_v1_5_0_plaintext_extensions, self.repo
+        )
+        self.assertEqual(fails, 0)
+
+    def test_meta_json_sidecar_skipped(self):
+        (self.repo / "formal_docs").mkdir()
+        (self.repo / "formal_docs" / "spec.txt").write_text("body\n")
+        (self.repo / "formal_docs" / "spec.meta.json").write_text('{"tier": 2}')
+        fails, _ = _capture_fail_output(
+            quality_gate.check_v1_5_0_plaintext_extensions, self.repo
+        )
+        self.assertEqual(fails, 0)
+
+    def test_absent_folders_is_noop(self):
+        fails, _ = _capture_fail_output(
+            quality_gate.check_v1_5_0_plaintext_extensions, self.repo
+        )
+        self.assertEqual(fails, 0)
+
+
+class TestV150ManifestWrappers(V150FixtureBase):
+    def test_records_shaped_manifest_missing_schema_version_fails(self):
+        (self.q / "formal_docs_manifest.json").write_text(
+            json.dumps({"generated_at": "2026-04-19T14:30:22Z", "records": []})
+        )
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_manifest_wrappers, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("schema_version", out)
+
+    def test_semantic_check_with_records_instead_of_reviews_fails(self):
+        (self.q / "citation_semantic_check.json").write_text(
+            json.dumps({
+                "schema_version": "1.4.6",
+                "generated_at": "2026-04-19T14:30:22Z",
+                "records": [],
+            })
+        )
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_manifest_wrappers, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("reviews", out)
+        self.assertIn("schemas.md §9.1", out)
+
+    def test_records_manifest_with_reviews_key_fails(self):
+        (self.q / "bugs_manifest.json").write_text(
+            json.dumps({
+                "schema_version": "1.4.6",
+                "generated_at": "2026-04-19T14:30:22Z",
+                "records": [],
+                "reviews": [],
+            })
+        )
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_manifest_wrappers, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("reviews", out)
+
+    def test_records_not_an_array_fails(self):
+        (self.q / "requirements_manifest.json").write_text(
+            json.dumps({
+                "schema_version": "1.4.6",
+                "generated_at": "2026-04-19T14:30:22Z",
+                "records": {"not": "array"},
+            })
+        )
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_manifest_wrappers, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("'records'", out)
+
+
+class TestV150RequirementsManifest(V150FixtureBase):
+    def test_tier_1_without_citation_fails(self):
+        self.write_formal_doc()
+        # Re-write formal_docs with tier=1 so binding cross-check succeeds.
+        self.write_manifest(
+            "formal_docs_manifest.json",
+            "records",
+            [
+                {
+                    "source_path": "formal_docs/virtio-excerpt.txt",
+                    "document_sha256": V150_VIRTIO_SHA,
+                    "tier": 1,
+                }
+            ],
+        )
+        self.write_manifest(
+            "requirements_manifest.json",
+            "records",
+            [{"id": "REQ-001", "tier": 1, "functional_section": "Foo"}],
+        )
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_requirements_manifest, self.repo, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("REQ-001", out)
+        self.assertIn("invariant #1", out)
+
+    def test_tier_3_with_citation_fails(self):
+        self.write_manifest(
+            "requirements_manifest.json",
+            "records",
+            [
+                {
+                    "id": "REQ-042",
+                    "tier": 3,
+                    "functional_section": "Foo",
+                    "citation": {"document": "x", "citation_excerpt": "y"},
+                }
+            ],
+        )
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_requirements_manifest, self.repo, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("REQ-042", out)
+
+    def test_missing_functional_section_fails(self):
+        self.write_manifest(
+            "requirements_manifest.json",
+            "records",
+            [{"id": "REQ-010", "tier": 3, "functional_section": ""}],
+        )
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_requirements_manifest, self.repo, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("REQ-010", out)
+        self.assertIn("functional_section", out)
+        self.assertIn("invariant #8", out)
+
+    def test_byte_equality_mismatch_fails(self):
+        self.write_formal_doc()
+        rec = self.good_req_record()
+        rec["citation"]["citation_excerpt"] = "tampered paraphrase that doesn't match"
+        self.write_manifest("requirements_manifest.json", "records", [rec])
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_requirements_manifest, self.repo, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("byte-equal", out)
+        self.assertIn("invariant #11", out)
+
+    def test_tier_mismatch_with_formal_doc_fails(self):
+        self.write_formal_doc()  # FORMAL_DOC tier=2
+        rec = self.good_req_record()
+        rec["tier"] = 1  # REQ claims Tier 1
+        # citation must still exist for Tier 1 REQs
+        self.write_manifest("requirements_manifest.json", "records", [rec])
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_requirements_manifest, self.repo, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("invariant #14", out)
+
+    def test_good_tier_2_req_passes(self):
+        self.write_formal_doc()
+        self.write_manifest(
+            "requirements_manifest.json", "records", [self.good_req_record()]
+        )
+        fails, _ = _capture_fail_output(
+            quality_gate.check_v1_5_0_requirements_manifest, self.repo, self.q
+        )
+        self.assertEqual(fails, 0)
+
+    def test_page_only_locator_fails(self):
+        self.write_formal_doc()
+        rec = self.good_req_record()
+        rec["citation"] = {
+            "document": "formal_docs/virtio-excerpt.txt",
+            "document_sha256": V150_VIRTIO_SHA,
+            "page": 3,  # page alone is insufficient
+            "citation_excerpt": "x",
+        }
+        self.write_manifest("requirements_manifest.json", "records", [rec])
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_requirements_manifest, self.repo, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("section or line", out)
+
+
+class TestV150BugsManifest(V150FixtureBase):
+    def test_missing_disposition_fails(self):
+        self.write_manifest(
+            "bugs_manifest.json",
+            "records",
+            [{"id": "BUG-001"}],
+        )
+        fails, out = _capture_fail_output(quality_gate.check_v1_5_0_bugs_manifest, self.q)
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("BUG-001", out)
+        self.assertIn("disposition", out)
+
+    def test_invalid_disposition_enum_fails(self):
+        self.write_manifest(
+            "bugs_manifest.json",
+            "records",
+            [{"id": "BUG-002", "disposition": "rewrite", "fix_type": "code"}],
+        )
+        fails, out = _capture_fail_output(quality_gate.check_v1_5_0_bugs_manifest, self.q)
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("BUG-002", out)
+        self.assertIn("rewrite", out)
+
+    def test_illegal_fix_type_disposition_combo_fails(self):
+        self.write_manifest(
+            "bugs_manifest.json",
+            "records",
+            [
+                {
+                    "id": "BUG-003",
+                    "disposition": "code-fix",
+                    "fix_type": "spec",
+                    "disposition_rationale": "because",
+                }
+            ],
+        )
+        fails, out = _capture_fail_output(quality_gate.check_v1_5_0_bugs_manifest, self.q)
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("BUG-003", out)
+        self.assertIn("invariant #12", out)
+
+    def test_missing_rationale_fails(self):
+        self.write_manifest(
+            "bugs_manifest.json",
+            "records",
+            [{"id": "BUG-004", "disposition": "mis-read", "fix_type": "code"}],
+        )
+        fails, out = _capture_fail_output(quality_gate.check_v1_5_0_bugs_manifest, self.q)
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("disposition_rationale", out)
+
+
+class TestV150IndexMd(V150FixtureBase):
+    def _valid_index(self):
+        return (
+            "# Run Index — 20260419T143022Z\n\n"
+            "```json\n"
+            + json.dumps(
+                {
+                    "run_timestamp_start": "2026-04-19T14:30:22Z",
+                    "run_timestamp_end": "2026-04-19T14:45:22Z",
+                    "duration_seconds": 900,
+                    "qpb_version": "1.4.6",
+                    "target_repo_path": ".",
+                    "target_repo_git_sha": "abc123",
+                    "target_project_type": "Code",
+                    "phases_executed": [],
+                    "summary": {"requirements": {}, "bugs": {}, "gate_verdict": "pass"},
+                    "artifacts": [],
+                }
+            )
+            + "\n```\n"
+        )
+
+    def test_missing_index_md_fails_when_v1_5_0_manifests_present(self):
+        self.write_manifest("requirements_manifest.json", "records", [])
+        fails, out = _capture_fail_output(quality_gate.check_v1_5_0_index_md, self.q)
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("INDEX.md", out)
+        self.assertIn("invariant #10", out)
+
+    def test_legacy_run_without_manifests_is_noop(self):
+        fails, _ = _capture_fail_output(quality_gate.check_v1_5_0_index_md, self.q)
+        self.assertEqual(fails, 0)
+
+    def test_missing_required_field_fails(self):
+        text = self._valid_index().replace(
+            '"duration_seconds": 900,', ""
+        )
+        (self.q / "INDEX.md").write_text(text, encoding="utf-8")
+        fails, out = _capture_fail_output(quality_gate.check_v1_5_0_index_md, self.q)
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("duration_seconds", out)
+
+    def test_empty_string_field_fails(self):
+        payload = json.loads(self._valid_index().split("```json\n")[1].split("\n```")[0])
+        payload["qpb_version"] = ""
+        (self.q / "INDEX.md").write_text(
+            "# Run Index\n\n```json\n" + json.dumps(payload) + "\n```\n",
+            encoding="utf-8",
+        )
+        fails, out = _capture_fail_output(quality_gate.check_v1_5_0_index_md, self.q)
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("qpb_version", out)
+        self.assertIn("empty", out)
+
+    def test_valid_index_passes(self):
+        (self.q / "INDEX.md").write_text(self._valid_index(), encoding="utf-8")
+        fails, _ = _capture_fail_output(quality_gate.check_v1_5_0_index_md, self.q)
+        self.assertEqual(fails, 0)
+
+
+class TestV150LegacyRunGracefulSkip(V150FixtureBase):
+    """A repo with no v1.5.0 manifests should generate zero new FAILs."""
+
+    def test_all_checks_noop_on_legacy_repo(self):
+        # No manifests, no formal_docs, no INDEX.md — purely v1.4.x shape.
+        fails, _ = _capture_fail_output(
+            quality_gate.check_v1_5_0_gate_invariants, self.repo, self.q
+        )
+        self.assertEqual(fails, 0)
+
+
 if __name__ == "__main__":
     unittest.main()
