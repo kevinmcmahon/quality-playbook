@@ -1640,6 +1640,22 @@ class TestV150SemanticCheckHappyPath(V150SemanticCheckFixtureBase):
         self.assertEqual(fails, 0)
         self.assertEqual(warns, 0)
 
+    def test_three_tier12_reqs_nine_supports_passes(self):
+        """Phase 6 Council-briefing fixture #1 (Phase 7 r0 carryover):
+        3 Tier 1/2 REQs × 3 reviewers = 9 supports, gate passes."""
+        self.write_reqs([1, 2, 1])
+        reviews = [
+            {"req_id": rid, "reviewer": m, "verdict": "supports", "notes": ""}
+            for rid in ("REQ-001", "REQ-002", "REQ-003")
+            for m in ("claude-opus-4.7", "gpt-5.4", "gemini-2.5-pro")
+        ]
+        self.write_reviews(reviews)
+        fails, warns, _ = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertEqual(fails, 0)
+        self.assertEqual(warns, 0)
+
     def test_no_tier_12_reqs_passes(self):
         """Spec Gap: all REQs Tier 3 → invariant vacuously satisfied."""
         self.write_reqs([3, 4, 5])
