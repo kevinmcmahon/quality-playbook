@@ -24,9 +24,11 @@ from typing import List, Optional, Sequence, Tuple
 try:
     from . import benchmark_lib as lib
     from . import archive_lib
+    from . import progress_monitor
 except ImportError:
     import benchmark_lib as lib
     import archive_lib
+    import progress_monitor
 
 
 ALL_STRATEGIES = ["gap", "unfiltered", "parity", "adversarial"]
@@ -84,6 +86,26 @@ def parse_strategy_list(value: str) -> List[str]:
 class GateCheck:
     ok: bool
     messages: List[str]
+
+
+def _parse_progress_interval(value: str) -> int:
+    """Parse the --progress-interval argument. Range 1..60 seconds.
+
+    v1.5.1 Item 2.2 / Impl-Plan Open Question 4: 2s feels responsive;
+    1s is busier; 5s feels slow. The upper bound at 60s is a sanity
+    cap — polling slower than once a minute isn't a progress monitor.
+    """
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise argparse.ArgumentTypeError(
+            f"--progress-interval must be an integer; got {value!r}"
+        )
+    if not 1 <= parsed <= 60:
+        raise argparse.ArgumentTypeError(
+            f"--progress-interval must be between 1 and 60 seconds; got {parsed}"
+        )
+    return parsed
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -144,8 +166,43 @@ def build_parser() -> argparse.ArgumentParser:
             "Suppress stdout echo of logboth() output. The built-in run log "
             "is still written in full. Intended for AI-sandbox invocations "
             "that want silent stdout; the v1.5.0 isatty() gate that used "
-            "to hide tee'd output is gone — this flag is the explicit "
+            "to hide tee'd output is gone — this thread is the explicit "
             "opt-out (v1.5.1 Item 2.1, Risk Register row 1)."
+        ),
+    )
+    # v1.5.1 Item 2.2: live progress monitor flags. --verbose and --quiet
+    # are mutually exclusive; --progress-interval has a small 1..60 range.
+    verbosity = parser.add_mutually_exclusive_group()
+    verbosity.add_argument(
+        "--verbose",
+        dest="verbose",
+        action="store_true",
+        help=(
+            "Stream the current phase's transcript to stdout in addition to "
+            "PROGRESS.md headers. Useful for watching the run without "
+            "opening a second terminal."
+        ),
+    )
+    verbosity.add_argument(
+        "--quiet",
+        dest="quiet",
+        action="store_true",
+        help=(
+            "Suppress both the PROGRESS.md header monitor and the --verbose "
+            "transcript tail. Phase-boundary announcements and errors still "
+            "print. The run log file is written in full regardless."
+        ),
+    )
+    parser.add_argument(
+        "--progress-interval",
+        dest="progress_interval",
+        type=_parse_progress_interval,
+        default=2,
+        metavar="N",
+        help=(
+            "Seconds between PROGRESS.md polls (1 <= N <= 60, default 2). "
+            "Lower values are more responsive but produce more stat() calls; "
+            "higher values feel slower."
         ),
     )
     parser.add_argument("--kill", action="store_true", help="Kill processes from the current or last parallel run.")
@@ -1198,10 +1255,36 @@ def run_one_phased(repo_dir: Path, phase_list: Sequence[str], args: argparse.Nam
 
     (repo_dir / "quality" / "control_prompts").mkdir(parents=True, exist_ok=True)
     lib.logboth(log_file, lib.log(f"Starting playbook (phases: {','.join(phase_list)}): {repo_dir.name} (runner={args.runner})"))
-    for phase in phase_list:
-        if not run_one_phase(repo_dir, phase, phase_list, args, log_file, timestamp):
-            lib.logboth(log_file, lib.log(f"ABORT: Phase {phase} gate failed for {repo_dir.name}"))
-            return 1
+
+    # v1.5.1 Item 2.2: live progress monitor. Started here so the first
+    # PROGRESS.md write (inside Phase 1) gets picked up within one poll
+    # interval; torn down in the `finally` below so an abnormal Phase N
+    # exit still joins the thread.
+    monitor = progress_monitor.ProgressMonitor(
+        progress_path=repo_dir / "quality" / "PROGRESS.md",
+        log_file=log_file,
+        emit=lib.logboth,
+        interval=getattr(args, "progress_interval", 2),
+        verbose=getattr(args, "verbose", False),
+        quiet=getattr(args, "quiet", False),
+    )
+
+    exit_status = 0
+    with monitor:
+        for phase in phase_list:
+            # Transcript rollover: the monitor tails whatever file it's
+            # pointed at; this swap is atomic from the monitor's view
+            # (guarded by ProgressMonitor._transcript_lock).
+            monitor.set_transcript_path(
+                repo_dir / "quality" / "control_prompts" / f"phase{phase}.output.txt"
+            )
+            if not run_one_phase(repo_dir, phase, phase_list, args, log_file, timestamp):
+                lib.logboth(log_file, lib.log(f"ABORT: Phase {phase} gate failed for {repo_dir.name}"))
+                exit_status = 1
+                break
+    if exit_status:
+        return exit_status
+
     lib.logboth(log_file, lib.log(f"Playbook complete (phases: {','.join(phase_list)}): {repo_dir.name}"))
 
     missing = final_artifact_gaps(repo_dir)
@@ -1323,6 +1406,13 @@ def display_run_header(args: argparse.Namespace, repo_dirs: Sequence[Path], disp
         print("No formal docs: True  (pre-run formal_docs/ guard suppressed)")
     if getattr(args, "no_stdout_echo", False):
         print("No stdout echo: True  (logboth stdout default disabled)")
+    if getattr(args, "verbose", False):
+        print("Progress:  verbose  (phase transcript + PROGRESS.md headers stream to stdout)")
+    elif getattr(args, "quiet", False):
+        print("Progress:  quiet    (monitor suppressed; log file still written in full)")
+    else:
+        interval = getattr(args, "progress_interval", 2)
+        print(f"Progress:  headers  (PROGRESS.md poll every {interval}s)")
     print(f"Parallel: {args.parallel}")
     if getattr(args, "full_run", False):
         print("Mode:     full-run (fresh main run + all four iteration strategies)")
@@ -1449,6 +1539,13 @@ def build_worker_command(args: argparse.Namespace, target_path: str) -> List[str
         command.append("--no-formal-docs")
     if getattr(args, "no_stdout_echo", False):
         command.append("--no-stdout-echo")
+    if getattr(args, "verbose", False):
+        command.append("--verbose")
+    if getattr(args, "quiet", False):
+        command.append("--quiet")
+    interval = getattr(args, "progress_interval", 2)
+    if interval and int(interval) != 2:
+        command.extend(["--progress-interval", str(int(interval))])
     command.append(target_path)
     return command
 

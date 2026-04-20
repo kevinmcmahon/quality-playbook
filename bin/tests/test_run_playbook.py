@@ -1184,5 +1184,106 @@ class NoStdoutEchoFlagTests(unittest.TestCase):
             self.assertFalse(payload["invocation_flags"]["no_stdout_echo"])
 
 
+class VerboseQuietProgressFlagTests(unittest.TestCase):
+    """v1.5.1 Item 2.2 CLI flags: --verbose, --quiet (mutex),
+    --progress-interval (1..60)."""
+
+    def test_default_flag_values(self) -> None:
+        args = run_playbook.parse_args(["./somedir"])
+        self.assertFalse(args.verbose)
+        self.assertFalse(args.quiet)
+        self.assertEqual(args.progress_interval, 2)
+
+    def test_verbose_sets_flag(self) -> None:
+        args = run_playbook.parse_args(["--verbose", "./somedir"])
+        self.assertTrue(args.verbose)
+        self.assertFalse(args.quiet)
+
+    def test_quiet_sets_flag(self) -> None:
+        args = run_playbook.parse_args(["--quiet", "./somedir"])
+        self.assertTrue(args.quiet)
+        self.assertFalse(args.verbose)
+
+    def test_verbose_and_quiet_are_mutually_exclusive(self) -> None:
+        with self.assertRaises(SystemExit):
+            run_playbook.parse_args(["--verbose", "--quiet", "./somedir"])
+
+    def test_progress_interval_accepts_in_range(self) -> None:
+        for value in ("1", "2", "30", "60"):
+            args = run_playbook.parse_args(["--progress-interval", value, "./somedir"])
+            self.assertEqual(args.progress_interval, int(value))
+
+    def test_progress_interval_rejects_below_range(self) -> None:
+        with self.assertRaises(SystemExit):
+            run_playbook.parse_args(["--progress-interval", "0", "./somedir"])
+
+    def test_progress_interval_rejects_above_range(self) -> None:
+        with self.assertRaises(SystemExit):
+            run_playbook.parse_args(["--progress-interval", "61", "./somedir"])
+
+    def test_progress_interval_rejects_non_integer(self) -> None:
+        with self.assertRaises(SystemExit):
+            run_playbook.parse_args(["--progress-interval", "fast", "./somedir"])
+
+    def test_build_worker_command_propagates_verbose(self) -> None:
+        args = run_playbook.argparse.Namespace(
+            parallel=False, runner="claude", no_seeds=False, phase=None,
+            next_iteration=False, full_run=False, strategy=["gap"],
+            model=None, no_formal_docs=False, no_stdout_echo=False,
+            verbose=True, quiet=False, progress_interval=2,
+            kill=False, targets=["./project-a"], worker=False,
+        )
+        command = run_playbook.build_worker_command(args, "/abs/target")
+        self.assertIn("--verbose", command)
+        self.assertNotIn("--quiet", command)
+        # Default interval should NOT be propagated (keep the worker
+        # invocation terse).
+        self.assertNotIn("--progress-interval", command)
+
+    def test_build_worker_command_propagates_quiet_and_custom_interval(self) -> None:
+        args = run_playbook.argparse.Namespace(
+            parallel=False, runner="claude", no_seeds=False, phase=None,
+            next_iteration=False, full_run=False, strategy=["gap"],
+            model=None, no_formal_docs=False, no_stdout_echo=False,
+            verbose=False, quiet=True, progress_interval=5,
+            kill=False, targets=["./project-a"], worker=False,
+        )
+        command = run_playbook.build_worker_command(args, "/abs/target")
+        self.assertIn("--quiet", command)
+        self.assertIn("--progress-interval", command)
+        self.assertIn("5", command)
+
+    def test_invocation_flags_persist_verbose_quiet_progress_interval(self) -> None:
+        import json as _json
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            run_playbook.write_live_index_stub(
+                repo_dir, "20260420T140000Z",
+                verbose=True, quiet=False, progress_interval=7,
+            )
+            text = (repo_dir / "quality" / "INDEX.md").read_text(encoding="utf-8")
+            start = text.index("```json") + len("```json")
+            end = text.index("```", start)
+            payload = _json.loads(text[start:end])
+            flags = payload["invocation_flags"]
+            self.assertTrue(flags["verbose"])
+            self.assertFalse(flags["quiet"])
+            self.assertEqual(flags["progress_interval"], 7)
+
+    def test_invocation_flags_defaults_for_phase_2(self) -> None:
+        import json as _json
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            run_playbook.write_live_index_stub(repo_dir, "20260420T140000Z")
+            text = (repo_dir / "quality" / "INDEX.md").read_text(encoding="utf-8")
+            start = text.index("```json") + len("```json")
+            end = text.index("```", start)
+            payload = _json.loads(text[start:end])
+            flags = payload["invocation_flags"]
+            self.assertFalse(flags["verbose"])
+            self.assertFalse(flags["quiet"])
+            self.assertEqual(flags["progress_interval"], 2)
+
+
 if __name__ == "__main__":
     unittest.main()
