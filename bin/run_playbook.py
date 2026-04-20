@@ -594,38 +594,139 @@ def docs_present(repo_dir: Path) -> bool:
     )
 
 
-def archive_previous_run(repo_dir: Path, timestamp: str) -> None:
-    """Stage a snapshot of quality/ into quality/runs/<timestamp>/ and clear the live tree.
-
-    v1.5.0 layout: control_prompts/ now lives under quality/ (migrated from the
-    pre-v1.5.0 root). The full quality/ subtree — including control_prompts/ and
-    results/ — is captured in one copytree, with quality/runs/ itself excluded
-    so the snapshot doesn't recurse into the archive folder it lives under.
-    """
-    quality_dir = repo_dir / "quality"
+def _clear_live_quality(quality_dir: Path) -> None:
+    """Remove every live child of quality/ except the runs/ archive subtree and
+    RUN_INDEX.md (the append-only history that lives alongside runs/)."""
     if not quality_dir.is_dir():
         return
-    archive_root = repo_dir / "quality" / "runs" / timestamp
-    partial_dir = repo_dir / "quality" / "runs" / (timestamp + ".partial")
-    archive_root.parent.mkdir(parents=True, exist_ok=True)
-    if archive_root.exists():
-        shutil.rmtree(archive_root)
-    if partial_dir.exists():
-        shutil.rmtree(partial_dir)
-    shutil.copytree(
-        quality_dir,
-        partial_dir / "quality",
-        ignore=shutil.ignore_patterns("runs"),
-    )
-    partial_dir.rename(archive_root)
-    # Tear down the live quality/ tree but keep the archive we just staged.
     for child in list(quality_dir.iterdir()):
-        if child.name == "runs":
+        if child.name in ("runs", "RUN_INDEX.md"):
             continue
         if child.is_dir():
             shutil.rmtree(child, ignore_errors=True)
         else:
             child.unlink(missing_ok=True)
+
+
+def _prior_run_id_from_live_index(quality_dir: Path) -> Optional[str]:
+    """Return the prior run's compact timestamp from quality/INDEX.md, or None."""
+    index_path = quality_dir / "INDEX.md"
+    if not index_path.is_file():
+        return None
+    payload = archive_lib.load_index_payload(index_path)
+    if not isinstance(payload, dict):
+        return None
+    ts = payload.get("run_timestamp_start")
+    if not isinstance(ts, str) or not ts:
+        return None
+    return archive_lib.compact_from_extended(ts)
+
+
+def archive_previous_run(repo_dir: Path, current_run_timestamp: str) -> None:
+    """Make room for a new run by archiving whatever live quality/ content remains.
+
+    v1.5.0 unified pipeline (Phase 5 revision r1): both the Phase-1 entry
+    archive and the end-of-Phase-6 archive go through
+    `archive_lib.archive_run()` so every `quality/runs/<ts>/` folder has an
+    `INDEX.md` with §11 fields and every run emits a row into
+    `quality/RUN_INDEX.md`.
+
+    Branches, in order:
+
+    1. If quality/ has no live content beyond runs/, nothing to do.
+    2. If quality/INDEX.md names a prior run whose archive folder already
+       exists under quality/runs/<prior-ts>/, the prior run was auto-archived
+       at its own successful Phase 6 — just clear the live tree.
+    3. Otherwise archive the live tree as a partial prior run, using the
+       prior run's own start timestamp when available (from INDEX.md), else
+       falling back to the current run's timestamp.
+    """
+    quality_dir = repo_dir / "quality"
+    if not quality_dir.is_dir():
+        return
+    if not any(child.name != "runs" for child in quality_dir.iterdir()):
+        return
+
+    prior_ts = _prior_run_id_from_live_index(quality_dir)
+    if prior_ts and (quality_dir / "runs" / prior_ts).is_dir():
+        _clear_live_quality(quality_dir)
+        return
+
+    archive_ts = prior_ts or current_run_timestamp
+    try:
+        archive_lib.archive_run(
+            repo_dir,
+            archive_ts,
+            status="partial",
+            gate_verdict_override="partial",
+        )
+    except archive_lib.ArchiveError:
+        # Archive target already exists under a -PARTIAL suffix — the prior
+        # attempt was already preserved. Clear the live tree and continue.
+        pass
+    _clear_live_quality(quality_dir)
+
+
+def write_live_index_stub(repo_dir: Path, timestamp: str) -> None:
+    """Render a minimal quality/INDEX.md at run start so the gate's invariant #10
+    check has something to validate if the run is interrupted mid-flight."""
+    quality_dir = repo_dir / "quality"
+    quality_dir.mkdir(parents=True, exist_ok=True)
+    start_ext = archive_lib.extended_from_compact(timestamp)
+    payload = {
+        "run_timestamp_start": start_ext,
+        "run_timestamp_end": start_ext,
+        "duration_seconds": 0,
+        "qpb_version": lib.detect_skill_version() or "unknown",
+        "target_repo_path": ".",
+        "target_repo_git_sha": archive_lib._git_head_sha(repo_dir),
+        "target_project_type": "Code",  # TODO(v1.5.1): Code/Skill/Hybrid detector.
+        "phases_executed": [],
+        "summary": {"requirements": {}, "bugs": {}, "gate_verdict": "partial"},
+        "artifacts": [],
+    }
+    (quality_dir / "INDEX.md").write_text(
+        archive_lib.render_index_markdown(
+            timestamp,
+            payload,
+            provenance=(
+                "written by bin/run_playbook at Phase 1 entry (stub; "
+                "re-rendered at end of Phase 6)"
+            ),
+        ),
+        encoding="utf-8",
+    )
+
+
+def write_live_index_final(repo_dir: Path, timestamp: str, *, gate_verdict: str) -> None:
+    """Re-render quality/INDEX.md at end of Phase 6 with the run's real counts.
+
+    `gate_verdict` is one of pass | fail | partial. Counts come from
+    `archive_lib.build_index_payload()` walking the live quality/ tree;
+    `run_timestamp_start` is forced to the run's true start and
+    `run_timestamp_end` is captured now so `duration_seconds` is real.
+    """
+    quality_dir = repo_dir / "quality"
+    payload = archive_lib.build_index_payload(
+        repo_dir,
+        quality_dir,
+        target_repo_path=".",
+        target_project_type="Code",
+        gate_verdict_override=gate_verdict,
+    )
+    start_ext = archive_lib.extended_from_compact(timestamp)
+    end_ext = archive_lib.utc_extended_timestamp()
+    payload["run_timestamp_start"] = start_ext
+    payload["run_timestamp_end"] = end_ext
+    payload["duration_seconds"] = archive_lib._duration_seconds(start_ext, end_ext)
+    (quality_dir / "INDEX.md").write_text(
+        archive_lib.render_index_markdown(
+            timestamp,
+            payload,
+            provenance="written by bin/run_playbook at end of Phase 6 (final counts)",
+        ),
+        encoding="utf-8",
+    )
 
 
 def final_artifact_gaps(repo_dir: Path) -> List[str]:
@@ -647,7 +748,14 @@ def final_artifact_gaps(repo_dir: Path) -> List[str]:
     return missing
 
 
-def run_one_phase(repo_dir: Path, phase: str, phase_list: Sequence[str], args: argparse.Namespace, log_file: Path) -> bool:
+def run_one_phase(
+    repo_dir: Path,
+    phase: str,
+    phase_list: Sequence[str],
+    args: argparse.Namespace,
+    log_file: Path,
+    timestamp: str,
+) -> bool:
     gate = check_phase_gate(repo_dir, phase)
     for message in gate.messages:
         lib.logboth(log_file, lib.log(f"  {message}"))
@@ -694,16 +802,25 @@ def run_one_phase(repo_dir: Path, phase: str, phase_list: Sequence[str], args: a
             if lines:
                 gate_result = lines[-1]
         lib.logboth(log_file, lib.log(f"  Phase 6 complete: {gate_result}"))
+        # v1.5.0 end-of-Phase-6 INDEX: re-render quality/INDEX.md with real
+        # counts and the final gate verdict so invariant #10 can validate it.
+        gate_passed = _gate_pass(gate_result, quality_dir)
+        verdict = "pass" if gate_passed else ("partial" if "warn" in gate_result.lower() else "fail")
+        try:
+            write_live_index_final(repo_dir, timestamp, gate_verdict=verdict)
+        except Exception as exc:  # noqa: BLE001 — log and continue
+            lib.logboth(log_file, lib.log(f"  WARN write_live_index_final skipped: {exc}"))
         # v1.5.0 end-of-run archival: on gate pass, snapshot the live quality/
-        # tree into quality/runs/<ts>/ and append a row to RUN_INDEX.md. Failed
-        # or partial runs do NOT enter history automatically — operators use
-        # `python -m bin.archive_lib --status=failed|partial` before the next
-        # run's overwrite if they want to preserve them.
-        if _gate_pass(gate_result, quality_dir):
+        # tree into quality/runs/<run-start-ts>/ and append a row to
+        # RUN_INDEX.md. Failed or partial runs do NOT enter history
+        # automatically — operators use `python -m bin.quality_playbook
+        # archive --status=failed|partial` before the next run's overwrite
+        # if they want to preserve them.
+        if gate_passed:
             try:
                 archive_lib.archive_run(
                     repo_dir,
-                    archive_lib.utc_compact_timestamp(),
+                    timestamp,
                     status="success",
                     gate_verdict_override="pass",
                 )
@@ -736,11 +853,15 @@ def run_one_phased(repo_dir: Path, phase_list: Sequence[str], args: argparse.Nam
 
     if "1" in phase_list:
         archive_previous_run(repo_dir, timestamp)
+        # Write a minimal quality/INDEX.md up front so an interrupted run
+        # still satisfies schemas.md §10 invariant #10 when the gate is
+        # invoked out-of-band on the partial tree.
+        write_live_index_stub(repo_dir, timestamp)
 
     (repo_dir / "quality" / "control_prompts").mkdir(parents=True, exist_ok=True)
     lib.logboth(log_file, lib.log(f"Starting playbook (phases: {','.join(phase_list)}): {repo_dir.name} (runner={args.runner})"))
     for phase in phase_list:
-        if not run_one_phase(repo_dir, phase, phase_list, args, log_file):
+        if not run_one_phase(repo_dir, phase, phase_list, args, log_file, timestamp):
             lib.logboth(log_file, lib.log(f"ABORT: Phase {phase} gate failed for {repo_dir.name}"))
             return 1
     lib.logboth(log_file, lib.log(f"Playbook complete (phases: {','.join(phase_list)}): {repo_dir.name}"))
@@ -771,6 +892,7 @@ def run_one_singlepass(repo_dir: Path, args: argparse.Namespace, timestamp: str)
         lib.logboth(log_file, lib.log(f"Starting iteration ({strategy_name}): {repo_dir.name} (runner={args.runner}, building on existing quality/)"))
     else:
         archive_previous_run(repo_dir, timestamp)
+        write_live_index_stub(repo_dir, timestamp)
         prompt = single_pass_prompt(no_seeds=args.no_seeds)
         pass_label = "full"
         lib.logboth(log_file, lib.log(f"Starting playbook (single-pass): {repo_dir.name} (runner={args.runner})"))

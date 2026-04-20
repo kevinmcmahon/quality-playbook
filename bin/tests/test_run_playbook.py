@@ -85,17 +85,20 @@ class RunPlaybookTests(unittest.TestCase):
         self.assertTrue(run_playbook.iteration_prompt("parity").endswith("using the parity strategy."))
 
     def test_archive_previous_run_archives_and_removes_live_dirs(self) -> None:
+        """Phase 5 revision r1: archive_previous_run now delegates to
+        archive_lib.archive_run with status='partial', so the archive folder
+        carries the -PARTIAL suffix and INDEX.md is produced inside it."""
         with TemporaryDirectory() as temp_dir:
             repo_dir = Path(temp_dir)
             write(repo_dir / "quality" / "BUGS.md", "bug")
             write(repo_dir / "quality" / "control_prompts" / "phase1.output.txt", "prompt")
 
-            run_playbook.archive_previous_run(repo_dir, "20260418-120000")
+            run_playbook.archive_previous_run(repo_dir, "20260418T120000Z")
 
             # Live artifacts cleared; the archive subtree survives under quality/runs/.
             self.assertFalse((repo_dir / "quality" / "BUGS.md").exists())
             self.assertFalse((repo_dir / "quality" / "control_prompts").exists())
-            archive_root = repo_dir / "quality" / "runs" / "20260418-120000" / "quality"
+            archive_root = repo_dir / "quality" / "runs" / "20260418T120000Z-PARTIAL" / "quality"
             self.assertEqual(
                 (archive_root / "BUGS.md").read_text(encoding="utf-8"),
                 "bug",
@@ -104,6 +107,52 @@ class RunPlaybookTests(unittest.TestCase):
                 (archive_root / "control_prompts" / "phase1.output.txt").read_text(encoding="utf-8"),
                 "prompt",
             )
+            # Unified pipeline guarantees per-run INDEX.md and a RUN_INDEX row.
+            self.assertTrue(
+                (repo_dir / "quality" / "runs" / "20260418T120000Z-PARTIAL" / "INDEX.md").is_file()
+            )
+            run_index = (repo_dir / "quality" / "RUN_INDEX.md").read_text(encoding="utf-8")
+            self.assertIn("20260418T120000Z-PARTIAL", run_index)
+
+    def test_archive_previous_run_skips_already_archived_prior(self) -> None:
+        """When quality/INDEX.md names a prior run whose archive folder
+        already exists, archive_previous_run just clears the live tree
+        without producing a duplicate archive."""
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            write(repo_dir / "quality" / "BUGS.md", "bug")
+            # Pre-existing archive from the prior run's own end-of-Phase-6 success.
+            existing_archive = repo_dir / "quality" / "runs" / "20260419T100000Z"
+            write(existing_archive / "quality" / "BUGS.md", "archived")
+            # Live INDEX referencing that run.
+            write(
+                repo_dir / "quality" / "INDEX.md",
+                '# Run Index\n\n```json\n'
+                '{"run_timestamp_start": "2026-04-19T10:00:00Z"}\n'
+                '```\n',
+            )
+
+            run_playbook.archive_previous_run(repo_dir, "20260420T100000Z")
+
+            self.assertFalse((repo_dir / "quality" / "BUGS.md").exists())
+            # Existing archive preserved; no -PARTIAL duplicate created.
+            self.assertTrue(existing_archive.is_dir())
+            self.assertFalse(
+                (repo_dir / "quality" / "runs" / "20260419T100000Z-PARTIAL").exists()
+            )
+
+    def test_write_live_index_stub_passes_gate_invariant_10(self) -> None:
+        """Invariant #10: quality/INDEX.md must exist with §11 fields even
+        mid-run. The stub at Phase 1 entry satisfies this."""
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            run_playbook.write_live_index_stub(repo_dir, "20260419T143022Z")
+            index = repo_dir / "quality" / "INDEX.md"
+            self.assertTrue(index.is_file())
+            text = index.read_text(encoding="utf-8")
+            self.assertIn("```json", text)
+            self.assertIn("run_timestamp_start", text)
+            self.assertIn("2026-04-19T14:30:22Z", text)
 
     def test_final_artifact_gaps_reports_missing_and_empty_when_complete(self) -> None:
         with TemporaryDirectory() as temp_dir:

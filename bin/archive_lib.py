@@ -77,6 +77,40 @@ def utc_extended_timestamp(now: Optional[datetime] = None) -> str:
     return dt.isoformat().replace("+00:00", "Z")
 
 
+_COMPACT_TS_PATTERN = re.compile(r"^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$")
+
+
+def extended_from_compact(ts: str) -> str:
+    """Convert `YYYYMMDDTHHMMSSZ` to `YYYY-MM-DDTHH:MM:SSZ`.
+
+    Returns the input unchanged when it does not match the compact pattern
+    (defensive for callers that pass already-extended or arbitrary tokens).
+    """
+    if not isinstance(ts, str):
+        return ts
+    m = _COMPACT_TS_PATTERN.match(ts)
+    if not m:
+        return ts
+    return f"{m.group(1)}-{m.group(2)}-{m.group(3)}T{m.group(4)}:{m.group(5)}:{m.group(6)}Z"
+
+
+def compact_from_extended(ts: str) -> Optional[str]:
+    """Convert extended ISO 8601 (`YYYY-MM-DDTHH:MM:SSZ`) to compact.
+
+    Returns the input unchanged when it is already compact, or `None` when it
+    does not parse as ISO 8601.
+    """
+    if not isinstance(ts, str) or not ts:
+        return None
+    if _COMPACT_TS_PATTERN.match(ts):
+        return ts
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(timezone.utc)
+    except ValueError:
+        return None
+    return dt.strftime("%Y%m%dT%H%M%SZ")
+
+
 # ---------------------------------------------------------------------------
 # write_timestamped_result
 # ---------------------------------------------------------------------------
