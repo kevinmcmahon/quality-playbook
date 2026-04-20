@@ -1416,6 +1416,50 @@ class TestV150RequirementsManifest(V150FixtureBase):
         self.assertGreaterEqual(fails, 1)
         self.assertIn("section or line", out)
 
+    # --- Phase 5 r5: three negative fixtures flagged by Council B7. -----------
+
+    def test_empty_excerpt_fails_invariant_4(self):
+        """Tier-1/2 REQ with citation_excerpt='' fails invariant #4."""
+        self.write_formal_doc()
+        rec = self.good_req_record()
+        rec["citation"]["citation_excerpt"] = ""  # blank excerpt
+        self.write_manifest("requirements_manifest.json", "records", [rec])
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_requirements_manifest, self.repo, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("citation_excerpt", out)
+        self.assertIn("invariant #4", out)
+
+    def test_unresolvable_location_fails(self):
+        """Citation pointing at a section that doesn't exist in the plaintext
+        fails via the verifier's CitationResolutionError branch."""
+        self.write_formal_doc()
+        rec = self.good_req_record()
+        rec["citation"]["section"] = "99.99"  # not present in the fixture text
+        # Any stored excerpt will not byte-equal extraction since extraction fails.
+        self.write_manifest("requirements_manifest.json", "records", [rec])
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_requirements_manifest, self.repo, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("citation location does not resolve", out)
+        self.assertIn("invariant #4", out)
+
+    def test_missing_formal_doc_fails_invariant_2(self):
+        """Citation referencing a source_path not in formal_docs_manifest.json
+        fails invariant #2 (document not in manifest)."""
+        self.write_formal_doc()  # adds virtio-excerpt.txt
+        rec = self.good_req_record()
+        rec["citation"]["document"] = "formal_docs/nonexistent.txt"
+        self.write_manifest("requirements_manifest.json", "records", [rec])
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_requirements_manifest, self.repo, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("not in formal_docs_manifest.json", out)
+        self.assertIn("invariant #2", out)
+
 
 class TestV150BugsManifest(V150FixtureBase):
     def test_missing_disposition_fails(self):

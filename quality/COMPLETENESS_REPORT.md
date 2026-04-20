@@ -136,7 +136,7 @@ All 15 code review bugs are covered by requirements:
 - BUG-001 (skill_version bold form rejection) → REQ-001 (single canonical version-parser helper)
 - BUG-002 (SKILL_INSTALL_LOCATIONS missing 4th path) → REQ-002 (all four documented paths)
 - BUG-003 (Phase 2 gate threshold 80 vs 120 FAIL) → REQ-004 (Phase 1 line-count gate enforces 120)
-- BUG-004 (archive_previous_run non-atomic; control_prompts deleted) → REQ-009 (atomic archive)
+- BUG-004 (archive_previous_run non-atomic; per-phase prompt output deleted instead of archived) → REQ-009 (atomic archive)
 - BUG-005 (PROTECTED_PREFIXES missing AGENTS.md) → REQ-006 (AGENTS.md protected from cleanup)
 - BUG-006 (Phase 3 gate checks only 4 of 9 artifacts) → REQ-010 (Phase 3/4/5 gates complete)
 - BUG-007 (docs_present accepts .DS_Store noise files) → REQ-011 (docs_present substantive check)

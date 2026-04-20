@@ -65,7 +65,7 @@ Scenarios:
 | A-1 | Bare-name target resolves with version append | `bin/run_playbook.py chi` (with SKILL.md version 1.4.5 and `chi-1.4.5/` present) | Resolves to `chi-1.4.5/`, INFO message printed |
 | A-2 | Bare-name target with version-None fallback | SKILL.md frontmatter uses `**Version:**` form (which skill_version doesn't parse) | ERROR: `is not a directory`. REQ-005 wants parser-None diagnostic; test asserts current behavior. |
 | A-3 | Path-like target does not apply fallback | `bin/run_playbook.py ./missing` | ERROR: `is not a directory`, no "also tried" |
-| A-4 | Archive on Phase 1 entry | Existing `quality/` with Phase 1 in phase list | `quality/` moved to `previous_runs/<ts>/quality/`; `control_prompts/` DELETED (current behavior, REQ-009 wants it archived) |
+| A-4 | Archive on Phase 1 entry | Existing `quality/` with Phase 1 in phase list | `quality/` contents moved to `quality/runs/<ts>-PARTIAL/quality/` with an `INDEX.md` + `RUN_INDEX.md` row; legacy v1.4.x bug (`control_prompts/` deleted) resolved — control_prompts/ now lives under `quality/` and is captured by the same snapshot. |
 | A-5 | PID file written on parallel run | `--parallel` with 1 target | `.run_pids.<pid>` exists; contains `<pid> <reponame>` line |
 | A-6 | Kill path terminates recorded PIDs | `--kill` after a parallel run | Each PID receives SIGTERM; PID files removed |
 | A-7 | Kill fallback when no PID files | `--kill` with no `.run_pids.*` present | Falls back to `pkill` patterns |
