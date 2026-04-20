@@ -58,12 +58,39 @@ def log(message: str) -> str:
     return f"{datetime.now():%H:%M:%S} {message}"
 
 
+# v1.5.1 Item 2.1: the stdout-echo default is a module-level state that
+# configure_logging() in run_playbook sets once per run. The prior isatty()
+# gate silently suppressed stdout when the operator piped the run through
+# `tee`, producing multi-minute silent stretches during the virtio-1.4.6
+# rerun (2026-04-19). The new default is to always echo; operators who
+# genuinely want silent stdout (AI-sandbox invocations) opt out via
+# --no-stdout-echo, which calls set_default_echo(False) here.
+_DEFAULT_ECHO = True
+
+
+def set_default_echo(enabled: bool) -> None:
+    """Set the stdout-echo default used when logboth(..., echo=None).
+
+    v1.5.1 Item 2.1 / Risk Register row 1: the --no-stdout-echo escape
+    hatch toggles this to False. Callers that pass echo=True or echo=False
+    explicitly are unaffected. Intended to be called exactly once per run
+    invocation (from bin/run_playbook.configure_logging).
+    """
+    global _DEFAULT_ECHO
+    _DEFAULT_ECHO = bool(enabled)
+
+
+def get_default_echo() -> bool:
+    """Return the current module-level echo default. Exposed for tests."""
+    return _DEFAULT_ECHO
+
+
 def logboth(log_file: Path, message: str, echo: Optional[bool] = None) -> None:
     log_file.parent.mkdir(parents=True, exist_ok=True)
     with log_file.open("a", encoding="utf-8") as handle:
         handle.write(message.rstrip("\n") + "\n")
     if echo is None:
-        echo = sys.stdout.isatty()
+        echo = _DEFAULT_ECHO
     if echo:
         print(message)
 

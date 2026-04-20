@@ -990,7 +990,7 @@ class InvocationFlagsPersistenceTests(unittest.TestCase):
             run_playbook.write_live_index_stub(repo_dir, "20260420T140000Z")
             payload = self._load_index(repo_dir)
             self.assertIn("invocation_flags", payload)
-            self.assertEqual(payload["invocation_flags"], {"no_formal_docs": False})
+            self.assertEqual(payload["invocation_flags"]["no_formal_docs"], False)
 
     def test_stub_records_no_formal_docs_true(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -999,7 +999,7 @@ class InvocationFlagsPersistenceTests(unittest.TestCase):
                 repo_dir, "20260420T140000Z", no_formal_docs=True
             )
             payload = self._load_index(repo_dir)
-            self.assertEqual(payload["invocation_flags"], {"no_formal_docs": True})
+            self.assertEqual(payload["invocation_flags"]["no_formal_docs"], True)
 
     def test_final_preserves_no_formal_docs_true(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -1016,7 +1016,7 @@ class InvocationFlagsPersistenceTests(unittest.TestCase):
                 no_formal_docs=True,
             )
             payload = self._load_index(repo_dir)
-            self.assertEqual(payload["invocation_flags"], {"no_formal_docs": True})
+            self.assertEqual(payload["invocation_flags"]["no_formal_docs"], True)
             # Sanity: existing §11 keys survive unchanged.
             for required in (
                 "run_timestamp_start",
@@ -1036,7 +1036,152 @@ class InvocationFlagsPersistenceTests(unittest.TestCase):
                 repo_dir, "20260420T140000Z", gate_verdict="partial"
             )
             payload = self._load_index(repo_dir)
-            self.assertEqual(payload["invocation_flags"], {"no_formal_docs": False})
+            self.assertEqual(payload["invocation_flags"]["no_formal_docs"], False)
+
+
+class ConfigureLoggingTests(unittest.TestCase):
+    """v1.5.1 Item 2.1: configure_logging() is the single call site that
+    produces the canonical log path, announces it, and installs line-
+    buffered stdout. Tests use an explicit `stream=` kwarg so stdout
+    capture is deterministic without monkey-patching sys.stdout."""
+
+    def _restore_default_echo(self, original: bool) -> None:
+        run_playbook.lib.set_default_echo(original)
+
+    def test_returns_same_path_as_log_file_for(self) -> None:
+        import io as _io
+        original = run_playbook.lib.get_default_echo()
+        try:
+            with TemporaryDirectory() as temp_dir:
+                repo = Path(temp_dir) / "subject"
+                repo.mkdir()
+                buf = _io.StringIO()
+                path = run_playbook.configure_logging(
+                    repo, "20260420T140000Z", stream=buf
+                )
+                expected = run_playbook.log_file_for(repo, "20260420T140000Z").resolve()
+                self.assertEqual(path, expected)
+                self.assertTrue(path.parent.is_dir())
+        finally:
+            self._restore_default_echo(original)
+
+    def test_prints_stable_prefix_line(self) -> None:
+        import io as _io
+        original = run_playbook.lib.get_default_echo()
+        try:
+            with TemporaryDirectory() as temp_dir:
+                repo = Path(temp_dir) / "subject"
+                repo.mkdir()
+                buf = _io.StringIO()
+                run_playbook.configure_logging(
+                    repo, "20260420T140000Z", stream=buf
+                )
+                output = buf.getvalue()
+                self.assertTrue(output.startswith(run_playbook._CONFIGURE_LOGGING_PREFIX))
+                # Path printed is absolute so operators can copy-paste it.
+                path_text = output[len(run_playbook._CONFIGURE_LOGGING_PREFIX):].strip()
+                self.assertTrue(Path(path_text).is_absolute())
+        finally:
+            self._restore_default_echo(original)
+
+    def test_no_stdout_echo_flips_logboth_default(self) -> None:
+        import io as _io
+        original = run_playbook.lib.get_default_echo()
+        try:
+            with TemporaryDirectory() as temp_dir:
+                repo = Path(temp_dir) / "subject"
+                repo.mkdir()
+                buf = _io.StringIO()
+                run_playbook.configure_logging(
+                    repo, "20260420T140000Z",
+                    no_stdout_echo=True, stream=buf,
+                )
+                self.assertFalse(run_playbook.lib.get_default_echo())
+
+                # logboth with default echo must now suppress stdout.
+                from contextlib import redirect_stdout
+                log_file = run_playbook.log_file_for(repo, "20260420T140000Z")
+                captured = _io.StringIO()
+                with redirect_stdout(captured):
+                    run_playbook.lib.logboth(log_file, "silent in sandbox")
+                self.assertEqual(captured.getvalue(), "")
+                # Log file still written in full.
+                self.assertIn(
+                    "silent in sandbox",
+                    log_file.read_text(encoding="utf-8"),
+                )
+        finally:
+            self._restore_default_echo(original)
+
+    def test_default_no_stdout_echo_keeps_echo_on(self) -> None:
+        import io as _io
+        original = run_playbook.lib.get_default_echo()
+        try:
+            with TemporaryDirectory() as temp_dir:
+                repo = Path(temp_dir) / "subject"
+                repo.mkdir()
+                buf = _io.StringIO()
+                run_playbook.configure_logging(
+                    repo, "20260420T140000Z", stream=buf
+                )
+                self.assertTrue(run_playbook.lib.get_default_echo())
+        finally:
+            self._restore_default_echo(original)
+
+
+class NoStdoutEchoFlagTests(unittest.TestCase):
+    """v1.5.1 Item 2.1: --no-stdout-echo parses, propagates to workers,
+    and persists in invocation_flags."""
+
+    def test_parse_args_accepts_no_stdout_echo(self) -> None:
+        args = run_playbook.parse_args(["--no-stdout-echo", "./somedir"])
+        self.assertTrue(args.no_stdout_echo)
+        default_args = run_playbook.parse_args(["./somedir"])
+        self.assertFalse(default_args.no_stdout_echo)
+
+    def test_build_worker_command_propagates_no_stdout_echo(self) -> None:
+        args = run_playbook.argparse.Namespace(
+            parallel=False,
+            runner="claude",
+            no_seeds=False,
+            phase=None,
+            next_iteration=False,
+            full_run=False,
+            strategy=["gap"],
+            model=None,
+            no_formal_docs=False,
+            no_stdout_echo=True,
+            kill=False,
+            targets=["./project-a"],
+            worker=False,
+        )
+        command = run_playbook.build_worker_command(args, "/abs/target")
+        self.assertIn("--no-stdout-echo", command)
+
+    def test_invocation_flags_include_no_stdout_echo(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            run_playbook.write_live_index_stub(
+                repo_dir, "20260420T140000Z", no_stdout_echo=True
+            )
+            # Read back the payload from INDEX.md.
+            text = (repo_dir / "quality" / "INDEX.md").read_text(encoding="utf-8")
+            import json as _json
+            start = text.index("```json") + len("```json")
+            end = text.index("```", start)
+            payload = _json.loads(text[start:end])
+            self.assertTrue(payload["invocation_flags"]["no_stdout_echo"])
+
+    def test_invocation_flags_default_no_stdout_echo_false(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            run_playbook.write_live_index_stub(repo_dir, "20260420T140000Z")
+            text = (repo_dir / "quality" / "INDEX.md").read_text(encoding="utf-8")
+            import json as _json
+            start = text.index("```json") + len("```json")
+            end = text.index("```", start)
+            payload = _json.loads(text[start:end])
+            self.assertFalse(payload["invocation_flags"]["no_stdout_echo"])
 
 
 if __name__ == "__main__":

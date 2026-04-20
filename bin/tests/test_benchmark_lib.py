@@ -205,9 +205,80 @@ class BenchmarkLibTests(unittest.TestCase):
 
         with TemporaryDirectory() as temp_dir:
             log_file = Path(temp_dir) / "runner.log"
-            with mock.patch("sys.stdout.isatty", return_value=False):
-                lib.logboth(log_file, "stored line")
+            # v1.5.1 Item 2.1: isatty() gate is gone; logboth unconditionally
+            # writes to the log file regardless of stdout state. Suppress
+            # stdout echo explicitly so this test stays terse.
+            lib.logboth(log_file, "stored line", echo=False)
             self.assertEqual(log_file.read_text(encoding="utf-8"), "stored line\n")
+
+    def test_logboth_isatty_gate_removed_default_echoes_to_stdout(self) -> None:
+        """v1.5.1 Item 2.1: the prior isatty() echo gate silently suppressed
+        stdout when the operator piped the run through `tee`. The default
+        behavior is now to always echo; the --no-stdout-echo escape hatch
+        (via set_default_echo) is the explicit opt-out."""
+        import io as _io
+        from contextlib import redirect_stdout
+
+        # Ensure we start from the default state no matter what prior tests
+        # left behind.
+        original = lib.get_default_echo()
+        lib.set_default_echo(True)
+        try:
+            with TemporaryDirectory() as temp_dir:
+                log_file = Path(temp_dir) / "runner.log"
+                buf = _io.StringIO()
+                # StringIO.isatty() returns False — the prior implementation
+                # would have suppressed the echo. The new implementation must
+                # echo regardless.
+                with redirect_stdout(buf):
+                    lib.logboth(log_file, "streamed line")
+                self.assertIn("streamed line", buf.getvalue())
+                self.assertEqual(
+                    log_file.read_text(encoding="utf-8"), "streamed line\n"
+                )
+        finally:
+            lib.set_default_echo(original)
+
+    def test_logboth_echo_false_still_suppresses_stdout(self) -> None:
+        import io as _io
+        from contextlib import redirect_stdout
+
+        with TemporaryDirectory() as temp_dir:
+            log_file = Path(temp_dir) / "runner.log"
+            buf = _io.StringIO()
+            with redirect_stdout(buf):
+                lib.logboth(log_file, "silent line", echo=False)
+            self.assertEqual(buf.getvalue(), "")
+            self.assertEqual(
+                log_file.read_text(encoding="utf-8"), "silent line\n"
+            )
+
+    def test_logboth_echo_true_always_prints(self) -> None:
+        import io as _io
+        from contextlib import redirect_stdout
+
+        original = lib.get_default_echo()
+        lib.set_default_echo(False)
+        try:
+            with TemporaryDirectory() as temp_dir:
+                log_file = Path(temp_dir) / "runner.log"
+                buf = _io.StringIO()
+                # Even with the module default off, explicit echo=True prints.
+                with redirect_stdout(buf):
+                    lib.logboth(log_file, "forced line", echo=True)
+                self.assertIn("forced line", buf.getvalue())
+        finally:
+            lib.set_default_echo(original)
+
+    def test_set_default_echo_flips_module_state(self) -> None:
+        original = lib.get_default_echo()
+        try:
+            lib.set_default_echo(False)
+            self.assertFalse(lib.get_default_echo())
+            lib.set_default_echo(True)
+            self.assertTrue(lib.get_default_echo())
+        finally:
+            lib.set_default_echo(original)
 
     def test_version_resolution_helpers_are_gone(self) -> None:
         """Version-based repo resolution has been removed; positional args are now paths."""

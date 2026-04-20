@@ -9,6 +9,7 @@ argument is treated literally as a directory path.
 from __future__ import annotations
 
 import argparse
+import io
 import os
 import shlex
 import shutil
@@ -133,6 +134,18 @@ def build_parser() -> argparse.ArgumentParser:
             "Suppress the pre-run warning when formal_docs/ is missing, empty, "
             "or contains plaintext without .meta.json sidecars. Use for self-audit "
             "bootstrap and minimal-repo cases that legitimately have no formal docs."
+        ),
+    )
+    parser.add_argument(
+        "--no-stdout-echo",
+        dest="no_stdout_echo",
+        action="store_true",
+        help=(
+            "Suppress stdout echo of logboth() output. The built-in run log "
+            "is still written in full. Intended for AI-sandbox invocations "
+            "that want silent stdout; the v1.5.0 isatty() gate that used "
+            "to hide tee'd output is gone — this flag is the explicit "
+            "opt-out (v1.5.1 Item 2.1, Risk Register row 1)."
         ),
     )
     parser.add_argument("--kill", action="store_true", help="Kill processes from the current or last parallel run.")
@@ -583,6 +596,61 @@ def log_file_for(repo_dir: Path, timestamp: str) -> Path:
     return repo_dir.parent / f"{repo_dir.name}-playbook-{timestamp}.log"
 
 
+# v1.5.1 Item 2.1: built-in logging + unbuffered stdout. The prior run
+# ceremony required operators to set PYTHONUNBUFFERED=1 and pipe through
+# tee; the built-in log + line-buffered stdout make both unnecessary.
+_CONFIGURE_LOGGING_PREFIX = "Writing run log to: "
+
+
+def configure_logging(
+    repo_dir: Path,
+    timestamp: str,
+    *,
+    no_stdout_echo: bool = False,
+    stream: Optional[object] = None,
+) -> Path:
+    """Compute the canonical log path, announce it on stdout, and install
+    line-buffered stdout. Called exactly once per run entry point.
+
+    Implements v1.5.1 Item 2.1 (docs/design/QPB_v1.5.1_Design.md Item 3).
+
+    - Canonical log path comes from log_file_for(); no path derivation is
+      reinvented here. The directory is created on demand so the first
+      lib.logboth() call never has to.
+    - Prints "Writing run log to: <abs path>" as the very first line of run
+      output so operators (and Item 2.3's banner) can key off a stable
+      prefix. _CONFIGURE_LOGGING_PREFIX is exposed for tests.
+    - Installs line-buffered stdout via sys.stdout.reconfigure(). Python
+      3.7+; the project targets 3.10+. Replaces the operator-side
+      PYTHONUNBUFFERED=1 / -u ceremony.
+    - no_stdout_echo=True flips benchmark_lib.logboth's default echo to
+      False for the whole run. The escape hatch for AI-sandbox invocations
+      that legitimately want silent stdout (Risk Register row 1).
+    - The optional `stream` kwarg lets tests capture the announcement
+      without monkey-patching sys.stdout. Production callers leave it at
+      None and inherit sys.stdout.
+    """
+    log_path = log_file_for(repo_dir, timestamp).resolve()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    lib.set_default_echo(not no_stdout_echo)
+
+    # reconfigure() is a no-op on streams that don't support it (e.g. an
+    # io.StringIO passed by tests); guard it to stay test-friendly.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except (AttributeError, io.UnsupportedOperation):
+        pass
+
+    target = stream if stream is not None else sys.stdout
+    target.write(f"{_CONFIGURE_LOGGING_PREFIX}{log_path}\n")
+    try:
+        target.flush()
+    except (AttributeError, io.UnsupportedOperation):
+        pass
+    return log_path
+
+
 def run_prompt(repo_dir: Path, prompt: str, pass_name: str, output_file: Path, log_file: Path, runner: str, model: Optional[str]) -> int:
     command = command_for_runner(runner, prompt, model)
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -825,11 +893,47 @@ def archive_previous_run(repo_dir: Path, current_run_timestamp: str) -> None:
     _clear_live_quality(quality_dir)
 
 
+def _build_invocation_flags(args: Optional[argparse.Namespace], **overrides: bool) -> dict:
+    """Assemble the invocation_flags dict persisted in INDEX.md.
+
+    Follows the additive pattern established in Phase 1 revision
+    (bin/archive_lib.py:404-441): new flags are additional keys in the
+    same dict, never a reshape. Defaults come from argparse Namespace
+    attributes with getattr() so legacy callers still work. Explicit
+    kwargs override Namespace values for the (rare) call sites that
+    pass a bool directly for testability.
+    """
+    defaults = {
+        "no_formal_docs": False,
+        "no_stdout_echo": False,
+        "verbose": False,
+        "quiet": False,
+        "progress_interval": 2,
+    }
+    if args is not None:
+        defaults["no_formal_docs"] = bool(getattr(args, "no_formal_docs", False))
+        defaults["no_stdout_echo"] = bool(getattr(args, "no_stdout_echo", False))
+        defaults["verbose"] = bool(getattr(args, "verbose", False))
+        defaults["quiet"] = bool(getattr(args, "quiet", False))
+        interval = getattr(args, "progress_interval", 2)
+        defaults["progress_interval"] = int(interval) if interval is not None else 2
+    for key, value in overrides.items():
+        if key == "progress_interval":
+            defaults[key] = int(value)
+        else:
+            defaults[key] = bool(value)
+    return defaults
+
+
 def write_live_index_stub(
     repo_dir: Path,
     timestamp: str,
     *,
     no_formal_docs: bool = False,
+    no_stdout_echo: bool = False,
+    verbose: bool = False,
+    quiet: bool = False,
+    progress_interval: int = 2,
 ) -> None:
     """Render a minimal quality/INDEX.md at run start so the gate's invariant #10
     check has something to validate if the run is interrupted mid-flight.
@@ -837,10 +941,23 @@ def write_live_index_stub(
     v1.5.1 Phase 1 rev (Council — gpt-5.4 blocker 2): ``no_formal_docs`` is
     persisted under ``invocation_flags`` so later auditors can distinguish
     an intentionally-empty formal_docs/ run from an accidentally-empty one.
+
+    v1.5.1 Phase 2: additional flags land in the same ``invocation_flags``
+    dict — ``no_stdout_echo`` (Item 2.1), ``verbose`` / ``quiet`` /
+    ``progress_interval`` (Item 2.2). The dict is additive per the
+    convention in bin/archive_lib.py:404-441.
     """
     quality_dir = repo_dir / "quality"
     quality_dir.mkdir(parents=True, exist_ok=True)
     start_ext = archive_lib.extended_from_compact(timestamp)
+    flags = _build_invocation_flags(
+        None,
+        no_formal_docs=no_formal_docs,
+        no_stdout_echo=no_stdout_echo,
+        verbose=verbose,
+        quiet=quiet,
+        progress_interval=progress_interval,
+    )
     payload = {
         "run_timestamp_start": start_ext,
         "run_timestamp_end": start_ext,
@@ -852,7 +969,7 @@ def write_live_index_stub(
         "phases_executed": [],
         "summary": {"requirements": {}, "bugs": {}, "gate_verdict": "partial"},
         "artifacts": [],
-        "invocation_flags": {"no_formal_docs": bool(no_formal_docs)},
+        "invocation_flags": flags,
     }
     (quality_dir / "INDEX.md").write_text(
         archive_lib.render_index_markdown(
@@ -873,6 +990,10 @@ def write_live_index_final(
     *,
     gate_verdict: str,
     no_formal_docs: bool = False,
+    no_stdout_echo: bool = False,
+    verbose: bool = False,
+    quiet: bool = False,
+    progress_interval: int = 2,
 ) -> None:
     """Re-render quality/INDEX.md at end of Phase 6 with the run's real counts.
 
@@ -884,15 +1005,27 @@ def write_live_index_final(
     v1.5.1 Phase 1 rev (Council — gpt-5.4 blocker 2): ``no_formal_docs`` is
     persisted under ``invocation_flags`` so the Phase-6 re-render preserves
     the flag state recorded by the Phase-1 stub.
+
+    v1.5.1 Phase 2: additional flags land in the same ``invocation_flags``
+    dict — ``no_stdout_echo`` (Item 2.1), ``verbose`` / ``quiet`` /
+    ``progress_interval`` (Item 2.2).
     """
     quality_dir = repo_dir / "quality"
+    flags = _build_invocation_flags(
+        None,
+        no_formal_docs=no_formal_docs,
+        no_stdout_echo=no_stdout_echo,
+        verbose=verbose,
+        quiet=quiet,
+        progress_interval=progress_interval,
+    )
     payload = archive_lib.build_index_payload(
         repo_dir,
         quality_dir,
         target_repo_path=".",
         target_project_type="Code",
         gate_verdict_override=gate_verdict,
-        invocation_flags={"no_formal_docs": bool(no_formal_docs)},
+        invocation_flags=flags,
     )
     start_ext = archive_lib.extended_from_compact(timestamp)
     end_ext = archive_lib.utc_extended_timestamp()
@@ -992,6 +1125,10 @@ def run_one_phase(
                 timestamp,
                 gate_verdict=verdict,
                 no_formal_docs=getattr(args, "no_formal_docs", False),
+                no_stdout_echo=getattr(args, "no_stdout_echo", False),
+                verbose=getattr(args, "verbose", False),
+                quiet=getattr(args, "quiet", False),
+                progress_interval=getattr(args, "progress_interval", 2),
             )
         except Exception as exc:  # noqa: BLE001 — log and continue
             lib.logboth(log_file, lib.log(f"  WARN write_live_index_final skipped: {exc}"))
@@ -1032,7 +1169,11 @@ def _gate_pass(gate_result_line: str, quality_dir: Path) -> bool:
 
 
 def run_one_phased(repo_dir: Path, phase_list: Sequence[str], args: argparse.Namespace, timestamp: str) -> int:
-    log_file = log_file_for(repo_dir, timestamp)
+    log_file = configure_logging(
+        repo_dir,
+        timestamp,
+        no_stdout_echo=getattr(args, "no_stdout_echo", False),
+    )
     if not docs_present(repo_dir):
         print(lib.log(f"WARN: {repo_dir.name} - docs_gathered/ is missing or empty; proceeding with code-only analysis"))
     if not getattr(args, "no_formal_docs", False):
@@ -1049,6 +1190,10 @@ def run_one_phased(repo_dir: Path, phase_list: Sequence[str], args: argparse.Nam
             repo_dir,
             timestamp,
             no_formal_docs=getattr(args, "no_formal_docs", False),
+            no_stdout_echo=getattr(args, "no_stdout_echo", False),
+            verbose=getattr(args, "verbose", False),
+            quiet=getattr(args, "quiet", False),
+            progress_interval=getattr(args, "progress_interval", 2),
         )
 
     (repo_dir / "quality" / "control_prompts").mkdir(parents=True, exist_ok=True)
@@ -1069,7 +1214,11 @@ def run_one_phased(repo_dir: Path, phase_list: Sequence[str], args: argparse.Nam
 
 
 def run_one_singlepass(repo_dir: Path, args: argparse.Namespace, timestamp: str) -> int:
-    log_file = log_file_for(repo_dir, timestamp)
+    log_file = configure_logging(
+        repo_dir,
+        timestamp,
+        no_stdout_echo=getattr(args, "no_stdout_echo", False),
+    )
     if not docs_present(repo_dir):
         print(lib.log(f"WARN: {repo_dir.name} - docs_gathered/ is missing or empty; proceeding with code-only analysis"))
     if not getattr(args, "no_formal_docs", False):
@@ -1093,6 +1242,10 @@ def run_one_singlepass(repo_dir: Path, args: argparse.Namespace, timestamp: str)
             repo_dir,
             timestamp,
             no_formal_docs=getattr(args, "no_formal_docs", False),
+            no_stdout_echo=getattr(args, "no_stdout_echo", False),
+            verbose=getattr(args, "verbose", False),
+            quiet=getattr(args, "quiet", False),
+            progress_interval=getattr(args, "progress_interval", 2),
         )
         prompt = single_pass_prompt(no_seeds=args.no_seeds)
         pass_label = "full"
@@ -1168,6 +1321,8 @@ def display_run_header(args: argparse.Namespace, repo_dirs: Sequence[Path], disp
     print(f"No seeds: {args.no_seeds}  (Phase 0/0b skipped when true)")
     if getattr(args, "no_formal_docs", False):
         print("No formal docs: True  (pre-run formal_docs/ guard suppressed)")
+    if getattr(args, "no_stdout_echo", False):
+        print("No stdout echo: True  (logboth stdout default disabled)")
     print(f"Parallel: {args.parallel}")
     if getattr(args, "full_run", False):
         print("Mode:     full-run (fresh main run + all four iteration strategies)")
@@ -1292,6 +1447,8 @@ def build_worker_command(args: argparse.Namespace, target_path: str) -> List[str
         command.extend(["--model", args.model])
     if getattr(args, "no_formal_docs", False):
         command.append("--no-formal-docs")
+    if getattr(args, "no_stdout_echo", False):
+        command.append("--no-stdout-echo")
     command.append(target_path)
     return command
 
