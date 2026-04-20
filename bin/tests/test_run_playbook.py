@@ -88,15 +88,21 @@ class RunPlaybookTests(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             repo_dir = Path(temp_dir)
             write(repo_dir / "quality" / "BUGS.md", "bug")
-            write(repo_dir / "control_prompts" / "phase1.output.txt", "prompt")
+            write(repo_dir / "quality" / "control_prompts" / "phase1.output.txt", "prompt")
 
             run_playbook.archive_previous_run(repo_dir, "20260418-120000")
 
-            self.assertFalse((repo_dir / "quality").exists())
-            self.assertFalse((repo_dir / "control_prompts").exists())
+            # Live artifacts cleared; the archive subtree survives under quality/runs/.
+            self.assertFalse((repo_dir / "quality" / "BUGS.md").exists())
+            self.assertFalse((repo_dir / "quality" / "control_prompts").exists())
+            archive_root = repo_dir / "quality" / "runs" / "20260418-120000" / "quality"
             self.assertEqual(
-                (repo_dir / "previous_runs" / "20260418-120000" / "quality" / "BUGS.md").read_text(encoding="utf-8"),
+                (archive_root / "BUGS.md").read_text(encoding="utf-8"),
                 "bug",
+            )
+            self.assertEqual(
+                (archive_root / "control_prompts" / "phase1.output.txt").read_text(encoding="utf-8"),
+                "prompt",
             )
 
     def test_final_artifact_gaps_reports_missing_and_empty_when_complete(self) -> None:

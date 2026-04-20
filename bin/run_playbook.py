@@ -266,7 +266,7 @@ SKILL_FALLBACK_GUIDE = (
 def phase1_prompt(no_seeds: bool) -> str:
     seed_instruction = ""
     if no_seeds:
-        seed_instruction = "Skip Phase 0 and Phase 0b entirely - do not look for previous_runs/ or sibling versioned directories. This is a clean benchmark run. Start directly at Phase 1."
+        seed_instruction = "Skip Phase 0 and Phase 0b entirely - do not look for quality/runs/ or sibling versioned directories. This is a clean benchmark run. Start directly at Phase 1."
 
     return f"""You are a quality engineer. {SKILL_FALLBACK_GUIDE} For this phase read ONLY the sections up through Phase 1 (stop at the \"---\" line before \"Phase 2\"). Also read the reference files (under whichever references/ directory matches the install path you resolved) that are relevant to exploration.
 
@@ -593,23 +593,37 @@ def docs_present(repo_dir: Path) -> bool:
 
 
 def archive_previous_run(repo_dir: Path, timestamp: str) -> None:
+    """Stage a snapshot of quality/ into quality/runs/<timestamp>/ and clear the live tree.
+
+    v1.5.0 layout: control_prompts/ now lives under quality/ (migrated from the
+    pre-v1.5.0 root). The full quality/ subtree — including control_prompts/ and
+    results/ — is captured in one copytree, with quality/runs/ itself excluded
+    so the snapshot doesn't recurse into the archive folder it lives under.
+    """
     quality_dir = repo_dir / "quality"
-    control_prompts_dir = repo_dir / "control_prompts"
     if not quality_dir.is_dir():
         return
-    archive_root = repo_dir / "previous_runs" / timestamp
-    partial_dir = repo_dir / "previous_runs" / (timestamp + ".partial")
+    archive_root = repo_dir / "quality" / "runs" / timestamp
+    partial_dir = repo_dir / "quality" / "runs" / (timestamp + ".partial")
     archive_root.parent.mkdir(parents=True, exist_ok=True)
     if archive_root.exists():
         shutil.rmtree(archive_root)
     if partial_dir.exists():
         shutil.rmtree(partial_dir)
-    shutil.copytree(quality_dir, partial_dir / "quality")
-    if control_prompts_dir.is_dir():
-        shutil.copytree(control_prompts_dir, partial_dir / "control_prompts")
+    shutil.copytree(
+        quality_dir,
+        partial_dir / "quality",
+        ignore=shutil.ignore_patterns("runs"),
+    )
     partial_dir.rename(archive_root)
-    shutil.rmtree(quality_dir, ignore_errors=True)
-    shutil.rmtree(control_prompts_dir, ignore_errors=True)
+    # Tear down the live quality/ tree but keep the archive we just staged.
+    for child in list(quality_dir.iterdir()):
+        if child.name == "runs":
+            continue
+        if child.is_dir():
+            shutil.rmtree(child, ignore_errors=True)
+        else:
+            child.unlink(missing_ok=True)
 
 
 def final_artifact_gaps(repo_dir: Path) -> List[str]:
@@ -640,7 +654,7 @@ def run_one_phase(repo_dir: Path, phase: str, phase_list: Sequence[str], args: a
 
     phase_index = phase_list.index(phase) + 1
     prompt = build_phase_prompt(phase, no_seeds=args.no_seeds)
-    output_file = repo_dir / "control_prompts" / f"phase{phase}.output.txt"
+    output_file = repo_dir / "quality" / "control_prompts" / f"phase{phase}.output.txt"
     lib.logboth(log_file, lib.log(f"  Phase {phase_index}/{len(phase_list)} ({phase_label(phase)}): {repo_dir.name}"))
     exit_code = run_prompt(repo_dir, prompt, f"phase{phase}", output_file, log_file, args.runner, args.model)
     if exit_code:
@@ -689,7 +703,7 @@ def run_one_phased(repo_dir: Path, phase_list: Sequence[str], args: argparse.Nam
     if "1" in phase_list:
         archive_previous_run(repo_dir, timestamp)
 
-    (repo_dir / "control_prompts").mkdir(parents=True, exist_ok=True)
+    (repo_dir / "quality" / "control_prompts").mkdir(parents=True, exist_ok=True)
     lib.logboth(log_file, lib.log(f"Starting playbook (phases: {','.join(phase_list)}): {repo_dir.name} (runner={args.runner})"))
     for phase in phase_list:
         if not run_one_phase(repo_dir, phase, phase_list, args, log_file):
@@ -727,7 +741,7 @@ def run_one_singlepass(repo_dir: Path, args: argparse.Namespace, timestamp: str)
         pass_label = "full"
         lib.logboth(log_file, lib.log(f"Starting playbook (single-pass): {repo_dir.name} (runner={args.runner})"))
 
-    control_prompts = repo_dir / "control_prompts"
+    control_prompts = repo_dir / "quality" / "control_prompts"
     control_prompts.mkdir(parents=True, exist_ok=True)
     output_file = control_prompts / "playbook_run.output.txt"
     exit_code = run_prompt(repo_dir, prompt, pass_label, output_file, log_file, args.runner, args.model)
@@ -989,7 +1003,7 @@ def execute_run(args: argparse.Namespace, repo_dirs: Sequence[Path], timestamp: 
 
 def print_suggested_next_command(args: argparse.Namespace, failures_occurred: bool = False) -> None:
     if failures_occurred:
-        print("  Run finished with errors — inspect control_prompts/ and re-run with --phase <N>")
+        print("  Run finished with errors — inspect quality/control_prompts/ and re-run with --phase <N>")
         return
     runner_flag = " --claude" if args.runner == "claude" else ""
     model_flag = f" --model {shlex.quote(args.model)}" if getattr(args, "model", None) else ""

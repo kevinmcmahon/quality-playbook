@@ -379,33 +379,36 @@ class DocsPresentTests(unittest.TestCase):
 
 
 class ArchivePreviousRunTests(unittest.TestCase):
-    """REQ-009. Source: run_playbook.py:565-576."""
+    """REQ-009. Source: run_playbook.py:565-576 (v1.5.0 layout: quality/runs/<ts>/)."""
 
-    def test_archive_moves_quality_to_previous_runs(self):
-        """REQ-009: successful archive moves quality/ to previous_runs/TS/quality/."""
+    def test_archive_moves_quality_to_quality_runs(self):
+        """REQ-009: successful archive moves quality/ content to quality/runs/TS/quality/."""
         with TemporaryDirectory() as tmp:
             repo = Path(tmp)
             _write(repo / "quality" / "file.md", "content\n")
             run_playbook.archive_previous_run(repo, "2026-04-18T23-43-14")
-            self.assertFalse((repo / "quality").exists())
-            self.assertTrue((repo / "previous_runs" / "2026-04-18T23-43-14" / "quality" / "file.md").is_file())
+            # Live file gone; archive folder survives under quality/runs/.
+            self.assertFalse((repo / "quality" / "file.md").exists())
+            self.assertTrue(
+                (repo / "quality" / "runs" / "2026-04-18T23-43-14" / "quality" / "file.md").is_file()
+            )
 
     def test_archive_noop_when_no_quality(self):
         """REQ-009: no quality/ to archive → function returns silently."""
         with TemporaryDirectory() as tmp:
             repo = Path(tmp)
             run_playbook.archive_previous_run(repo, "ts")
-            self.assertFalse((repo / "previous_runs").exists())
+            self.assertFalse((repo / "quality" / "runs").exists())
 
     def test_archive_overwrites_existing(self):
         """REQ-009: archive with an existing target removes the old first."""
         with TemporaryDirectory() as tmp:
             repo = Path(tmp)
             _write(repo / "quality" / "fresh.md", "fresh\n")
-            _write(repo / "previous_runs" / "ts" / "quality" / "stale.md", "stale\n")
+            _write(repo / "quality" / "runs" / "ts" / "quality" / "stale.md", "stale\n")
             run_playbook.archive_previous_run(repo, "ts")
-            self.assertTrue((repo / "previous_runs" / "ts" / "quality" / "fresh.md").is_file())
-            self.assertFalse((repo / "previous_runs" / "ts" / "quality" / "stale.md").exists())
+            self.assertTrue((repo / "quality" / "runs" / "ts" / "quality" / "fresh.md").is_file())
+            self.assertFalse((repo / "quality" / "runs" / "ts" / "quality" / "stale.md").exists())
 
 
 class IterationStrategyTests(unittest.TestCase):

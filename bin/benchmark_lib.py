@@ -162,9 +162,13 @@ def find_regression_test(repo_dir: Path) -> Optional[Path]:
 
 # Paths that cleanup_repo MUST NOT revert. These are playbook run outputs and
 # inputs: reverting them after a run would destroy the very artifacts we just
-# produced (quality/, control_prompts/), the archive from the prior run
-# (previous_runs/), or the docs that feed the next run (docs_gathered/). For
-# bootstrap targets where these trees are tracked in git, the difference matters.
+# produced. In v1.5.0 the canonical layout is "quality/" (which covers the
+# new quality/control_prompts/ and quality/runs/ subtrees); the two legacy
+# pre-v1.5.0 root entries (control_prompts/, previous_runs/) are retained so
+# cleanup respects repos that have not yet been migrated by
+# bin/migrate_v1_5_0_layout.py. docs_gathered/ carries the inputs that feed
+# the next run. For bootstrap targets where these trees are tracked in git,
+# the protection is what lets them survive cleanup_repo's `git checkout .`.
 PROTECTED_PREFIXES = (
     "quality/",
     "control_prompts/",
