@@ -805,5 +805,119 @@ class RunPlaybookTests(unittest.TestCase):
                 run_playbook.PID_FILE = original_pid_file
 
 
+class FormalDocsGuardTests(unittest.TestCase):
+    """v1.5.1 Item 1.3: pre-run formal_docs/ guard + --no-formal-docs."""
+
+    def test_missing_directory_triggers_warning(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            banner = run_playbook.formal_docs_guard_banner(Path(temp_dir))
+            self.assertIsNotNone(banner)
+            self.assertIn("formal_docs/ is missing", banner)
+            self.assertIn("python3 bin/setup_formal_docs.py", banner)
+            self.assertIn("setup_repos.sh", banner)
+            self.assertIn("--no-formal-docs", banner)
+
+    def test_empty_directory_triggers_warning(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir)
+            (repo / "formal_docs").mkdir()
+            banner = run_playbook.formal_docs_guard_banner(repo)
+            self.assertIsNotNone(banner)
+            self.assertIn("formal_docs/ is empty", banner)
+            self.assertIn("python3 bin/setup_formal_docs.py", banner)
+
+    def test_orphan_plaintext_triggers_warning_with_names(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir)
+            formal = repo / "formal_docs"
+            formal.mkdir()
+            write(formal / "virtio.txt", "body\n")
+            # Sidecar-less.
+            banner = run_playbook.formal_docs_guard_banner(repo)
+            self.assertIsNotNone(banner)
+            self.assertIn("without .meta.json sidecars", banner)
+            self.assertIn("virtio.txt", banner)
+
+    def test_orphan_list_truncates_at_ten(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir)
+            formal = repo / "formal_docs"
+            formal.mkdir()
+            for i in range(15):
+                write(formal / f"doc{i:02d}.txt", "x")
+            banner = run_playbook.formal_docs_guard_banner(repo)
+            self.assertIsNotNone(banner)
+            self.assertIn("... and 5 more", banner)
+
+    def test_clean_state_returns_none(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir)
+            formal = repo / "formal_docs"
+            formal.mkdir()
+            write(formal / "virtio.txt", "body\n")
+            write(formal / "virtio.meta.json", '{"tier": 1}\n')
+            self.assertIsNone(run_playbook.formal_docs_guard_banner(repo))
+
+    def test_readme_and_backups_do_not_trigger_orphan_warning(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir)
+            formal = repo / "formal_docs"
+            formal.mkdir()
+            # README.md is allowed without a sidecar (matches ingest policy).
+            write(formal / "README.md", "docs readme\n")
+            # Files under .sidecar_backups/ are ignored.
+            write(formal / ".sidecar_backups" / "20260101T000000Z" / "old.md", "x")
+            write(formal / "virtio.txt", "body\n")
+            write(formal / "virtio.meta.json", '{"tier": 1}\n')
+            self.assertIsNone(run_playbook.formal_docs_guard_banner(repo))
+
+    def test_parse_args_accepts_no_formal_docs(self) -> None:
+        args = run_playbook.parse_args(["--no-formal-docs", "./somedir"])
+        self.assertTrue(args.no_formal_docs)
+        # Default off.
+        args_default = run_playbook.parse_args(["./somedir"])
+        self.assertFalse(args_default.no_formal_docs)
+
+    def test_build_worker_command_propagates_no_formal_docs(self) -> None:
+        args = run_playbook.argparse.Namespace(
+            parallel=False,
+            runner="claude",
+            no_seeds=False,
+            phase=None,
+            next_iteration=False,
+            full_run=False,
+            strategy=["gap"],
+            model=None,
+            no_formal_docs=True,
+            kill=False,
+            targets=["./project-a"],
+            worker=False,
+        )
+        command = run_playbook.build_worker_command(args, "/abs/target")
+        self.assertIn("--no-formal-docs", command)
+        # Flag appears before the positional target.
+        self.assertLess(
+            command.index("--no-formal-docs"), command.index("/abs/target")
+        )
+
+    def test_build_worker_command_omits_flag_when_unset(self) -> None:
+        args = run_playbook.argparse.Namespace(
+            parallel=False,
+            runner="claude",
+            no_seeds=False,
+            phase=None,
+            next_iteration=False,
+            full_run=False,
+            strategy=["gap"],
+            model=None,
+            no_formal_docs=False,
+            kill=False,
+            targets=["./project-a"],
+            worker=False,
+        )
+        command = run_playbook.build_worker_command(args, "/abs/target")
+        self.assertNotIn("--no-formal-docs", command)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -125,6 +125,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--model", help="Runner model override (copilot: gpt-5.4, claude: sonnet/opus/etc).")
+    parser.add_argument(
+        "--no-formal-docs",
+        dest="no_formal_docs",
+        action="store_true",
+        help=(
+            "Suppress the pre-run warning when formal_docs/ is missing, empty, "
+            "or contains plaintext without .meta.json sidecars. Use for self-audit "
+            "bootstrap and minimal-repo cases that legitimately have no formal docs."
+        ),
+    )
     parser.add_argument("--kill", action="store_true", help="Kill processes from the current or last parallel run.")
     parser.add_argument(
         "targets",
@@ -627,6 +637,114 @@ def docs_present(repo_dir: Path) -> bool:
     )
 
 
+# v1.5.1 Item 1.3: pre-run formal_docs guard.
+_FORMAL_DOCS_PLAINTEXT_EXTS = frozenset({".txt", ".md"})
+_FORMAL_DOCS_SIDECAR_SUFFIX = ".meta.json"
+_FORMAL_DOCS_SKIPPED = frozenset({"README.md"})
+_FORMAL_DOCS_BACKUP_DIR = ".sidecar_backups"
+
+
+def _formal_docs_plaintext(formal_docs_dir: Path) -> List[Path]:
+    """Return plaintext files under formal_docs/ that ingest would consider.
+
+    Mirrors the collect rules in bin/formal_docs_ingest.collect_documents and
+    bin/setup_formal_docs._collect_documents so the guard's notion of
+    'orphan plaintext' matches what the reader will actually see.
+    """
+    if not formal_docs_dir.is_dir():
+        return []
+    files: List[Path] = []
+    for path in sorted(formal_docs_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        if path.name in _FORMAL_DOCS_SKIPPED:
+            continue
+        if path.name.endswith(_FORMAL_DOCS_SIDECAR_SUFFIX):
+            continue
+        if _FORMAL_DOCS_BACKUP_DIR in path.parts:
+            continue
+        if path.suffix.lower() in _FORMAL_DOCS_PLAINTEXT_EXTS:
+            files.append(path)
+    return files
+
+
+def _formal_docs_orphans(plaintext: Sequence[Path]) -> List[Path]:
+    """Return plaintext files whose sibling .meta.json is absent."""
+    orphans: List[Path] = []
+    for doc in plaintext:
+        sidecar = doc.with_name(doc.stem + _FORMAL_DOCS_SIDECAR_SUFFIX)
+        if not sidecar.is_file():
+            orphans.append(doc)
+    return orphans
+
+
+def formal_docs_guard_banner(repo_dir: Path) -> Optional[str]:
+    """Return a multi-line warning banner, or None if formal_docs/ is clean.
+
+    Clean = directory exists AND either (a) has no plaintext files (handled
+    elsewhere — an empty formal_docs/ triggers the 'empty' warning) or
+    (b) every plaintext file has a matching sidecar.
+
+    The three trigger conditions are: missing directory, empty directory,
+    orphan plaintext. The warning is non-blocking; the caller prints it
+    and proceeds.
+    """
+    formal_docs_dir = repo_dir / "formal_docs"
+    remediation = (
+        f"python3 bin/setup_formal_docs.py {formal_docs_dir}"
+    )
+    staging_pointer = (
+        "Staging: repos/setup_repos.sh (v1.5.1 Item 1.1) converts "
+        "docs_gathered/ into formal_docs/ and invokes the setup helper."
+    )
+    suppress_hint = (
+        "Suppress this warning with --no-formal-docs for self-audit "
+        "bootstrap / minimal-repo cases that legitimately have no formal docs."
+    )
+
+    if not formal_docs_dir.is_dir():
+        trigger = f"formal_docs/ is missing at {formal_docs_dir}"
+    else:
+        plaintext = _formal_docs_plaintext(formal_docs_dir)
+        if not plaintext:
+            trigger = f"formal_docs/ is empty at {formal_docs_dir}"
+        else:
+            orphans = _formal_docs_orphans(plaintext)
+            if not orphans:
+                return None
+            shown = orphans[:10]
+            remainder = len(orphans) - len(shown)
+            names: List[str] = []
+            for doc in shown:
+                try:
+                    rel = doc.relative_to(formal_docs_dir).as_posix()
+                except ValueError:
+                    rel = doc.name
+                names.append(f"    - {rel}")
+            if remainder > 0:
+                names.append(f"    ... and {remainder} more")
+            trigger_lines = [
+                f"formal_docs/ has plaintext files without .meta.json sidecars ({len(orphans)}):",
+                *names,
+            ]
+            trigger = "\n".join(trigger_lines)
+
+    banner = [
+        "",
+        "=" * 72,
+        "WARN: pre-run formal_docs guard triggered",
+        "",
+        f"  {trigger}" if "\n" not in trigger else trigger,
+        "",
+        f"  Remediation: {remediation}",
+        f"  {staging_pointer}",
+        f"  {suppress_hint}",
+        "=" * 72,
+        "",
+    ]
+    return "\n".join(banner)
+
+
 def _clear_live_quality(quality_dir: Path) -> None:
     """Remove every live child of quality/ except the runs/ archive subtree and
     RUN_INDEX.md (the append-only history that lives alongside runs/)."""
@@ -883,6 +1001,10 @@ def run_one_phased(repo_dir: Path, phase_list: Sequence[str], args: argparse.Nam
     log_file = log_file_for(repo_dir, timestamp)
     if not docs_present(repo_dir):
         print(lib.log(f"WARN: {repo_dir.name} - docs_gathered/ is missing or empty; proceeding with code-only analysis"))
+    if not getattr(args, "no_formal_docs", False):
+        banner = formal_docs_guard_banner(repo_dir)
+        if banner is not None:
+            lib.logboth(log_file, banner, echo=True)
 
     if "1" in phase_list:
         archive_previous_run(repo_dir, timestamp)
@@ -912,6 +1034,10 @@ def run_one_singlepass(repo_dir: Path, args: argparse.Namespace, timestamp: str)
     log_file = log_file_for(repo_dir, timestamp)
     if not docs_present(repo_dir):
         print(lib.log(f"WARN: {repo_dir.name} - docs_gathered/ is missing or empty; proceeding with code-only analysis"))
+    if not getattr(args, "no_formal_docs", False):
+        banner = formal_docs_guard_banner(repo_dir)
+        if banner is not None:
+            lib.logboth(log_file, banner, echo=True)
 
     if args.next_iteration:
         if not (repo_dir / "quality" / "EXPLORATION.md").is_file():
@@ -998,6 +1124,8 @@ def display_run_header(args: argparse.Namespace, repo_dirs: Sequence[Path], disp
     else:
         print(f"Model:    {args.model or '(default)'}")
     print(f"No seeds: {args.no_seeds}  (Phase 0/0b skipped when true)")
+    if getattr(args, "no_formal_docs", False):
+        print("No formal docs: True  (pre-run formal_docs/ guard suppressed)")
     print(f"Parallel: {args.parallel}")
     if getattr(args, "full_run", False):
         print("Mode:     full-run (fresh main run + all four iteration strategies)")
@@ -1120,6 +1248,8 @@ def build_worker_command(args: argparse.Namespace, target_path: str) -> List[str
         command.extend(["--strategy", ",".join(args.strategy)])
     if args.model:
         command.extend(["--model", args.model])
+    if getattr(args, "no_formal_docs", False):
+        command.append("--no-formal-docs")
     command.append(target_path)
     return command
 
