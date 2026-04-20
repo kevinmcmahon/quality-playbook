@@ -15,9 +15,12 @@ Implements the Phase 5c contract from QPB_v1.5.0_Design.md:
 - `build_index_payload(repo_dir, run_folder)` — best-effort §11 payload for
   any run folder (live or archived), reading git log + surviving artifacts.
 
-CLI (`python -m bin.archive_lib`): operator-driven archive for failed or
-partial runs. The orchestrator calls `archive_run` directly at end of a
-successful Phase 6.
+CLI: operator-driven archive for failed or partial runs. Adopters invoke
+this via `python -m bin.quality_playbook archive` (the operator-facing
+entry point dispatches here); direct `python -m bin.archive_lib` also
+works and is equivalent. The orchestrator calls `archive_run` directly
+at end of a successful Phase 6 — the CLI is only needed to preserve
+non-successful runs before the next run's overwrite.
 """
 
 from __future__ import annotations

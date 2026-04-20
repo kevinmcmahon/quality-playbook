@@ -112,7 +112,8 @@ still work — only the historical record moves out of version control.
 - Orchestrator: `bin/run_playbook.py` (phase execution, gate hook).
 - Migration: `bin/migrate_v1_5_0_layout.py` (pre-v1.5.0 → v1.5.0 move).
 - Archival: `bin/archive_lib.py` (`archive_run`,
-  `write_timestamped_result`, CLI for operator-driven failed/partial
-  archive).
+  `write_timestamped_result`). Operator CLI:
+  `python -m bin.quality_playbook archive [--status=failed|partial]`
+  (dispatches to `archive_lib.main`).
 - Gate: `.github/skills/quality_gate/quality_gate.py` (§10
   mechanical invariants; Layer-1 hallucination mitigation).

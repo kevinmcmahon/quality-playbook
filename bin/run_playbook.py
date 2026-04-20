@@ -813,9 +813,9 @@ def run_one_phase(
         # v1.5.0 end-of-run archival: on gate pass, snapshot the live quality/
         # tree into quality/runs/<run-start-ts>/ and append a row to
         # RUN_INDEX.md. Failed or partial runs do NOT enter history
-        # automatically — operators use `python -m bin.quality_playbook
-        # archive --status=failed|partial` before the next run's overwrite
-        # if they want to preserve them.
+        # automatically — operators preserve them with
+        # `python -m bin.quality_playbook archive --status=failed|partial`
+        # before the next run's overwrite.
         if gate_passed:
             try:
                 archive_lib.archive_run(
