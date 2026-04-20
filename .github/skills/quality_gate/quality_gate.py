@@ -1497,6 +1497,195 @@ def check_v1_5_0_index_md(q):
     pass_("quality/INDEX.md: §11 fields present")
 
 
+_V150_VALID_VERDICTS = ("supports", "overreaches", "unclear")
+
+
+def check_v1_5_0_semantic_check(q):
+    """§10 invariant #17 — Council-of-Three majority-overreaches rule.
+
+    Layer-2 semantic check (Phase 6). Gate does NOT re-run the semantic
+    review; it parses quality/citation_semantic_check.json and applies
+    the majority-overreaches rule:
+
+      - ≥2 of 3 `overreaches` for the same Tier 1/2 REQ → FAIL.
+      - isolated 1/3 `overreaches` or `unclear` → WARN.
+      - <3 reviews for any Tier 1/2 REQ → FAIL (schemas.md §9.4).
+      - review entry for a Tier 3/4/5 REQ → FAIL (only Tier 1/2 are
+        semantically reviewable since they carry citations).
+
+    When requirements_manifest.json has zero Tier 1/2 REQs the
+    citation_semantic_check.json file is still expected (emitted with
+    empty reviews[]); its absence in that case warns rather than
+    fails to avoid breaking Spec Gap runs.
+    """
+    req_data = _v150_manifest(q, "requirements_manifest.json")
+    tier_by_req = {}
+    if req_data and isinstance(req_data.get("records"), list):
+        for rec in req_data["records"]:
+            if isinstance(rec, dict):
+                rid = rec.get("id")
+                tier = rec.get("tier")
+                if isinstance(rid, str) and isinstance(tier, int) and not isinstance(tier, bool):
+                    tier_by_req[rid] = tier
+    tier_12_req_ids = {rid for rid, t in tier_by_req.items() if t in (1, 2)}
+
+    sc_path = q / "citation_semantic_check.json"
+    if not sc_path.is_file():
+        if tier_12_req_ids:
+            fail(
+                "quality/citation_semantic_check.json",
+                "file missing (schemas.md §10 invariant #17 requires a semantic "
+                "check for every Tier 1/2 REQ)",
+            )
+        else:
+            # Spec Gap: no Tier 1/2 REQs to review. File is expected but its
+            # absence doesn't break the invariant since there's nothing to
+            # enforce. Warn so the orchestrator knows to emit the empty file.
+            warn(
+                "quality/citation_semantic_check.json: file missing; no Tier 1/2 "
+                "REQs present so invariant #17 has nothing to enforce — emit an "
+                "empty reviews[] for contract completeness"
+            )
+        return
+
+    data = _v150_manifest(q, "citation_semantic_check.json")
+    if data is None:
+        return  # wrapper check already reported the failure
+    reviews = data.get("reviews")
+    if not isinstance(reviews, list):
+        return  # wrapper check already reported
+
+    by_req = {}
+    seen_reviewers = {}
+    for idx, entry in enumerate(reviews):
+        if not isinstance(entry, dict):
+            fail(
+                "citation_semantic_check.json",
+                f"reviews[#{idx}]: not a JSON object",
+            )
+            continue
+        rid = entry.get("req_id")
+        reviewer = entry.get("reviewer")
+        verdict = entry.get("verdict")
+        notes = entry.get("notes")
+        if not isinstance(rid, str) or not rid:
+            fail(
+                "citation_semantic_check.json",
+                f"reviews[#{idx}]: missing or non-string req_id",
+            )
+            continue
+        if not isinstance(reviewer, str) or not reviewer:
+            fail(
+                "citation_semantic_check.json",
+                f"record_id={rid}: missing or non-string reviewer",
+            )
+            continue
+        if verdict not in _V150_VALID_VERDICTS:
+            fail(
+                "citation_semantic_check.json",
+                f"record_id={rid}: reviewer={reviewer!r} invalid verdict "
+                f"{verdict!r}; expected one of {_V150_VALID_VERDICTS}",
+            )
+            continue
+        if not isinstance(notes, str):
+            fail(
+                "citation_semantic_check.json",
+                f"record_id={rid}: reviewer={reviewer!r} notes must be a string",
+            )
+            continue
+        # §9.4 common-mistake: tier check — review entries must belong to
+        # Tier 1/2 REQs only.
+        tier = tier_by_req.get(rid)
+        if tier is None:
+            fail(
+                "citation_semantic_check.json",
+                f"record_id={rid}: reviewer={reviewer!r} reviews a REQ that does "
+                "not exist in requirements_manifest.json",
+            )
+            continue
+        if tier not in (1, 2):
+            fail(
+                "citation_semantic_check.json",
+                f"record_id={rid}: reviewer={reviewer!r} reviews a tier-{tier} "
+                "REQ; semantic check applies to Tier 1/2 only (schemas.md §9.4)",
+            )
+            continue
+        # Detect duplicate (req_id, reviewer) pairs — a typo that would slip a
+        # vote past the majority computation.
+        pair_key = seen_reviewers.setdefault(rid, set())
+        if reviewer in pair_key:
+            fail(
+                "citation_semantic_check.json",
+                f"record_id={rid}: duplicate review from reviewer={reviewer!r}",
+            )
+            continue
+        pair_key.add(reviewer)
+        by_req.setdefault(rid, []).append(entry)
+
+    # §9.4: every Tier 1/2 REQ needs at least 3 reviews.
+    for rid in sorted(tier_12_req_ids):
+        entries = by_req.get(rid, [])
+        if len(entries) < 3:
+            fail(
+                "citation_semantic_check.json",
+                f"record_id={rid}: fewer than 3 reviews ({len(entries)} present) "
+                "— schemas.md §9.4 requires one entry per council member for "
+                "every Tier 1/2 REQ",
+            )
+            continue
+        overreach_count = sum(1 for e in entries if e.get("verdict") == "overreaches")
+        unclear_count = sum(1 for e in entries if e.get("verdict") == "unclear")
+        if overreach_count >= 2:
+            reviewers_flagged = ", ".join(
+                sorted(
+                    str(e.get("reviewer"))
+                    for e in entries
+                    if e.get("verdict") == "overreaches"
+                )
+            )
+            fail(
+                "citation_semantic_check.json",
+                f"record_id={rid}: semantic check majority overreaches "
+                f"({overreach_count}/{len(entries)} reviewers flagged: "
+                f"{reviewers_flagged}) — schemas.md §10 invariant #17",
+            )
+        elif overreach_count == 1:
+            flagged = next(
+                str(e.get("reviewer"))
+                for e in entries
+                if e.get("verdict") == "overreaches"
+            )
+            warn(
+                f"citation_semantic_check.json: record_id={rid}: 1/{len(entries)} "
+                f"reviewer ({flagged}) flagged as `overreaches` — surfaced for "
+                "human review; not a gate failure unless ≥2 agree"
+            )
+        if unclear_count >= 1 and overreach_count == 0:
+            flagged = ", ".join(
+                sorted(
+                    str(e.get("reviewer"))
+                    for e in entries
+                    if e.get("verdict") == "unclear"
+                )
+            )
+            warn(
+                f"citation_semantic_check.json: record_id={rid}: "
+                f"{unclear_count}/{len(entries)} reviewer(s) flagged as "
+                f"`unclear` ({flagged}) — surfaced for human review"
+            )
+
+    if not tier_12_req_ids:
+        pass_(
+            "citation_semantic_check.json: no Tier 1/2 REQs to review "
+            "(invariant #17 vacuously satisfied)"
+        )
+    else:
+        pass_(
+            f"citation_semantic_check.json: §10 invariant #17 checks complete "
+            f"for {len(tier_12_req_ids)} Tier 1/2 REQ(s)"
+        )
+
+
 def check_v1_5_0_gate_invariants(repo_dir, q):
     """Dispatcher that runs every Layer-1 mechanical check from schemas.md §10."""
     check_v1_5_0_plaintext_extensions(repo_dir)
@@ -1504,6 +1693,9 @@ def check_v1_5_0_gate_invariants(repo_dir, q):
     check_v1_5_0_requirements_manifest(repo_dir, q)
     check_v1_5_0_bugs_manifest(q)
     check_v1_5_0_index_md(q)
+    # Phase 6 invariant #17 runs after requirements_manifest so it sees
+    # shape-validated REQ records.
+    check_v1_5_0_semantic_check(q)
 
 
 def check_repo(repo_dir, version_arg, strictness):

@@ -1584,5 +1584,279 @@ class TestV150LegacyRunGracefulSkip(V150FixtureBase):
         self.assertEqual(fails, 0)
 
 
+# ---------------------------------------------------------------------------
+# Phase 6 — §10 invariant #17 semantic-check enforcement
+# ---------------------------------------------------------------------------
+
+
+def _capture_all_output(func, *args, **kwargs):
+    """Run a check function and return (fail_count, warn_count, stdout)."""
+    quality_gate.FAIL = 0
+    quality_gate.WARN = 0
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        func(*args, **kwargs)
+    return quality_gate.FAIL, quality_gate.WARN, buf.getvalue()
+
+
+class V150SemanticCheckFixtureBase(V150FixtureBase):
+    """Shared scaffolding for Phase 6 invariant #17 fixture tests."""
+
+    def write_reqs(self, tiers):
+        """Seed requirements_manifest.json with N Tier 1/2 REQs."""
+        records = []
+        for idx, tier in enumerate(tiers, start=1):
+            records.append({
+                "id": f"REQ-{idx:03d}",
+                "tier": tier,
+                "functional_section": "Test",
+                "description": f"Requirement {idx}",
+            })
+        self.write_manifest("requirements_manifest.json", "records", records)
+
+    def write_reviews(self, reviews):
+        """Seed citation_semantic_check.json with the given reviews list."""
+        payload = {
+            "schema_version": "1.4.6",
+            "generated_at": "2026-04-19T14:30:22Z",
+            "reviews": reviews,
+        }
+        (self.q / "citation_semantic_check.json").write_text(
+            json.dumps(payload), encoding="utf-8"
+        )
+
+
+class TestV150SemanticCheckHappyPath(V150SemanticCheckFixtureBase):
+    def test_three_supports_passes(self):
+        self.write_reqs([1])
+        reviews = [
+            {"req_id": "REQ-001", "reviewer": m, "verdict": "supports", "notes": ""}
+            for m in ("claude-opus-4.7", "gpt-5.4", "gemini-2.5-pro")
+        ]
+        self.write_reviews(reviews)
+        fails, warns, _ = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertEqual(fails, 0)
+        self.assertEqual(warns, 0)
+
+    def test_no_tier_12_reqs_passes(self):
+        """Spec Gap: all REQs Tier 3 → invariant vacuously satisfied."""
+        self.write_reqs([3, 4, 5])
+        self.write_reviews([])
+        fails, warns, _ = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertEqual(fails, 0)
+
+
+class TestV150SemanticCheckMajorityOverreach(V150SemanticCheckFixtureBase):
+    def test_two_of_three_overreaches_fails(self):
+        self.write_reqs([1])
+        self.write_reviews([
+            {"req_id": "REQ-001", "reviewer": "claude-opus-4.7", "verdict": "overreaches", "notes": "too strong"},
+            {"req_id": "REQ-001", "reviewer": "gpt-5.4", "verdict": "overreaches", "notes": "agree"},
+            {"req_id": "REQ-001", "reviewer": "gemini-2.5-pro", "verdict": "supports", "notes": ""},
+        ])
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("record_id=REQ-001", out)
+        self.assertIn("majority overreaches", out)
+        self.assertIn("invariant #17", out)
+
+    def test_unanimous_overreaches_fails(self):
+        self.write_reqs([2])
+        self.write_reviews([
+            {"req_id": "REQ-001", "reviewer": m, "verdict": "overreaches", "notes": ""}
+            for m in ("claude-opus-4.7", "gpt-5.4", "gemini-2.5-pro")
+        ])
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("3/3", out)
+
+
+class TestV150SemanticCheckSingleOverreachWarns(V150SemanticCheckFixtureBase):
+    def test_single_overreaches_warns_but_passes(self):
+        self.write_reqs([1])
+        self.write_reviews([
+            {"req_id": "REQ-001", "reviewer": "claude-opus-4.7", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gpt-5.4", "verdict": "overreaches", "notes": "concern"},
+            {"req_id": "REQ-001", "reviewer": "gemini-2.5-pro", "verdict": "supports", "notes": ""},
+        ])
+        fails, warns, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertEqual(fails, 0)
+        self.assertGreaterEqual(warns, 1)
+        self.assertIn("gpt-5.4", out)
+        self.assertIn("1/3", out)
+
+    def test_one_unclear_warns(self):
+        self.write_reqs([2])
+        self.write_reviews([
+            {"req_id": "REQ-001", "reviewer": "claude-opus-4.7", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gpt-5.4", "verdict": "unclear", "notes": "ambiguous"},
+            {"req_id": "REQ-001", "reviewer": "gemini-2.5-pro", "verdict": "supports", "notes": ""},
+        ])
+        fails, warns, _ = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertEqual(fails, 0)
+        self.assertGreaterEqual(warns, 1)
+
+
+class TestV150SemanticCheckMissingReviews(V150SemanticCheckFixtureBase):
+    def test_two_reviews_fails(self):
+        self.write_reqs([1])
+        self.write_reviews([
+            {"req_id": "REQ-001", "reviewer": "claude-opus-4.7", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gpt-5.4", "verdict": "supports", "notes": ""},
+        ])
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("fewer than 3 reviews", out)
+        self.assertIn("§9.4", out)
+
+    def test_zero_reviews_for_tier_12_req_fails(self):
+        self.write_reqs([1])
+        self.write_reviews([])
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("fewer than 3 reviews", out)
+
+
+class TestV150SemanticCheckTierViolations(V150SemanticCheckFixtureBase):
+    def test_review_for_tier_3_req_fails(self):
+        self.write_reqs([1, 3])  # REQ-001 tier 1, REQ-002 tier 3
+        self.write_reviews([
+            {"req_id": "REQ-001", "reviewer": "claude-opus-4.7", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gpt-5.4", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gemini-2.5-pro", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-002", "reviewer": "claude-opus-4.7", "verdict": "supports", "notes": ""},
+        ])
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("REQ-002", out)
+        self.assertIn("tier-3", out)
+
+    def test_review_for_unknown_req_fails(self):
+        self.write_reqs([1])
+        self.write_reviews([
+            {"req_id": "REQ-001", "reviewer": "claude-opus-4.7", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gpt-5.4", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gemini-2.5-pro", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-999", "reviewer": "claude-opus-4.7", "verdict": "supports", "notes": ""},
+        ])
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("REQ-999", out)
+        self.assertIn("does not exist", out)
+
+
+class TestV150SemanticCheckMissingFile(V150SemanticCheckFixtureBase):
+    def test_missing_with_tier_12_reqs_fails(self):
+        self.write_reqs([1])
+        # No semantic-check file written.
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("file missing", out)
+        self.assertIn("invariant #17", out)
+
+    def test_missing_without_tier_12_reqs_warns(self):
+        """Spec Gap: no Tier 1/2 REQs → missing file is a warning, not a failure."""
+        self.write_reqs([3, 4, 5])
+        fails, warns, _ = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertEqual(fails, 0)
+        self.assertGreaterEqual(warns, 1)
+
+
+class TestV150SemanticCheckShapeValidation(V150SemanticCheckFixtureBase):
+    def test_invalid_verdict_enum_fails(self):
+        self.write_reqs([1])
+        self.write_reviews([
+            {"req_id": "REQ-001", "reviewer": "claude-opus-4.7", "verdict": "maybe", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gpt-5.4", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gemini-2.5-pro", "verdict": "supports", "notes": ""},
+        ])
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("invalid verdict", out)
+        self.assertIn("maybe", out)
+
+    def test_duplicate_reviewer_fails(self):
+        self.write_reqs([1])
+        self.write_reviews([
+            {"req_id": "REQ-001", "reviewer": "claude-opus-4.7", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "claude-opus-4.7", "verdict": "overreaches", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gpt-5.4", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gemini-2.5-pro", "verdict": "supports", "notes": ""},
+        ])
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("duplicate review", out)
+
+    def test_non_object_entry_fails(self):
+        self.write_reqs([1])
+        payload = {
+            "schema_version": "1.4.6",
+            "generated_at": "2026-04-19T14:30:22Z",
+            "reviews": ["not an object"],
+        }
+        (self.q / "citation_semantic_check.json").write_text(
+            json.dumps(payload), encoding="utf-8"
+        )
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+
+
+class TestV150SemanticCheckOutputFormat(V150SemanticCheckFixtureBase):
+    def test_failure_format_matches_path_record_id_pattern(self):
+        """Regression: every semantic-check failure line fits the
+        `<path>: record_id=<id>: <reason>` pattern."""
+        self.write_reqs([1])
+        self.write_reviews([
+            {"req_id": "REQ-001", "reviewer": "claude-opus-4.7", "verdict": "overreaches", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gpt-5.4", "verdict": "overreaches", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gemini-2.5-pro", "verdict": "supports", "notes": ""},
+        ])
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        # Each failure line should match the path: record_id= pattern.
+        import re
+        failure_lines = [
+            line for line in out.splitlines()
+            if line.startswith("  citation_semantic_check.json")
+            and "PASS:" not in line and "WARN:" not in line
+        ]
+        self.assertTrue(
+            any(re.search(r":\s*record_id=\S+: ", line) for line in failure_lines),
+            f"no line matches record_id= pattern: {failure_lines!r}",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
