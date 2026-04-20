@@ -406,7 +406,7 @@ def build_index_payload(
 
     Fields that cannot be recovered from git log or the surviving artifacts
     are stored as the literal string `"unknown"`. `target_project_type` is
-    a placeholder until the v1.5.1 Code/Skill/Hybrid detector lands.
+    a placeholder until the v1.5.2 Code/Skill/Hybrid detector lands.
     """
     start, end, duration = _resolve_bounds(repo, run_folder)
     verdict = gate_verdict_override or _extract_gate_verdict(run_folder)
@@ -419,7 +419,7 @@ def build_index_payload(
         "qpb_version": _extract_qpb_version(run_folder),
         "target_repo_path": target_repo_path,
         "target_repo_git_sha": target_repo_git_sha or _git_head_sha(repo),
-        "target_project_type": target_project_type,  # TODO(v1.5.1): Code/Skill/Hybrid detector.
+        "target_project_type": target_project_type,  # TODO(v1.5.2): Code/Skill/Hybrid detector.
         "phases_executed": _extract_phases_executed(run_folder),
         "summary": {
             "requirements": _extract_req_tier_counts(run_folder),
@@ -543,7 +543,7 @@ def archive_run(
       timestamp — run start timestamp, basic ISO 8601 (YYYYMMDDTHHMMSSZ).
       status — one of "success" (no suffix), "failed" (-FAILED suffix),
                "partial" (-PARTIAL suffix).
-      target_project_type — placeholder until v1.5.1.
+      target_project_type — placeholder until v1.5.2.
       gate_verdict_override — force a specific gate_verdict value when the
                caller already knows the outcome (end-of-run hook path).
 

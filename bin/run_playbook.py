@@ -713,7 +713,7 @@ def write_live_index_stub(repo_dir: Path, timestamp: str) -> None:
         "qpb_version": lib.detect_skill_version() or "unknown",
         "target_repo_path": ".",
         "target_repo_git_sha": archive_lib._git_head_sha(repo_dir),
-        "target_project_type": "Code",  # TODO(v1.5.1): Code/Skill/Hybrid detector.
+        "target_project_type": "Code",  # TODO(v1.5.2): Code/Skill/Hybrid detector.
         "phases_executed": [],
         "summary": {"requirements": {}, "bugs": {}, "gate_verdict": "partial"},
         "artifacts": [],

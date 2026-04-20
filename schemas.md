@@ -907,7 +907,7 @@ non-empty.
 | `qpb_version`           | string          | yes      | Playbook version that produced the run, e.g. `"1.5.0"`.                                  |
 | `target_repo_path`      | string          | yes      | Absolute or repo-root-relative path to the target repo.                                  |
 | `target_repo_git_sha`   | string          | yes      | Git SHA of the target repo HEAD at run start. May be `"unknown"` for non-git targets.    |
-| `target_project_type`   | string          | yes      | One of `Code`, `Skill`, `Hybrid` (per v1.5.1 project-type taxonomy).                     |
+| `target_project_type`   | string          | yes      | One of `Code`, `Skill`, `Hybrid` (per v1.5.2 project-type taxonomy).                     |
 | `phases_executed`       | array of object | yes      | One entry per phase run. Each: `{phase_id, model, start, end, exit_status}`.             |
 | `summary.requirements`  | object          | yes      | Counts by tier — keys `"1"`..`"5"`, integer values.                                      |
 | `summary.bugs`          | object          | yes      | Counts by severity and disposition. Keys include every enum value from §3.2 and §3.3; integer values. |
