@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.4.6",
+  "generated_at": "2026-04-20T12:00:00Z",
+  "records": [
+    {
+      "source_path": "formal_docs/spec.txt",
+      "document_sha256": "bf0cf20778f51c8853d2ac8e695741416420b7ddedbe8b346eb9d60468de93b9",
+      "tier": 1,
+      "version": "phase7-variation",
+      "date": "2026-04-20"
+    }
+  ]
+}

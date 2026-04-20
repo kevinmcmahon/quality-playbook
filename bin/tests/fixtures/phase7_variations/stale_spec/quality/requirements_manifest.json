@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.4.6",
+  "generated_at": "2026-04-20T12:00:00Z",
+  "records": [
+    {
+      "id": "REQ-001",
+      "title": "Device initialization sequence",
+      "description": "Driver initialization steps.",
+      "tier": 1,
+      "functional_section": "Device initialization",
+      "citation": {
+        "document": "formal_docs/spec.txt",
+        "document_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "version": "phase7-variation-bumped",
+        "section": "2.4",
+        "citation_excerpt": "The driver MUST perform the following steps, in order, before the\ndevice is considered operational. Bumped paragraph follows:\n- Verify feature bit VERSION_2 (v1.2 addition, not in v1.1).\n- Reset before reading device-status registers."
+      },
+      "use_cases": []
+    }
+  ]
+}

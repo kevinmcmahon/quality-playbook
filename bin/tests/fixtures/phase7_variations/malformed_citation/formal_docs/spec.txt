@@ -1,0 +1,12 @@
+Synthetic spec for Phase 7 variation: malformed citation excerpt
+
+1 Scope
+
+This fixture exercises the gate's Layer-1 byte-equality check
+(schemas.md §10 invariant #11). The citation_excerpt stored in the
+manifest deliberately does NOT match any text at the cited locator,
+so the gate must reject the record.
+
+2.4 Device initialization
+The driver MUST perform the following steps, in order, before the
+device is considered operational.

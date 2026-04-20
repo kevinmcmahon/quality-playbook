@@ -1,0 +1,11 @@
+Synthetic spec for Phase 7 variation: empty informal_docs
+
+1 Scope
+
+This fixture demonstrates that an empty informal_docs/ folder
+does not fail any Layer-1 check. Tier 4 context is optional;
+zero Tier 4 content is a valid Spec Gap state.
+
+2.4 Device initialization
+The driver MUST perform the following steps, in order, before the
+device is considered operational.

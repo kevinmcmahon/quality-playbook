@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.4.6",
+  "generated_at": "2026-04-20T12:00:00Z",
+  "records": [
+    {
+      "id": "REQ-001",
+      "title": "Device reset on failed negotiation",
+      "description": "The driver must reset the device before operational use.",
+      "tier": 1,
+      "functional_section": "Device initialization",
+      "citation": {
+        "document": "formal_docs/spec.txt",
+        "document_sha256": "8f059f05e8d618acc70d946bcfb724ccd848f8c1fd7ae6cdb454b8547ef24e04",
+        "version": "phase7-variation",
+        "section": "2.4",
+        "citation_excerpt": "FABRICATED EXCERPT — this string intentionally does not appear anywhere in spec.txt, so the gate's byte-equality check must fail with invariant #11."
+      },
+      "use_cases": []
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+Synthetic spec for Phase 7 variation: stale-spec SHA mismatch
+
+1 Scope
+
+This fixture ships with a freshly-regenerated text body but the
+quality/formal_docs_manifest.json record carries an old
+document_sha256 value from before a spec bump. The gate must
+detect the stale hash via invariant #3 (citation_stale).
+
+2.4 Device initialization
+The driver MUST perform the following steps, in order, before the
+device is considered operational. Bumped paragraph follows:
+- Verify feature bit VERSION_2 (v1.2 addition, not in v1.1).
+- Reset before reading device-status registers.
