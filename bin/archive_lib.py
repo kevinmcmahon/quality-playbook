@@ -1,0 +1,615 @@
+"""archive_lib.py — shared helpers for quality/ run archival and INDEX rendering.
+
+Implements the Phase 5c contract from QPB_v1.5.0_Design.md:
+
+- `write_timestamped_result(quality_dir, basename, content)` writes
+  `quality/results/<basename>-YYYYMMDDTHHMMSSZ.<ext>` plus a `<basename>-latest.<ext>`
+  pointer (symlink on POSIX, copy fallback on Windows).
+- `archive_run(repo_dir, timestamp, *, status)` snapshots the live `quality/`
+  tree into `quality/runs/<timestamp>[-suffix]/`, writes a per-run `INDEX.md`,
+  and appends one row to `quality/RUN_INDEX.md`. Status `"success"` uses no
+  suffix; `"failed"` and `"partial"` produce `-FAILED` / `-PARTIAL` suffixes.
+- `render_index_markdown`, `render_run_index_row`, `render_run_index_header`,
+  `append_run_index_row` — rendering primitives shared with
+  `bin/migrate_v1_5_0_layout.py`.
+- `build_index_payload(repo_dir, run_folder)` — best-effort §11 payload for
+  any run folder (live or archived), reading git log + surviving artifacts.
+
+CLI (`python -m bin.archive_lib`): operator-driven archive for failed or
+partial runs. The orchestrator calls `archive_run` directly at end of a
+successful Phase 6.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+SEVERITY_LITERALS = ("HIGH", "MEDIUM", "LOW")
+DISPOSITION_LITERALS = (
+    "code-fix",
+    "spec-fix",
+    "upstream-spec-issue",
+    "mis-read",
+    "deferred",
+)
+TIER_LITERALS = ("1", "2", "3", "4", "5", "unknown")
+STATUS_SUFFIX = {"success": "", "failed": "-FAILED", "partial": "-PARTIAL"}
+
+_VERSION_HEADER_PATTERN = re.compile(r"Quality Playbook v([0-9]+(?:\.[0-9]+)+)", re.IGNORECASE)
+_BUG_HEADING_PATTERN = re.compile(r"^###\s+BUG-([A-Za-z0-9]+)\s*$", re.MULTILINE)
+_REQ_HEADING_PATTERN = re.compile(r"^###\s+REQ-([A-Za-z0-9]+)", re.MULTILINE)
+_SEVERITY_PATTERN = re.compile(r"\*\*Severity\*\*\s*[:.-]\s*(HIGH|MEDIUM|LOW)", re.IGNORECASE)
+_PHASE_CHECK_PATTERN = re.compile(r"^-\s*\[x\]\s*Phase\s*([0-9a-zA-Z]+)", re.MULTILINE)
+_GATE_RESULT_PATTERN = re.compile(r"gate_result['\"]?\s*[:=]\s*['\"](PASS|FAIL|WARN)['\"]?", re.IGNORECASE)
+
+
+class ArchiveError(Exception):
+    """Raised on unrecoverable archive failures."""
+
+
+# ---------------------------------------------------------------------------
+# Time helpers
+# ---------------------------------------------------------------------------
+
+
+def utc_compact_timestamp(now: Optional[datetime] = None) -> str:
+    """Return `YYYYMMDDTHHMMSSZ` — basic ISO 8601 timestamp, UTC.
+
+    Used for folder names (quality/runs/<ts>/) and file names under
+    quality/results/.
+    """
+    dt = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    return dt.strftime("%Y%m%dT%H%M%SZ")
+
+
+def utc_extended_timestamp(now: Optional[datetime] = None) -> str:
+    """Return `YYYY-MM-DDTHH:MM:SSZ` — extended ISO 8601, UTC, second precision."""
+    dt = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(microsecond=0)
+    return dt.isoformat().replace("+00:00", "Z")
+
+
+# ---------------------------------------------------------------------------
+# write_timestamped_result
+# ---------------------------------------------------------------------------
+
+
+def _split_basename_ext(basename: str) -> Tuple[str, str]:
+    """Split `foo` or `foo.json` into `(stem, ext_with_dot_or_empty)`."""
+    if "." in basename and not basename.startswith("."):
+        stem, _, ext = basename.rpartition(".")
+        return stem, "." + ext
+    return basename, ""
+
+
+def write_timestamped_result(
+    quality_dir: Path,
+    basename: str,
+    content: str,
+    *,
+    now: Optional[datetime] = None,
+) -> Tuple[Path, Path]:
+    """Write a timestamped result file + a `-latest` pointer.
+
+    Arguments:
+      quality_dir — the run's quality/ directory; the result goes under
+                    quality_dir / "results".
+      basename    — name with or without extension. `foo.json` writes to
+                    `results/foo-<ts>.json` + `results/foo-latest.json`.
+                    Extensionless `foo` writes `results/foo-<ts>` + `results/foo-latest`.
+      content     — text written to the timestamped path.
+
+    Returns `(timestamped_path, latest_path)`. `latest_path` is a symlink on
+    POSIX and a copy on platforms that reject symlinks.
+    """
+    stem, ext = _split_basename_ext(basename)
+    ts = utc_compact_timestamp(now)
+    results_dir = Path(quality_dir) / "results"
+    results_dir.mkdir(parents=True, exist_ok=True)
+    timestamped = results_dir / f"{stem}-{ts}{ext}"
+    latest = results_dir / f"{stem}-latest{ext}"
+    timestamped.write_text(content, encoding="utf-8")
+
+    if latest.exists() or latest.is_symlink():
+        try:
+            latest.unlink()
+        except OSError:
+            pass
+    target_name = timestamped.name
+    try:
+        os.symlink(target_name, latest)
+    except (OSError, NotImplementedError):
+        shutil.copyfile(timestamped, latest)
+    return timestamped, latest
+
+
+# ---------------------------------------------------------------------------
+# Content extraction for INDEX.md payloads (shared with migration script)
+# ---------------------------------------------------------------------------
+
+
+def _read_text(path: Path) -> str:
+    if not path.is_file():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _git_available(repo: Path) -> bool:
+    try:
+        subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            cwd=repo,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return False
+    return True
+
+
+def _git_log_timestamps(repo: Path, folder: Path) -> Tuple[Optional[str], Optional[str]]:
+    try:
+        rel = folder.relative_to(repo).as_posix()
+    except ValueError:
+        return None, None
+    try:
+        proc = subprocess.run(
+            ["git", "log", "--reverse", "--format=%aI", "--", rel],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return None, None
+    lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    if not lines:
+        return None, None
+    return lines[0], lines[-1]
+
+
+def _git_head_sha(repo: Path) -> str:
+    if not _git_available(repo):
+        return "unknown"
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError:
+        return "unknown"
+    return proc.stdout.strip() or "unknown"
+
+
+def _fs_mtimes(folder: Path) -> Tuple[str, str]:
+    mtimes: List[float] = []
+    for path in folder.rglob("*"):
+        if path.is_file():
+            try:
+                mtimes.append(path.stat().st_mtime)
+            except OSError:
+                continue
+    if not mtimes:
+        try:
+            stat = folder.stat()
+            mtimes.append(stat.st_mtime)
+        except OSError:
+            now = utc_extended_timestamp()
+            return now, now
+    first = datetime.fromtimestamp(min(mtimes), tz=timezone.utc).replace(microsecond=0)
+    last = datetime.fromtimestamp(max(mtimes), tz=timezone.utc).replace(microsecond=0)
+    return first.isoformat().replace("+00:00", "Z"), last.isoformat().replace("+00:00", "Z")
+
+
+def _parse_iso(ts: str) -> Optional[datetime]:
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _duration_seconds(start: str, end: str) -> int:
+    a = _parse_iso(start)
+    b = _parse_iso(end)
+    if a is None or b is None:
+        return 0
+    return max(int((b - a).total_seconds()), 0)
+
+
+def _resolve_bounds(repo: Path, folder: Path) -> Tuple[str, str, int]:
+    start: Optional[str] = None
+    end: Optional[str] = None
+    if _git_available(repo):
+        start, end = _git_log_timestamps(repo, folder)
+    if start is None or end is None:
+        fs_start, fs_end = _fs_mtimes(folder)
+        start = start or fs_start
+        end = end or fs_end
+    return start, end, _duration_seconds(start, end)
+
+
+def _extract_qpb_version(run_folder: Path) -> str:
+    for name in ("BUGS.md", "REQUIREMENTS.md", "PROGRESS.md", "QUALITY.md"):
+        for prefix in (run_folder / "quality", run_folder):
+            text = _read_text(prefix / name)
+            if not text:
+                continue
+            match = _VERSION_HEADER_PATTERN.search(text)
+            if match:
+                return match.group(1)
+    return "unknown"
+
+
+def _split_by_heading(text: str, pattern: re.Pattern) -> List[str]:
+    positions = [m.start() for m in pattern.finditer(text)]
+    if not positions:
+        return []
+    positions.append(len(text))
+    return [text[positions[i]:positions[i + 1]] for i in range(len(positions) - 1)]
+
+
+def _extract_bug_counts(run_folder: Path) -> Dict[str, int]:
+    text = _read_text(run_folder / "quality" / "BUGS.md") or _read_text(run_folder / "BUGS.md")
+    counts: Dict[str, int] = {level: 0 for level in SEVERITY_LITERALS}
+    counts.update({d: 0 for d in DISPOSITION_LITERALS})
+    if not text:
+        return counts
+    for segment in _split_by_heading(text, _BUG_HEADING_PATTERN):
+        sev_match = _SEVERITY_PATTERN.search(segment)
+        if sev_match:
+            counts[sev_match.group(1).upper()] += 1
+        for disposition in DISPOSITION_LITERALS:
+            if re.search(
+                rf"\*\*disposition\*\*\s*[:.-]\s*{re.escape(disposition)}",
+                segment,
+                re.IGNORECASE,
+            ):
+                counts[disposition] += 1
+    return counts
+
+
+def _extract_req_tier_counts(run_folder: Path) -> Dict[str, int]:
+    text = _read_text(run_folder / "quality" / "REQUIREMENTS.md") or _read_text(
+        run_folder / "REQUIREMENTS.md"
+    )
+    counts: Dict[str, int] = {tier: 0 for tier in TIER_LITERALS}
+    if not text:
+        return counts
+    for segment in _split_by_heading(text, _REQ_HEADING_PATTERN):
+        tier_match = re.search(r"\*\*Tier\*\*\s*[:.-]\s*([1-5])", segment, re.IGNORECASE)
+        if tier_match:
+            counts[tier_match.group(1)] += 1
+        else:
+            counts["unknown"] += 1
+    return counts
+
+
+def _extract_phases_executed(run_folder: Path) -> List[Dict[str, str]]:
+    text = _read_text(run_folder / "quality" / "PROGRESS.md") or _read_text(run_folder / "PROGRESS.md")
+    if not text:
+        return []
+    return [
+        {
+            "phase_id": m.group(1),
+            "model": "unknown",
+            "start": "unknown",
+            "end": "unknown",
+            "exit_status": "unknown",
+        }
+        for m in _PHASE_CHECK_PATTERN.finditer(text)
+    ]
+
+
+def _extract_gate_verdict(run_folder: Path) -> str:
+    results_dir = run_folder / "quality" / "results"
+    if results_dir.is_dir():
+        for candidate in sorted(results_dir.glob("run-*.json")):
+            match = _GATE_RESULT_PATTERN.search(_read_text(candidate))
+            if match:
+                return {"PASS": "pass", "FAIL": "fail", "WARN": "partial"}.get(
+                    match.group(1).upper(), "partial"
+                )
+        latest = results_dir / "gate-report-latest.json"
+        if latest.is_file():
+            raw = _read_text(latest)
+            match = _GATE_RESULT_PATTERN.search(raw)
+            if match:
+                return {"PASS": "pass", "FAIL": "fail", "WARN": "partial"}.get(
+                    match.group(1).upper(), "partial"
+                )
+    progress = _read_text(run_folder / "quality" / "PROGRESS.md") or _read_text(
+        run_folder / "PROGRESS.md"
+    )
+    if "Terminal Gate Verification" in progress:
+        tail = progress[progress.find("Terminal Gate"):]
+        if re.search(r"gate_result\s*[:.-]?\s*pass|\bPASS\b", tail):
+            return "pass"
+    return "unknown"
+
+
+def _collect_artifacts(run_folder: Path) -> List[str]:
+    artifacts: List[str] = []
+    for path in sorted(run_folder.rglob("*")):
+        if not path.is_file():
+            continue
+        if path.name == "INDEX.md" and path.parent == run_folder:
+            continue
+        try:
+            artifacts.append(path.relative_to(run_folder).as_posix())
+        except ValueError:
+            continue
+    return artifacts
+
+
+def build_index_payload(
+    repo: Path,
+    run_folder: Path,
+    *,
+    target_repo_path: str = ".",
+    target_project_type: str = "Code",
+    target_repo_git_sha: Optional[str] = None,
+    gate_verdict_override: Optional[str] = None,
+) -> Dict[str, object]:
+    """Assemble the §11 `INDEX.md` payload for an archived or live run folder.
+
+    Fields that cannot be recovered from git log or the surviving artifacts
+    are stored as the literal string `"unknown"`. `target_project_type` is
+    a placeholder until the v1.5.1 Code/Skill/Hybrid detector lands.
+    """
+    start, end, duration = _resolve_bounds(repo, run_folder)
+    verdict = gate_verdict_override or _extract_gate_verdict(run_folder)
+    if verdict not in ("pass", "fail", "partial"):
+        verdict = "partial"
+    return {
+        "run_timestamp_start": start,
+        "run_timestamp_end": end,
+        "duration_seconds": duration,
+        "qpb_version": _extract_qpb_version(run_folder),
+        "target_repo_path": target_repo_path,
+        "target_repo_git_sha": target_repo_git_sha or _git_head_sha(repo),
+        "target_project_type": target_project_type,  # TODO(v1.5.1): Code/Skill/Hybrid detector.
+        "phases_executed": _extract_phases_executed(run_folder),
+        "summary": {
+            "requirements": _extract_req_tier_counts(run_folder),
+            "bugs": _extract_bug_counts(run_folder),
+            "gate_verdict": verdict,
+        },
+        "artifacts": _collect_artifacts(run_folder),
+    }
+
+
+# ---------------------------------------------------------------------------
+# INDEX.md / RUN_INDEX.md rendering
+# ---------------------------------------------------------------------------
+
+
+def render_index_markdown(run_id: str, payload: Dict[str, object], *, provenance: str) -> str:
+    """Render the per-run `INDEX.md`.
+
+    `provenance` is a short sentence explaining who wrote the file. For
+    migration this is "backfilled by bin/migrate_v1_5_0_layout.py"; for
+    archive_run it is "written by bin/archive_lib.archive_run".
+    """
+    body = json.dumps(payload, indent=2, sort_keys=False)
+    return (
+        f"# Run Index — {run_id}\n\n"
+        f"Playbook run archived to `quality/runs/{run_id}/`. This file was\n"
+        f"{provenance}. Fields marked `\"unknown\"` could not be recovered\n"
+        "from the run's artifacts.\n\n"
+        "```json\n"
+        f"{body}\n"
+        "```\n"
+    )
+
+
+def render_run_index_header() -> str:
+    return (
+        "# QPB RUN_INDEX\n\n"
+        "Append-only index of every archived run under `quality/runs/`. One row\n"
+        "per archived run. Maintained by `bin/migrate_v1_5_0_layout.py` at\n"
+        "migration time and by `bin/archive_lib.archive_run` at end of every\n"
+        "successful run. Rows are never rewritten; a run's `INDEX.md` is the\n"
+        "authoritative per-run record.\n\n"
+        "| Run | QPB version | Project type | Gate verdict | Bug count | Per-run INDEX |\n"
+        "|-----|-------------|--------------|--------------|-----------|----------------|\n"
+    )
+
+
+def render_run_index_row(run_id: str, payload: Dict[str, object]) -> str:
+    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    bugs = summary.get("bugs") if isinstance(summary.get("bugs"), dict) else {}
+    bug_count = sum(int(bugs.get(s, 0)) for s in SEVERITY_LITERALS if isinstance(bugs.get(s, 0), int))
+    return (
+        f"| {run_id} "
+        f"| {payload.get('qpb_version', 'unknown')} "
+        f"| {payload.get('target_project_type', 'Code')} "
+        f"| {summary.get('gate_verdict', 'partial')} "
+        f"| {bug_count} "
+        f"| [INDEX.md](quality/runs/{run_id}/INDEX.md) |"
+    )
+
+
+def append_run_index_row(repo_dir: Path, run_id: str, payload: Dict[str, object]) -> Path:
+    """Append one row to quality/RUN_INDEX.md (never rewrite prior rows).
+
+    Creates the file with a header if it does not exist. If the row for
+    `run_id` is already present, leaves the file untouched (idempotent).
+    """
+    path = Path(repo_dir) / "quality" / "RUN_INDEX.md"
+    row = render_run_index_row(run_id, payload)
+    existing = _read_text(path)
+    if existing:
+        if f"| {run_id} " in existing:
+            return path
+        content = existing.rstrip() + "\n" + row + "\n"
+    else:
+        content = render_run_index_header() + row + "\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+def load_index_payload(path: Path) -> Optional[Dict[str, object]]:
+    """Parse the JSON block out of a per-run INDEX.md, returning the payload dict."""
+    text = _read_text(path)
+    if not text:
+        return None
+    match = re.search(r"```json\n(.*?)\n```", text, re.DOTALL)
+    if not match:
+        return None
+    try:
+        data = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+# ---------------------------------------------------------------------------
+# archive_run — end-of-run snapshot
+# ---------------------------------------------------------------------------
+
+
+def _runs_exclude_ignore(*_: object) -> set:
+    """Passed to copytree's `ignore=` to exclude quality/runs/ recursion."""
+    return {"runs"}
+
+
+def archive_run(
+    repo_dir: Path,
+    timestamp: str,
+    *,
+    status: str = "success",
+    target_repo_path: str = ".",
+    target_project_type: str = "Code",
+    gate_verdict_override: Optional[str] = None,
+    now: Optional[datetime] = None,
+) -> Path:
+    """Snapshot quality/ into quality/runs/<timestamp>[-SUFFIX]/, write INDEX.md, append RUN_INDEX.md row.
+
+    Arguments:
+      repo_dir — target repo root.
+      timestamp — run start timestamp, basic ISO 8601 (YYYYMMDDTHHMMSSZ).
+      status — one of "success" (no suffix), "failed" (-FAILED suffix),
+               "partial" (-PARTIAL suffix).
+      target_project_type — placeholder until v1.5.1.
+      gate_verdict_override — force a specific gate_verdict value when the
+               caller already knows the outcome (end-of-run hook path).
+
+    Returns the archive folder path. Leaves the live `quality/` tree in
+    place so the next run can either continue from it or overwrite.
+    """
+    if status not in STATUS_SUFFIX:
+        raise ArchiveError(f"invalid status {status!r}; expected success/failed/partial")
+    repo_dir = Path(repo_dir)
+    quality_dir = repo_dir / "quality"
+    if not quality_dir.is_dir():
+        raise ArchiveError(f"{quality_dir} does not exist; nothing to archive")
+
+    run_id = timestamp + STATUS_SUFFIX[status]
+    archive_root = quality_dir / "runs" / run_id
+    if archive_root.exists():
+        raise ArchiveError(
+            f"archive target {archive_root} already exists; refusing to overwrite "
+            "(invoke with a different timestamp or remove the existing folder first)"
+        )
+    archive_root.parent.mkdir(parents=True, exist_ok=True)
+    partial_dir = quality_dir / "runs" / (run_id + ".partial")
+    if partial_dir.exists():
+        shutil.rmtree(partial_dir)
+    shutil.copytree(
+        quality_dir,
+        partial_dir / "quality",
+        ignore=shutil.ignore_patterns("runs"),
+    )
+    partial_dir.rename(archive_root)
+
+    # Build the INDEX.md payload using the freshly-archived copy so subsequent
+    # git log operations see its content (it's staged but not committed yet).
+    status_verdict = {
+        "success": "pass",
+        "failed": "fail",
+        "partial": "partial",
+    }[status]
+    effective_override = gate_verdict_override or status_verdict
+    payload = build_index_payload(
+        repo_dir,
+        archive_root,
+        target_repo_path=target_repo_path,
+        target_project_type=target_project_type,
+        gate_verdict_override=effective_override,
+    )
+    index_path = archive_root / "INDEX.md"
+    index_path.write_text(
+        render_index_markdown(
+            run_id,
+            payload,
+            provenance="written by `bin/archive_lib.archive_run` at end of run",
+        ),
+        encoding="utf-8",
+    )
+    append_run_index_row(repo_dir, run_id, payload)
+    return archive_root
+
+
+# ---------------------------------------------------------------------------
+# CLI — operator-driven archive for failed / partial runs
+# ---------------------------------------------------------------------------
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Archive the current quality/ tree to quality/runs/<timestamp>[-SUFFIX]/. "
+            "Operator-driven; the orchestrator auto-invokes archive_run on a clean "
+            "gate pass, so use this only to preserve a failed or partial run before "
+            "the next run's overwrite."
+        ),
+    )
+    parser.add_argument(
+        "repo",
+        nargs="?",
+        default=".",
+        help="Target repository root (default: current working directory).",
+    )
+    parser.add_argument(
+        "--status",
+        choices=("success", "failed", "partial"),
+        default="success",
+        help="Archive status; determines folder suffix. success = no suffix.",
+    )
+    parser.add_argument(
+        "--timestamp",
+        default=None,
+        help="Override the archive timestamp (basic ISO 8601 YYYYMMDDTHHMMSSZ). "
+        "Defaults to the current UTC time.",
+    )
+    args = parser.parse_args(argv)
+
+    repo = Path(args.repo).resolve()
+    ts = args.timestamp or utc_compact_timestamp()
+    try:
+        archive = archive_run(repo, ts, status=args.status)
+    except ArchiveError as exc:
+        print(f"archive: {exc}", file=sys.stderr)
+        return 1
+    print(f"Archived quality/ to {archive.relative_to(repo)}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

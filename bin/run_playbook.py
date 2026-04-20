@@ -22,8 +22,10 @@ from typing import List, Optional, Sequence, Tuple
 
 try:
     from . import benchmark_lib as lib
+    from . import archive_lib
 except ImportError:
     import benchmark_lib as lib
+    import archive_lib
 
 
 ALL_STRATEGIES = ["gap", "unfiltered", "parity", "adversarial"]
@@ -692,7 +694,39 @@ def run_one_phase(repo_dir: Path, phase: str, phase_list: Sequence[str], args: a
             if lines:
                 gate_result = lines[-1]
         lib.logboth(log_file, lib.log(f"  Phase 6 complete: {gate_result}"))
+        # v1.5.0 end-of-run archival: on gate pass, snapshot the live quality/
+        # tree into quality/runs/<ts>/ and append a row to RUN_INDEX.md. Failed
+        # or partial runs do NOT enter history automatically — operators use
+        # `python -m bin.archive_lib --status=failed|partial` before the next
+        # run's overwrite if they want to preserve them.
+        if _gate_pass(gate_result, quality_dir):
+            try:
+                archive_lib.archive_run(
+                    repo_dir,
+                    archive_lib.utc_compact_timestamp(),
+                    status="success",
+                    gate_verdict_override="pass",
+                )
+            except archive_lib.ArchiveError as exc:
+                lib.logboth(log_file, lib.log(f"  WARN archive_run skipped: {exc}"))
     return True
+
+
+def _gate_pass(gate_result_line: str, quality_dir: Path) -> bool:
+    """Return True if the end-of-Phase-6 gate state indicates a clean pass."""
+    if "PASS" in gate_result_line.upper() and "FAIL" not in gate_result_line.upper():
+        return True
+    latest = quality_dir / "results" / "gate-report-latest.json"
+    if latest.is_file():
+        try:
+            import json
+
+            data = json.loads(latest.read_text(encoding="utf-8", errors="ignore"))
+            verdict = str(data.get("gate_verdict") or data.get("gate_result") or "").lower()
+            return verdict == "pass"
+        except (json.JSONDecodeError, OSError):
+            return False
+    return False
 
 
 def run_one_phased(repo_dir: Path, phase_list: Sequence[str], args: argparse.Namespace, timestamp: str) -> int:

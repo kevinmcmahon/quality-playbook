@@ -38,6 +38,10 @@ cp references/* .claude/skills/quality-playbook/references/
 # v1.5.0: Tier 1/2 and Tier 4 source folders at the target repo root.
 # formal_docs/README.md and informal_docs/README.md ship with the skill source.
 mkdir -p formal_docs informal_docs
+# Optional: append the suggested .gitignore rules for adopters (keeps bulk
+# archived runs + informal_docs content out of version control while tracking
+# the top-level RUN_INDEX.md and the folder READMEs).
+cat skill-template.gitignore >> .gitignore
 ```
 
 **GitHub Copilot (flat layout):**
@@ -46,6 +50,7 @@ mkdir -p .github/skills/references
 cp SKILL.md .github/skills/SKILL.md
 cp references/* .github/skills/references/
 mkdir -p formal_docs informal_docs
+cat skill-template.gitignore >> .gitignore
 ```
 
 **GitHub Copilot (nested layout):**
@@ -54,6 +59,7 @@ mkdir -p .github/skills/quality-playbook/references
 cp SKILL.md .github/skills/quality-playbook/SKILL.md
 cp references/* .github/skills/quality-playbook/references/
 mkdir -p formal_docs informal_docs
+cat skill-template.gitignore >> .gitignore
 ```
 
 **Cursor, Windsurf, other tools:** Use any of the locations above, or put `SKILL.md` and `references/` in your project root. The runner, gate, and orchestrator agents check all four locations — repo-root `SKILL.md`, Claude's `.claude/skills/quality-playbook/`, and both Copilot layouts.
