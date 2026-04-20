@@ -446,13 +446,23 @@ def plan_prompts(
     roster = list(members) if members is not None else list(council_members())
 
     reqs = collect_tier_12_reqs(quality_dir)
+    prompts_dir = quality_dir / PROMPTS_SUBDIR
 
     if not reqs:
         # Spec Gap: no prompts to send; write the empty §9 wrapper directly.
+        # If a prior non-Spec-Gap run left prompt files behind, clear them so
+        # the operator isn't tempted to dispatch stale prompts.
+        _clear_prompt_files(prompts_dir)
         path = write_semantic_check(repo, [])
         return ([], path)
 
-    prompts_dir = quality_dir / PROMPTS_SUBDIR
+    # Clear any `.txt` left from a prior plan call before writing fresh
+    # prompts. A rerun that transitions from a 20-REQ batch layout (12
+    # files) to a 1-REQ unbatched layout (3 files) would otherwise leave
+    # nine stale `-batchN.txt` files that the operator might dispatch by
+    # mistake. Non-`.txt` files in the folder (e.g. operator-placed
+    # notes.md) are preserved.
+    _clear_prompt_files(prompts_dir)
     prompts_dir.mkdir(parents=True, exist_ok=True)
     written: List[Path] = []
     for member in roster:
@@ -468,6 +478,15 @@ def plan_prompts(
                 target.write_text(prompt_text, encoding="utf-8")
                 written.append(target)
     return (written, Path())
+
+
+def _clear_prompt_files(prompts_dir: Path) -> None:
+    """Remove stale `.txt` prompts from a prior plan call (Phase 7 r7)."""
+    if not prompts_dir.exists():
+        return
+    for existing in prompts_dir.iterdir():
+        if existing.is_file() and existing.suffix == ".txt":
+            existing.unlink()
 
 
 # ---------------------------------------------------------------------------

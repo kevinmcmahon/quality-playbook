@@ -408,6 +408,74 @@ class PlanModeTests(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertTrue((repo / "quality" / "citation_semantic_check.json").is_file())
 
+    def test_plan_prompts_clears_prior_batch_files_on_unbatched_rerun(self) -> None:
+        """Phase 7 r7: a 20-REQ → 1-REQ rerun must leave only the three
+        unbatched files, not the twelve batched files from the prior call."""
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            manifest_path = repo / "quality" / "requirements_manifest.json"
+
+            # First call: 20 Tier 1 REQs → 4 batches × 3 members = 12 files.
+            _write(manifest_path, _req_manifest_with_tiers([1] * 20))
+            csc.plan_prompts(repo)
+            prompts_dir = repo / "quality" / csc.PROMPTS_SUBDIR
+            batched = sorted(p.name for p in prompts_dir.iterdir())
+            self.assertEqual(len(batched), 12)
+            self.assertTrue(all("-batch" in n for n in batched))
+
+            # Second call: 1 Tier 1 REQ → 3 unbatched files.
+            _write(manifest_path, _req_manifest_with_tiers([1]))
+            csc.plan_prompts(repo)
+            unbatched = sorted(p.name for p in prompts_dir.iterdir())
+            self.assertEqual(
+                unbatched,
+                sorted([f"{m}.txt" for m in DEFAULT_COUNCIL_MEMBERS]),
+            )
+            # No stale -batchN.txt residue.
+            self.assertFalse(any("-batch" in n for n in unbatched))
+
+    def test_plan_prompts_clears_prompts_on_spec_gap_transition(self) -> None:
+        """Phase 7 r7: when a repo transitions from Tier 1/2 content to Spec
+        Gap, the Spec Gap branch must not leave stale prompt files behind."""
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            manifest_path = repo / "quality" / "requirements_manifest.json"
+
+            # First call: 5 Tier 1/2 REQs → 3 unbatched files.
+            _write(manifest_path, _req_manifest_with_tiers([1, 2, 1, 2, 1]))
+            csc.plan_prompts(repo)
+            prompts_dir = repo / "quality" / csc.PROMPTS_SUBDIR
+            self.assertEqual(len(list(prompts_dir.iterdir())), 3)
+
+            # Second call: 0 Tier 1/2 REQs → Spec Gap path. Prompts must be
+            # cleared so the operator does not dispatch stale files.
+            _write(manifest_path, _req_manifest_with_tiers([3, 4, 5]))
+            csc.plan_prompts(repo)
+            if prompts_dir.exists():
+                self.assertEqual(list(prompts_dir.iterdir()), [])
+            self.assertTrue(
+                (repo / "quality" / "citation_semantic_check.json").is_file()
+            )
+
+    def test_plan_prompts_preserves_non_txt_operator_files(self) -> None:
+        """Phase 7 r7: non-`.txt` files in the prompts dir (e.g. an operator
+        note) must survive the clear-before-write."""
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            prompts_dir = repo / "quality" / csc.PROMPTS_SUBDIR
+            prompts_dir.mkdir(parents=True)
+            (prompts_dir / "notes.md").write_text("operator dispatch notes")
+
+            _write(repo / "quality" / "requirements_manifest.json",
+                   _req_manifest_with_tiers([1]))
+            csc.plan_prompts(repo)
+
+            self.assertTrue((prompts_dir / "notes.md").is_file())
+            self.assertEqual(
+                (prompts_dir / "notes.md").read_text(),
+                "operator dispatch notes",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
