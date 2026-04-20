@@ -45,16 +45,16 @@ Work items:
   - `.html` → `.txt` via `html.parser` (stdlib) with tag stripping.
   - `.pdf` → **skip and warn**. PDF-to-plaintext is not stdlib-only; operator must convert manually. Pre-run guard (Item 1.3) catches this.
   - `.md`, `.txt` → passthrough.
-- Per-repo converter config (tier assignments per filename pattern) lives in `repos.yml` or equivalent; the script reads it and invokes the scaffolder (Item 1.2) after conversion.
+- Per-repo converter config (tier assignments per filename pattern) lives in `repos.yml` or equivalent; the script reads it and invokes the setup helper (Item 1.2) after conversion.
 
 Deliverable: staging script, per-repo config entries for all 5 benchmark repos, documented plaintext-conversion behavior per input format.
 
-### Item 1.2 — Sidecar Auto-Scaffolding
+### Item 1.2 — Sidecar Auto-Setup
 
 Work items:
-- Add `bin/scaffold_formal_docs.py`. CLI:
+- Add `bin/setup_formal_docs.py`. CLI:
   ```
-  scaffold_formal_docs.py <formal_docs_dir> [--interactive] [--overwrite] [--manifest <path>]
+  setup_formal_docs.py <formal_docs_dir> [--interactive] [--overwrite] [--manifest <path>]
   ```
 - Heuristic tier assignment based on filename patterns:
   - Contains `rfc`, `spec`, `standard`, `behavioral` → Tier 1
@@ -62,11 +62,11 @@ Work items:
   - Otherwise → default Tier 2, flagged in output for operator review
 - Interactive mode prompts the operator per file (confirm / override tier / skip).
 - Manifest mode reads a YAML/JSON file mapping filename → tier for deterministic regeneration.
-- When a matching `.meta.json` sibling already exists, move the existing file to `formal_docs/.sidecar_backups/<timestamp>/<stem>.meta.json` before writing the new one. The timestamp is the scaffolder run time (basic ISO 8601 `YYYYMMDDTHHMMSSZ`). Backup directory is created on demand.
+- When a matching `.meta.json` sibling already exists, move the existing file to `formal_docs/.sidecar_backups/<timestamp>/<stem>.meta.json` before writing the new one. The timestamp is the setup-helper run time (basic ISO 8601 `YYYYMMDDTHHMMSSZ`). Backup directory is created on demand.
 - Skip `README.md` (per v1.5.0 `formal_docs_ingest.py` convention).
-- Output summary: N files scaffolded, M skipped (existing sidecars), K flagged for review.
+- Output summary: N sidecars generated, M skipped (existing sidecars backed up), K flagged for review.
 
-Deliverable: scaffolder script, heuristic pattern list, test fixture covering each pattern class, benchmark repos staged cleanly via `setup_repos.sh` + scaffolder.
+Deliverable: setup script (`bin/setup_formal_docs.py`), heuristic pattern list, test fixture covering each pattern class, benchmark repos staged cleanly via `setup_repos.sh` + the setup script.
 
 ### Item 1.3 — Pre-Run Guard
 
@@ -75,7 +75,7 @@ Work items:
   - Directory is missing
   - Directory is empty
   - Directory contains plaintext files with no matching sidecars
-- Warning format: multi-line banner with specific remediation command (`python3 bin/scaffold_formal_docs.py <path>`) and reference to the staging step in `setup_repos.sh`.
+- Warning format: multi-line banner with specific remediation command (`python3 bin/setup_formal_docs.py <path>`) and reference to the staging step in `setup_repos.sh`.
 - `--no-formal-docs` flag suppresses the warning for self-audit bootstrap and minimal-repo cases. Flag is recorded in the run manifest.
 
 Deliverable: guard implementation, test coverage for each warning condition, `--no-formal-docs` flag.
@@ -203,7 +203,7 @@ Gate to release: all five benchmark repos pass the ±10% regression bar; cross-p
 
 Goal: QPB v1.5.1 audits itself with full v1.5.1 machinery, artifacts committed as bootstrap evidence.
 
-Same pattern as v1.5.0 Phase 8. Because v1.5.1 is purely additive operator-experience work, the self-audit should produce requirements coverage and bug yield comparable to v1.5.0's self-audit. New UX-related REQs may appear (logging behavior, observability flags, scaffolder behavior); these become v1.5.1 REQs tagged appropriately.
+Same pattern as v1.5.0 Phase 8. Because v1.5.1 is purely additive operator-experience work, the self-audit should produce requirements coverage and bug yield comparable to v1.5.0's self-audit. New UX-related REQs may appear (logging behavior, observability flags, setup-helper behavior); these become v1.5.1 REQs tagged appropriately.
 
 Any bugs found go to v1.5.1 post-release patch backlog or v1.5.2 backlog depending on severity.
 
@@ -221,7 +221,7 @@ Gate to release: self-audit completes cleanly OR any failures are explicitly dis
   - Andrew's specific feedback items as design drivers
   - The `isatty()` gate removal as the observability correctness fix
 - Update `SKILL.md` to reflect the new canonical invocation (no tee ceremony)
-- Update `docs/` with the staging + scaffolding workflow
+- Update `docs/` with the staging + setup workflow
 - Start v1.5.2 work (skill-handling per `QPB_v1.5.2_Implementation_Plan.md`)
 
 ---
@@ -231,7 +231,7 @@ Gate to release: self-audit completes cleanly OR any failures are explicitly dis
 - **Remote run monitoring** (watch a run from a different machine via web dashboard or SSH tunnel)
 - **Adaptive rate-limit backoff** (retry with exponential backoff on rate-limit errors instead of hard-failing)
 - **PDF-to-plaintext conversion** (stdlib-only doesn't cover it; document as manual step; revisit if a stdlib-compatible approach emerges)
-- **Non-English filename heuristics for the sidecar scaffolder**
+- **Non-English filename heuristics for the setup helper**
 - **curses-based progress dashboard** (full-screen multi-pane observability; current design is line-oriented)
 - **Keystroke-based observability mode switching** (deferred per design-doc rationale: real AI-sandbox stdin risk, cross-platform test burden, value small relative to cost. Revisit if real usage reveals demand for mid-run mode toggling)
 - **LLM-based sidecar tier inference** (use a small model to infer tier from file content; contradicts stdlib-only and adds per-file LLM cost)
@@ -244,12 +244,12 @@ Gate to release: self-audit completes cleanly OR any failures are explicitly dis
 | Risk | Likelihood | Mitigation |
 |---|---|---|
 | `isatty()` gate removal breaks an AI-sandbox invocation we haven't tested | Low | Add an explicit `--no-stdout-echo` escape hatch; default to echo-everywhere but preserve an opt-out |
-| Scaffolder heuristic misfires on edge-case filenames | Medium | Interactive mode prompts for confirmation; manifest mode allows deterministic override; backup-before-regenerate ensures no operator work is ever lost |
+| Setup-helper heuristic misfires on edge-case filenames | Medium | Interactive mode prompts for confirmation; manifest mode allows deterministic override; backup-before-regenerate ensures no operator work is ever lost |
 | `--phase-groups` concatenation produces prompts too large for a single LLM call | Medium | Document per-group token estimates; operator picks smaller groups if rate-limited. Could add an auto-split fallback if prompts exceed a threshold |
 | Progress monitor thread leaks on abnormal termination | Low | `threading.Event`-based shutdown; `try/finally` in orchestrator main |
 | Cross-platform test matrix too expensive to maintain | Low (reduced scope) | With keystroke mode deferred, cross-platform surface is just the startup-banner commands and line-buffered stdout — both stdlib-stable and easy to verify |
 | `--pace-seconds` interacts badly with long-running phases (operator thinks the run hung during a pace wait) | Low | Progress monitor prints a heartbeat line during pace sleeps (`Pacing: 60s before next prompt…`) |
-| Backup subdirectory `.sidecar_backups/` accumulates stale timestamped subfolders over many scaffolder runs | Low | Document manual pruning; consider a `--prune-backups-older-than N` flag as a v1.5.1 post-release patch if it becomes real friction |
+| Backup subdirectory `.sidecar_backups/` accumulates stale timestamped subfolders over many setup-helper runs | Low | Document manual pruning; consider a `--prune-backups-older-than N` flag as a v1.5.1 post-release patch if it becomes real friction |
 
 ---
 
@@ -258,7 +258,7 @@ Gate to release: self-audit completes cleanly OR any failures are explicitly dis
 These need answers during implementation but don't block planning:
 
 1. (Item 1.1) Does v1.5.0's `setup_repos.sh` live in the QPB repo or in a sibling benchmarks repo? Check repo layout before extending.
-2. (Item 1.2) Should the scaffolder's heuristic pattern list live in code or in a config file? Lean: config file at `bin/scaffolder_patterns.yml` for easy extension without code changes.
+2. (Item 1.2) Should the setup helper's heuristic pattern list live in code or in a config file? Lean: config file at `bin/setup_formal_docs_patterns.yml` for easy extension without code changes.
 3. (Item 2.1) Is `sys.stdout.reconfigure(line_buffering=True)` available on all supported Python versions? Python 3.7+ yes. Verify minimum version target in `SKILL.md`.
 4. (Item 2.2) What's the right polling interval for the progress monitor? 2 seconds is responsive enough for human observation; 1 second feels busier; 5 seconds feels slow. Lean: 2s default, `--progress-interval N` flag for tuning.
 5. (Item 3.1) Should phase-group headers in the concatenated prompt be visible in the LLM's eyes (aiding context) or hidden (reducing token cost)? Lean: visible, minimal (single line with group spec).

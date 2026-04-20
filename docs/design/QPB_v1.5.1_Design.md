@@ -22,7 +22,7 @@ This doc captures the problems, the root causes, and the design for fixing them.
 
 The v1.5.0 overnight run on five benchmark repos (virtio, chi, cobra, express, httpx) completed without errors but produced systematically bad outputs: all five repos reported Spec Gap, `citation_semantic_check.json` was empty across the board, and 100% of derived REQs were classified as Tier 3. The runs technically passed the gate but produced no v1.5.0 divergence content — the whole reason v1.5.0 existed.
 
-Root cause on investigation: `setup_repos.sh` places RFC/spec plaintext into `docs_gathered/`, but nothing in the v1.5.0 pipeline converts `docs_gathered/` content into `formal_docs/` with the required plaintext + `.meta.json` sidecar layout. The plaintext staging step is documented as an operator responsibility in the prose of `SKILL.md` but is neither automated nor surfaced by any scaffold. Five of five repos fell into the gap silently.
+Root cause on investigation: `setup_repos.sh` places RFC/spec plaintext into `docs_gathered/`, but nothing in the v1.5.0 pipeline converts `docs_gathered/` content into `formal_docs/` with the required plaintext + `.meta.json` sidecar layout. The plaintext staging step is documented as an operator responsibility in the prose of `SKILL.md` but is neither automated nor surfaced by any setup step. Five of five repos fell into the gap silently.
 
 This is a **runbook gap**: the playbook has an implicit prerequisite that is neither automated nor loud enough for an operator to notice before the run starts.
 
@@ -62,7 +62,7 @@ Three specific v1.5.0 decisions created the current friction:
 
 1. **Plaintext staging was deferred.** The formal_docs pipeline assumes plaintext + sidecars exist. The conversion from arbitrary RFC/spec formats (HTML, PDF, reST, Markdown) to plaintext was pushed to operator responsibility with the assumption that operators would handle it manually per-repo. The `setup_repos.sh` script stops at `docs_gathered/` — one layer short of what the pipeline needs. No pre-run check loudly warns "formal_docs/ is empty, did you run the staging step?"
 
-2. **Sidecar JSON was a convention, not a scaffold.** The `.meta.json` file format was chosen for parse simplicity (plain JSON, no new DSL, stdlib-only) but no tool was built to generate it. Every sidecar is authored by hand. The format is small today (only `tier` required), but the friction still dominates because it's per-file manual work.
+2. **Sidecar JSON was a convention, not a setup step.** The `.meta.json` file format was chosen for parse simplicity (plain JSON, no new DSL, stdlib-only) but no tool was built to generate it. Every sidecar is authored by hand. The format is small today (only `tier` required), but the friction still dominates because it's per-file manual work.
 
 3. **Orchestrator observability followed the "AI runs this, not a human" assumption.** The `logboth()` function's `isatty()` gate is correct for AI-sandbox execution (don't print to non-existent TTY) but subtly wrong for the human-in-terminal case (operator sees nothing when piping through tee for log capture). The logging architecture assumed the operator would be either (a) an AI with no TTY or (b) a human watching a plain TTY — not (c) a human watching a TTY that's piped into tee for durability.
 
@@ -80,25 +80,25 @@ Seven items, grouped into three phases by nature of the fix.
 
 **Design.** Two complementary fixes:
 
-- **Automated conversion.** Extend `setup_repos.sh` (or add a sibling `stage_formal_docs.sh`) with a converter that reads `docs_gathered/`, converts each file to plaintext (`.txt` for `.rst`, `.html`, `.pdf`; passthrough for `.md`, `.txt`), and writes the output to `formal_docs/`. Sidecar scaffolding (Item 2) handles the `.meta.json` generation.
+- **Automated conversion.** Extend `setup_repos.sh` (or add a sibling `stage_formal_docs.sh`) with a converter that reads `docs_gathered/`, converts each file to plaintext (`.txt` for `.rst`, `.html`, `.pdf`; passthrough for `.md`, `.txt`), and writes the output to `formal_docs/`. Sidecar setup (Item 2) handles the `.meta.json` generation.
 - **Pre-run guard.** Add a check early in `run_playbook.py` that inspects `formal_docs/` and, if empty or missing, emits a loud warning with the exact command to run and an explicit pointer to `docs_gathered/`. The warning is loud enough to notice but does not block the run — some runs legitimately have no formal docs (minimal repos, self-audit bootstrap).
 
 **Why both.** Automation prevents the common case; the guard catches edge cases where the operator has an exotic staging flow or a format the converter doesn't handle. The guard is the last line of defense against silent Spec Gap runs.
 
-### Item 2: Sidecar Auto-Scaffolding (Phase 1)
+### Item 2: Sidecar Auto-Setup (Phase 1)
 
 **Problem.** Writing `.meta.json` by hand is per-file friction with no operator value.
 
-**Design.** Add a `bin/scaffold_formal_docs.py` script (or a subcommand of an existing CLI) that:
+**Design.** Add a `bin/setup_formal_docs.py` script (or a subcommand of an existing CLI) that:
 
 1. Scans a target directory for supported plaintext files (`.txt`, `.md` per v1.5.0 `schemas.md` §2) that lack sibling `.meta.json` sidecars.
 2. For each, generates a sidecar with `tier` populated via a heuristic: filename-pattern matching against known markers (`rfc`, `spec`, `standard` → Tier 1; `guide`, `howto`, `tutorial` → Tier 2; otherwise a prompt or a default).
 3. Optional interactive mode: prompts the operator to confirm each tier assignment.
 4. Optional batch mode with a manifest file specifying tier per-file for deterministic regeneration.
 
-**Scope discipline.** This is a scaffolder, not a magic inferencer. The sidecar only needs `tier`; optional fields (`version`, `date`, `url`, `retrieved`) are left blank for the operator to fill in if they want. The heuristic is explicit and adjustable; there is no LLM call.
+**Scope discipline.** This is a setup helper, not a magic inferencer. The sidecar only needs `tier`; optional fields (`version`, `date`, `url`, `retrieved`) are left blank for the operator to fill in if they want. The heuristic is explicit and adjustable; there is no LLM call.
 
-**Integration.** The staging pipeline in Item 1 calls the scaffolder by default. A plain operator workflow becomes: drop plaintext files in `formal_docs/`, run the scaffolder, edit tiers if the heuristic is wrong, proceed to run.
+**Integration.** The staging pipeline in Item 1 runs the setup helper by default. A plain operator workflow becomes: drop plaintext files in `formal_docs/`, run the setup helper, edit tiers if the heuristic is wrong, proceed to run.
 
 ### Item 3: Built-In Logging + Unbuffered Console (Phase 2)
 
@@ -211,7 +211,7 @@ v1.5.1 is successful if:
 
 1. **Runbook gap closed.** A fresh repo cloned from `setup_repos.sh` + `stage_formal_docs.sh` runs cleanly through v1.5.0 with no manual file editing. The five benchmark repos (virtio, chi, cobra, express, httpx) produce the v1.5.0 expected bug yield with no operator intervention between clone and run.
 
-2. **Sidecar friction eliminated.** For each benchmark repo, the sidecar scaffolder produces correct tier assignments on its heuristic in ≥80% of cases, or operator-interactive mode completes tier assignment in <60 seconds per repo.
+2. **Sidecar friction eliminated.** For each benchmark repo, the setup helper produces correct tier assignments on its heuristic in ≥80% of cases, or operator-interactive mode completes tier assignment in <60 seconds per repo.
 
 3. **No silent runs.** The `logboth()` `isatty()` gate is removed and no run-playbook invocation produces a period longer than 30 seconds of no stdout output under normal operation. (Exception: LLM thinking time, but the heartbeat from Item 4's progress monitor fills gaps.)
 
@@ -266,7 +266,7 @@ The correct fix is to remove the echo gate unconditionally and make line-bufferi
 - **Interactive LLM chat within the orchestrator.** v1.5.1's observability is read-only (the operator watches the run; the run doesn't take mid-flight operator input beyond keystroke mode switches).
 - **Remote run monitoring.** Watching a run from a different machine (web dashboard, SSH tunnel). v1.5.1 is strictly local-terminal observability.
 - **Automatic rate-limit backoff.** `--pace-seconds` is a static pacer, not an adaptive backoff. If a prompt fails with a rate-limit error, v1.5.1 fails the run; adaptive retry is a future enhancement.
-- **Non-English locale handling for the scaffolder's filename heuristics.** The `rfc`/`spec`/`guide`/`howto` pattern list is English-only. Operators with non-English filenames fall through to the manual-tier path.
+- **Non-English locale handling for the setup helper's filename heuristics.** The `rfc`/`spec`/`guide`/`howto` pattern list is English-only. Operators with non-English filenames fall through to the manual-tier path.
 - **Keystroke-based observability mode switching.** Considered and rejected for v1.5.1 — adds platform-specific stdlib keystroke handling (`termios` + `tty` on Unix, `msvcrt` on Windows), genuine AI-sandbox risk when stdin isn't a TTY, and a cross-platform test matrix. Value (toggle modes without restarting) is small relative to cost; operators who want a different mode can relaunch with different flags. Revisit if real usage reveals demand.
 
 ---
@@ -275,7 +275,7 @@ The correct fix is to remove the echo gate unconditionally and make line-bufferi
 
 These don't block v1.5.1 design but need answers during implementation:
 
-1. **When the sidecar scaffolder encounters existing `.meta.json` files, should it skip them or regenerate?** **Resolved:** always regenerate, but back up the previous version to a timestamped subdirectory (e.g., `formal_docs/.sidecar_backups/20260420T140000Z/<stem>.meta.json`). Operators never lose hand-edited work; no `--overwrite` flag needed because the default behavior is safe. Restoring a backup is a manual copy.
+1. **When the setup helper encounters existing `.meta.json` files, should it skip them or regenerate?** **Resolved:** always regenerate, but back up the previous version to a timestamped subdirectory (e.g., `formal_docs/.sidecar_backups/20260420T140000Z/<stem>.meta.json`). Operators never lose hand-edited work; no `--overwrite` flag needed because the default behavior is safe. Restoring a backup is a manual copy.
 
 2. **Should the pre-run guard's "formal_docs empty" warning be suppressible?** Lean: yes, via `--no-formal-docs` to signal "I know, run anyway." Self-audit bootstrap and minimal-repo cases legitimately have empty formal_docs.
 
