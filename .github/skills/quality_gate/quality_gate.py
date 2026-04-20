@@ -1248,13 +1248,17 @@ def _check_citation_block(repo_dir, req_id, citation, formal_docs_by_path, req_t
     excerpt = citation.get("citation_excerpt")
     if not isinstance(excerpt, str) or not excerpt:
         fail(
-            f"requirements_manifest.json: {req_id} citation has empty or missing "
-            "citation_excerpt (schemas.md §10 invariant #4)"
+            "requirements_manifest.json",
+            f"record_id={req_id}: citation has empty or missing citation_excerpt "
+            "(schemas.md §10 invariant #4)",
         )
         return
     doc_path_str = citation.get("document")
     if not isinstance(doc_path_str, str) or not doc_path_str:
-        fail(f"requirements_manifest.json: {req_id} citation missing 'document' field")
+        fail(
+            "requirements_manifest.json",
+            f"record_id={req_id}: citation missing 'document' field",
+        )
         return
     section = citation.get("section")
     line = citation.get("line")
@@ -1262,35 +1266,39 @@ def _check_citation_block(repo_dir, req_id, citation, formal_docs_by_path, req_t
     has_line = isinstance(line, int) and not isinstance(line, bool)
     if not has_section and not has_line:
         fail(
-            f"requirements_manifest.json: {req_id} citation has no section or line "
-            "locator (page alone is insufficient; schemas.md §10 invariant #4)"
+            "requirements_manifest.json",
+            f"record_id={req_id}: citation has no section or line locator "
+            "(page alone is insufficient; schemas.md §10 invariant #4)",
         )
         return
 
     fd_rec = formal_docs_by_path.get(doc_path_str)
     if fd_rec is None:
         fail(
-            f"requirements_manifest.json: {req_id} citation document {doc_path_str!r} "
-            "not in formal_docs_manifest.json (schemas.md §10 invariant #2)"
+            "requirements_manifest.json",
+            f"record_id={req_id}: citation document {doc_path_str!r} "
+            "not in formal_docs_manifest.json (schemas.md §10 invariant #2)",
         )
         return
     fd_tier = fd_rec.get("tier")
     if fd_tier != req_tier:
         fail(
-            f"requirements_manifest.json: {req_id} tier={req_tier} does not match "
-            f"cited FORMAL_DOC tier={fd_tier!r} (schemas.md §10 invariant #14)"
+            "requirements_manifest.json",
+            f"record_id={req_id}: tier={req_tier} does not match cited FORMAL_DOC "
+            f"tier={fd_tier!r} (schemas.md §10 invariant #14)",
         )
     fd_sha = fd_rec.get("document_sha256")
     cite_sha = citation.get("document_sha256")
     if isinstance(fd_sha, str) and isinstance(cite_sha, str) and fd_sha != cite_sha:
         fail(
-            f"requirements_manifest.json: {req_id} citation.document_sha256 does not "
-            "match FORMAL_DOC (schemas.md §10 invariant #3 — citation_stale)"
+            "requirements_manifest.json",
+            f"record_id={req_id}: citation.document_sha256 does not match FORMAL_DOC "
+            "(schemas.md §10 invariant #3 — citation_stale)",
         )
 
     if _CITATION_VERIFIER is None:
         warn(
-            f"requirements_manifest.json: {req_id} byte-equality skipped — "
+            f"requirements_manifest.json: record_id={req_id}: byte-equality skipped — "
             "bin/citation_verifier unavailable on this install"
         )
         return
@@ -1298,8 +1306,8 @@ def _check_citation_block(repo_dir, req_id, citation, formal_docs_by_path, req_t
     doc_path = repo_dir / doc_path_str
     if not doc_path.is_file():
         fail(
-            f"requirements_manifest.json: {req_id} citation document not on disk: "
-            f"{doc_path_str}"
+            "requirements_manifest.json",
+            f"record_id={req_id}: citation document not on disk: {doc_path_str}",
         )
         return
     try:
@@ -1310,19 +1318,24 @@ def _check_citation_block(repo_dir, req_id, citation, formal_docs_by_path, req_t
         )
     except _CITATION_VERIFIER.CitationResolutionError as exc:
         fail(
-            f"requirements_manifest.json: {req_id} citation location does not resolve "
-            f"in {doc_path_str}: {exc.message} (schemas.md §10 invariant #4)"
+            "requirements_manifest.json",
+            f"record_id={req_id}: citation location does not resolve in "
+            f"{doc_path_str}: {exc.message} (schemas.md §10 invariant #4)",
         )
         return
     except Exception as exc:  # noqa: BLE001 — fail with a real message
-        fail(f"requirements_manifest.json: {req_id} citation verifier errored: {exc}")
+        fail(
+            "requirements_manifest.json",
+            f"record_id={req_id}: citation verifier errored: {exc}",
+        )
         return
 
     if fresh != excerpt:
         fail(
-            f"requirements_manifest.json: {req_id} citation_excerpt is not byte-equal "
-            f"to fresh extraction from {doc_path_str} "
-            "(schemas.md §10 invariant #11 — Layer-1 anti-hallucination)"
+            "requirements_manifest.json",
+            f"record_id={req_id}: citation_excerpt is not byte-equal to fresh "
+            f"extraction from {doc_path_str} "
+            "(schemas.md §10 invariant #11 — Layer-1 anti-hallucination)",
         )
 
 
@@ -1343,15 +1356,19 @@ def check_v1_5_0_requirements_manifest(repo_dir, q):
 
     for idx, rec in enumerate(records):
         if not isinstance(rec, dict):
-            fail(f"requirements_manifest.json record #{idx}: not a JSON object")
+            fail(
+                "requirements_manifest.json",
+                f"record_id=<#{idx}>: not a JSON object",
+            )
             continue
         req_id = rec.get("id", f"<#{idx}>")
 
         fs = rec.get("functional_section")
         if not isinstance(fs, str) or not fs.strip():
             fail(
-                f"requirements_manifest.json: {req_id} has empty or missing "
-                "functional_section (schemas.md §10 invariant #8)"
+                "requirements_manifest.json",
+                f"record_id={req_id}: has empty or missing functional_section "
+                "(schemas.md §10 invariant #8)",
             )
 
         tier = rec.get("tier")
@@ -1359,24 +1376,28 @@ def check_v1_5_0_requirements_manifest(repo_dir, q):
         if tier in (1, 2):
             if not isinstance(citation, dict):
                 fail(
-                    f"requirements_manifest.json: {req_id} is tier {tier} but has no "
-                    "citation block (schemas.md §10 invariant #1)"
+                    "requirements_manifest.json",
+                    f"record_id={req_id}: is tier {tier} but has no citation block "
+                    "(schemas.md §10 invariant #1)",
                 )
                 continue
             _check_citation_block(repo_dir, req_id, citation, formal_docs_by_path, tier)
         elif tier in (3, 4, 5):
             if citation is not None:
                 fail(
-                    f"requirements_manifest.json: {req_id} is tier {tier} but carries "
-                    "a citation block (citations are for Tier 1/2 only per schemas.md "
-                    "§10 invariant #1)"
+                    "requirements_manifest.json",
+                    f"record_id={req_id}: is tier {tier} but carries a citation block "
+                    "(citations are for Tier 1/2 only per schemas.md §10 invariant #1)",
                 )
         elif tier is None:
-            fail(f"requirements_manifest.json: {req_id} missing 'tier' field")
+            fail(
+                "requirements_manifest.json",
+                f"record_id={req_id}: missing 'tier' field",
+            )
         else:
             fail(
-                f"requirements_manifest.json: {req_id} has invalid tier {tier!r} "
-                "(expected integer 1–5)"
+                "requirements_manifest.json",
+                f"record_id={req_id}: has invalid tier {tier!r} (expected integer 1–5)",
             )
 
     pass_("requirements_manifest.json: v1.5.0 Layer-1 REQ checks complete")
@@ -1397,27 +1418,31 @@ def check_v1_5_0_bugs_manifest(q):
         disp = rec.get("disposition")
         if disp not in _V150_VALID_DISPOSITIONS:
             fail(
-                f"bugs_manifest.json: {bug_id} has invalid or missing disposition "
-                f"{disp!r} (schemas.md §10 invariant #7, valid: "
-                f"{', '.join(_V150_VALID_DISPOSITIONS)})"
+                "bugs_manifest.json",
+                f"record_id={bug_id}: has invalid or missing disposition {disp!r} "
+                f"(schemas.md §10 invariant #7, valid: "
+                f"{', '.join(_V150_VALID_DISPOSITIONS)})",
             )
             continue
         rationale = rec.get("disposition_rationale")
         if not isinstance(rationale, str) or not rationale.strip():
             fail(
-                f"bugs_manifest.json: {bug_id} has empty or missing "
-                "disposition_rationale (schemas.md §10 invariant #7)"
+                "bugs_manifest.json",
+                f"record_id={bug_id}: has empty or missing disposition_rationale "
+                "(schemas.md §10 invariant #7)",
             )
         ft = rec.get("fix_type")
         if ft not in _V150_VALID_FIX_TYPES:
             fail(
-                f"bugs_manifest.json: {bug_id} has invalid or missing fix_type {ft!r}"
+                "bugs_manifest.json",
+                f"record_id={bug_id}: has invalid or missing fix_type {ft!r}",
             )
             continue
         if (disp, ft) in _V150_ILLEGAL_FIX_PAIRS:
             fail(
-                f"bugs_manifest.json: {bug_id} illegal disposition × fix_type "
-                f"combination: ({disp}, {ft}) per schemas.md §3.4 / §10 invariant #12"
+                "bugs_manifest.json",
+                f"record_id={bug_id}: illegal disposition × fix_type combination "
+                f"({disp}, {ft}) per schemas.md §3.4 / §10 invariant #12",
             )
 
     pass_("bugs_manifest.json: v1.5.0 Layer-1 BUG checks complete")
