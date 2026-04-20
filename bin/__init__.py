@@ -4,6 +4,8 @@ __all__ = [
     "archive_lib",
     "benchmark_lib",
     "citation_verifier",
+    "council_config",
+    "council_semantic_check",
     "formal_docs_ingest",
     "informal_docs_loader",
     "migrate_v1_5_0_layout",

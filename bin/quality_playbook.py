@@ -28,9 +28,11 @@ from typing import List, Optional
 
 try:
     from . import archive_lib
+    from . import council_semantic_check
     from . import migrate_v1_5_0_layout
 except ImportError:  # running as a script from the repo root
     import archive_lib
+    import council_semantic_check
     import migrate_v1_5_0_layout
 
 
@@ -44,6 +46,13 @@ _SUBCOMMANDS = {
         "help": (
             "Idempotently migrate a pre-v1.5.0 repo into the consolidated "
             "quality/ layout. See `migrate --help`."
+        ),
+    },
+    "semantic-check": {
+        "module": council_semantic_check,
+        "help": (
+            "Assemble citation_semantic_check.json from captured Council "
+            "member JSON responses. See `semantic-check --help`."
         ),
     },
 }
