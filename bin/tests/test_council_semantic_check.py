@@ -323,6 +323,91 @@ class CLITests(unittest.TestCase):
             data = json.loads(out_path.read_text(encoding="utf-8"))
             self.assertEqual(len(data["reviews"]), 1)
 
+    def test_explicit_assemble_subcommand(self) -> None:
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            _write(repo / "quality" / "requirements_manifest.json",
+                   _req_manifest_with_tiers([2]))
+            response = repo / "gpt.json"
+            response.write_text(json.dumps([
+                {"req_id": "REQ-001", "verdict": "supports", "reasoning": ""},
+            ]))
+            rc = csc.main(["assemble", str(repo),
+                          "--member", "gpt-5.4", "--response", str(response)])
+            self.assertEqual(rc, 0)
+            self.assertTrue((repo / "quality" / "citation_semantic_check.json").is_file())
+
+
+class PlanModeTests(unittest.TestCase):
+    """Phase 7 r1: `semantic-check plan` emits per-member prompt files."""
+
+    def test_plan_writes_one_file_per_member_under_threshold(self) -> None:
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            _write(repo / "quality" / "requirements_manifest.json",
+                   _req_manifest_with_tiers([1, 2, 1]))
+            prompts, spec_gap = csc.plan_prompts(repo)
+            self.assertEqual(spec_gap, Path())
+            self.assertEqual(len(prompts), 3)  # one per Council member
+            names = sorted(p.name for p in prompts)
+            self.assertEqual(
+                names,
+                sorted([f"{m}.txt" for m in DEFAULT_COUNCIL_MEMBERS]),
+            )
+            # Each prompt contains the roster identifier and REQ content.
+            for p in prompts:
+                text = p.read_text(encoding="utf-8")
+                self.assertIn("JSON array", text)
+                self.assertIn("REQ-001", text)
+
+    def test_plan_batches_when_over_threshold(self) -> None:
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            _write(repo / "quality" / "requirements_manifest.json",
+                   _req_manifest_with_tiers([1] * 20))
+            prompts, _ = csc.plan_prompts(repo)
+            # 20 REQs, 3 members, batch_size=5 → ceil(20/5)*3 = 12 files.
+            self.assertEqual(len(prompts), 12)
+            # File names include the batch suffix.
+            for p in prompts:
+                self.assertIn("-batch", p.name)
+
+    def test_plan_spec_gap_writes_empty_reviews_file(self) -> None:
+        """When there are no Tier 1/2 REQs, plan writes citation_semantic_check.json directly."""
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            _write(repo / "quality" / "requirements_manifest.json",
+                   _req_manifest_with_tiers([3, 4, 5]))
+            prompts, spec_gap = csc.plan_prompts(repo)
+            self.assertEqual(prompts, [])
+            self.assertTrue(spec_gap.is_file())
+            data = json.loads(spec_gap.read_text(encoding="utf-8"))
+            self.assertEqual(data["reviews"], [])
+
+    def test_plan_cli_subcommand(self) -> None:
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            _write(repo / "quality" / "requirements_manifest.json",
+                   _req_manifest_with_tiers([1]))
+            rc = csc.main(["plan", str(repo)])
+            self.assertEqual(rc, 0)
+            prompts_dir = repo / "quality" / csc.PROMPTS_SUBDIR
+            self.assertTrue(prompts_dir.is_dir())
+            self.assertEqual(
+                sorted(p.name for p in prompts_dir.iterdir()),
+                sorted([f"{m}.txt" for m in DEFAULT_COUNCIL_MEMBERS]),
+            )
+
+    def test_plan_cli_spec_gap_reports_skip(self) -> None:
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            _write(repo / "quality" / "requirements_manifest.json",
+                   _req_manifest_with_tiers([3]))
+            # No --member flags; just the plan subcommand.
+            rc = csc.main(["plan", str(repo)])
+            self.assertEqual(rc, 0)
+            self.assertTrue((repo / "quality" / "citation_semantic_check.json").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

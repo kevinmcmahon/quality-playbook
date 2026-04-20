@@ -51,6 +51,25 @@ class RunPlaybookTests(unittest.TestCase):
         self.assertIn("Skip Phase 0 and Phase 0b", run_playbook.single_pass_prompt(no_seeds=True))
         self.assertNotIn("Skip Phase 0 and Phase 0b", run_playbook.single_pass_prompt(no_seeds=False))
 
+    def test_phase4_prompt_includes_layer2_semantic_check_steps(self) -> None:
+        """Phase 7 r1: phase 4 must instruct the agent to run the Layer-2
+        semantic citation check between the spec audit triage and Phase 5."""
+        prompt = run_playbook.phase4_prompt()
+        # The plan and assemble subcommands must both be referenced.
+        self.assertIn("semantic-check plan", prompt)
+        self.assertIn("semantic-check assemble", prompt)
+        # Output path must be mentioned so the agent verifies it.
+        self.assertIn("quality/citation_semantic_check.json", prompt)
+        # Council member identifiers come from the config module.
+        self.assertIn("claude-opus-4.7", prompt)
+        self.assertIn("gpt-5.4", prompt)
+        self.assertIn("gemini-2.5-pro", prompt)
+        # Spec Gap path must be called out so the agent knows to skip
+        # dispatch when there are no Tier 1/2 REQs.
+        self.assertIn("Spec Gap", prompt)
+        # Invariant #17 framing so the agent understands why the check runs.
+        self.assertIn("invariant #17", prompt)
+
     def test_phase2_gate_requires_exploration_file(self) -> None:
         with TemporaryDirectory() as temp_dir:
             gate = run_playbook.check_phase_gate(Path(temp_dir), "2")

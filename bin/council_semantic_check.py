@@ -412,7 +412,66 @@ def write_semantic_check(
 
 
 # ---------------------------------------------------------------------------
-# CLI (operator-driven assembly from captured member JSON responses)
+# Plan mode — emit per-member prompt files for operator dispatch
+# ---------------------------------------------------------------------------
+
+
+PROMPTS_SUBDIR = "council_semantic_check_prompts"
+RESPONSES_SUBDIR = "council_semantic_check_responses"
+
+
+def plan_prompts(
+    repo_dir: Path,
+    *,
+    members: Optional[Sequence[str]] = None,
+) -> Tuple[List[Path], Path]:
+    """Emit per-member prompt files for the semantic check.
+
+    Writes one file per Council member under
+    `quality/council_semantic_check_prompts/<member>.txt` when the run
+    has Tier 1/2 REQs. If a member's prompt set has been batched (>15
+    REQs), per-batch files are written as
+    `<member>-batch<N>.txt`.
+
+    When no Tier 1/2 REQs are present (Spec Gap), no prompt files are
+    written and an empty `quality/citation_semantic_check.json` is
+    emitted directly — the operator has nothing to send to the Council.
+
+    Returns (prompt_paths, semantic_check_path). The second value is
+    the path to citation_semantic_check.json when Spec Gap wrote it
+    directly; otherwise None-equivalent as an empty Path.
+    """
+    repo = Path(repo_dir).resolve()
+    quality_dir = repo / "quality"
+    roster = list(members) if members is not None else list(council_members())
+
+    reqs = collect_tier_12_reqs(quality_dir)
+
+    if not reqs:
+        # Spec Gap: no prompts to send; write the empty §9 wrapper directly.
+        path = write_semantic_check(repo, [])
+        return ([], path)
+
+    prompts_dir = quality_dir / PROMPTS_SUBDIR
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+    written: List[Path] = []
+    for member in roster:
+        prompts = build_prompts_for_member(member, reqs)
+        if len(prompts) == 1:
+            filename = f"{member}.txt"
+            target = prompts_dir / filename
+            target.write_text(prompts[0], encoding="utf-8")
+            written.append(target)
+        else:
+            for idx, prompt_text in enumerate(prompts, start=1):
+                target = prompts_dir / f"{member}-batch{idx}.txt"
+                target.write_text(prompt_text, encoding="utf-8")
+                written.append(target)
+    return (written, Path())
+
+
+# ---------------------------------------------------------------------------
+# CLI — plan | assemble modes (legacy --member/--response form still works)
 # ---------------------------------------------------------------------------
 
 
@@ -428,12 +487,58 @@ def _parse_member_response_file(
     return parse_member_response(member_id, text, expected_req_ids)
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def _plan_main(argv: List[str]) -> int:
     parser = argparse.ArgumentParser(
+        prog="semantic-check plan",
         description=(
-            "Assemble citation_semantic_check.json from three Council members' "
-            "JSON responses. Each --member/--response pair must be adjacent; "
-            "order matches the Council roster."
+            "Generate per-Council-member prompt files for the Layer-2 semantic "
+            "citation check. Operator dispatches each prompt to its Council "
+            "member and captures the JSON response to "
+            "quality/council_semantic_check_responses/<member>.json, then runs "
+            "`semantic-check assemble` (or the legacy --member/--response CLI)."
+        ),
+    )
+    parser.add_argument("repo", help="Target repository root.")
+    args = parser.parse_args(argv)
+
+    repo = Path(args.repo).resolve()
+    if not repo.is_dir():
+        print(f"{repo}: target repository does not exist", file=sys.stderr)
+        return 2
+    try:
+        prompts, spec_gap_file = plan_prompts(repo)
+    except SemanticCheckError as exc:
+        print(f"semantic_check plan: {exc}", file=sys.stderr)
+        return 1
+
+    if not prompts:
+        # Spec Gap path: plan_prompts already wrote the empty reviews[].
+        print(
+            f"No Tier 1/2 REQs — wrote empty {spec_gap_file} (Spec Gap run). "
+            "Skip dispatch."
+        )
+        return 0
+
+    print(f"Wrote {len(prompts)} prompt file(s) to "
+          f"{(repo / 'quality' / PROMPTS_SUBDIR).relative_to(repo)}:")
+    for p in prompts:
+        print(f"  {p.relative_to(repo)}")
+    print(
+        "Next: feed each prompt to its Council member, capture the JSON-array "
+        "response to quality/council_semantic_check_responses/<member>.json, "
+        "and run `quality_playbook semantic-check assemble <repo> --member ... "
+        "--response ...`."
+    )
+    return 0
+
+
+def _assemble_main(argv: List[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="semantic-check assemble",
+        description=(
+            "Assemble citation_semantic_check.json from captured Council "
+            "member JSON responses. Each --member/--response pair must be "
+            "adjacent; order matches the Council roster."
         ),
     )
     parser.add_argument("repo", help="Target repository root.")
@@ -481,6 +586,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     path = write_semantic_check(repo, reviews)
     print(f"Wrote {path} with {len(reviews)} review entries")
     return 0
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+    if argv and argv[0] == "plan":
+        return _plan_main(argv[1:])
+    if argv and argv[0] == "assemble":
+        return _assemble_main(argv[1:])
+    # Legacy form: fall through to assemble when --member flags are present.
+    return _assemble_main(argv)
 
 
 if __name__ == "__main__":
