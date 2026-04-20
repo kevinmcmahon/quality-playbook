@@ -55,9 +55,32 @@ def _reset_counters():
     WARN = 0
 
 
-def fail(msg):
+def fail(msg, reason=None, *, line=None):
+    """Emit a structured failure line and increment FAIL.
+
+    Phase 5 r3 format: `<path>[:<line>]: <reason>` — no "FAIL:" label, so
+    output is grep-parseable as `^[^:]+:[0-9]*:? .+$`. The prefix `FAIL:` is
+    deliberately removed; the global FAIL counter (summarised in main()) is
+    the authoritative count of failures per run.
+
+    Preferred forms:
+        fail("quality/INDEX.md", "file missing")
+            -> "  quality/INDEX.md: file missing"
+        fail("quality/INDEX.md", "missing required field 'x'", line=42)
+            -> "  quality/INDEX.md:42: missing required field 'x'"
+
+    Legacy single-arg form (transitional; still supported — most v1.4.x
+    messages already embed a path-like token):
+        fail("BUGS.md missing or not a file")
+            -> "  BUGS.md missing or not a file"
+    """
     global FAIL
-    print(f"  FAIL: {msg}")
+    if reason is None:
+        print(f"  {msg}")
+    elif line is None:
+        print(f"  {msg}: {reason}")
+    else:
+        print(f"  {msg}:{line}: {reason}")
     FAIL += 1
 
 

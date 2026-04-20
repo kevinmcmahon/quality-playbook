@@ -295,6 +295,47 @@ class TestCountPerBugField(unittest.TestCase):
         self.assertEqual(quality_gate.count_per_bug_field({}, "id"), 0)
 
 
+# --- fail() format tests (Phase 5 r3) ---
+
+
+class TestFailHelperFormat(unittest.TestCase):
+    """Phase 5 r3: fail() emits grep-parseable lines without a 'FAIL:' prefix."""
+
+    def setUp(self):
+        quality_gate.FAIL = 0
+
+    def _capture(self, *args, **kwargs):
+        import io
+        import contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            quality_gate.fail(*args, **kwargs)
+        return buf.getvalue().rstrip("\n")
+
+    def test_path_with_line_and_reason(self):
+        line = self._capture("quality/INDEX.md", "missing required field 'target'", line=42)
+        self.assertEqual(line, "  quality/INDEX.md:42: missing required field 'target'")
+        self.assertEqual(quality_gate.FAIL, 1)
+
+    def test_path_with_reason_only(self):
+        line = self._capture("quality/INDEX.md", "file missing")
+        self.assertEqual(line, "  quality/INDEX.md: file missing")
+
+    def test_legacy_single_arg_still_works(self):
+        line = self._capture("BUGS.md missing or not a file")
+        self.assertEqual(line, "  BUGS.md missing or not a file")
+
+    def test_no_FAIL_prefix_in_gate_module_source(self):
+        """The literal 'FAIL: ' must not appear in gate output per Phase 5 r3
+        format contract (grep acceptance criterion)."""
+        src = PACKAGE_DIR.joinpath("quality_gate.py").read_text(encoding="utf-8")
+        # Allow comments/docstrings to mention the string, but the actual
+        # print() calls must not emit it. Scan format literals.
+        import re
+        offenders = re.findall(r'print\(f?"[^"]*FAIL:\s', src)
+        self.assertEqual(offenders, [], f"unexpected FAIL: print in gate: {offenders}")
+
+
 # --- Integration tests per check section ---
 
 
@@ -306,9 +347,10 @@ class TestAllPassBaseline(FixtureBase):
         stdout, code = self.gate()
         self.assertEqual(code, 0, f"Expected PASS, got:\n{stdout}")
         self.assertIn("RESULT: GATE PASSED", stdout)
-        # No individual FAIL: lines in the per-check output (before the summary).
-        body = stdout.split("===========================================")[0]
-        self.assertNotIn("  FAIL:", body)
+        # Summary counter shows zero failures on the baseline (Phase 5 r3:
+        # individual failure lines are path:line:reason, without a FAIL:
+        # prefix — the global counter is the authoritative source).
+        self.assertIn("Total: 0 FAIL", stdout)
 
     def test_one_bug_all_pass(self):
         tree = minimal_zero_bug_tree()
@@ -325,7 +367,7 @@ class TestFileExistence(FixtureBase):
         del tree["quality/BUGS.md"]
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: BUGS.md missing", stdout)
+        self.assertIn("BUGS.md missing", stdout)
         self.assertEqual(code, 1)
 
     def test_missing_requirements_md(self):
@@ -333,7 +375,7 @@ class TestFileExistence(FixtureBase):
         del tree["quality/REQUIREMENTS.md"]
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: REQUIREMENTS.md missing", stdout)
+        self.assertIn("REQUIREMENTS.md missing", stdout)
         self.assertEqual(code, 1)
 
     def test_missing_agents_md(self):
@@ -341,7 +383,7 @@ class TestFileExistence(FixtureBase):
         del tree["AGENTS.md"]
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: AGENTS.md missing (required at project root)", stdout)
+        self.assertIn("AGENTS.md missing (required at project root)", stdout)
         self.assertEqual(code, 1)
 
     def test_missing_exploration_md(self):
@@ -349,7 +391,7 @@ class TestFileExistence(FixtureBase):
         del tree["quality/EXPLORATION.md"]
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: EXPLORATION.md missing", stdout)
+        self.assertIn("EXPLORATION.md missing", stdout)
         self.assertEqual(code, 1)
 
     def test_missing_code_reviews(self):
@@ -359,7 +401,7 @@ class TestFileExistence(FixtureBase):
         # Create empty code_reviews dir
         (self.repo / "quality" / "code_reviews").mkdir(parents=True, exist_ok=True)
         stdout, code = self.gate()
-        self.assertIn("FAIL: code_reviews/ missing or empty", stdout)
+        self.assertIn("code_reviews/ missing or empty", stdout)
 
     def test_missing_spec_audits_triage(self):
         tree = minimal_zero_bug_tree()
@@ -369,14 +411,14 @@ class TestFileExistence(FixtureBase):
         del tree["quality/spec_audits/triage_probes.sh"]
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: spec_audits/ missing triage file", stdout)
+        self.assertIn("spec_audits/ missing triage file", stdout)
 
     def test_missing_auditor_files(self):
         tree = minimal_zero_bug_tree()
         del tree["quality/spec_audits/2026-01-01-auditor-1.md"]
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: spec_audits/ missing individual auditor files", stdout)
+        self.assertIn("spec_audits/ missing individual auditor files", stdout)
 
     def test_functional_test_scala_variant(self):
         tree = minimal_zero_bug_tree()
@@ -393,7 +435,7 @@ class TestFileExistence(FixtureBase):
         del tree["quality/test_functional.py"]
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: functional test file missing", stdout)
+        self.assertIn("functional test file missing", stdout)
 
 
 class TestBugsHeading(FixtureBase):
@@ -411,7 +453,7 @@ class TestBugsHeading(FixtureBase):
         tree["quality/BUGS.md"] = "## BUG-001: bad format\n"
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: 1 heading(s) use ## instead of ###", stdout)
+        self.assertIn("1 heading(s) use ## instead of ###", stdout)
         self.assertEqual(code, 1)
 
     def test_deep_heading(self):
@@ -420,7 +462,7 @@ class TestBugsHeading(FixtureBase):
         tree["quality/BUGS.md"] = "#### BUG-001: too deep\n"
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: 1 heading(s) use #### or deeper instead of ###", stdout)
+        self.assertIn("1 heading(s) use #### or deeper instead of ###", stdout)
 
     def test_bold_format(self):
         tree = minimal_zero_bug_tree()
@@ -428,7 +470,7 @@ class TestBugsHeading(FixtureBase):
         tree["quality/BUGS.md"] = "**BUG-001**: bold\n"
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: 1 heading(s) use **BUG- format", stdout)
+        self.assertIn("1 heading(s) use **BUG- format", stdout)
 
     def test_bullet_format(self):
         tree = minimal_zero_bug_tree()
@@ -436,7 +478,7 @@ class TestBugsHeading(FixtureBase):
         tree["quality/BUGS.md"] = "- BUG-001: bullet\n"
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: 1 heading(s) use - BUG- format", stdout)
+        self.assertIn("1 heading(s) use - BUG- format", stdout)
 
     def test_zero_bug_run(self):
         tree = minimal_zero_bug_tree()
@@ -469,7 +511,7 @@ class TestTDDSidecar(FixtureBase):
         del tree["quality/results/tdd-results.json"]
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: tdd-results.json missing", stdout)
+        self.assertIn("tdd-results.json missing", stdout)
         self.assertEqual(code, 1)
 
     def test_wrong_schema_version(self):
@@ -480,7 +522,7 @@ class TestTDDSidecar(FixtureBase):
         tree["quality/results/tdd-results.json"] = json.dumps(data)
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: schema_version is '1.0', expected '1.1'", stdout)
+        self.assertIn("schema_version is '1.0', expected '1.1'", stdout)
         self.assertEqual(code, 1)
 
     def test_placeholder_date(self):
@@ -491,7 +533,7 @@ class TestTDDSidecar(FixtureBase):
         tree["quality/results/tdd-results.json"] = json.dumps(data)
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: tdd-results.json date is placeholder", stdout)
+        self.assertIn("tdd-results.json date is placeholder", stdout)
 
     def test_future_date(self):
         tree = minimal_zero_bug_tree()
@@ -521,7 +563,7 @@ class TestTDDSidecar(FixtureBase):
         tree["quality/results/tdd-results.json"] = json.dumps(data)
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: 1 non-canonical verdict value(s)", stdout)
+        self.assertIn("1 non-canonical verdict value(s)", stdout)
 
     def test_non_canonical_field_name(self):
         tree = minimal_zero_bug_tree()
@@ -541,7 +583,7 @@ class TestTDDSidecar(FixtureBase):
         tree["quality/results/tdd-results.json"] = json.dumps(data)
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: summary missing 'confirmed_open' count", stdout)
+        self.assertIn("summary missing 'confirmed_open' count", stdout)
 
     def test_missing_root_key(self):
         tree = minimal_zero_bug_tree()
@@ -551,7 +593,7 @@ class TestTDDSidecar(FixtureBase):
         tree["quality/results/tdd-results.json"] = json.dumps(data)
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: missing root key 'project'", stdout)
+        self.assertIn("missing root key 'project'", stdout)
 
 
 class TestTDDLogs(FixtureBase):
@@ -613,7 +655,7 @@ class TestTDDLogs(FixtureBase):
         del tree["quality/TDD_TRACEABILITY.md"]
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: TDD_TRACEABILITY.md missing", stdout)
+        self.assertIn("TDD_TRACEABILITY.md missing", stdout)
 
 
 class TestIntegrationSidecar(FixtureBase):
@@ -663,7 +705,7 @@ class TestIntegrationSidecar(FixtureBase):
         })
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: recommendation 'MAYBE' is non-canonical", stdout)
+        self.assertIn("recommendation 'MAYBE' is non-canonical", stdout)
 
     def test_bad_result_value(self):
         tree = minimal_zero_bug_tree()
@@ -679,7 +721,7 @@ class TestIntegrationSidecar(FixtureBase):
         })
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: 1 non-canonical groups[].result value(s)", stdout)
+        self.assertIn("1 non-canonical groups[].result value(s)", stdout)
 
     def test_bad_uc_coverage_value(self):
         tree = minimal_zero_bug_tree()
@@ -695,7 +737,7 @@ class TestIntegrationSidecar(FixtureBase):
         })
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: 1 non-canonical uc_coverage value(s)", stdout)
+        self.assertIn("1 non-canonical uc_coverage value(s)", stdout)
 
 
 class TestRecheckSidecar(FixtureBase):
@@ -737,7 +779,7 @@ class TestRecheckSidecar(FixtureBase):
         tree["quality/results/recheck-summary.md"] = "# s\n"
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: recheck schema_version is '1.1', expected '1.0'", stdout)
+        self.assertIn("recheck schema_version is '1.1', expected '1.0'", stdout)
 
     def test_missing_summary_md(self):
         tree = minimal_zero_bug_tree()
@@ -752,7 +794,7 @@ class TestRecheckSidecar(FixtureBase):
         # No recheck-summary.md
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: recheck-summary.md missing", stdout)
+        self.assertIn("recheck-summary.md missing", stdout)
 
 
 class TestUseCases(FixtureBase):
@@ -771,7 +813,7 @@ class TestUseCases(FixtureBase):
         # Requirements has only 3 UCs (from default), need 5
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: Only 3 distinct UC identifiers", stdout)
+        self.assertIn("Only 3 distinct UC identifiers", stdout)
         self.assertEqual(code, 1)
 
     def test_too_few_ucs_general_warns(self):
@@ -788,7 +830,7 @@ class TestUseCases(FixtureBase):
         tree["quality/REQUIREMENTS.md"] = "# No UCs\n"
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: No canonical UC-NN identifiers", stdout)
+        self.assertIn("No canonical UC-NN identifiers", stdout)
 
 
 class TestTestFileExtension(FixtureBase):
@@ -806,7 +848,7 @@ class TestTestFileExtension(FixtureBase):
         # test_functional.py remains — mismatch
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: test_functional.py does not match project language (go)", stdout)
+        self.assertIn("test_functional.py does not match project language (go)", stdout)
 
     def test_no_language_detected(self):
         tree = minimal_zero_bug_tree()
@@ -829,7 +871,7 @@ class TestTerminalGate(FixtureBase):
         tree["quality/PROGRESS.md"] = "# Progress\n\nSkill version: 1.4.4\n"
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: PROGRESS.md missing Terminal Gate section", stdout)
+        self.assertIn("PROGRESS.md missing Terminal Gate section", stdout)
 
     def test_terminal_section_case_insensitive(self):
         tree = minimal_zero_bug_tree()
@@ -853,7 +895,7 @@ class TestMechanicalVerification(FixtureBase):
         tree["quality/mechanical/placeholder"] = ""
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: mechanical/ exists but verify.sh missing", stdout)
+        self.assertIn("mechanical/ exists but verify.sh missing", stdout)
 
     def test_verify_sh_with_exit_0_passes(self):
         tree = minimal_zero_bug_tree()
@@ -872,7 +914,7 @@ class TestMechanicalVerification(FixtureBase):
         tree["quality/results/mechanical-verify.exit"] = "1\n"
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: mechanical-verify.exit is '1', expected 0", stdout)
+        self.assertIn("mechanical-verify.exit is '1', expected 0", stdout)
 
 
 class TestPatches(FixtureBase):
@@ -904,7 +946,7 @@ class TestPatches(FixtureBase):
         del tree["quality/test_regression.py"]
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: test_regression.* missing", stdout)
+        self.assertIn("test_regression.* missing", stdout)
         self.assertEqual(code, 1)
 
     def test_missing_test_regression_general_warns(self):
@@ -940,7 +982,7 @@ class TestWriteups(FixtureBase):
         del tree["quality/writeups/BUG-001.md"]
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: No writeups for 1 confirmed bug(s)", stdout)
+        self.assertIn("No writeups for 1 confirmed bug(s)", stdout)
 
 
 class TestVersionStamps(FixtureBase):
@@ -957,7 +999,7 @@ class TestVersionStamps(FixtureBase):
         )
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: PROGRESS.md version '1.3.99' != '1.4.4'", stdout)
+        self.assertIn("PROGRESS.md version '1.3.99' != '1.4.4'", stdout)
 
     def test_missing_version_in_progress(self):
         tree = minimal_zero_bug_tree()
@@ -1006,7 +1048,7 @@ class TestStrictnessModes(FixtureBase):
         del tree["quality/spec_audits/triage_probes.sh"]
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: No executable triage evidence found", stdout)
+        self.assertIn("No executable triage evidence found", stdout)
         self.assertEqual(code, 1)
 
     def test_triage_probes_missing_general_warns(self):
