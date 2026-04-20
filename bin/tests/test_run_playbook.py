@@ -1,5 +1,6 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import argparse
 import os
 import unittest
 
@@ -1291,8 +1292,13 @@ class StartupBannerTests(unittest.TestCase):
     paths so operators can copy-paste without worrying about cwd."""
 
     def _phase_one_args(self) -> "run_playbook.argparse.Namespace":
+        """Args namespace shaped like parse_args output for a --phase 1 run.
+        v1.5.1 Item 3.1: phase_groups is the canonical phase-selection
+        representation; the banner's _run_plan_entries keys off it."""
         return run_playbook.argparse.Namespace(
-            phase="1", full_run=False, next_iteration=False, strategy=["gap"],
+            phase="1", phase_groups=[["1"]],
+            full_run=False, next_iteration=False, strategy=["gap"],
+            iterations=None, pace_seconds=0,
         )
 
     def test_darwin_banner_uses_tail_f_and_watch_grep(self) -> None:
@@ -1371,16 +1377,22 @@ class StartupBannerTests(unittest.TestCase):
             self.assertIn("Phase 4 (Spec Audit)", banner)
 
     def test_run_plan_entries_from_phase_flag(self) -> None:
+        """v1.5.1 Item 3.1 refactor: --phase N,M expands to phase groups so
+        the plan renders per-group lines rather than per-phase labels."""
         args = run_playbook.parse_args(["--phase", "3,4", "./target"])
         plan = run_playbook._run_plan_entries(args)
-        self.assertEqual(plan, ["Phase 3 (Code Review)", "Phase 4 (Spec Audit)"])
+        self.assertEqual(
+            plan,
+            ["Phase group 1      (phase 3)", "Phase group 2      (phase 4)"],
+        )
 
     def test_run_plan_entries_from_full_run(self) -> None:
+        """v1.5.1 Item 3.1 refactor: --full-run expands to all six phase
+        groups plus the four iteration strategies."""
         args = run_playbook.parse_args(["--full-run", "./target"])
         plan = run_playbook._run_plan_entries(args)
-        self.assertIn("Phase 1 (Explore)", plan)
-        self.assertIn("Phase 6 (Verification)", plan)
-        self.assertTrue(any("Iterations" in entry for entry in plan))
+        self.assertIn("Phase group 1      (phase 1)", plan)
+        self.assertIn("Phase group 6      (phase 6)", plan)
 
     def test_print_startup_banner_writes_to_log_and_stdout(self) -> None:
         import io as _io
@@ -1403,10 +1415,218 @@ class StartupBannerTests(unittest.TestCase):
                 # Both streams see the banner.
                 self.assertIn("QPB v", stdout_text)
                 self.assertIn("QPB v", log_text)
-                self.assertIn("Phase 1 (Explore)", stdout_text)
+                # Post-Item-3.1 plan format: one line per phase group.
+                self.assertIn("Phase group 1      (phase 1)", stdout_text)
                 self.assertIn("tail -f", stdout_text)
         finally:
             run_playbook.lib.set_default_echo(original)
+
+
+class PhaseGroupsParserTests(unittest.TestCase):
+    """v1.5.1 Item 3.1: --phase-groups syntax validation."""
+
+    def test_single_phase_group(self) -> None:
+        self.assertEqual(run_playbook._parse_phase_groups("1"), [["1"]])
+        self.assertEqual(run_playbook._parse_phase_groups("5"), [["5"]])
+
+    def test_multi_group_singletons(self) -> None:
+        self.assertEqual(
+            run_playbook._parse_phase_groups("1,2,3,4,5,6"),
+            [["1"], ["2"], ["3"], ["4"], ["5"], ["6"]],
+        )
+
+    def test_multi_group_with_concatenation(self) -> None:
+        self.assertEqual(
+            run_playbook._parse_phase_groups("1,2,3+4,5+6"),
+            [["1"], ["2"], ["3", "4"], ["5", "6"]],
+        )
+
+    def test_full_concatenation(self) -> None:
+        self.assertEqual(
+            run_playbook._parse_phase_groups("1+2+3+4+5+6"),
+            [["1", "2", "3", "4", "5", "6"]],
+        )
+
+    def test_within_group_unsorted_accepted_and_normalized(self) -> None:
+        """Within-group phase IDs may be unsorted; parser sorts them."""
+        self.assertEqual(run_playbook._parse_phase_groups("4+3"), [["3", "4"]])
+        self.assertEqual(
+            run_playbook._parse_phase_groups("6+4+5"), [["4", "5", "6"]]
+        )
+
+    def test_rejects_out_of_range(self) -> None:
+        for bad in ("0", "7", "8", "-1", "99"):
+            with self.assertRaises(argparse.ArgumentTypeError):
+                run_playbook._parse_phase_groups(bad)
+
+    def test_rejects_non_integer_tokens(self) -> None:
+        for bad in ("a", "1,b", "x+1", "3+y"):
+            with self.assertRaises(argparse.ArgumentTypeError):
+                run_playbook._parse_phase_groups(bad)
+
+    def test_rejects_cross_group_descending(self) -> None:
+        for bad in ("3,2", "3+4,1", "5,2+3", "4+5,3+6"):
+            with self.assertRaises(argparse.ArgumentTypeError):
+                run_playbook._parse_phase_groups(bad)
+
+    def test_rejects_duplicates(self) -> None:
+        for bad in ("1,1", "1+2,2+3", "3+3", "2,4+2"):
+            with self.assertRaises(argparse.ArgumentTypeError):
+                run_playbook._parse_phase_groups(bad)
+
+    def test_rejects_empty_groups(self) -> None:
+        for bad in ("1,,2", "1+", ",1", ",", "1++2"):
+            with self.assertRaises(argparse.ArgumentTypeError):
+                run_playbook._parse_phase_groups(bad)
+
+    def test_rejects_empty_spec(self) -> None:
+        with self.assertRaises(argparse.ArgumentTypeError):
+            run_playbook._parse_phase_groups("")
+        with self.assertRaises(argparse.ArgumentTypeError):
+            run_playbook._parse_phase_groups("   ")
+
+
+class PhaseGroupsArgparseIntegrationTests(unittest.TestCase):
+    """v1.5.1 Item 3.1: sugar expansion and cross-flag mutex via parse_args."""
+
+    def test_phase_all_expands_to_six_single_phase_groups(self) -> None:
+        args = run_playbook.parse_args(["--phase", "all", "./r"])
+        self.assertEqual(
+            args.phase_groups,
+            [["1"], ["2"], ["3"], ["4"], ["5"], ["6"]],
+        )
+
+    def test_phase_single_expands_to_one_group(self) -> None:
+        args = run_playbook.parse_args(["--phase", "3", "./r"])
+        self.assertEqual(args.phase_groups, [["3"]])
+
+    def test_phase_groups_explicit(self) -> None:
+        args = run_playbook.parse_args(["--phase-groups", "1,3+4,6", "./r"])
+        self.assertEqual(args.phase_groups, [["1"], ["3", "4"], ["6"]])
+
+    def test_full_run_expands_to_all_six_phases(self) -> None:
+        args = run_playbook.parse_args(["--full-run", "./r"])
+        self.assertEqual(
+            args.phase_groups,
+            [["1"], ["2"], ["3"], ["4"], ["5"], ["6"]],
+        )
+        self.assertTrue(args.full_run)
+
+    def test_no_phase_flags_means_no_groups(self) -> None:
+        args = run_playbook.parse_args(["./r"])
+        self.assertIsNone(args.phase_groups)
+
+    def test_phase_groups_vs_phase_mutex(self) -> None:
+        with self.assertRaises(SystemExit):
+            run_playbook.parse_args(
+                ["--phase-groups", "1,2", "--phase", "3", "./r"]
+            )
+
+    def test_phase_groups_vs_full_run_mutex(self) -> None:
+        with self.assertRaises(SystemExit):
+            run_playbook.parse_args(
+                ["--phase-groups", "1,2", "--full-run", "./r"]
+            )
+
+    def test_phase_groups_with_next_iteration_allowed(self) -> None:
+        """Item 3.2 depends on this: --phase-groups + --next-iteration
+        is the unified-invocation entry point."""
+        args = run_playbook.parse_args(
+            ["--phase-groups", "1,2", "--next-iteration", "./r"]
+        )
+        self.assertEqual(args.phase_groups, [["1"], ["2"]])
+        self.assertTrue(args.next_iteration)
+
+    def test_phase_groups_persisted_in_invocation_flags(self) -> None:
+        import json as _json
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            run_playbook.write_live_index_stub(
+                repo_dir, "20260420T180000Z",
+                phase_groups="1,3+4,6",
+            )
+            text = (repo_dir / "quality" / "INDEX.md").read_text(encoding="utf-8")
+            start = text.index("```json") + len("```json")
+            end = text.index("```", start)
+            payload = _json.loads(text[start:end])
+            flags = payload["invocation_flags"]
+            self.assertEqual(flags["phase_groups"], "1,3+4,6")
+            self.assertFalse(flags["full_run"])
+
+    def test_full_run_flag_persisted(self) -> None:
+        import json as _json
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            run_playbook.write_live_index_stub(
+                repo_dir, "20260420T180000Z",
+                full_run=True, phase_groups="1,2,3,4,5,6",
+            )
+            text = (repo_dir / "quality" / "INDEX.md").read_text(encoding="utf-8")
+            start = text.index("```json") + len("```json")
+            end = text.index("```", start)
+            payload = _json.loads(text[start:end])
+            self.assertTrue(payload["invocation_flags"]["full_run"])
+            self.assertEqual(payload["invocation_flags"]["phase_groups"], "1,2,3,4,5,6")
+
+
+class PhaseGroupsPromptConcatenationTests(unittest.TestCase):
+    """v1.5.1 Item 3.1: multi-phase group prompt construction."""
+
+    def test_single_phase_group_prompt_equals_legacy_build(self) -> None:
+        single = run_playbook._build_group_prompt(["3"], no_seeds=True)
+        legacy = run_playbook.build_phase_prompt("3", no_seeds=True)
+        self.assertEqual(single, legacy)
+
+    def test_multi_phase_group_includes_headers_between_phases(self) -> None:
+        combined = run_playbook._build_group_prompt(["3", "4"], no_seeds=True)
+        # First phase body is unprefixed (no leading === Phase 3 ===).
+        self.assertFalse(combined.startswith("=== Phase 3"))
+        # Second phase opens with a visible header.
+        self.assertIn("=== Phase 4 (Spec Audit) ===", combined)
+
+    def test_multi_phase_group_concatenation_order(self) -> None:
+        """The first phase's prompt appears before the second phase's
+        prompt body; the delimiter sits between them."""
+        p3 = run_playbook.build_phase_prompt("3", no_seeds=True)
+        combined = run_playbook._build_group_prompt(["3", "4"], no_seeds=True)
+        self.assertTrue(combined.startswith(p3))
+        self.assertIn("=== Phase 4 (Spec Audit) ===", combined[len(p3):])
+
+
+class PhaseGroupsWorkerPropagationTests(unittest.TestCase):
+    """v1.5.1 Item 3.1: the worker subprocess command must carry
+    --phase-groups when the operator passed it explicitly."""
+
+    def _args(self, **overrides):
+        base = dict(
+            parallel=False, runner="claude", no_seeds=True, phase=None,
+            phase_groups_raw=None, phase_groups=None,
+            next_iteration=False, full_run=False, strategy=["gap"],
+            model=None, no_formal_docs=False, no_stdout_echo=False,
+            verbose=False, quiet=False, progress_interval=2,
+            iterations=None, pace_seconds=0,
+            kill=False, targets=["./r"], worker=False,
+        )
+        base.update(overrides)
+        return run_playbook.argparse.Namespace(**base)
+
+    def test_explicit_phase_groups_propagated(self) -> None:
+        raw = run_playbook._parse_phase_groups("1,3+4,6")
+        args = self._args(phase_groups_raw=raw, phase_groups=raw)
+        command = run_playbook.build_worker_command(args, "/abs/target")
+        self.assertIn("--phase-groups", command)
+        idx = command.index("--phase-groups")
+        self.assertEqual(command[idx + 1], "1,3+4,6")
+        self.assertNotIn("--phase", command)
+
+    def test_phase_sugar_does_not_inject_phase_groups(self) -> None:
+        """When the operator passed --phase N, the worker should keep
+        receiving --phase N (not --phase-groups N) to preserve legacy
+        worker test coverage."""
+        args = self._args(phase="3")
+        command = run_playbook.build_worker_command(args, "/abs/target")
+        self.assertIn("--phase", command)
+        self.assertNotIn("--phase-groups", command)
 
 
 if __name__ == "__main__":

@@ -109,6 +109,110 @@ def _parse_progress_interval(value: str) -> int:
     return parsed
 
 
+# v1.5.1 Item 3.1: phase IDs supported by the orchestrator come from the
+# one source of truth (phase_label's dict keys — see below). The parser
+# derives its valid-phase set from this list so a future phase addition
+# (e.g. v1.5.2 Phase 7) only needs to update phase_label().
+_VALID_PHASE_IDS = frozenset({"1", "2", "3", "4", "5", "6"})
+
+
+def _parse_phase_groups(value: str) -> List[List[str]]:
+    """Parse a --phase-groups spec into a canonical list-of-lists.
+
+    v1.5.1 Item 3.1. Input form: "N,N+N,N,..." — comma-separated groups,
+    each group either a single phase ID or '+'-joined phase IDs.
+
+    Validation (all violations raise argparse.ArgumentTypeError):
+      - Empty spec rejected.
+      - Empty group ('1,,2') rejected.
+      - Empty '+' segment ('1+') rejected.
+      - Non-integer tokens ('a', '1,b') rejected.
+      - Phase IDs outside _VALID_PHASE_IDS rejected.
+      - Duplicate phase IDs across the whole spec rejected.
+      - Cross-group descending order rejected (first-phase-in-group key).
+      - Within-group phase IDs may be supplied out of order; they are
+        sorted before being returned (e.g. '4+3' normalizes to ['3','4']).
+
+    Returns: a list of sorted phase-ID lists, with outer list in
+    ascending first-phase order. Example: '1,3+4,6' -> [['1'], ['3','4'], ['6']].
+    """
+    if value is None:
+        raise argparse.ArgumentTypeError("--phase-groups requires a value")
+    if not value.strip():
+        raise argparse.ArgumentTypeError("--phase-groups value cannot be empty")
+
+    raw_groups = value.split(",")
+    if any(not g.strip() for g in raw_groups):
+        raise argparse.ArgumentTypeError(
+            f"--phase-groups '{value}' contains an empty group "
+            "(check for leading/trailing/double commas)"
+        )
+
+    parsed_groups: List[List[str]] = []
+    seen_phases: set[str] = set()
+    for raw in raw_groups:
+        group_raw = raw.strip()
+        segments = group_raw.split("+")
+        if any(not s.strip() for s in segments):
+            raise argparse.ArgumentTypeError(
+                f"--phase-groups group '{group_raw}' contains an empty "
+                "segment (check for trailing '+' or '++')"
+            )
+        phases_in_group: List[str] = []
+        for seg in segments:
+            phase = seg.strip()
+            try:
+                int(phase)
+            except ValueError:
+                raise argparse.ArgumentTypeError(
+                    f"--phase-groups: '{phase}' is not an integer phase ID"
+                )
+            if phase not in _VALID_PHASE_IDS:
+                raise argparse.ArgumentTypeError(
+                    f"--phase-groups: phase '{phase}' is out of range; "
+                    f"valid IDs are {sorted(_VALID_PHASE_IDS, key=int)}"
+                )
+            if phase in seen_phases:
+                raise argparse.ArgumentTypeError(
+                    f"--phase-groups: phase '{phase}' appears more than once "
+                    f"in '{value}' (duplicates rejected)"
+                )
+            seen_phases.add(phase)
+            phases_in_group.append(phase)
+        phases_in_group.sort(key=int)
+        parsed_groups.append(phases_in_group)
+
+    # Cross-group ordering must be strictly ascending on the first-phase key.
+    first_phases = [int(group[0]) for group in parsed_groups]
+    if first_phases != sorted(first_phases):
+        raise argparse.ArgumentTypeError(
+            f"--phase-groups '{value}': groups must appear in ascending order "
+            "by first phase (e.g. '1,3+4,6' is valid; '3,2' is not)"
+        )
+    return parsed_groups
+
+
+def _format_phase_groups(groups: Sequence[Sequence[str]]) -> str:
+    """Render a parsed phase-groups structure back into the CLI spec form."""
+    return ",".join("+".join(g) for g in groups)
+
+
+def _phase_groups_from_phase_mode(phase_mode: Optional[str]) -> Optional[List[List[str]]]:
+    """Translate legacy --phase / --phase all into canonical phase-groups.
+
+    --phase all       -> [['1'], ['2'], ..., ['6']]  (seven-group full sweep)
+    --phase 3,4,5     -> [['3'], ['4'], ['5']]
+    --phase 3         -> [['3']]
+    --phase (empty)   -> None
+    None              -> None
+    """
+    if not phase_mode:
+        return None
+    if phase_mode == "all":
+        return [[p] for p in sorted(_VALID_PHASE_IDS, key=int)]
+    return [[p] for p in phase_mode.split(",") if p]
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run the Quality Playbook against one or more target directories.",
@@ -129,6 +233,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--phase", help="Run specific phase(s): 1-6, all, or comma-separated values like 3,4,5.")
     parser.add_argument("--single-pass", dest="phase", action="store_const", const="", help=argparse.SUPPRESS)
     parser.add_argument("--multi-pass", dest="phase", action="store_const", const="all", help=argparse.SUPPRESS)
+    # v1.5.1 Item 3.1: --phase-groups is the new canonical phase selector.
+    # --phase N / --phase all remain as sugar that expands to phase-groups;
+    # cross-flag mutex is enforced in parse_args() below (argparse's native
+    # mutually_exclusive_group would reject legitimate --phase-groups +
+    # --next-iteration combinations, so the check lives there instead).
+    parser.add_argument(
+        "--phase-groups",
+        dest="phase_groups_raw",
+        type=_parse_phase_groups,
+        help=(
+            "Phase grouping spec: comma-separated groups, each group 'N' or "
+            "'N+N+...'. Example: '1,2,3+4,5+6' runs 4 prompts — phases 3 and "
+            "4 share one prompt, phases 5 and 6 share another. Phase IDs "
+            "must be 1-6, groups ascending, no duplicates."
+        ),
+    )
     parser.add_argument("--next-iteration", action="store_true", help="Iterate on an existing quality/ run.")
     parser.add_argument(
         "--full-run",
@@ -224,6 +344,22 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         args.targets = ["."]
     if args.worker:
         args.parallel = False
+
+    # v1.5.1 Item 3.1 mutex. --phase-groups vs --phase / --full-run are
+    # redundant (--phase and --full-run are sugar). --phase-groups vs
+    # --next-iteration is allowed (Item 3.2 relies on this).
+    phase_groups_raw = getattr(args, "phase_groups_raw", None)
+    if phase_groups_raw is not None and args.phase:
+        parser.error(
+            "--phase-groups is not compatible with --phase. --phase is sugar "
+            "for a single-group spec; pass one or the other."
+        )
+    if phase_groups_raw is not None and args.full_run:
+        parser.error(
+            "--phase-groups is not compatible with --full-run. --full-run is "
+            "sugar for a fixed phase-groups + iterations plan."
+        )
+
     if args.next_iteration and args.phase:
         parser.error("--next-iteration is not compatible with --phase. Iteration uses a single prompt.")
     if args.full_run and args.next_iteration:
@@ -234,6 +370,15 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         validate_phase_mode(args.phase, parser)
     if not args.next_iteration and not args.full_run and args.strategy != ["gap"]:
         print("WARNING: --strategy is ignored without --next-iteration or --full-run", file=sys.stderr)
+
+    # v1.5.1 Item 3.1: canonicalize phase selection into args.phase_groups.
+    # Precedence: explicit --phase-groups > --full-run > --phase > none.
+    if phase_groups_raw is not None:
+        args.phase_groups = phase_groups_raw
+    elif args.full_run:
+        args.phase_groups = [[p] for p in sorted(_VALID_PHASE_IDS, key=int)]
+    else:
+        args.phase_groups = _phase_groups_from_phase_mode(args.phase)
     return args
 
 
@@ -818,25 +963,41 @@ def build_startup_banner(
 
 
 def _run_plan_entries(args: argparse.Namespace) -> List[str]:
-    """Minimal run-plan summary for the startup banner.
+    """Run-plan summary for the startup banner.
 
-    v1.5.1 Item 2.3 scope: phase list only (from --phase / --full-run).
-    Phase 3 (Item 3.1, --phase-groups) will extend this with groupings
-    and iteration strategies; v1.5.1 Item 2.3 deliberately stays small.
+    v1.5.1 Item 2.3 base: phase list (from --phase / --full-run).
+    v1.5.1 Item 3.1: when --phase-groups (or sugar that expanded to
+    phase_groups) is in effect, render one line per group naming its
+    phases. Multi-phase groups render as "Phase group K (phases N, M)".
+    Iteration strategies and pace are Item 3.2 additions.
     """
-    if getattr(args, "full_run", False):
-        phases = phase_list_from_mode("all")
-        return [f"Phase {p} ({phase_label(p)})" for p in phases] + [
-            "Iterations: gap, unfiltered, parity, adversarial",
-        ]
-    phase_mode = getattr(args, "phase", None)
-    phases = phase_list_from_mode(phase_mode) if phase_mode else []
-    if phases:
-        return [f"Phase {p} ({phase_label(p)})" for p in phases]
-    if getattr(args, "next_iteration", False):
+    entries: List[str] = []
+    phase_groups = getattr(args, "phase_groups", None)
+    if phase_groups:
+        for idx, group in enumerate(phase_groups, start=1):
+            if len(group) == 1:
+                entries.append(f"Phase group {idx}      (phase {group[0]})")
+            else:
+                joined = ", ".join(group)
+                entries.append(f"Phase group {idx}      (phases {joined})")
+    elif getattr(args, "next_iteration", False):
         strategies = ",".join(getattr(args, "strategy", []) or ["gap"])
-        return [f"Iteration strategies: {strategies}"]
-    return []
+        entries.append(f"Iteration strategies: {strategies}")
+    # Item 3.2 iteration + pace block.
+    iterations = getattr(args, "iterations", None)
+    if iterations:
+        for strat in iterations:
+            entries.append(f"Iteration:            {strat}")
+    elif getattr(args, "full_run", False):
+        # full_run sugar is expanded in parse_args; guard here for
+        # callers that pass a bare Namespace without going through
+        # parse_args (e.g. tests and the internal full-run re-dispatch).
+        for strat in ALL_STRATEGIES:
+            entries.append(f"Iteration:            {strat}")
+    pace = int(getattr(args, "pace_seconds", 0) or 0)
+    if pace > 0:
+        entries.append(f"Pace:                 {pace}s between prompts")
+    return entries
 
 
 def print_startup_banner(
@@ -1099,7 +1260,7 @@ def archive_previous_run(repo_dir: Path, current_run_timestamp: str) -> None:
     _clear_live_quality(quality_dir)
 
 
-def _build_invocation_flags(args: Optional[argparse.Namespace], **overrides: bool) -> dict:
+def _build_invocation_flags(args: Optional[argparse.Namespace], **overrides) -> dict:
     """Assemble the invocation_flags dict persisted in INDEX.md.
 
     Follows the additive pattern established in Phase 1 revision
@@ -1107,7 +1268,11 @@ def _build_invocation_flags(args: Optional[argparse.Namespace], **overrides: boo
     same dict, never a reshape. Defaults come from argparse Namespace
     attributes with getattr() so legacy callers still work. Explicit
     kwargs override Namespace values for the (rare) call sites that
-    pass a bool directly for testability.
+    pass a value directly for testability.
+
+    v1.5.1 Phase 3: new keys ``phase_groups`` (string | null),
+    ``iterations`` (string | null), ``pace_seconds`` (int, default 0),
+    ``full_run`` (bool, default false).
     """
     defaults = {
         "no_formal_docs": False,
@@ -1115,6 +1280,10 @@ def _build_invocation_flags(args: Optional[argparse.Namespace], **overrides: boo
         "verbose": False,
         "quiet": False,
         "progress_interval": 2,
+        "phase_groups": None,
+        "iterations": None,
+        "pace_seconds": 0,
+        "full_run": False,
     }
     if args is not None:
         defaults["no_formal_docs"] = bool(getattr(args, "no_formal_docs", False))
@@ -1123,12 +1292,52 @@ def _build_invocation_flags(args: Optional[argparse.Namespace], **overrides: boo
         defaults["quiet"] = bool(getattr(args, "quiet", False))
         interval = getattr(args, "progress_interval", 2)
         defaults["progress_interval"] = int(interval) if interval is not None else 2
+        # Phase 3 additions.
+        phase_groups = getattr(args, "phase_groups", None)
+        if phase_groups:
+            defaults["phase_groups"] = _format_phase_groups(phase_groups)
+        iterations = getattr(args, "iterations", None)
+        if iterations:
+            defaults["iterations"] = ",".join(iterations)
+        defaults["pace_seconds"] = int(getattr(args, "pace_seconds", 0) or 0)
+        defaults["full_run"] = bool(getattr(args, "full_run", False))
+
+    # Explicit overrides win over args values.
     for key, value in overrides.items():
         if key == "progress_interval":
             defaults[key] = int(value)
-        else:
+        elif key == "pace_seconds":
+            defaults[key] = int(value)
+        elif key in ("phase_groups", "iterations"):
+            defaults[key] = value  # keep None or string as provided
+        elif key in ("no_formal_docs", "no_stdout_echo", "verbose", "quiet", "full_run"):
             defaults[key] = bool(value)
+        else:
+            defaults[key] = value
     return defaults
+
+
+def _index_flag_kwargs(args: argparse.Namespace) -> dict:
+    """Convert an args Namespace into the kwargs write_live_index_* expects.
+
+    Centralizes the args-to-INDEX flag mapping so the three call sites
+    (Phase 1 stub, singlepass stub, Phase 6 final re-render) stay in sync
+    as new flags are added. `phase_groups` / `iterations` are serialized
+    to their canonical string spec form.
+    """
+    phase_groups_list = getattr(args, "phase_groups", None)
+    iterations_list = getattr(args, "iterations", None)
+    return {
+        "no_formal_docs": getattr(args, "no_formal_docs", False),
+        "no_stdout_echo": getattr(args, "no_stdout_echo", False),
+        "verbose": getattr(args, "verbose", False),
+        "quiet": getattr(args, "quiet", False),
+        "progress_interval": getattr(args, "progress_interval", 2),
+        "phase_groups": _format_phase_groups(phase_groups_list) if phase_groups_list else None,
+        "iterations": ",".join(iterations_list) if iterations_list else None,
+        "pace_seconds": getattr(args, "pace_seconds", 0) or 0,
+        "full_run": getattr(args, "full_run", False),
+    }
 
 
 def write_live_index_stub(
@@ -1140,6 +1349,10 @@ def write_live_index_stub(
     verbose: bool = False,
     quiet: bool = False,
     progress_interval: int = 2,
+    phase_groups: Optional[str] = None,
+    iterations: Optional[str] = None,
+    pace_seconds: int = 0,
+    full_run: bool = False,
 ) -> None:
     """Render a minimal quality/INDEX.md at run start so the gate's invariant #10
     check has something to validate if the run is interrupted mid-flight.
@@ -1163,6 +1376,10 @@ def write_live_index_stub(
         verbose=verbose,
         quiet=quiet,
         progress_interval=progress_interval,
+        phase_groups=phase_groups,
+        iterations=iterations,
+        pace_seconds=pace_seconds,
+        full_run=full_run,
     )
     payload = {
         "run_timestamp_start": start_ext,
@@ -1200,6 +1417,10 @@ def write_live_index_final(
     verbose: bool = False,
     quiet: bool = False,
     progress_interval: int = 2,
+    phase_groups: Optional[str] = None,
+    iterations: Optional[str] = None,
+    pace_seconds: int = 0,
+    full_run: bool = False,
 ) -> None:
     """Re-render quality/INDEX.md at end of Phase 6 with the run's real counts.
 
@@ -1224,6 +1445,10 @@ def write_live_index_final(
         verbose=verbose,
         quiet=quiet,
         progress_interval=progress_interval,
+        phase_groups=phase_groups,
+        iterations=iterations,
+        pace_seconds=pace_seconds,
+        full_run=full_run,
     )
     payload = archive_lib.build_index_payload(
         repo_dir,
@@ -1281,15 +1506,153 @@ def run_one_phase(
     if not gate.ok:
         return False
 
-    phase_index = phase_list.index(phase) + 1
+    phase_index = phase_list.index(phase) + 1 if phase in phase_list else 1
     prompt = build_phase_prompt(phase, no_seeds=args.no_seeds)
     output_file = repo_dir / "quality" / "control_prompts" / f"phase{phase}.output.txt"
-    lib.logboth(log_file, lib.log(f"  Phase {phase_index}/{len(phase_list)} ({phase_label(phase)}): {repo_dir.name}"))
+    lib.logboth(log_file, lib.log(f"  Phase {phase_index}/{len(phase_list) or 1} ({phase_label(phase)}): {repo_dir.name}"))
     exit_code = run_prompt(repo_dir, prompt, f"phase{phase}", output_file, log_file, args.runner, args.model)
     if exit_code:
         lib.logboth(log_file, lib.log(f"  ABORT Phase {phase}: child runner exited {exit_code}"))
         return False
 
+    _log_phase_completion(repo_dir, phase, log_file, args, timestamp)
+    return True
+
+
+def _build_group_prompt(phases: Sequence[str], no_seeds: bool) -> str:
+    """Concatenate per-phase prompt bodies for a multi-phase group.
+
+    v1.5.1 Item 3.1. The first phase's prompt opens the combined prompt
+    with no prefix; subsequent phases are separated by a single
+    visible header line so the LLM can tell which phase's work
+    it's producing. Per Impl-Plan Open Question 5 (lean: visible,
+    minimal), the header is a plain `=== Phase N (Label) ===` string.
+    """
+    parts: List[str] = []
+    for i, phase in enumerate(phases):
+        body = build_phase_prompt(phase, no_seeds=no_seeds)
+        if i > 0:
+            parts.append(f"\n\n=== Phase {phase} ({phase_label(phase)}) ===\n\n")
+        parts.append(body)
+    return "".join(parts)
+
+
+def _group_transcript_path(repo_dir: Path, phases: Sequence[str]) -> Path:
+    """Transcript file for a group. Single-phase groups reuse the
+    legacy phaseN.output.txt name; multi-phase groups join with '-'
+    (e.g. phase3-4.output.txt)."""
+    suffix = "-".join(phases)
+    return repo_dir / "quality" / "control_prompts" / f"phase{suffix}.output.txt"
+
+
+def _group_pass_label(phases: Sequence[str]) -> str:
+    """Pass label used by run_prompt (appears in the per-prompt log header)."""
+    return "phase" + "-".join(phases)
+
+
+def run_one_phase_group(
+    repo_dir: Path,
+    group: Sequence[str],
+    phase_groups: Sequence[Sequence[str]],
+    args: argparse.Namespace,
+    log_file: Path,
+    timestamp: str,
+    monitor: "progress_monitor.ProgressMonitor",
+) -> bool:
+    """Execute a single phase group as one LLM call.
+
+    v1.5.1 Item 3.1. For a single-phase group this is equivalent to the
+    prior per-phase flow (and delegates to run_one_phase to preserve
+    that path's per-phase post-hoc logging). For a multi-phase group
+    the per-phase prompt bodies are concatenated into one prompt and
+    submitted to the runner once; gate checks are performed at the
+    group boundary (first-phase gate; a failure aborts the run).
+
+    The progress monitor's set_transcript_path() is called once per
+    phase in the group so the monitor-call count matches phase count,
+    not group count — but for a multi-phase group all phase-level
+    transcript pointers resolve to the group's consolidated file
+    (stub per-phase files are created for operator-facing consistency).
+    """
+    if not group:
+        return True
+
+    if len(group) == 1:
+        phase = group[0]
+        # Flatten every phase across all groups into the counter list so
+        # single-phase groups keep their historical "Phase X/Y" header.
+        flat = [p for g in phase_groups for p in g]
+        monitor.set_transcript_path(_group_transcript_path(repo_dir, [phase]))
+        return run_one_phase(repo_dir, phase, flat, args, log_file, timestamp)
+
+    # Multi-phase group path.
+    gate = check_phase_gate(repo_dir, group[0])
+    for message in gate.messages:
+        lib.logboth(log_file, lib.log(f"  {message}"))
+    if not gate.ok:
+        return False
+
+    group_transcript = _group_transcript_path(repo_dir, group)
+    group_transcript.parent.mkdir(parents=True, exist_ok=True)
+    # Per-phase transcript stubs + monitor registration. Earlier phases
+    # in the group get a small pointer file; the last phase reuses the
+    # group transcript path directly so tail + grep keep working.
+    for i, phase in enumerate(group):
+        per_phase_path = _group_transcript_path(repo_dir, [phase])
+        monitor.set_transcript_path(per_phase_path)
+        if i < len(group) - 1 and per_phase_path != group_transcript:
+            per_phase_path.write_text(
+                f"# Phase {phase} ran as part of group {'+'.join(group)}.\n"
+                f"# Combined transcript: {group_transcript}\n",
+                encoding="utf-8",
+            )
+    # Monitor ends up pointing at the last phase's transcript file; the
+    # group actually writes to the group-transcript path, so point the
+    # monitor there for the actual subprocess output.
+    monitor.set_transcript_path(group_transcript)
+
+    group_label = "+".join(group)
+    labels = ", ".join(f"{p} ({phase_label(p)})" for p in group)
+    lib.logboth(
+        log_file,
+        lib.log(f"  Phase group {group_label}: {labels} — single prompt"),
+    )
+
+    prompt = _build_group_prompt(group, no_seeds=args.no_seeds)
+    exit_code = run_prompt(
+        repo_dir,
+        prompt,
+        _group_pass_label(group),
+        group_transcript,
+        log_file,
+        args.runner,
+        args.model,
+    )
+    if exit_code:
+        lib.logboth(log_file, lib.log(f"  ABORT Phase group {group_label}: child runner exited {exit_code}"))
+        return False
+
+    # Per-phase completion summaries: walk each phase's post-hoc output
+    # expectations individually so the operator sees which phase wrote
+    # which artifacts (matching the single-phase logging).
+    for phase in group:
+        _log_phase_completion(repo_dir, phase, log_file, args, timestamp)
+    return True
+
+
+def _log_phase_completion(
+    repo_dir: Path,
+    phase: str,
+    log_file: Path,
+    args: argparse.Namespace,
+    timestamp: str,
+) -> None:
+    """Emit the same post-hoc completion logging single-phase groups do.
+
+    Factored out so run_one_phase_group's multi-phase path and
+    run_one_phase share the same line. Phase 6 also re-renders INDEX.md
+    here — same behavior as before the refactor.
+    """
     quality_dir = repo_dir / "quality"
     if phase == "1":
         lib.logboth(log_file, lib.log(f"  Phase 1 complete: {count_lines(quality_dir / 'EXPLORATION.md')} lines in EXPLORATION.md"))
@@ -1321,8 +1684,6 @@ def run_one_phase(
             if lines:
                 gate_result = lines[-1]
         lib.logboth(log_file, lib.log(f"  Phase 6 complete: {gate_result}"))
-        # v1.5.0 end-of-Phase-6 INDEX: re-render quality/INDEX.md with real
-        # counts and the final gate verdict so invariant #10 can validate it.
         gate_passed = _gate_pass(gate_result, quality_dir)
         verdict = "pass" if gate_passed else ("partial" if "warn" in gate_result.lower() else "fail")
         try:
@@ -1330,20 +1691,10 @@ def run_one_phase(
                 repo_dir,
                 timestamp,
                 gate_verdict=verdict,
-                no_formal_docs=getattr(args, "no_formal_docs", False),
-                no_stdout_echo=getattr(args, "no_stdout_echo", False),
-                verbose=getattr(args, "verbose", False),
-                quiet=getattr(args, "quiet", False),
-                progress_interval=getattr(args, "progress_interval", 2),
+                **_index_flag_kwargs(args),
             )
         except Exception as exc:  # noqa: BLE001 — log and continue
             lib.logboth(log_file, lib.log(f"  WARN write_live_index_final skipped: {exc}"))
-        # v1.5.0 end-of-run archival: on gate pass, snapshot the live quality/
-        # tree into quality/runs/<run-start-ts>/ and append a row to
-        # RUN_INDEX.md. Failed or partial runs do NOT enter history
-        # automatically — operators preserve them with
-        # `python -m bin.quality_playbook archive --status=failed|partial`
-        # before the next run's overwrite.
         if gate_passed:
             try:
                 archive_lib.archive_run(
@@ -1354,7 +1705,6 @@ def run_one_phase(
                 )
             except archive_lib.ArchiveError as exc:
                 lib.logboth(log_file, lib.log(f"  WARN archive_run skipped: {exc}"))
-    return True
 
 
 def _gate_pass(gate_result_line: str, quality_dir: Path) -> bool:
@@ -1374,7 +1724,14 @@ def _gate_pass(gate_result_line: str, quality_dir: Path) -> bool:
     return False
 
 
-def run_one_phased(repo_dir: Path, phase_list: Sequence[str], args: argparse.Namespace, timestamp: str) -> int:
+def run_one_phased(repo_dir: Path, phase_groups: Sequence[Sequence[str]], args: argparse.Namespace, timestamp: str) -> int:
+    """Execute one or more phase groups for a single target repo.
+
+    v1.5.1 Item 3.1: takes a list-of-lists (each inner list is a group).
+    Single-phase groups hit the legacy run_one_phase path; multi-phase
+    groups concatenate prompts via run_one_phase_group. Gate checks
+    happen at the group boundary.
+    """
     log_file = configure_logging(
         repo_dir,
         timestamp,
@@ -1388,7 +1745,8 @@ def run_one_phased(repo_dir: Path, phase_list: Sequence[str], args: argparse.Nam
         if banner is not None:
             lib.logboth(log_file, banner, echo=True)
 
-    if "1" in phase_list:
+    flat_phases = [p for group in phase_groups for p in group]
+    if "1" in flat_phases:
         archive_previous_run(repo_dir, timestamp)
         # Write a minimal quality/INDEX.md up front so an interrupted run
         # still satisfies schemas.md §10 invariant #10 when the gate is
@@ -1396,15 +1754,12 @@ def run_one_phased(repo_dir: Path, phase_list: Sequence[str], args: argparse.Nam
         write_live_index_stub(
             repo_dir,
             timestamp,
-            no_formal_docs=getattr(args, "no_formal_docs", False),
-            no_stdout_echo=getattr(args, "no_stdout_echo", False),
-            verbose=getattr(args, "verbose", False),
-            quiet=getattr(args, "quiet", False),
-            progress_interval=getattr(args, "progress_interval", 2),
+            **_index_flag_kwargs(args),
         )
 
     (repo_dir / "quality" / "control_prompts").mkdir(parents=True, exist_ok=True)
-    lib.logboth(log_file, lib.log(f"Starting playbook (phases: {','.join(phase_list)}): {repo_dir.name} (runner={args.runner})"))
+    plan_desc = _format_phase_groups(phase_groups)
+    lib.logboth(log_file, lib.log(f"Starting playbook (phase groups: {plan_desc}): {repo_dir.name} (runner={args.runner})"))
 
     # v1.5.1 Item 2.2: live progress monitor. Started here so the first
     # PROGRESS.md write (inside Phase 1) gets picked up within one poll
@@ -1421,21 +1776,17 @@ def run_one_phased(repo_dir: Path, phase_list: Sequence[str], args: argparse.Nam
 
     exit_status = 0
     with monitor:
-        for phase in phase_list:
-            # Transcript rollover: the monitor tails whatever file it's
-            # pointed at; this swap is atomic from the monitor's view
-            # (guarded by ProgressMonitor._transcript_lock).
-            monitor.set_transcript_path(
-                repo_dir / "quality" / "control_prompts" / f"phase{phase}.output.txt"
-            )
-            if not run_one_phase(repo_dir, phase, phase_list, args, log_file, timestamp):
-                lib.logboth(log_file, lib.log(f"ABORT: Phase {phase} gate failed for {repo_dir.name}"))
+        for group in phase_groups:
+            if not run_one_phase_group(
+                repo_dir, group, phase_groups, args, log_file, timestamp, monitor
+            ):
+                lib.logboth(log_file, lib.log(f"ABORT: Phase group {'+'.join(group)} gate failed for {repo_dir.name}"))
                 exit_status = 1
                 break
     if exit_status:
         return exit_status
 
-    lib.logboth(log_file, lib.log(f"Playbook complete (phases: {','.join(phase_list)}): {repo_dir.name}"))
+    lib.logboth(log_file, lib.log(f"Playbook complete (phase groups: {plan_desc}): {repo_dir.name}"))
 
     missing = final_artifact_gaps(repo_dir)
     if missing:
@@ -1475,11 +1826,7 @@ def run_one_singlepass(repo_dir: Path, args: argparse.Namespace, timestamp: str)
         write_live_index_stub(
             repo_dir,
             timestamp,
-            no_formal_docs=getattr(args, "no_formal_docs", False),
-            no_stdout_echo=getattr(args, "no_stdout_echo", False),
-            verbose=getattr(args, "verbose", False),
-            quiet=getattr(args, "quiet", False),
-            progress_interval=getattr(args, "progress_interval", 2),
+            **_index_flag_kwargs(args),
         )
         prompt = single_pass_prompt(no_seeds=args.no_seeds)
         pass_label = "full"
@@ -1503,9 +1850,15 @@ def run_one_singlepass(repo_dir: Path, args: argparse.Namespace, timestamp: str)
     return 0
 
 
-def run_one(repo_dir: Path, phase_list: Sequence[str], args: argparse.Namespace, timestamp: str) -> int:
-    if phase_list:
-        return run_one_phased(repo_dir, phase_list, args, timestamp)
+def run_one(repo_dir: Path, phase_groups: Optional[Sequence[Sequence[str]]], args: argparse.Namespace, timestamp: str) -> int:
+    """Dispatch one target to the phased or single-pass runner.
+
+    v1.5.1 Item 3.1: phase_groups is a List[List[str]] (or None). None
+    falls through to the single-pass / iteration path — unchanged
+    behavior.
+    """
+    if phase_groups:
+        return run_one_phased(repo_dir, phase_groups, args, timestamp)
     return run_one_singlepass(repo_dir, args, timestamp)
 
 
@@ -1676,7 +2029,13 @@ def build_worker_command(args: argparse.Namespace, target_path: str) -> List[str
     command = [sys.executable, str(Path(__file__).resolve()), "--worker", "--sequential"]
     command.append("--claude" if args.runner == "claude" else "--copilot")
     command.append("--no-seeds" if args.no_seeds else "--with-seeds")
-    if args.phase:
+    # v1.5.1 Item 3.1: prefer --phase-groups when the operator passed it
+    # explicitly OR when sugar (--phase all / --full-run) produced groups.
+    # --phase is only propagated when phase-groups was NOT derived.
+    phase_groups_raw = getattr(args, "phase_groups_raw", None)
+    if phase_groups_raw is not None:
+        command.extend(["--phase-groups", _format_phase_groups(phase_groups_raw)])
+    elif args.phase:
         command.extend(["--phase", args.phase])
     if args.next_iteration:
         command.append("--next-iteration")
@@ -1712,7 +2071,11 @@ def wait_for_processes(processes: Sequence[subprocess.Popen], pid_file: Path) ->
 
 
 def execute_run(args: argparse.Namespace, repo_dirs: Sequence[Path], timestamp: Optional[str] = None, suppress_suggestion: bool = False) -> int:
-    phase_list = phase_list_from_mode(args.phase)
+    phase_groups = getattr(args, "phase_groups", None)
+    # Legacy phase_list kept for display_run_header / suggestions that still
+    # key off the flat list. Equivalent in content; derived from phase_groups
+    # when present, else from args.phase.
+    phase_list = [p for g in phase_groups for p in g] if phase_groups else phase_list_from_mode(args.phase)
     run_timestamp = timestamp or datetime.now().strftime("%Y%m%d-%H%M%S")
 
     if getattr(args, "full_run", False):
@@ -1758,7 +2121,7 @@ def execute_run(args: argparse.Namespace, repo_dirs: Sequence[Path], timestamp: 
 
     overall_status = 0
     for repo_dir in repo_dirs:
-        overall_status = max(overall_status, run_one(repo_dir, phase_list, args, run_timestamp))
+        overall_status = max(overall_status, run_one(repo_dir, phase_groups, args, run_timestamp))
         print("")
 
     print(lib.print_summary(repo_dirs))
