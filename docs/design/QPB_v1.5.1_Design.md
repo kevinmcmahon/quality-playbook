@@ -12,6 +12,8 @@ v1.5.1 addresses a category of friction that v1.5.0 surfaced but did not solve: 
 
 This doc captures the problems, the root causes, and the design for fixing them. A companion file `QPB_v1.5.1_Implementation_Plan.md` covers execution.
 
+v1.5.1 also lands one correctness fix that was surfaced during v1.5.0 benchmark-validation: the challenge gate does not run on bugs that iteration strategies add, leaving a class of HIGH/CRITICAL findings unchallenged. This is not a UX item but it is adjacent to v1.5.0 correctness boundaries and its fix is small enough to ship alongside the UX work rather than waiting for v1.5.2. See the "Correctness Fix" section below.
+
 **Sequencing note.** v1.5.2 (skill-handling) builds on v1.5.1, not the other way around. The operator-flow pain this document addresses will compound with v1.5.2's additional skill-classification and four-pass derivation complexity; fixing it first means v1.5.2 can be built and benchmarked without also fighting the runner. v1.5.2's Phase 0 gate ("v1.5.0 Stabilization" in its plan as currently written) should in practice read as "v1.5.1 Stabilization" once v1.5.1 ships — the schema in v1.5.2's Phase 2 extends the v1.5.1 schema that inherits from v1.5.0.
 
 ---
@@ -41,6 +43,18 @@ The virtio rerun used a phase-by-phase invocation (`--phase all`) to distribute 
 ### The invocation-control gap
 
 For rate-limit-conscious runs, operators want fine-grained control over how many prompts to burn: sometimes one prompt per phase (conservative), sometimes one prompt for two bundled phases (when prior phases have low token count), sometimes the full multi-phase run plus iterations in one invocation. v1.5.0's `run_playbook.py` parser treats `--phase`, `--next-iteration`, and `--full-run` as mutually exclusive — a correct constraint for its current design but one that forces operators into two-command workflows ("run phases, wait, then run iterations") that risk forgetting step two or producing inconsistent state if step two is forgotten.
+
+### The challenge-gate iteration gap (2026-04-20)
+
+The virtio-1.4.6 rerun in `repos/benchmark-1.5.0/` completed cleanly and added two new HIGH-severity bugs via the gap iteration strategy: BUG-007 (vDPA affinity mis-indexing) and BUG-008 (`virtinput_probe()` reset-before-del_vqs). Both are classic sibling-path divergence findings — exactly the pattern `references/challenge_gate.md` lists as an auto-trigger. Neither received a challenge-gate review. `quality/challenge/` contains only BUG-001 through BUG-006; the two iteration-derived bugs were admitted to the tracker, regression-tested, and passed through the terminal gate without any challenge record.
+
+Two root causes:
+
+1. **Spec gap.** `references/iteration.md` describes the four iteration strategies but contains no instruction to re-run Phase 5's challenge gate on net-new bugs. SKILL.md's Phase 5 paragraph says "apply the challenge gate to every confirmed bug that matches an auto-trigger pattern" — correct in principle, but the iteration agent read "every confirmed bug" as "every bug confirmed in the preceding code review," not "every entry currently in the BUG tracker."
+
+2. **Mechanical gap.** `.github/skills/quality_gate/quality_gate.py` has no invariant that cross-checks the BUG tracker against `quality/challenge/`. Nothing prevents the terminal gate from passing with un-challenged HIGH bugs in the manifest.
+
+The spec half alone would keep being forgotten; the mechanical half is the durable fix. Both are in scope for v1.5.1.
 
 ### The tee ceremony
 
@@ -205,6 +219,33 @@ Operator sees the full scope before anything executes.
 
 ---
 
+## Design — Correctness Fix (Phase 5)
+
+### Item 8: Challenge-Gate Iteration Coverage
+
+**Problem.** Iteration strategies (`gap`, `unfiltered`, `parity`, `adversarial`) can add new bugs to the tracker, but the Phase 5 challenge gate — which catches false positives and over-classified findings — is not re-run on those bugs. The virtio-1.4.6 benchmark run admitted two HIGH-severity iteration-derived bugs with no challenge record. Both happened to be real, but "both were real this time" is not a validation of the gate; it is a coincidence the gate failed to confirm.
+
+**Design.** Two halves, spec and mechanical. Both must ship.
+
+- **Spec half.** Update the three reference documents that govern challenge-gate behavior so the iteration case is explicit:
+  1. `references/iteration.md` — at the end of each strategy's procedure, add an explicit "Challenge gate re-run" step that re-applies the Phase 5 gate to every net-new bug the iteration merged into the BUG tracker. The step is mandatory for every strategy.
+  2. `references/challenge_gate.md` — replace "every confirmed bug" with "every entry currently in the BUG tracker" to remove the ambiguity that caused the virtio-1.4.6 miss. Add an "Iteration re-entry" subsection stating that the gate re-runs on every iteration that adds a net-new bug, even if prior bugs have already been challenge-gated.
+  3. `SKILL.md` Phase 5 paragraph — match the tightened wording from `references/challenge_gate.md` so a reader of SKILL.md alone gets the same instruction.
+
+- **Mechanical half.** Add a Layer-1 invariant `check_challenge_gate_coverage()` in `.github/skills/quality_gate/quality_gate.py`:
+  1. Enumerate every entry in `quality/bugs_manifest.json`.
+  2. For each entry, evaluate whether it matches any auto-trigger pattern in `references/challenge_gate.md` §"Auto-trigger patterns" (security-class, design-decision comments at the cited location, no spec basis, sibling-path divergence, missing functionality). The mechanical evaluator uses conservative heuristics on the writeup text, severity, and structural signals — see the implementation plan for the specific check list.
+  3. For every matching bug, require `quality/challenge/BUG-NNN-challenge.md` to exist and contain a line matching `**Verdict:**\s+(CONFIRMED|DOWNGRADED|REJECTED)`.
+  4. FAIL the gate if any matching bug lacks a challenge record with a valid verdict.
+
+**Why this pattern.** The mechanical check's conservative heuristics will occasionally over-flag (demand a challenge record for a bug that didn't strictly need one). That is the right failure mode — the cost of writing a challenge record for a genuine bug is low; the cost of shipping an un-challenged false positive is the entire v1.5.0 edgequake scenario that motivated the challenge gate in the first place.
+
+**Regression evidence.** The virtio-1.4.6 rerun in `repos/benchmark-1.5.0/` is preserved as the reproduction case. Phase 5 validation runs the new invariant against that manifest and verifies it FAILs (the original 6 challenge records exist; 007 and 008 are missing). After generating challenge records for 007 and 008 in a test copy, the invariant must PASS.
+
+**Scope discipline.** Nothing in this item touches the four iteration strategies' exploration logic, the challenge-gate prompt template, or the auto-trigger pattern list itself. Those are v1.5.0-frozen surfaces. The only changes are (a) prose instructions that require running an existing gate in an additional context, and (b) a new quality_gate.py check that verifies the gate ran.
+
+---
+
 ## Success Criteria
 
 v1.5.1 is successful if:
@@ -224,6 +265,8 @@ v1.5.1 is successful if:
 7. **`--phase-groups` + `--iterations` runs in one invocation.** A full 11-prompt run (7 phase groups + 4 iteration strategies) completes as a single `run_playbook.py` invocation with accurate per-step logging and a correct early-stop on zero-gain iterations.
 
 8. **No regression on code benchmarks.** Bug yield on virtio / chi / cobra / express / httpx within ±10% of v1.5.0 baseline. The five benchmark repos that ran cleanly on v1.5.0 must also run cleanly on v1.5.1.
+
+9. **Challenge-gate iteration coverage enforced.** Every entry in `quality/bugs_manifest.json` that matches an auto-trigger pattern has a corresponding `quality/challenge/BUG-NNN-challenge.md` with a CONFIRMED / DOWNGRADED / REJECTED verdict, verified mechanically by a new Layer-1 invariant in `quality_gate.py`. Running the invariant against the preserved virtio-1.4.6 reproduction case (`repos/benchmark-1.5.0/virtio-1.4.6/`) FAILs on the original manifest (missing challenge records for BUG-007 and BUG-008) and PASSes once those records are added.
 
 ---
 
@@ -282,3 +325,7 @@ These don't block v1.5.1 design but need answers during implementation:
 3. **Does `--phase-groups` break any v1.5.0 bug-manifest schema assumption?** **Resolved:** no. Phases still do the same work and produce the same per-phase artifacts; only the prompt boundary changes. A group of phases is just "run these phases in a single prompt" — the artifact schema and gate checks are unaffected.
 
 4. **Should `--pace-seconds` apply between phases in a single phase-group invocation?** Lean: no, only between phase groups and between iteration strategies. Phases within a group run as one prompt, so there's nothing to pace.
+
+5. **How conservative should `check_challenge_gate_coverage()`'s auto-trigger heuristics be?** **Resolved:** conservative (over-flag). A false positive on the invariant costs one extra challenge record; a false negative ships an un-challenged finding. The heuristic list lives in the Phase 5 implementation detail rather than the design doc because the specific regexes will iterate during implementation.
+
+6. **Does the challenge-gate invariant require the challenge file's verdict to be CONFIRMED specifically?** **Resolved:** no. The invariant verifies a verdict exists and is one of CONFIRMED / DOWNGRADED / REJECTED. A REJECTED verdict is valid gate output — the challenge fired, the bug was found non-real, and the tracker entry should have been removed by the reconciliation step. Pairing this invariant with the existing reconciliation check is what catches both halves of that flow.

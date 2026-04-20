@@ -5,7 +5,7 @@
 *Depends on: v1.5.0 complete (formal_docs pipeline, phase orchestrator, quality gate, schemas)*
 *Followed by: `QPB_v1.5.2_Implementation_Plan.md` (skill-handling)*
 
-v1.5.1 is scoped to operator experience. No changes to the divergence model, citation schema, tier taxonomy, or quality-gate mechanics — v1.5.0's correctness boundaries are preserved. Every change either reduces friction, increases observability, or both.
+v1.5.1 is scoped to operator experience, plus one correctness fix (Phase 5) that closes a quality-gate coverage hole surfaced during v1.5.0 benchmark validation. No changes to the divergence model, citation schema, or tier taxonomy — v1.5.0's correctness boundaries are preserved. Every change either reduces friction, increases observability, or adds a missing gate check; nothing loosens existing gates.
 
 ---
 
@@ -199,17 +199,68 @@ Gate to release: all five benchmark repos pass the ±10% regression bar; cross-p
 
 ---
 
-## Phase 5 — Self-Audit Bootstrap
+## Phase 5 — Challenge-Gate Iteration Coverage + Self-Audit Bootstrap
 
-Goal: QPB v1.5.1 audits itself with full v1.5.1 machinery, artifacts committed as bootstrap evidence.
+Goal: close the challenge-gate iteration gap observed during v1.5.0 benchmark validation, then run v1.5.1's self-audit using the full v1.5.1 machinery.
 
-Same pattern as v1.5.0 Phase 8. Because v1.5.1 is purely additive operator-experience work, the self-audit should produce requirements coverage and bug yield comparable to v1.5.0's self-audit. New UX-related REQs may appear (logging behavior, observability flags, setup-helper behavior); these become v1.5.1 REQs tagged appropriately.
+Phase 5 is two work items because the self-audit is what exercises the new challenge-gate invariant on real artifacts; doing them together means the self-audit is the first runtime proof the fix works.
 
-Any bugs found go to v1.5.1 post-release patch backlog or v1.5.2 backlog depending on severity.
+### Item 5.1 — Spec Updates for Challenge-Gate Iteration Coverage
 
-Deliverable: v1.5.1 self-audit complete, artifacts in `quality/` and archived to `previous_runs/v1.5.1/`.
+Work items:
+- Edit `.github/skills/references/iteration.md`. At the end of each strategy's procedure (`gap`, `unfiltered`, `parity`, `adversarial`), add a **"Challenge gate re-run"** step requiring the agent to re-apply the Phase 5 challenge gate to every net-new bug the iteration merged into the BUG tracker. The step runs after merge but before closure verification. Applies uniformly to all four strategies; no strategy-specific opt-out.
+- Edit `.github/skills/references/challenge_gate.md`. Replace "every confirmed bug" with "every entry currently in the BUG tracker" throughout the auto-trigger-patterns and invocation sections. Add a new "**Iteration re-entry**" subsection stating: "When an iteration strategy adds a net-new bug to the tracker, re-apply this gate to the net-new bug before closure verification, regardless of whether earlier bugs have already been challenge-gated. Each iteration is a new opportunity for the gate to fire."
+- Edit `.github/skills/SKILL.md` Phase 5 challenge-gate paragraph (line 1765 area). Match the tightened wording from `references/challenge_gate.md` so a reader of SKILL.md alone arrives at the same instruction.
 
-Gate to release: self-audit completes cleanly OR any failures are explicitly dispositioned.
+Deliverable: three reference documents updated with consistent wording; no new files; no behavioral change to existing code paths (this is a doc-only item).
+
+### Item 5.2 — Mechanical Invariant: `check_challenge_gate_coverage()`
+
+Work items:
+- Add `check_challenge_gate_coverage()` to `.github/skills/quality_gate/quality_gate.py`, registered in the Layer-1 invariant list. Structure mirrors existing invariants.
+- **Input:** `quality/bugs_manifest.json` (required; invariant is N/A if the file is absent — zero-bug runs cannot have un-challenged bugs).
+- **Per-bug evaluation.** For each bug entry, compute a conservative "triggers_challenge" boolean by evaluating each auto-trigger pattern:
+  - **Security-class** — severity in `{CRITICAL, HIGH}` AND (writeup text OR bug title) contains any of: `credential`, `secret`, `auth`, `injection`, `XSS`, `CSRF`, `SSRF`, `privilege`, `bypass`, `leak`.
+  - **No spec basis** — bug's `requirement` field is absent, empty, or points to a REQ with no Tier 1/2 citation in `requirements_manifest.json`.
+  - **Sibling-path divergence** — writeup text contains any of: `sibling`, `parallel`, `parity`, `contrasted with`, `same concern`, `in contrast`, `other path`, `other branch`. Case-insensitive.
+  - **Missing functionality** — writeup text contains any of: `never`, `does not`, `doesn't`, `missing`, `absent`, `fails to`. Case-insensitive. Conservative by design — many real bugs use these words, but the cost of over-flagging is one challenge record.
+  - **Design-decision comment** — bug's `source_comments` field (optional, added by code review if present) mentions TODO / WHY / OODA / design decision markers. If the field is absent, skip this pattern.
+  - **Iteration-derived** — bug's `source` or `discovery_phase` field contains any of: `gap`, `unfiltered`, `parity`, `adversarial`, `iteration`. Case-insensitive. This pattern is added by v1.5.1 and ensures every iteration-derived bug requires a challenge record regardless of other trigger matches.
+- **Per-bug requirement.** If `triggers_challenge` is true, require `quality/challenge/BUG-NNN-challenge.md` to exist and contain a line matching regex `^\*\*Verdict:\*\*\s+(CONFIRMED|DOWNGRADED|REJECTED)\s*$`.
+- **Verdict handling.** REJECTED is a valid verdict at this layer — it just means the bug was challenged and dismissed. The existing reconciliation step is responsible for removing REJECTED bugs from the tracker; this invariant only verifies the challenge ran.
+- **Failure message.** If any triggered bug lacks a challenge record, FAIL with a message listing the bug IDs and the trigger patterns that fired on them. Format matches existing quality_gate.py failure messages.
+- **Cross-run sanity.** The invariant runs against the current `quality/` only. No cross-run state is consulted.
+
+Test coverage:
+- **Fixture A (pass).** Manifest with 6 bugs, all 6 with valid challenge records. Invariant PASSes.
+- **Fixture B (fail — missing record).** Manifest with 8 bugs, only 6 challenge records (BUG-007 and BUG-008 missing). Invariant FAILs and names the two missing IDs. This is the virtio-1.4.6 reproduction.
+- **Fixture C (fail — bad verdict).** Manifest with 1 bug; challenge record present but verdict line is missing or malformed. Invariant FAILs.
+- **Fixture D (pass — REJECTED verdict).** Manifest with 1 bug; challenge record present with REJECTED verdict. Invariant PASSes (reconciliation is a separate concern).
+- **Fixture E (skip — iteration-derived, non-iteration pattern).** Manifest with 1 bug whose `source` says "gap iteration" but whose writeup has no sibling/missing/security keywords. The iteration-derived pattern fires, so a challenge record is still required.
+- **Fixture F (N/A — no manifest).** No `quality/bugs_manifest.json`. Invariant returns N/A (not PASS, not FAIL), consistent with existing quality_gate.py conventions for absent-input cases.
+
+Deliverable: invariant implementation, registration in the Layer-1 invariant list, six test fixtures with assertions.
+
+### Item 5.3 — Preserve virtio-1.4.6 Reproduction
+
+Work items:
+- Copy `repos/benchmark-1.5.0/virtio-1.4.6/quality/bugs_manifest.json` and `repos/benchmark-1.5.0/virtio-1.4.6/quality/challenge/` into a test fixture path (e.g., `.github/skills/quality_gate/tests/fixtures/challenge_coverage/virtio-1.4.6/`). The fixture is read-only evidence, not a live run.
+- Add an integration test that runs the new invariant against the preserved fixture and asserts it FAILs with BUG-007 and BUG-008 named.
+- Do NOT modify the original virtio-1.4.6 run under `repos/benchmark-1.5.0/`. That run stays as-is per the "baseline" disposition; the fixture copy is what the test references.
+
+Deliverable: test fixture committed, integration test passing (by asserting the expected FAIL).
+
+### Item 5.4 — Self-Audit Bootstrap
+
+Work items:
+- Same pattern as v1.5.0 Phase 8. Because v1.5.1 adds operator-experience work plus one correctness fix, the self-audit should produce requirements coverage and bug yield comparable to v1.5.0's self-audit. New UX-related REQs may appear (logging behavior, observability flags, setup-helper behavior, challenge-gate invariant behavior); these become v1.5.1 REQs tagged appropriately.
+- Run the full v1.5.1 invocation (`--phase-groups "1,2,3+4,5+6,7" --iterations "gap,unfiltered,parity,adversarial"`) against QPB itself.
+- Verify the new `check_challenge_gate_coverage()` invariant fires on the self-audit's own tracker if any bugs match trigger patterns.
+- Any bugs found go to v1.5.1 post-release patch backlog or v1.5.2 backlog depending on severity.
+
+Deliverable: v1.5.1 self-audit complete, artifacts in `quality/` and archived to `previous_runs/v1.5.1/`. Challenge-gate invariant verified to run correctly on a real run.
+
+Gate to release: Items 5.1–5.3 land cleanly; self-audit completes cleanly OR any failures are explicitly dispositioned; the invariant runs on the self-audit manifest without producing spurious FAILs.
 
 ---
 
@@ -250,6 +301,9 @@ Gate to release: self-audit completes cleanly OR any failures are explicitly dis
 | Cross-platform test matrix too expensive to maintain | Low (reduced scope) | With keystroke mode deferred, cross-platform surface is just the startup-banner commands and line-buffered stdout — both stdlib-stable and easy to verify |
 | `--pace-seconds` interacts badly with long-running phases (operator thinks the run hung during a pace wait) | Low | Progress monitor prints a heartbeat line during pace sleeps (`Pacing: 60s before next prompt…`) |
 | Backup subdirectory `.sidecar_backups/` accumulates stale timestamped subfolders over many setup-helper runs | Low | Document manual pruning; consider a `--prune-backups-older-than N` flag as a v1.5.1 post-release patch if it becomes real friction |
+| `check_challenge_gate_coverage()` over-flags on benign bug writeups (common words like "never", "missing" trigger the missing-functionality pattern) | Medium | Conservative failure is the intended mode — the cost is one extra challenge record per false trigger. If over-flagging becomes genuine operator friction, tighten the regex list in a v1.5.1 point release rather than loosening the invariant |
+| Preserved virtio-1.4.6 fixture drifts from its original state (accidental edits, force-push) and the reproduction test silently starts passing | Low | Check the fixture directory into version control; the integration test's assertion message names the expected-missing bug IDs so drift shows up as a test failure, not a silent regression |
+| Iteration agent misses the new "Challenge gate re-run" step in `iteration.md` and the mechanical invariant is the only thing that catches it | Medium — by design | This is the intended architecture: the spec update is the first line of defense; the mechanical invariant is what catches misses. Any miss becomes a loud gate FAIL rather than a silent un-challenged bug |
 
 ---
 
@@ -263,6 +317,12 @@ These need answers during implementation but don't block planning:
 4. (Item 2.2) What's the right polling interval for the progress monitor? 2 seconds is responsive enough for human observation; 1 second feels busier; 5 seconds feels slow. Lean: 2s default, `--progress-interval N` flag for tuning.
 5. (Item 3.1) Should phase-group headers in the concatenated prompt be visible in the LLM's eyes (aiding context) or hidden (reducing token cost)? Lean: visible, minimal (single line with group spec).
 6. (Item 3.2) When `--pace-seconds` is non-zero, should the pacer print a countdown or a single "Pacing: Ns" message? Lean: single message; countdown clutters logs.
+
+7. (Item 5.2) Should `check_challenge_gate_coverage()` read `references/challenge_gate.md` at runtime to keep the trigger pattern list in one place, or hard-code the heuristics in Python? Lean: hard-code. Reference docs are prose for humans; parsing them for regex lists is fragile and the heuristics are an implementation detail that will iterate separately from the prose spec.
+
+8. (Item 5.2) Should the mechanical "iteration-derived" pattern look at `source` string, `discovery_phase` field, or both? Lean: both. If either signals iteration origin, require a challenge record. Bug manifests produced by older skill versions may not populate `discovery_phase` — fall through to `source` in that case.
+
+9. (Item 5.3) Where exactly does the preserved virtio-1.4.6 fixture belong — under `quality_gate/tests/fixtures/` or under a new `tests/` tree at the repo root? Lean: under the quality_gate test folder, colocated with the invariant it validates.
 
 ---
 
