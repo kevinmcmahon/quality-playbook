@@ -2057,7 +2057,7 @@ Net-new bugs:
 **If NOT converged — automatic re-iteration.** When the convergence check shows net-new bugs > 0 and the iteration count has not reached the maximum (default: 5), the skill re-iterates automatically:
 
 1. Record the iteration number and net-new count in PROGRESS.md.
-2. Archive the current `quality/` directory: stage a snapshot of `quality/` (excluding its own `runs/` subtree to avoid recursion) to `quality/runs/<timestamp>/quality/` and then clear every live child of `quality/` except `runs/`. In code this is `bin/run_playbook.archive_previous_run(repo_dir, timestamp)`; do not hand-run `cp -a quality/ quality/runs/<ts>/quality/` without the `ignore=shutil.ignore_patterns("runs")` guard.
+2. Archive the current `quality/` directory via `bin/run_playbook.archive_previous_run(repo_dir, timestamp)` (or `bin.archive_lib.archive_run()` at Phase 6 success). These snapshot `quality/` into `quality/runs/<timestamp>/quality/` and write the per-run `INDEX.md` plus a `RUN_INDEX.md` row.
 3. Restart from **Phase 0** (which will now find the newly archived run in `quality/runs/`).
 4. Print to the user: "Iteration N found K net-new bugs. Archiving and starting iteration N+1 (max M)."
 
