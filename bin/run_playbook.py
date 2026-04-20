@@ -17,6 +17,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -114,6 +115,51 @@ def _parse_progress_interval(value: str) -> int:
 # derives its valid-phase set from this list so a future phase addition
 # (e.g. v1.5.2 Phase 7) only needs to update phase_label().
 _VALID_PHASE_IDS = frozenset({"1", "2", "3", "4", "5", "6"})
+
+
+def _parse_iterations(value: str) -> List[str]:
+    """Parse --iterations "strat1,strat2,..." into an ordered list.
+
+    v1.5.1 Item 3.2. Strategies: gap, unfiltered, parity, adversarial.
+    Order matters (gap -> unfiltered -> parity -> adversarial is the
+    canonical discovery sequence, but operators may pick a subset).
+    Rejects unknown strategies, duplicates, empty lists.
+    """
+    if not value or value.strip() == "":
+        raise argparse.ArgumentTypeError("--iterations value cannot be empty")
+    raw = [item.strip() for item in value.split(",")]
+    if any(not item for item in raw):
+        raise argparse.ArgumentTypeError(
+            f"--iterations '{value}' contains an empty token"
+        )
+    seen: set[str] = set()
+    for item in raw:
+        if item not in VALID_STRATEGIES:
+            raise argparse.ArgumentTypeError(
+                f"--iterations: unknown strategy '{item}'. Must be one of: "
+                f"{', '.join(ALL_STRATEGIES)}"
+            )
+        if item in seen:
+            raise argparse.ArgumentTypeError(
+                f"--iterations: strategy '{item}' appears more than once in '{value}'"
+            )
+        seen.add(item)
+    return raw
+
+
+def _parse_pace_seconds(value: str) -> int:
+    """Parse --pace-seconds. Range 0..3600. Default 0."""
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise argparse.ArgumentTypeError(
+            f"--pace-seconds must be an integer; got {value!r}"
+        )
+    if not 0 <= parsed <= 3600:
+        raise argparse.ArgumentTypeError(
+            f"--pace-seconds must be between 0 and 3600 seconds; got {parsed}"
+        )
+    return parsed
 
 
 def _parse_phase_groups(value: str) -> List[List[str]]:
@@ -268,6 +314,33 @@ def build_parser() -> argparse.ArgumentParser:
             "Lists reject duplicates and do not accept 'all' as a member."
         ),
     )
+    # v1.5.1 Item 3.2: unified --phase-groups + iterations invocation.
+    # --iterations supersedes the --next-iteration + --strategy pair for
+    # the unified path; the old flags remain for single-strategy use.
+    parser.add_argument(
+        "--iterations",
+        dest="iterations",
+        type=_parse_iterations,
+        help=(
+            "Iteration strategies to run after phase groups complete. "
+            "Comma-separated; order matters. Strategies: gap, unfiltered, "
+            "parity, adversarial. Can be combined with --phase-groups for "
+            "a single unified invocation (e.g. --phase-groups '1,2,3+4' "
+            "--iterations 'gap,unfiltered')."
+        ),
+    )
+    parser.add_argument(
+        "--pace-seconds",
+        dest="pace_seconds",
+        type=_parse_pace_seconds,
+        default=0,
+        metavar="N",
+        help=(
+            "Seconds of idle sleep between consecutive phase groups and "
+            "between consecutive iteration strategies (0 <= N <= 3600, "
+            "default 0). Use to throttle against per-minute rate limits."
+        ),
+    )
     parser.add_argument("--model", help="Runner model override (copilot: gpt-5.4, claude: sonnet/opus/etc).")
     parser.add_argument(
         "--no-formal-docs",
@@ -371,6 +444,18 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     if not args.next_iteration and not args.full_run and args.strategy != ["gap"]:
         print("WARNING: --strategy is ignored without --next-iteration or --full-run", file=sys.stderr)
 
+    # v1.5.1 Item 3.2 mutex.
+    if args.iterations is not None and args.full_run:
+        parser.error(
+            "--iterations is not compatible with --full-run. --full-run is "
+            "sugar for a fixed iterations plan; pass one or the other."
+        )
+    if args.iterations is not None and args.next_iteration:
+        parser.error(
+            "--iterations is not compatible with --next-iteration. "
+            "--iterations is the multi-strategy successor; use it alone."
+        )
+
     # v1.5.1 Item 3.1: canonicalize phase selection into args.phase_groups.
     # Precedence: explicit --phase-groups > --full-run > --phase > none.
     if phase_groups_raw is not None:
@@ -379,6 +464,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         args.phase_groups = [[p] for p in sorted(_VALID_PHASE_IDS, key=int)]
     else:
         args.phase_groups = _phase_groups_from_phase_mode(args.phase)
+
+    # v1.5.1 Item 3.2: --full-run sugar also expands to the full iterations
+    # list so the unified dispatcher sees a uniform shape. Explicit
+    # --iterations wins; absent both, args.iterations stays None.
+    if args.iterations is None and args.full_run:
+        args.iterations = list(ALL_STRATEGIES)
     return args
 
 
@@ -1519,6 +1610,40 @@ def run_one_phase(
     return True
 
 
+def _pace_between_prompts(
+    seconds: int,
+    log_file: Path,
+    monitor: Optional["progress_monitor.ProgressMonitor"] = None,
+    *,
+    sleep_fn: Optional[callable] = None,
+) -> None:
+    """Sleep ``seconds`` between consecutive prompts, emitting a heartbeat.
+
+    v1.5.1 Item 3.2. When ``seconds > 0``:
+      - Log an announcement line so the log file shows the pause.
+      - If ``monitor`` is provided, call monitor.set_pacing(seconds)
+        before sleeping so the monitor thread emits its heartbeat
+        during the wait (covers operators running with --verbose or
+        the default header watcher).
+      - Sleep for ``seconds``.
+      - monitor.clear_pacing() in a try/finally so an exception during
+        sleep (KeyboardInterrupt in practice) still disarms the monitor.
+
+    ``sleep_fn`` is patchable for tests; production callers leave it
+    at None to use time.sleep().
+    """
+    if seconds <= 0:
+        return
+    lib.logboth(log_file, lib.log(f"Pacing: {seconds}s before next prompt…"))
+    if monitor is not None:
+        monitor.set_pacing(seconds)
+    try:
+        (sleep_fn or time.sleep)(seconds)
+    finally:
+        if monitor is not None:
+            monitor.clear_pacing()
+
+
 def _build_group_prompt(phases: Sequence[str], no_seeds: bool) -> str:
     """Concatenate per-phase prompt bodies for a multi-phase group.
 
@@ -1775,14 +1900,21 @@ def run_one_phased(repo_dir: Path, phase_groups: Sequence[Sequence[str]], args: 
     )
 
     exit_status = 0
+    pace_seconds = int(getattr(args, "pace_seconds", 0) or 0)
+    iterations_follow = bool(getattr(args, "iterations", None))
     with monitor:
-        for group in phase_groups:
+        for index, group in enumerate(phase_groups):
             if not run_one_phase_group(
                 repo_dir, group, phase_groups, args, log_file, timestamp, monitor
             ):
                 lib.logboth(log_file, lib.log(f"ABORT: Phase group {'+'.join(group)} gate failed for {repo_dir.name}"))
                 exit_status = 1
                 break
+            # v1.5.1 Item 3.2: inter-group pacing. Skipped after the
+            # final group unless iterations follow (bridge pace).
+            is_last_group = index == len(phase_groups) - 1
+            if pace_seconds > 0 and (not is_last_group or iterations_follow):
+                _pace_between_prompts(pace_seconds, log_file, monitor)
     if exit_status:
         return exit_status
 
@@ -1850,15 +1982,118 @@ def run_one_singlepass(repo_dir: Path, args: argparse.Namespace, timestamp: str)
     return 0
 
 
-def run_one(repo_dir: Path, phase_groups: Optional[Sequence[Sequence[str]]], args: argparse.Namespace, timestamp: str) -> int:
-    """Dispatch one target to the phased or single-pass runner.
+def run_one_iterations(
+    repo_dir: Path,
+    iterations: Sequence[str],
+    args: argparse.Namespace,
+    timestamp: str,
+    *,
+    phases_already_ran: bool = False,
+) -> int:
+    """Run a list of iteration strategies in one process, with per-strategy
+    pacing and early-stop-on-zero-gain preserved.
 
-    v1.5.1 Item 3.1: phase_groups is a List[List[str]] (or None). None
-    falls through to the single-pass / iteration path — unchanged
-    behavior.
+    v1.5.1 Item 3.2. This is the in-worker counterpart to
+    execute_strategy_list() (which spawns a fresh worker per strategy)
+    — useful when the same invocation already ran phase groups in this
+    process, so the whole unified run stays under a single log file and
+    a single ProgressMonitor lifecycle.
+
+    ``phases_already_ran`` skips the configure_logging / banner /
+    archive_previous_run / stub-INDEX setup, since those already
+    happened inside run_one_phased.
     """
+    if phases_already_ran:
+        log_file = log_file_for(repo_dir, timestamp)
+    else:
+        log_file = configure_logging(
+            repo_dir,
+            timestamp,
+            no_stdout_echo=getattr(args, "no_stdout_echo", False),
+        )
+        print_startup_banner(repo_dir, log_file, args)
+        if not docs_present(repo_dir):
+            print(lib.log(f"WARN: {repo_dir.name} - docs_gathered/ is missing or empty; proceeding with code-only analysis"))
+        if not getattr(args, "no_formal_docs", False):
+            banner = formal_docs_guard_banner(repo_dir)
+            if banner is not None:
+                lib.logboth(log_file, banner, echo=True)
+
+    if not (repo_dir / "quality" / "EXPLORATION.md").is_file():
+        lib.logboth(
+            log_file,
+            lib.log(f"SKIP iterations: {repo_dir.name} - no quality/EXPLORATION.md"),
+        )
+        return 1
+
+    monitor = progress_monitor.ProgressMonitor(
+        progress_path=repo_dir / "quality" / "PROGRESS.md",
+        log_file=log_file,
+        emit=lib.logboth,
+        interval=getattr(args, "progress_interval", 2),
+        verbose=getattr(args, "verbose", False),
+        quiet=getattr(args, "quiet", False),
+    )
+
+    pace_seconds = int(getattr(args, "pace_seconds", 0) or 0)
+    with monitor:
+        for index, strategy in enumerate(iterations):
+            lib.logboth(log_file, lib.log(f"Starting iteration ({strategy}): {repo_dir.name}"))
+            before = lib.count_bug_writeups(repo_dir)
+
+            prompt = iteration_prompt(strategy)
+            pass_label = f"iteration-{strategy}"
+            output_file = repo_dir / "quality" / "control_prompts" / f"{pass_label}.output.txt"
+            monitor.set_transcript_path(output_file)
+            exit_code = run_prompt(
+                repo_dir, prompt, pass_label, output_file, log_file,
+                args.runner, args.model,
+            )
+            if exit_code:
+                lib.logboth(log_file, lib.log(f"  ABORT iteration {strategy}: child runner exited {exit_code}"))
+                return exit_code
+
+            after = lib.count_bug_writeups(repo_dir)
+            gained = after - before
+            lib.logboth(log_file, lib.log(f"  Iteration {strategy}: {before} -> {after} bugs (+{gained})"))
+            # Early-stop-on-zero-gain: unchanged semantics from
+            # execute_strategy_list.
+            if gained == 0:
+                lib.logboth(log_file, lib.log("  No new bugs found - stopping early (diminishing returns)."))
+                break
+            is_last = index == len(iterations) - 1
+            if pace_seconds > 0 and not is_last:
+                _pace_between_prompts(pace_seconds, log_file, monitor)
+
+    lib.cleanup_repo(repo_dir)
+    return 0
+
+
+def run_one(repo_dir: Path, phase_groups: Optional[Sequence[Sequence[str]]], args: argparse.Namespace, timestamp: str) -> int:
+    """Dispatch one target through phases then iterations in this process.
+
+    v1.5.1 Item 3.1 + 3.2. The worker-side unified path:
+      1. If phase_groups set: run them (run_one_phased) — inter-group
+         pacing lives there.
+      2. If args.iterations set: run them (run_one_iterations) —
+         inter-strategy pacing lives there. When phases just ran, the
+         bridge pace between the last phase group and the first
+         iteration is emitted by run_one_phased (see iterations_follow
+         there).
+      3. If neither: fall through to single-pass / legacy iteration.
+    """
+    iterations = list(getattr(args, "iterations", None) or [])
     if phase_groups:
-        return run_one_phased(repo_dir, phase_groups, args, timestamp)
+        phased_status = run_one_phased(repo_dir, phase_groups, args, timestamp)
+        if phased_status != 0:
+            return phased_status
+        if iterations:
+            return run_one_iterations(
+                repo_dir, iterations, args, timestamp, phases_already_ran=True
+            )
+        return 0
+    if iterations:
+        return run_one_iterations(repo_dir, iterations, args, timestamp)
     return run_one_singlepass(repo_dir, args, timestamp)
 
 
@@ -2056,6 +2291,13 @@ def build_worker_command(args: argparse.Namespace, target_path: str) -> List[str
     interval = getattr(args, "progress_interval", 2)
     if interval and int(interval) != 2:
         command.extend(["--progress-interval", str(int(interval))])
+    # v1.5.1 Item 3.2: unified iteration + pacing flags.
+    iterations = getattr(args, "iterations", None)
+    if iterations:
+        command.extend(["--iterations", ",".join(iterations)])
+    pace = int(getattr(args, "pace_seconds", 0) or 0)
+    if pace > 0:
+        command.extend(["--pace-seconds", str(pace)])
     command.append(target_path)
     return command
 
@@ -2078,7 +2320,15 @@ def execute_run(args: argparse.Namespace, repo_dirs: Sequence[Path], timestamp: 
     phase_list = [p for g in phase_groups for p in g] if phase_groups else phase_list_from_mode(args.phase)
     run_timestamp = timestamp or datetime.now().strftime("%Y%m%d-%H%M%S")
 
-    if getattr(args, "full_run", False):
+    # v1.5.1 Item 3.2: --full-run now produces phase_groups + iterations at
+    # parse time and is dispatched through the unified worker-side path
+    # (run_one handles phases then iterations under one process + one
+    # monitor lifecycle). The legacy self-recursing dispatch that spawned
+    # separate workers for phases vs iterations remains reachable only
+    # when full_run is true AND the args don't carry the new canonical
+    # attributes (defensive — shouldn't happen in practice since parse_args
+    # always populates them).
+    if getattr(args, "full_run", False) and not phase_groups and not getattr(args, "iterations", None):
         print("=== Full run: fresh main run + all iteration strategies ===\n")
         main_args = argparse.Namespace(**vars(args))
         main_args.full_run = False
@@ -2094,8 +2344,9 @@ def execute_run(args: argparse.Namespace, repo_dirs: Sequence[Path], timestamp: 
         iter_args.strategy = list(ALL_STRATEGIES)
         return execute_run(iter_args, repo_dirs, timestamp=run_timestamp, suppress_suggestion=suppress_suggestion)
 
-    # Multi-strategy iteration: chain each strategy in order with early stop.
-    # Single-strategy iteration falls through to the regular parallel/sequential path.
+    # Legacy multi-strategy iteration: chain each strategy in order with
+    # early stop by spawning a worker per strategy. --iterations (Item 3.2)
+    # is the unified in-worker replacement; it's dispatched via run_one.
     if args.next_iteration and len(args.strategy) > 1:
         return execute_strategy_list(args, repo_dirs, args.strategy, timestamp=run_timestamp)
 

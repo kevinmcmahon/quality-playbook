@@ -1593,6 +1593,283 @@ class PhaseGroupsPromptConcatenationTests(unittest.TestCase):
         self.assertIn("=== Phase 4 (Spec Audit) ===", combined[len(p3):])
 
 
+class IterationsParserTests(unittest.TestCase):
+    """v1.5.1 Item 3.2: --iterations "strat,strat,..." parser."""
+
+    def test_single_strategy(self) -> None:
+        self.assertEqual(run_playbook._parse_iterations("gap"), ["gap"])
+        self.assertEqual(run_playbook._parse_iterations("adversarial"), ["adversarial"])
+
+    def test_multi_strategy_preserves_order(self) -> None:
+        self.assertEqual(
+            run_playbook._parse_iterations("gap,unfiltered"),
+            ["gap", "unfiltered"],
+        )
+        # Explicit ordering that differs from canonical sequence.
+        self.assertEqual(
+            run_playbook._parse_iterations("adversarial,parity,gap"),
+            ["adversarial", "parity", "gap"],
+        )
+
+    def test_rejects_unknown_strategy(self) -> None:
+        for bad in ("foo", "gap,bar", "GAP"):
+            with self.assertRaises(argparse.ArgumentTypeError):
+                run_playbook._parse_iterations(bad)
+
+    def test_rejects_duplicates(self) -> None:
+        for bad in ("gap,gap", "gap,unfiltered,gap"):
+            with self.assertRaises(argparse.ArgumentTypeError):
+                run_playbook._parse_iterations(bad)
+
+    def test_rejects_empty_list(self) -> None:
+        with self.assertRaises(argparse.ArgumentTypeError):
+            run_playbook._parse_iterations("")
+        with self.assertRaises(argparse.ArgumentTypeError):
+            run_playbook._parse_iterations("   ")
+        with self.assertRaises(argparse.ArgumentTypeError):
+            run_playbook._parse_iterations(",")
+
+    def test_full_run_expands_iterations(self) -> None:
+        args = run_playbook.parse_args(["--full-run", "./r"])
+        self.assertEqual(args.iterations, ["gap", "unfiltered", "parity", "adversarial"])
+
+
+class PaceSecondsParserTests(unittest.TestCase):
+    """v1.5.1 Item 3.2: --pace-seconds N parser (0..3600)."""
+
+    def test_accepts_in_range(self) -> None:
+        for v in ("0", "1", "60", "600", "3600"):
+            args = run_playbook.parse_args(["--pace-seconds", v, "./r"])
+            self.assertEqual(args.pace_seconds, int(v))
+
+    def test_rejects_negative(self) -> None:
+        with self.assertRaises(SystemExit):
+            run_playbook.parse_args(["--pace-seconds", "-1", "./r"])
+
+    def test_rejects_above_range(self) -> None:
+        with self.assertRaises(SystemExit):
+            run_playbook.parse_args(["--pace-seconds", "3601", "./r"])
+
+    def test_rejects_non_integer(self) -> None:
+        with self.assertRaises(SystemExit):
+            run_playbook.parse_args(["--pace-seconds", "abc", "./r"])
+
+    def test_default_is_zero(self) -> None:
+        args = run_playbook.parse_args(["./r"])
+        self.assertEqual(args.pace_seconds, 0)
+
+
+class Phase3MutualExclusionTests(unittest.TestCase):
+    """v1.5.1 Item 3.2: new mutex rules around --iterations."""
+
+    def test_iterations_vs_full_run_rejected(self) -> None:
+        with self.assertRaises(SystemExit):
+            run_playbook.parse_args(
+                ["--iterations", "gap", "--full-run", "./r"]
+            )
+
+    def test_iterations_vs_next_iteration_rejected(self) -> None:
+        with self.assertRaises(SystemExit):
+            run_playbook.parse_args(
+                ["--iterations", "gap", "--next-iteration", "./r"]
+            )
+
+    def test_iterations_with_phase_groups_allowed(self) -> None:
+        """The main unified-invocation use case."""
+        args = run_playbook.parse_args([
+            "--phase-groups", "1,2", "--iterations", "gap,unfiltered", "./r",
+        ])
+        self.assertEqual(args.phase_groups, [["1"], ["2"]])
+        self.assertEqual(args.iterations, ["gap", "unfiltered"])
+
+    def test_iterations_alone_allowed(self) -> None:
+        args = run_playbook.parse_args(["--iterations", "gap", "./r"])
+        self.assertIsNone(args.phase_groups)
+        self.assertEqual(args.iterations, ["gap"])
+
+    def test_phase_groups_alone_allowed(self) -> None:
+        args = run_playbook.parse_args(["--phase-groups", "1,2", "./r"])
+        self.assertEqual(args.phase_groups, [["1"], ["2"]])
+        self.assertIsNone(args.iterations)
+
+
+class Phase3InvocationFlagsTests(unittest.TestCase):
+    """v1.5.1 Item 3.2: iterations, pace_seconds, full_run persist in
+    invocation_flags alongside the Phase 1/2 keys."""
+
+    @staticmethod
+    def _load_flags(repo_dir: Path) -> dict:
+        import json as _json
+        text = (repo_dir / "quality" / "INDEX.md").read_text(encoding="utf-8")
+        start = text.index("```json") + len("```json")
+        end = text.index("```", start)
+        return _json.loads(text[start:end])["invocation_flags"]
+
+    def test_iterations_and_pace_persisted(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            run_playbook.write_live_index_stub(
+                repo_dir, "20260420T180000Z",
+                iterations="gap,unfiltered",
+                pace_seconds=60,
+            )
+            flags = self._load_flags(repo_dir)
+            self.assertEqual(flags["iterations"], "gap,unfiltered")
+            self.assertEqual(flags["pace_seconds"], 60)
+
+    def test_full_run_persists_all_four_phase3_flags(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            run_playbook.write_live_index_stub(
+                repo_dir, "20260420T180000Z",
+                full_run=True,
+                phase_groups="1,2,3,4,5,6",
+                iterations="gap,unfiltered,parity,adversarial",
+                pace_seconds=0,
+            )
+            flags = self._load_flags(repo_dir)
+            self.assertTrue(flags["full_run"])
+            self.assertEqual(flags["phase_groups"], "1,2,3,4,5,6")
+            self.assertEqual(flags["iterations"], "gap,unfiltered,parity,adversarial")
+            self.assertEqual(flags["pace_seconds"], 0)
+
+    def test_defaults_when_no_phase3_flags(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            run_playbook.write_live_index_stub(repo_dir, "20260420T180000Z")
+            flags = self._load_flags(repo_dir)
+            self.assertIsNone(flags["phase_groups"])
+            self.assertIsNone(flags["iterations"])
+            self.assertEqual(flags["pace_seconds"], 0)
+            self.assertFalse(flags["full_run"])
+
+    def test_all_nine_flags_present(self) -> None:
+        """Sanity check: Phase 1 (1) + Phase 2 (4) + Phase 3 (4) = 9 keys."""
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            run_playbook.write_live_index_stub(repo_dir, "20260420T180000Z")
+            flags = self._load_flags(repo_dir)
+            expected = {
+                "no_formal_docs", "no_stdout_echo", "verbose", "quiet",
+                "progress_interval", "phase_groups", "iterations",
+                "pace_seconds", "full_run",
+            }
+            self.assertEqual(set(flags.keys()), expected)
+
+
+class RunPlanPrinterTests(unittest.TestCase):
+    """v1.5.1 Item 3.2: _run_plan_entries emits iteration + pace lines
+    when the invocation includes them."""
+
+    def test_iterations_rendered_in_plan(self) -> None:
+        args = run_playbook.parse_args([
+            "--phase-groups", "1", "--iterations", "gap,unfiltered", "./r",
+        ])
+        plan = run_playbook._run_plan_entries(args)
+        self.assertIn("Iteration:            gap", plan)
+        self.assertIn("Iteration:            unfiltered", plan)
+
+    def test_pace_line_shown_when_nonzero(self) -> None:
+        args = run_playbook.parse_args([
+            "--phase-groups", "1", "--pace-seconds", "30", "./r",
+        ])
+        plan = run_playbook._run_plan_entries(args)
+        self.assertIn("Pace:                 30s between prompts", plan)
+
+    def test_pace_line_omitted_when_zero(self) -> None:
+        args = run_playbook.parse_args(["--phase-groups", "1", "./r"])
+        plan = run_playbook._run_plan_entries(args)
+        for entry in plan:
+            self.assertFalse(entry.startswith("Pace:"))
+
+    def test_full_plan_matches_brief_layout(self) -> None:
+        args = run_playbook.parse_args([
+            "--phase-groups", "1,2,3+4,5+6",
+            "--iterations", "gap,unfiltered,parity,adversarial",
+            "--pace-seconds", "60",
+            "./r",
+        ])
+        plan = run_playbook._run_plan_entries(args)
+        self.assertEqual(plan, [
+            "Phase group 1      (phase 1)",
+            "Phase group 2      (phase 2)",
+            "Phase group 3      (phases 3, 4)",
+            "Phase group 4      (phases 5, 6)",
+            "Iteration:            gap",
+            "Iteration:            unfiltered",
+            "Iteration:            parity",
+            "Iteration:            adversarial",
+            "Pace:                 60s between prompts",
+        ])
+
+
+class UnifiedDispatcherPacingTests(unittest.TestCase):
+    """v1.5.1 Item 3.2: _pace_between_prompts emits announcement, arms
+    the monitor's pacing heartbeat, and calls the sleep fn once."""
+
+    def test_zero_pace_is_noop(self) -> None:
+        calls: list = []
+        with TemporaryDirectory() as temp_dir:
+            log = Path(temp_dir) / "log.txt"
+            run_playbook._pace_between_prompts(
+                0, log, monitor=None, sleep_fn=lambda s: calls.append(s),
+            )
+        self.assertEqual(calls, [])
+
+    def test_positive_pace_calls_sleep(self) -> None:
+        calls: list = []
+        with TemporaryDirectory() as temp_dir:
+            log = Path(temp_dir) / "log.txt"
+            run_playbook._pace_between_prompts(
+                5, log, monitor=None, sleep_fn=lambda s: calls.append(s),
+            )
+            # Announcement line landed in the log file (read inside the
+            # context so the tempdir isn't torn down first).
+            self.assertEqual(calls, [5])
+            self.assertIn("Pacing: 5s", log.read_text(encoding="utf-8"))
+
+    def test_monitor_set_pacing_called_around_sleep(self) -> None:
+        events: list = []
+
+        class _Spy:
+            def set_pacing(self, seconds: int) -> None:
+                events.append(("set", seconds))
+
+            def clear_pacing(self) -> None:
+                events.append(("clear", None))
+
+        with TemporaryDirectory() as temp_dir:
+            log = Path(temp_dir) / "log.txt"
+            run_playbook._pace_between_prompts(
+                7, log, monitor=_Spy(),
+                sleep_fn=lambda s: events.append(("sleep", s)),
+            )
+        # set_pacing before sleep, clear_pacing after — ordered.
+        self.assertEqual(events, [("set", 7), ("sleep", 7), ("clear", None)])
+
+    def test_clear_pacing_runs_even_if_sleep_raises(self) -> None:
+        events: list = []
+
+        class _Spy:
+            def set_pacing(self, seconds: int) -> None:
+                events.append(("set", seconds))
+
+            def clear_pacing(self) -> None:
+                events.append(("clear", None))
+
+        def boom(_s):
+            raise RuntimeError("sleep failed")
+
+        with TemporaryDirectory() as temp_dir:
+            log = Path(temp_dir) / "log.txt"
+            with self.assertRaises(RuntimeError):
+                run_playbook._pace_between_prompts(
+                    5, log, monitor=_Spy(), sleep_fn=boom,
+                )
+        self.assertIn(("set", 5), events)
+        self.assertIn(("clear", None), events)
+
+
 class PhaseGroupsWorkerPropagationTests(unittest.TestCase):
     """v1.5.1 Item 3.1: the worker subprocess command must carry
     --phase-groups when the operator passed it explicitly."""
@@ -1627,6 +1904,27 @@ class PhaseGroupsWorkerPropagationTests(unittest.TestCase):
         command = run_playbook.build_worker_command(args, "/abs/target")
         self.assertIn("--phase", command)
         self.assertNotIn("--phase-groups", command)
+
+    def test_iterations_and_pace_propagated(self) -> None:
+        raw = run_playbook._parse_phase_groups("1,2")
+        args = self._args(
+            phase_groups_raw=raw, phase_groups=raw,
+            iterations=["gap", "unfiltered"],
+            pace_seconds=60,
+        )
+        command = run_playbook.build_worker_command(args, "/abs/target")
+        self.assertIn("--iterations", command)
+        idx = command.index("--iterations")
+        self.assertEqual(command[idx + 1], "gap,unfiltered")
+        self.assertIn("--pace-seconds", command)
+        idx = command.index("--pace-seconds")
+        self.assertEqual(command[idx + 1], "60")
+
+    def test_default_pace_zero_not_propagated(self) -> None:
+        """Zero pace is the default; keep the worker invocation terse."""
+        args = self._args(pace_seconds=0)
+        command = run_playbook.build_worker_command(args, "/abs/target")
+        self.assertNotIn("--pace-seconds", command)
 
 
 if __name__ == "__main__":

@@ -94,6 +94,13 @@ class ProgressMonitor:
         self._transcript_path: Optional[Path] = None
         self._transcript_offset: int = 0
 
+        # v1.5.1 Item 3.2: idle heartbeat during --pace-seconds waits.
+        # The orchestrator calls set_pacing(seconds) before sleeping and
+        # clear_pacing() after. The monitor thread emits a single line
+        # per pacing interval so operators don't think the run hung.
+        self._pacing_seconds: int = 0
+        self._pacing_announced: bool = False
+
     # --- context-manager + lifecycle ---------------------------------
 
     def __enter__(self) -> "ProgressMonitor":
@@ -130,6 +137,33 @@ class ProgressMonitor:
             self._transcript_path = Path(path) if path is not None else None
             self._transcript_offset = 0
 
+    # --- pacing heartbeat (Phase 3 Item 3.2) -------------------------
+
+    def set_pacing(self, seconds: int) -> None:
+        """Arm the idle heartbeat for a pacing wait of ``seconds``.
+
+        v1.5.1 Item 3.2. The orchestrator calls this before entering
+        time.sleep(pace_seconds). The monitor thread emits a single
+        ``Pacing: Ns before next prompt…`` line on its next poll and
+        then stays quiet until the orchestrator calls clear_pacing().
+
+        ``seconds <= 0`` is a no-op — zero pacing means nothing to
+        announce.
+        """
+        with self._transcript_lock:
+            if seconds > 0:
+                self._pacing_seconds = int(seconds)
+                self._pacing_announced = False
+            else:
+                self._pacing_seconds = 0
+                self._pacing_announced = False
+
+    def clear_pacing(self) -> None:
+        """Disarm the pacing heartbeat. Idempotent."""
+        with self._transcript_lock:
+            self._pacing_seconds = 0
+            self._pacing_announced = False
+
     # --- main loop ---------------------------------------------------
 
     def _run_loop(self) -> None:
@@ -145,11 +179,29 @@ class ProgressMonitor:
                 return
 
     def _poll_once(self) -> None:
+        # v1.5.1 Item 3.2: emit the pacing heartbeat before either
+        # content watcher runs so a quiet/non-verbose run still sees
+        # the heartbeat during a pacing wait. --quiet still suppresses
+        # it — operators who asked for no stdout output get none.
+        if not self.quiet:
+            self._emit_pacing_heartbeat()
         if self.quiet:
             return
         self._poll_progress()
         if self.verbose:
             self._poll_transcript()
+
+    def _emit_pacing_heartbeat(self) -> None:
+        with self._transcript_lock:
+            pacing = self._pacing_seconds
+            already = self._pacing_announced
+            if pacing > 0 and not already:
+                self._pacing_announced = True
+                announce = pacing
+            else:
+                announce = 0
+        if announce:
+            self._safe_emit(f"Pacing: {announce}s before next prompt…")
 
     def _poll_progress(self) -> None:
         path = self.progress_path

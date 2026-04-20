@@ -237,5 +237,76 @@ class ProgressMonitorTests(unittest.TestCase):
                 self.assertTrue(monitor._thread.is_alive())
 
 
+class ProgressMonitorHeartbeatTests(unittest.TestCase):
+    """v1.5.1 Item 3.2: set_pacing / clear_pacing API + heartbeat emission.
+
+    Uses direct _poll_once() invocation on a non-started monitor so the
+    tests are deterministic and don't depend on thread timing."""
+
+    def _monitor(self, tmp: Path, *, quiet: bool = False):
+        emitted: list[str] = []
+        monitor = progress_monitor.ProgressMonitor(
+            progress_path=tmp / "PROGRESS.md",
+            log_file=tmp / "log.txt",
+            emit=lambda _lf, msg: emitted.append(msg),
+            interval=0.05,
+            quiet=quiet,
+        )
+        return monitor, emitted
+
+    def test_set_pacing_nonzero_emits_heartbeat_once(self) -> None:
+        with TemporaryDirectory() as tmp:
+            monitor, emitted = self._monitor(Path(tmp))
+            monitor.set_pacing(60)
+            monitor._poll_once()
+            monitor._poll_once()  # subsequent polls must not re-emit
+            heartbeats = [m for m in emitted if m.startswith("Pacing:")]
+            self.assertEqual(len(heartbeats), 1)
+            self.assertEqual(heartbeats[0], "Pacing: 60s before next prompt…")
+
+    def test_set_pacing_zero_is_noop(self) -> None:
+        with TemporaryDirectory() as tmp:
+            monitor, emitted = self._monitor(Path(tmp))
+            monitor.set_pacing(0)
+            monitor._poll_once()
+            self.assertEqual([m for m in emitted if m.startswith("Pacing:")], [])
+
+    def test_clear_pacing_stops_heartbeat(self) -> None:
+        with TemporaryDirectory() as tmp:
+            monitor, emitted = self._monitor(Path(tmp))
+            monitor.set_pacing(10)
+            monitor._poll_once()
+            monitor.clear_pacing()
+            # Re-arm for a new pace interval; must emit again.
+            monitor.set_pacing(20)
+            monitor._poll_once()
+            heartbeats = [m for m in emitted if m.startswith("Pacing:")]
+            self.assertEqual(len(heartbeats), 2)
+            self.assertEqual(heartbeats[0], "Pacing: 10s before next prompt…")
+            self.assertEqual(heartbeats[1], "Pacing: 20s before next prompt…")
+
+    def test_quiet_suppresses_heartbeat(self) -> None:
+        with TemporaryDirectory() as tmp:
+            monitor, emitted = self._monitor(Path(tmp), quiet=True)
+            monitor.set_pacing(30)
+            monitor._poll_once()
+            self.assertEqual([m for m in emitted if m.startswith("Pacing:")], [])
+
+    def test_idempotent_clear(self) -> None:
+        with TemporaryDirectory() as tmp:
+            monitor, _emitted = self._monitor(Path(tmp))
+            monitor.clear_pacing()
+            monitor.clear_pacing()  # no exception
+
+    def test_heartbeat_format_matches_briefing(self) -> None:
+        """Ensure the literal format from the briefing is unchanged
+        ('Pacing: Ns before next prompt…' with ellipsis U+2026)."""
+        with TemporaryDirectory() as tmp:
+            monitor, emitted = self._monitor(Path(tmp))
+            monitor.set_pacing(42)
+            monitor._poll_once()
+            self.assertIn("Pacing: 42s before next prompt…", emitted)
+
+
 if __name__ == "__main__":
     unittest.main()
