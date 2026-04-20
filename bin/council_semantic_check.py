@@ -585,6 +585,30 @@ def _assemble_main(argv: List[str]) -> int:
         print("no Council members supplied; nothing to assemble", file=sys.stderr)
         return 2
 
+    # Phase 7 r8: typo-and-drift protection. The gate's invariant #17 groups
+    # reviews by `reviewer` — an unrecognized identifier (`claude-opus-4.6`,
+    # trailing whitespace, etc.) silently becomes a phantom fourth reviewer
+    # and breaks the 2-of-3 vote. Validate against the canonical roster at
+    # CLI entry so the operator sees the typo before it reaches the gate.
+    roster = set(council_members())
+    unknown = [m for m in args.member if m not in roster]
+    if unknown:
+        expected = ", ".join(sorted(roster))
+        print(
+            f"unknown Council member identifier(s): {unknown}; "
+            f"expected one of: {expected}",
+            file=sys.stderr,
+        )
+        return 2
+    if len(set(args.member)) != len(args.member):
+        dupes = sorted({m for m in args.member if args.member.count(m) > 1})
+        print(
+            f"duplicate Council member identifier(s): {dupes}; "
+            "each member must appear exactly once",
+            file=sys.stderr,
+        )
+        return 2
+
     repo = Path(args.repo).resolve()
     quality_dir = repo / "quality"
     reqs = collect_tier_12_reqs(quality_dir)

@@ -337,6 +337,71 @@ class CLITests(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertTrue((repo / "quality" / "citation_semantic_check.json").is_file())
 
+    def test_assemble_rejects_typo_in_member_identifier(self) -> None:
+        """Phase 7 r8: `claude-opus-4.6` (typo) is not in the canonical
+        roster and must be rejected at CLI entry with return code 2 and a
+        stderr message listing the expected members."""
+        import io
+        import contextlib
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            _write(repo / "quality" / "requirements_manifest.json",
+                   _req_manifest_with_tiers([1]))
+            for name in ("r1.json", "r2.json", "r3.json"):
+                (repo / name).write_text(json.dumps([
+                    {"req_id": "REQ-001", "verdict": "supports", "reasoning": ""},
+                ]))
+            buf = io.StringIO()
+            with contextlib.redirect_stderr(buf):
+                rc = csc._assemble_main([
+                    str(repo),
+                    "--member", "claude-opus-4.6",  # typo — canonical is 4.7
+                    "--response", str(repo / "r1.json"),
+                    "--member", "gpt-5.4",
+                    "--response", str(repo / "r2.json"),
+                    "--member", "gemini-2.5-pro",
+                    "--response", str(repo / "r3.json"),
+                ])
+            self.assertEqual(rc, 2)
+            err = buf.getvalue()
+            self.assertIn("claude-opus-4.6", err)
+            self.assertIn("expected one of", err)
+            self.assertIn("claude-opus-4.7", err)
+
+    def test_assemble_rejects_duplicate_member_identifiers(self) -> None:
+        """Phase 7 r8: the same canonical identifier used twice would slip
+        both responses past invariant #17's per-reviewer grouping."""
+        import io
+        import contextlib
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            _write(repo / "quality" / "requirements_manifest.json",
+                   _req_manifest_with_tiers([1]))
+            (repo / "a.json").write_text(json.dumps([
+                {"req_id": "REQ-001", "verdict": "supports", "reasoning": ""},
+            ]))
+            (repo / "b.json").write_text(json.dumps([
+                {"req_id": "REQ-001", "verdict": "overreaches", "reasoning": ""},
+            ]))
+            (repo / "c.json").write_text(json.dumps([
+                {"req_id": "REQ-001", "verdict": "supports", "reasoning": ""},
+            ]))
+            buf = io.StringIO()
+            with contextlib.redirect_stderr(buf):
+                rc = csc._assemble_main([
+                    str(repo),
+                    "--member", "claude-opus-4.7",
+                    "--response", str(repo / "a.json"),
+                    "--member", "claude-opus-4.7",  # duplicate
+                    "--response", str(repo / "b.json"),
+                    "--member", "gemini-2.5-pro",
+                    "--response", str(repo / "c.json"),
+                ])
+            self.assertEqual(rc, 2)
+            err = buf.getvalue()
+            self.assertIn("duplicate", err)
+            self.assertIn("claude-opus-4.7", err)
+
 
 class PlanModeTests(unittest.TestCase):
     """Phase 7 r1: `semantic-check plan` emits per-member prompt files."""
