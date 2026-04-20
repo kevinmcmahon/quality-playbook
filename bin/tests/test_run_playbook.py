@@ -1285,5 +1285,129 @@ class VerboseQuietProgressFlagTests(unittest.TestCase):
             self.assertEqual(flags["progress_interval"], 2)
 
 
+class StartupBannerTests(unittest.TestCase):
+    """v1.5.1 Item 2.3: cross-platform startup banner emits platform-
+    appropriate watch-from-another-terminal recipes with absolute
+    paths so operators can copy-paste without worrying about cwd."""
+
+    def _phase_one_args(self) -> "run_playbook.argparse.Namespace":
+        return run_playbook.argparse.Namespace(
+            phase="1", full_run=False, next_iteration=False, strategy=["gap"],
+        )
+
+    def test_darwin_banner_uses_tail_f_and_watch_grep(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir).resolve()
+            log = repo.parent / f"{repo.name}-playbook-ts.log"
+            banner = run_playbook.build_startup_banner(
+                repo, log, ["Phase 1 (Explore)"], platform_name="Darwin",
+            )
+            self.assertIn("tail -f", banner)
+            self.assertIn("watch -n 2", banner)
+            self.assertNotIn("Get-Content", banner)
+            self.assertNotIn("Non-Darwin/Linux/Windows", banner)
+
+    def test_linux_banner_uses_tail_f_and_watch_grep(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir).resolve()
+            log = repo.parent / f"{repo.name}-playbook-ts.log"
+            banner = run_playbook.build_startup_banner(
+                repo, log, ["Phase 1 (Explore)"], platform_name="Linux",
+            )
+            self.assertIn("tail -f", banner)
+            self.assertIn("watch -n 2", banner)
+            self.assertNotIn("Get-Content", banner)
+
+    def test_windows_banner_uses_get_content_and_select_string(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir).resolve()
+            log = repo.parent / f"{repo.name}-playbook-ts.log"
+            banner = run_playbook.build_startup_banner(
+                repo, log, ["Phase 1 (Explore)"], platform_name="Windows",
+            )
+            self.assertIn("Get-Content", banner)
+            self.assertIn("-Wait", banner)
+            self.assertIn("Select-String", banner)
+            self.assertNotIn("tail -f", banner)
+
+    def test_unknown_platform_falls_back_with_advisory_note(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir).resolve()
+            log = repo.parent / f"{repo.name}-playbook-ts.log"
+            banner = run_playbook.build_startup_banner(
+                repo, log, ["Phase 1 (Explore)"], platform_name="FreeBSD",
+            )
+            self.assertIn("tail -f", banner)
+            self.assertIn("Non-Darwin/Linux/Windows", banner)
+            self.assertIn("FreeBSD", banner)
+
+    def test_banner_paths_are_absolute(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir).resolve()
+            log = repo.parent / f"{repo.name}-playbook-ts.log"
+            banner = run_playbook.build_startup_banner(
+                repo, log, ["Phase 1 (Explore)"], platform_name="Darwin",
+            )
+            expected_log = str(log.resolve())
+            expected_progress = str(repo / "quality" / "PROGRESS.md")
+            expected_transcript = str(
+                repo / "quality" / "control_prompts" / "phase1.output.txt"
+            )
+            self.assertIn(expected_log, banner)
+            self.assertIn(expected_progress, banner)
+            self.assertIn(expected_transcript, banner)
+
+    def test_banner_includes_run_plan_entries(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir).resolve()
+            log = repo.parent / f"{repo.name}-playbook-ts.log"
+            banner = run_playbook.build_startup_banner(
+                repo, log,
+                ["Phase 3 (Code Review)", "Phase 4 (Spec Audit)"],
+                platform_name="Linux",
+            )
+            self.assertIn("Plan:", banner)
+            self.assertIn("Phase 3 (Code Review)", banner)
+            self.assertIn("Phase 4 (Spec Audit)", banner)
+
+    def test_run_plan_entries_from_phase_flag(self) -> None:
+        args = run_playbook.parse_args(["--phase", "3,4", "./target"])
+        plan = run_playbook._run_plan_entries(args)
+        self.assertEqual(plan, ["Phase 3 (Code Review)", "Phase 4 (Spec Audit)"])
+
+    def test_run_plan_entries_from_full_run(self) -> None:
+        args = run_playbook.parse_args(["--full-run", "./target"])
+        plan = run_playbook._run_plan_entries(args)
+        self.assertIn("Phase 1 (Explore)", plan)
+        self.assertIn("Phase 6 (Verification)", plan)
+        self.assertTrue(any("Iterations" in entry for entry in plan))
+
+    def test_print_startup_banner_writes_to_log_and_stdout(self) -> None:
+        import io as _io
+        from contextlib import redirect_stdout
+
+        original = run_playbook.lib.get_default_echo()
+        run_playbook.lib.set_default_echo(True)
+        try:
+            with TemporaryDirectory() as temp_dir:
+                repo = Path(temp_dir).resolve()
+                log_path = repo.parent / f"{repo.name}-playbook-ts.log"
+                args = self._phase_one_args()
+                buf = _io.StringIO()
+                with redirect_stdout(buf):
+                    run_playbook.print_startup_banner(
+                        repo, log_path, args, platform_name="Linux",
+                    )
+                stdout_text = buf.getvalue()
+                log_text = log_path.read_text(encoding="utf-8")
+                # Both streams see the banner.
+                self.assertIn("QPB v", stdout_text)
+                self.assertIn("QPB v", log_text)
+                self.assertIn("Phase 1 (Explore)", stdout_text)
+                self.assertIn("tail -f", stdout_text)
+        finally:
+            run_playbook.lib.set_default_echo(original)
+
+
 if __name__ == "__main__":
     unittest.main()

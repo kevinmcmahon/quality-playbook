@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import io
 import os
+import platform
 import shlex
 import shutil
 import signal
@@ -708,6 +709,154 @@ def configure_logging(
     return log_path
 
 
+# v1.5.1 Item 2.3: cross-platform startup banner. Per design-doc Item 5
+# the canonical source for "how do I watch this run from a second
+# terminal?" is the banner — documentation refers back to it rather than
+# duplicating platform-specific commands. Keystroke mode switching
+# (termios/tty/msvcrt) is explicitly deferred; we print static recipes.
+
+_BANNER_RULE = "=" * 72
+
+
+def _watch_commands_for_platform(
+    platform_name: str,
+    log_path: Path,
+    transcript_path: Path,
+    progress_path: Path,
+) -> Tuple[List[str], Optional[str]]:
+    """Return (recipe lines, optional advisory note) for a given
+    platform.system() value. ``platform_name`` is passed in explicitly
+    so tests can verify each branch without monkey-patching the
+    platform module."""
+    name = (platform_name or "").strip()
+    if name in ("Darwin", "Linux"):
+        return (
+            [
+                f"Watch log:         tail -f {log_path}",
+                f"Watch transcript:  tail -f {transcript_path}",
+                f"Watch progress:    watch -n 2 'grep \"^##\\?\" {progress_path}'",
+            ],
+            None,
+        )
+    if name == "Windows":
+        return (
+            [
+                f"Watch log:         Get-Content -Path {log_path} -Wait -Tail 20",
+                f"Watch transcript:  Get-Content -Path {transcript_path} -Wait -Tail 20",
+                f"Watch progress:    Get-Content -Path {progress_path} -Wait | Select-String '^##?'",
+            ],
+            None,
+        )
+    return (
+        [
+            f"Watch log:         tail -f {log_path}",
+            f"Watch transcript:  tail -f {transcript_path}",
+            f"Watch progress:    watch -n 2 'grep \"^##\\?\" {progress_path}'",
+        ],
+        (
+            f"Non-Darwin/Linux/Windows platform detected ({name or 'unknown'}); "
+            "commands may need adjustment."
+        ),
+    )
+
+
+def build_startup_banner(
+    repo_dir: Path,
+    log_path: Path,
+    run_plan: Sequence[str],
+    *,
+    qpb_version: Optional[str] = None,
+    platform_name: Optional[str] = None,
+) -> str:
+    """Assemble the startup-banner string for a run.
+
+    The orchestrator calls this once at run start and feeds the result
+    through logboth() so it lands in both stdout and the log file.
+    Paths in the banner are absolute so operators can copy-paste them
+    into a second terminal without worrying about cwd.
+
+    ``platform_name`` defaults to platform.system(); tests pass an
+    explicit value ('Darwin', 'Linux', 'Windows', 'FreeBSD', ...) to
+    exercise each branch.
+    """
+    log_path = log_path.resolve()
+    repo_dir = repo_dir.resolve()
+    transcript_dir = repo_dir / "quality" / "control_prompts"
+    # First phase's transcript is a predictable, copy-paste-ready path.
+    # When the run advances, operators update the N in phaseN.output.txt;
+    # the banner's job is to give them a working starting point.
+    transcript_path = transcript_dir / "phase1.output.txt"
+    progress_path = repo_dir / "quality" / "PROGRESS.md"
+
+    if platform_name is None:
+        platform_name = platform.system()
+
+    version = qpb_version or lib.detect_skill_version() or "unknown"
+
+    lines = [
+        _BANNER_RULE,
+        f"QPB v{version} run starting",
+        _BANNER_RULE,
+        f"Target:            {repo_dir}",
+        f"Log file:          {log_path}",
+    ]
+    recipe_lines, advisory = _watch_commands_for_platform(
+        platform_name, log_path, transcript_path, progress_path
+    )
+    lines.extend(recipe_lines)
+    if advisory:
+        lines.append(f"  Note: {advisory}")
+    lines.append("")
+    lines.append("Plan:")
+    if run_plan:
+        for entry in run_plan:
+            lines.append(f"  {entry}")
+    else:
+        lines.append("  (single-prompt run; no explicit phase list)")
+    lines.append(_BANNER_RULE)
+    return "\n".join(lines)
+
+
+def _run_plan_entries(args: argparse.Namespace) -> List[str]:
+    """Minimal run-plan summary for the startup banner.
+
+    v1.5.1 Item 2.3 scope: phase list only (from --phase / --full-run).
+    Phase 3 (Item 3.1, --phase-groups) will extend this with groupings
+    and iteration strategies; v1.5.1 Item 2.3 deliberately stays small.
+    """
+    if getattr(args, "full_run", False):
+        phases = phase_list_from_mode("all")
+        return [f"Phase {p} ({phase_label(p)})" for p in phases] + [
+            "Iterations: gap, unfiltered, parity, adversarial",
+        ]
+    phase_mode = getattr(args, "phase", None)
+    phases = phase_list_from_mode(phase_mode) if phase_mode else []
+    if phases:
+        return [f"Phase {p} ({phase_label(p)})" for p in phases]
+    if getattr(args, "next_iteration", False):
+        strategies = ",".join(getattr(args, "strategy", []) or ["gap"])
+        return [f"Iteration strategies: {strategies}"]
+    return []
+
+
+def print_startup_banner(
+    repo_dir: Path,
+    log_path: Path,
+    args: argparse.Namespace,
+    *,
+    platform_name: Optional[str] = None,
+) -> None:
+    """Emit the startup banner via logboth so it lands in both stdout
+    and the run log file. Single call site in each run entry point."""
+    banner = build_startup_banner(
+        repo_dir,
+        log_path,
+        _run_plan_entries(args),
+        platform_name=platform_name,
+    )
+    lib.logboth(log_path, banner)
+
+
 def run_prompt(repo_dir: Path, prompt: str, pass_name: str, output_file: Path, log_file: Path, runner: str, model: Optional[str]) -> int:
     command = command_for_runner(runner, prompt, model)
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -1231,6 +1380,7 @@ def run_one_phased(repo_dir: Path, phase_list: Sequence[str], args: argparse.Nam
         timestamp,
         no_stdout_echo=getattr(args, "no_stdout_echo", False),
     )
+    print_startup_banner(repo_dir, log_file, args)
     if not docs_present(repo_dir):
         print(lib.log(f"WARN: {repo_dir.name} - docs_gathered/ is missing or empty; proceeding with code-only analysis"))
     if not getattr(args, "no_formal_docs", False):
@@ -1302,6 +1452,7 @@ def run_one_singlepass(repo_dir: Path, args: argparse.Namespace, timestamp: str)
         timestamp,
         no_stdout_echo=getattr(args, "no_stdout_echo", False),
     )
+    print_startup_banner(repo_dir, log_file, args)
     if not docs_present(repo_dir):
         print(lib.log(f"WARN: {repo_dir.name} - docs_gathered/ is missing or empty; proceeding with code-only analysis"))
     if not getattr(args, "no_formal_docs", False):
