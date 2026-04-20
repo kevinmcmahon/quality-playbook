@@ -401,17 +401,28 @@ def build_index_payload(
     target_project_type: str = "Code",
     target_repo_git_sha: Optional[str] = None,
     gate_verdict_override: Optional[str] = None,
+    invocation_flags: Optional[Dict[str, object]] = None,
 ) -> Dict[str, object]:
     """Assemble the §11 `INDEX.md` payload for an archived or live run folder.
 
     Fields that cannot be recovered from git log or the surviving artifacts
     are stored as the literal string `"unknown"`. `target_project_type` is
     a placeholder until the v1.5.2 Code/Skill/Hybrid detector lands.
+
+    ``invocation_flags`` is an additive v1.5.1 field (Council — gpt-5.4
+    blocker 2) that captures run-configuration flags a later auditor needs
+    to interpret the artifacts — today just ``no_formal_docs`` per Item 1.3.
+    Defaults to ``{"no_formal_docs": False}`` when not supplied. The key
+    is additive relative to schemas.md §11 required fields, so
+    quality_gate's invariant #10 continues to pass unchanged.
     """
     start, end, duration = _resolve_bounds(repo, run_folder)
     verdict = gate_verdict_override or _extract_gate_verdict(run_folder)
     if verdict not in ("pass", "fail", "partial"):
         verdict = "partial"
+    merged_flags: Dict[str, object] = {"no_formal_docs": False}
+    if invocation_flags:
+        merged_flags.update(invocation_flags)
     return {
         "run_timestamp_start": start,
         "run_timestamp_end": end,
@@ -427,6 +438,7 @@ def build_index_payload(
             "gate_verdict": verdict,
         },
         "artifacts": _collect_artifacts(run_folder),
+        "invocation_flags": merged_flags,
     }
 
 

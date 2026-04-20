@@ -813,7 +813,12 @@ class FormalDocsGuardTests(unittest.TestCase):
             banner = run_playbook.formal_docs_guard_banner(Path(temp_dir))
             self.assertIsNotNone(banner)
             self.assertIn("formal_docs/ is missing", banner)
-            self.assertIn("python3 bin/setup_formal_docs.py", banner)
+            # v1.5.1 Phase 1 rev (Council — gpt-5.4 blocker 3): the
+            # remediation command must be cwd-robust. Assert the absolute
+            # helper path and sys.executable appear; no literal "python3".
+            import sys as _sys
+            self.assertIn("setup_formal_docs.py", banner)
+            self.assertIn(_sys.executable, banner)
             self.assertIn("setup_repos.sh", banner)
             self.assertIn("--no-formal-docs", banner)
 
@@ -824,7 +829,10 @@ class FormalDocsGuardTests(unittest.TestCase):
             banner = run_playbook.formal_docs_guard_banner(repo)
             self.assertIsNotNone(banner)
             self.assertIn("formal_docs/ is empty", banner)
-            self.assertIn("python3 bin/setup_formal_docs.py", banner)
+            # v1.5.1 Phase 1 rev (Council — gpt-5.4 blocker 3): absolute
+            # helper path, not cwd-relative.
+            self.assertIn("setup_formal_docs.py", banner)
+            self.assertNotIn(" python3 bin/setup_formal_docs.py", banner)
 
     def test_orphan_plaintext_triggers_warning_with_names(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -917,6 +925,118 @@ class FormalDocsGuardTests(unittest.TestCase):
         )
         command = run_playbook.build_worker_command(args, "/abs/target")
         self.assertNotIn("--no-formal-docs", command)
+
+
+class GuardRemediationCwdRobustnessTests(unittest.TestCase):
+    """v1.5.1 Phase 1 rev (Council — gpt-5.4 blocker 3): the guard's
+    remediation command must use sys.executable (not the literal
+    "python3") and an absolute path to setup_formal_docs.py so it
+    works from any working directory."""
+
+    def _banner_for_missing_formal_docs(self) -> str:
+        with TemporaryDirectory() as temp_dir:
+            banner = run_playbook.formal_docs_guard_banner(Path(temp_dir))
+            assert banner is not None
+            return banner
+
+    def test_banner_uses_sys_executable_not_literal_python3(self) -> None:
+        import sys as _sys
+        banner = self._banner_for_missing_formal_docs()
+        self.assertIn(_sys.executable, banner)
+        # sys.executable is always absolute.
+        self.assertTrue(Path(_sys.executable).is_absolute())
+        # Reject bare `python3 bin/setup_formal_docs.py` — the prior form
+        # that wasn't cwd-robust.
+        self.assertNotIn(" python3 bin/setup_formal_docs.py", banner)
+        self.assertFalse(
+            banner.startswith("python3 bin/setup_formal_docs.py"),
+            "banner must not open with the cwd-relative form",
+        )
+
+    def test_banner_contains_absolute_path_to_setup_helper(self) -> None:
+        banner = self._banner_for_missing_formal_docs()
+        # Extract every token that ends in setup_formal_docs.py; at least
+        # one must be an absolute filesystem path.
+        tokens = [t for t in banner.split() if t.endswith("bin/setup_formal_docs.py")]
+        self.assertTrue(tokens, f"banner has no setup_formal_docs.py reference:\n{banner}")
+        absolute_tokens = [t for t in tokens if Path(t).is_absolute()]
+        self.assertTrue(
+            absolute_tokens,
+            f"banner has no absolute path to setup_formal_docs.py. Tokens: {tokens}\nBanner:\n{banner}",
+        )
+        # The resolved path must actually point at the repo's helper.
+        real_helper = (
+            Path(run_playbook.__file__).resolve().parent / "setup_formal_docs.py"
+        )
+        self.assertIn(str(real_helper), banner)
+
+
+class InvocationFlagsPersistenceTests(unittest.TestCase):
+    """v1.5.1 Phase 1 rev (Council — gpt-5.4 blocker 2): the --no-formal-docs
+    flag must land in quality/INDEX.md under invocation_flags so a later
+    auditor can tell intent from accident."""
+
+    @staticmethod
+    def _load_index(repo_dir: Path) -> dict:
+        import json as _json
+        text = (repo_dir / "quality" / "INDEX.md").read_text(encoding="utf-8")
+        start = text.index("```json")
+        end = text.index("```", start + len("```json"))
+        return _json.loads(text[start + len("```json"): end])
+
+    def test_stub_defaults_no_formal_docs_false(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            run_playbook.write_live_index_stub(repo_dir, "20260420T140000Z")
+            payload = self._load_index(repo_dir)
+            self.assertIn("invocation_flags", payload)
+            self.assertEqual(payload["invocation_flags"], {"no_formal_docs": False})
+
+    def test_stub_records_no_formal_docs_true(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            run_playbook.write_live_index_stub(
+                repo_dir, "20260420T140000Z", no_formal_docs=True
+            )
+            payload = self._load_index(repo_dir)
+            self.assertEqual(payload["invocation_flags"], {"no_formal_docs": True})
+
+    def test_final_preserves_no_formal_docs_true(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            # Phase 1 entry writes the stub with the flag.
+            run_playbook.write_live_index_stub(
+                repo_dir, "20260420T140000Z", no_formal_docs=True
+            )
+            # Phase 6 re-render must keep the flag.
+            run_playbook.write_live_index_final(
+                repo_dir,
+                "20260420T140000Z",
+                gate_verdict="pass",
+                no_formal_docs=True,
+            )
+            payload = self._load_index(repo_dir)
+            self.assertEqual(payload["invocation_flags"], {"no_formal_docs": True})
+            # Sanity: existing §11 keys survive unchanged.
+            for required in (
+                "run_timestamp_start",
+                "run_timestamp_end",
+                "qpb_version",
+                "phases_executed",
+                "summary",
+                "artifacts",
+            ):
+                self.assertIn(required, payload)
+
+    def test_final_default_keeps_no_formal_docs_false(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            run_playbook.write_live_index_stub(repo_dir, "20260420T140000Z")
+            run_playbook.write_live_index_final(
+                repo_dir, "20260420T140000Z", gate_verdict="partial"
+            )
+            payload = self._load_index(repo_dir)
+            self.assertEqual(payload["invocation_flags"], {"no_formal_docs": False})
 
 
 if __name__ == "__main__":

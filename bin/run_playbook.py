@@ -688,11 +688,18 @@ def formal_docs_guard_banner(repo_dir: Path) -> Optional[str]:
     The three trigger conditions are: missing directory, empty directory,
     orphan plaintext. The warning is non-blocking; the caller prints it
     and proceeds.
+
+    v1.5.1 Phase 1 rev (Council — gpt-5.4 blocker 3): the remediation
+    command uses sys.executable (an absolute path to the running
+    interpreter) and an absolute path to bin/setup_formal_docs.py derived
+    from this module's __file__. Operators can copy-paste the command
+    from any working directory and have it resolve correctly; the prior
+    ``python3 bin/setup_formal_docs.py <...>`` form only worked when run
+    from the repo root.
     """
     formal_docs_dir = repo_dir / "formal_docs"
-    remediation = (
-        f"python3 bin/setup_formal_docs.py {formal_docs_dir}"
-    )
+    helper_path = (Path(__file__).resolve().parent / "setup_formal_docs.py")
+    remediation = f"{sys.executable} {helper_path} {formal_docs_dir}"
     staging_pointer = (
         "Staging: repos/setup_repos.sh (v1.5.1 Item 1.1) converts "
         "docs_gathered/ into formal_docs/ and invokes the setup helper."
@@ -818,9 +825,19 @@ def archive_previous_run(repo_dir: Path, current_run_timestamp: str) -> None:
     _clear_live_quality(quality_dir)
 
 
-def write_live_index_stub(repo_dir: Path, timestamp: str) -> None:
+def write_live_index_stub(
+    repo_dir: Path,
+    timestamp: str,
+    *,
+    no_formal_docs: bool = False,
+) -> None:
     """Render a minimal quality/INDEX.md at run start so the gate's invariant #10
-    check has something to validate if the run is interrupted mid-flight."""
+    check has something to validate if the run is interrupted mid-flight.
+
+    v1.5.1 Phase 1 rev (Council — gpt-5.4 blocker 2): ``no_formal_docs`` is
+    persisted under ``invocation_flags`` so later auditors can distinguish
+    an intentionally-empty formal_docs/ run from an accidentally-empty one.
+    """
     quality_dir = repo_dir / "quality"
     quality_dir.mkdir(parents=True, exist_ok=True)
     start_ext = archive_lib.extended_from_compact(timestamp)
@@ -835,6 +852,7 @@ def write_live_index_stub(repo_dir: Path, timestamp: str) -> None:
         "phases_executed": [],
         "summary": {"requirements": {}, "bugs": {}, "gate_verdict": "partial"},
         "artifacts": [],
+        "invocation_flags": {"no_formal_docs": bool(no_formal_docs)},
     }
     (quality_dir / "INDEX.md").write_text(
         archive_lib.render_index_markdown(
@@ -849,13 +867,23 @@ def write_live_index_stub(repo_dir: Path, timestamp: str) -> None:
     )
 
 
-def write_live_index_final(repo_dir: Path, timestamp: str, *, gate_verdict: str) -> None:
+def write_live_index_final(
+    repo_dir: Path,
+    timestamp: str,
+    *,
+    gate_verdict: str,
+    no_formal_docs: bool = False,
+) -> None:
     """Re-render quality/INDEX.md at end of Phase 6 with the run's real counts.
 
     `gate_verdict` is one of pass | fail | partial. Counts come from
     `archive_lib.build_index_payload()` walking the live quality/ tree;
     `run_timestamp_start` is forced to the run's true start and
     `run_timestamp_end` is captured now so `duration_seconds` is real.
+
+    v1.5.1 Phase 1 rev (Council — gpt-5.4 blocker 2): ``no_formal_docs`` is
+    persisted under ``invocation_flags`` so the Phase-6 re-render preserves
+    the flag state recorded by the Phase-1 stub.
     """
     quality_dir = repo_dir / "quality"
     payload = archive_lib.build_index_payload(
@@ -864,6 +892,7 @@ def write_live_index_final(repo_dir: Path, timestamp: str, *, gate_verdict: str)
         target_repo_path=".",
         target_project_type="Code",
         gate_verdict_override=gate_verdict,
+        invocation_flags={"no_formal_docs": bool(no_formal_docs)},
     )
     start_ext = archive_lib.extended_from_compact(timestamp)
     end_ext = archive_lib.utc_extended_timestamp()
@@ -958,7 +987,12 @@ def run_one_phase(
         gate_passed = _gate_pass(gate_result, quality_dir)
         verdict = "pass" if gate_passed else ("partial" if "warn" in gate_result.lower() else "fail")
         try:
-            write_live_index_final(repo_dir, timestamp, gate_verdict=verdict)
+            write_live_index_final(
+                repo_dir,
+                timestamp,
+                gate_verdict=verdict,
+                no_formal_docs=getattr(args, "no_formal_docs", False),
+            )
         except Exception as exc:  # noqa: BLE001 — log and continue
             lib.logboth(log_file, lib.log(f"  WARN write_live_index_final skipped: {exc}"))
         # v1.5.0 end-of-run archival: on gate pass, snapshot the live quality/
@@ -1011,7 +1045,11 @@ def run_one_phased(repo_dir: Path, phase_list: Sequence[str], args: argparse.Nam
         # Write a minimal quality/INDEX.md up front so an interrupted run
         # still satisfies schemas.md §10 invariant #10 when the gate is
         # invoked out-of-band on the partial tree.
-        write_live_index_stub(repo_dir, timestamp)
+        write_live_index_stub(
+            repo_dir,
+            timestamp,
+            no_formal_docs=getattr(args, "no_formal_docs", False),
+        )
 
     (repo_dir / "quality" / "control_prompts").mkdir(parents=True, exist_ok=True)
     lib.logboth(log_file, lib.log(f"Starting playbook (phases: {','.join(phase_list)}): {repo_dir.name} (runner={args.runner})"))
@@ -1051,7 +1089,11 @@ def run_one_singlepass(repo_dir: Path, args: argparse.Namespace, timestamp: str)
         lib.logboth(log_file, lib.log(f"Starting iteration ({strategy_name}): {repo_dir.name} (runner={args.runner}, building on existing quality/)"))
     else:
         archive_previous_run(repo_dir, timestamp)
-        write_live_index_stub(repo_dir, timestamp)
+        write_live_index_stub(
+            repo_dir,
+            timestamp,
+            no_formal_docs=getattr(args, "no_formal_docs", False),
+        )
         prompt = single_pass_prompt(no_seeds=args.no_seeds)
         pass_label = "full"
         lib.logboth(log_file, lib.log(f"Starting playbook (single-pass): {repo_dir.name} (runner={args.runner})"))
