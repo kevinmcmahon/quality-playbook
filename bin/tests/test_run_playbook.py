@@ -1817,16 +1817,21 @@ class UnifiedDispatcherPacingTests(unittest.TestCase):
         self.assertEqual(calls, [])
 
     def test_positive_pace_calls_sleep(self) -> None:
+        """v1.5.1 Phase 3 revision: _pace_between_prompts no longer
+        emits its own "Pacing: Ns..." log line — the monitor's
+        heartbeat is the single source of that output (covered by
+        ProgressMonitorHeartbeatTests). This test now only asserts the
+        sleep fn was called; the log-line assertion moved to the
+        monitor tests."""
         calls: list = []
         with TemporaryDirectory() as temp_dir:
             log = Path(temp_dir) / "log.txt"
             run_playbook._pace_between_prompts(
                 5, log, monitor=None, sleep_fn=lambda s: calls.append(s),
             )
-            # Announcement line landed in the log file (read inside the
-            # context so the tempdir isn't torn down first).
             self.assertEqual(calls, [5])
-            self.assertIn("Pacing: 5s", log.read_text(encoding="utf-8"))
+            # Log file is not created when no logboth call happens.
+            self.assertFalse(log.exists())
 
     def test_monitor_set_pacing_called_around_sleep(self) -> None:
         events: list = []
@@ -1925,6 +1930,134 @@ class PhaseGroupsWorkerPropagationTests(unittest.TestCase):
         args = self._args(pace_seconds=0)
         command = run_playbook.build_worker_command(args, "/abs/target")
         self.assertNotIn("--pace-seconds", command)
+
+
+class WorkerRoundtripTests(unittest.TestCase):
+    """v1.5.1 Phase 3 revision (Council FAIL blocker): assert that argv
+    produced by build_worker_command is accepted by a fresh parse_args.
+
+    The Phase 3 kickoff split this into two test classes — one for what
+    build_worker_command produces, one for what parse_args rejects on
+    the worker side — but never composed them. That gap let a live bug
+    land: parent --full-run expanded to args.iterations, worker argv
+    carried both --full-run and --iterations, worker parse_args hit
+    the Item 3.2 mutex and died. These tests close the gap.
+    """
+
+    @staticmethod
+    def _worker_argv(args: "run_playbook.argparse.Namespace", target: str) -> list:
+        """Return the portion of build_worker_command's output that
+        worker parse_args actually sees: everything after the python
+        interpreter + script path."""
+        command = run_playbook.build_worker_command(args, target)
+        # command[0] = sys.executable, command[1] = script path.
+        # Drop the first --worker marker so worker parse_args sees the
+        # same argv it'd see when the worker is invoked as
+        # `python bin/run_playbook.py <rest>`.
+        return command[2:]
+
+    def _roundtrip(self, parent_argv: list) -> tuple:
+        """Parse parent CLI, build worker cmd, parse that worker cmd
+        through a fresh parse_args. Return (parent_args, worker_args,
+        worker_command)."""
+        parent = run_playbook.parse_args(parent_argv)
+        target_path = parent.targets[0]
+        command = run_playbook.build_worker_command(parent, target_path)
+        worker_argv = command[2:]  # drop python + script path
+        worker = run_playbook.parse_args(worker_argv)
+        return parent, worker, command
+
+    def test_full_run_roundtrips(self) -> None:
+        """The regression test for the revision. Parent --full-run must
+        produce a worker argv that the worker's own parse_args accepts."""
+        parent, worker, command = self._roundtrip(["--full-run", "/tmp/repo"])
+        self.assertTrue(parent.full_run)
+        # The fix: --iterations must NOT appear in the worker argv
+        # because the worker re-expands --full-run on its own side.
+        self.assertIn("--full-run", command)
+        self.assertNotIn("--iterations", command)
+        # Canonical worker-side state matches parent after re-expansion.
+        self.assertTrue(worker.full_run)
+        self.assertEqual(
+            worker.phase_groups,
+            [["1"], ["2"], ["3"], ["4"], ["5"], ["6"]],
+        )
+        self.assertEqual(
+            worker.iterations,
+            ["gap", "unfiltered", "parity", "adversarial"],
+        )
+
+    def test_phase_all_roundtrips(self) -> None:
+        parent, worker, command = self._roundtrip(["--phase", "all", "/tmp/repo"])
+        self.assertIn("--phase", command)
+        self.assertIn("all", command)
+        self.assertNotIn("--phase-groups", command)
+        self.assertEqual(
+            worker.phase_groups,
+            [["1"], ["2"], ["3"], ["4"], ["5"], ["6"]],
+        )
+        self.assertIsNone(worker.iterations)
+
+    def test_phase_single_roundtrips(self) -> None:
+        parent, worker, command = self._roundtrip(["--phase", "3", "/tmp/repo"])
+        self.assertIn("--phase", command)
+        self.assertIn("3", command)
+        self.assertEqual(worker.phase_groups, [["3"]])
+
+    def test_explicit_phase_groups_roundtrips(self) -> None:
+        parent, worker, command = self._roundtrip(
+            ["--phase-groups", "1,2,3+4", "/tmp/repo"]
+        )
+        self.assertIn("--phase-groups", command)
+        idx = command.index("--phase-groups")
+        self.assertEqual(command[idx + 1], "1,2,3+4")
+        self.assertEqual(worker.phase_groups, [["1"], ["2"], ["3", "4"]])
+
+    def test_explicit_iterations_roundtrips(self) -> None:
+        parent, worker, command = self._roundtrip(
+            ["--iterations", "gap,unfiltered", "/tmp/repo"]
+        )
+        self.assertIn("--iterations", command)
+        idx = command.index("--iterations")
+        self.assertEqual(command[idx + 1], "gap,unfiltered")
+        self.assertEqual(worker.iterations, ["gap", "unfiltered"])
+        self.assertIsNone(worker.phase_groups)
+
+    def test_phase_groups_plus_iterations_roundtrips(self) -> None:
+        parent, worker, command = self._roundtrip([
+            "--phase-groups", "1,2",
+            "--iterations", "gap,parity",
+            "/tmp/repo",
+        ])
+        self.assertIn("--phase-groups", command)
+        self.assertIn("--iterations", command)
+        self.assertEqual(worker.phase_groups, [["1"], ["2"]])
+        self.assertEqual(worker.iterations, ["gap", "parity"])
+
+    def test_full_run_with_parallel_roundtrips(self) -> None:
+        """Multi-target --parallel --full-run: each target's worker
+        argv must roundtrip independently. Without the R1 fix this is
+        the invocation that Council reproduced as broken."""
+        parent = run_playbook.parse_args(
+            ["--full-run", "--parallel", "/tmp/repo1", "/tmp/repo2"]
+        )
+        for target in parent.targets:
+            command = run_playbook.build_worker_command(parent, target)
+            worker_argv = command[2:]
+            # The offending combination must not be present.
+            self.assertIn("--full-run", command)
+            self.assertNotIn("--iterations", command)
+            worker = run_playbook.parse_args(worker_argv)
+            self.assertTrue(worker.full_run)
+            self.assertEqual(
+                worker.phase_groups,
+                [["1"], ["2"], ["3"], ["4"], ["5"], ["6"]],
+            )
+            self.assertEqual(
+                worker.iterations,
+                ["gap", "unfiltered", "parity", "adversarial"],
+            )
+            self.assertEqual(worker.targets, [target])
 
 
 if __name__ == "__main__":

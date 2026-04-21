@@ -1619,22 +1619,29 @@ def _pace_between_prompts(
 ) -> None:
     """Sleep ``seconds`` between consecutive prompts, emitting a heartbeat.
 
-    v1.5.1 Item 3.2. When ``seconds > 0``:
-      - Log an announcement line so the log file shows the pause.
+    v1.5.1 Item 3.2 (Phase 3 revision: dedupe pacing heartbeat). When
+    ``seconds > 0``:
       - If ``monitor`` is provided, call monitor.set_pacing(seconds)
-        before sleeping so the monitor thread emits its heartbeat
-        during the wait (covers operators running with --verbose or
-        the default header watcher).
+        before sleeping. The monitor thread emits exactly one
+        ``Pacing: Ns before next prompt…`` line on its next
+        _poll_once() cycle (within progress_interval seconds).
       - Sleep for ``seconds``.
       - monitor.clear_pacing() in a try/finally so an exception during
         sleep (KeyboardInterrupt in practice) still disarms the monitor.
+
+    Prior to the Phase 3 revision, this function also emitted a
+    timestamped ``Pacing:`` line via logboth before set_pacing. Council
+    (both adversarial seats) flagged that as duplicate output since the
+    monitor's own heartbeat produces the same literal line. The
+    monitor is now the sole source of the heartbeat; operators running
+    with --quiet get no heartbeat (as expected — they opted out of
+    progress output entirely).
 
     ``sleep_fn`` is patchable for tests; production callers leave it
     at None to use time.sleep().
     """
     if seconds <= 0:
         return
-    lib.logboth(log_file, lib.log(f"Pacing: {seconds}s before next prompt…"))
     if monitor is not None:
         monitor.set_pacing(seconds)
     try:
@@ -2292,8 +2299,17 @@ def build_worker_command(args: argparse.Namespace, target_path: str) -> List[str
     if interval and int(interval) != 2:
         command.extend(["--progress-interval", str(int(interval))])
     # v1.5.1 Item 3.2: unified iteration + pacing flags.
+    # v1.5.1 Phase 3 revision (Council FAIL blocker): --full-run is a
+    # sugar flag that the worker re-expands on its own side — the
+    # parent-side args.iterations population is for dispatch + INDEX.md
+    # persistence, but it must NOT leak into the worker argv alongside
+    # --full-run. Worker parse_args enforces an `--iterations +
+    # --full-run` mutex (Item 3.2 parser check), so emitting both here
+    # makes the child exit with an argparse error before doing any work.
+    # Mirrors the existing --phase-groups suppression gated on
+    # phase_groups_raw is None.
     iterations = getattr(args, "iterations", None)
-    if iterations:
+    if iterations and not getattr(args, "full_run", False):
         command.extend(["--iterations", ",".join(iterations)])
     pace = int(getattr(args, "pace_seconds", 0) or 0)
     if pace > 0:
