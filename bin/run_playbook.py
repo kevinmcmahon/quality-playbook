@@ -2016,6 +2016,36 @@ def run_one_singlepass(repo_dir: Path, args: argparse.Namespace, timestamp: str)
     return 0
 
 
+def _append_iteration_heartbeat(progress_path: Path, line: str) -> None:
+    """Append a `## Iteration: ...` section to quality/PROGRESS.md.
+
+    v1.5.1 Phase 2 revision. Iteration strategies (gap, unfiltered,
+    parity, adversarial) can each run for tens of minutes against a
+    real LLM. Without per-strategy PROGRESS.md updates the file goes
+    stale at the Phase 6 line, and operators can't tell a 15-minute
+    iteration from a hung run.
+
+    Behavior:
+      - mkdir parents on demand so this works even when iterations
+        run before any phase wrote PROGRESS.md.
+      - Append-only — the existing phase-loop content is preserved.
+      - Each call writes one `## ` header followed by a blank line
+        and one body line. ProgressMonitor's _printed_headers set
+        (built around the `^##?\\s` regex) picks up the new section
+        on its next poll cycle and surfaces it to stdout exactly
+        once.
+    """
+    progress_path.parent.mkdir(parents=True, exist_ok=True)
+    with progress_path.open("a", encoding="utf-8") as handle:
+        handle.write(line + "\n")
+
+
+def _iso_utc_now() -> str:
+    """Compact ISO-8601 UTC timestamp for PROGRESS.md heartbeat lines."""
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def run_one_iterations(
     repo_dir: Path,
     iterations: Sequence[str],
@@ -2070,8 +2100,15 @@ def run_one_iterations(
     )
 
     pace_seconds = int(getattr(args, "pace_seconds", 0) or 0)
+    progress_path = repo_dir / "quality" / "PROGRESS.md"
     with monitor:
         for index, strategy in enumerate(iterations):
+            # v1.5.1 Phase 2 rev: PROGRESS.md heartbeat at iteration entry.
+            _append_iteration_heartbeat(
+                progress_path,
+                f"\n## Iteration: {strategy} started\n\n{_iso_utc_now()}\n",
+            )
+
             lib.logboth(log_file, lib.log(f"Starting iteration ({strategy}): {repo_dir.name}"))
             before = lib.count_bug_writeups(repo_dir)
 
@@ -2090,6 +2127,12 @@ def run_one_iterations(
             after = lib.count_bug_writeups(repo_dir)
             gained = after - before
             lib.logboth(log_file, lib.log(f"  Iteration {strategy}: {before} -> {after} bugs (+{gained})"))
+            # v1.5.1 Phase 2 rev: PROGRESS.md heartbeat at iteration exit.
+            _append_iteration_heartbeat(
+                progress_path,
+                f"\n## Iteration: {strategy} complete\n\n"
+                f"{_iso_utc_now()} · bugs before: {before} · bugs after: {after} · net-new: {gained}\n",
+            )
             # Early-stop-on-zero-gain: unchanged semantics from
             # execute_strategy_list.
             if gained == 0:

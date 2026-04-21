@@ -2069,5 +2069,97 @@ class WorkerRoundtripTests(unittest.TestCase):
             self.assertEqual(worker.targets, [target])
 
 
+class IterationProgressHeartbeatTests(unittest.TestCase):
+    """v1.5.1 Phase 2 revision: run_one_iterations must emit
+    `## Iteration: <strategy> started` and `## Iteration: <strategy>
+    complete` headers to quality/PROGRESS.md so the operator can tell
+    a 15-minute iteration from a hung run."""
+
+    def _args(self, **overrides):
+        base = dict(
+            parallel=False, runner="claude", no_seeds=True, phase=None,
+            phase_groups_raw=None, phase_groups=None,
+            next_iteration=False, full_run=False, strategy=["gap"],
+            model=None, no_formal_docs=False, no_stdout_echo=False,
+            verbose=False, quiet=False, progress_interval=2,
+            iterations=None, pace_seconds=0,
+            kill=False, targets=["./r"], worker=False,
+        )
+        base.update(overrides)
+        return run_playbook.argparse.Namespace(**base)
+
+    def test_iteration_writes_started_and_complete_sections(self) -> None:
+        from unittest import mock
+
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp).resolve()
+            (repo / "quality").mkdir()
+            (repo / "quality" / "EXPLORATION.md").write_text("ok\n")
+
+            def fake_run_prompt(repo_dir, prompt, pass_name, output_file,
+                                log_file, runner, model):
+                output_file.parent.mkdir(parents=True, exist_ok=True)
+                output_file.write_text(f"[stub] {pass_name}\n")
+                return 0
+
+            args = self._args(iterations=["gap", "unfiltered"], pace_seconds=0)
+            timestamp = "20260421-120000"
+
+            with mock.patch.object(run_playbook, "run_prompt", fake_run_prompt), \
+                 mock.patch.object(run_playbook.lib, "cleanup_repo", lambda d: None), \
+                 mock.patch.object(run_playbook.lib, "count_bug_writeups",
+                                   side_effect=[0, 1, 1, 1]):
+                exit_code = run_playbook.run_one_iterations(
+                    repo, ["gap", "unfiltered"], args, timestamp,
+                    phases_already_ran=False,
+                )
+
+            # gap found 1 new bug (0 -> 1) so the loop continued.
+            # unfiltered found 0 new bugs (1 -> 1) so it early-stopped.
+            self.assertEqual(exit_code, 0)
+            progress_text = (repo / "quality" / "PROGRESS.md").read_text(encoding="utf-8")
+            self.assertIn("## Iteration: gap started", progress_text)
+            self.assertIn("## Iteration: gap complete", progress_text)
+            self.assertIn("## Iteration: unfiltered started", progress_text)
+            self.assertIn("## Iteration: unfiltered complete", progress_text)
+            # Completion line carries the bug-count breakdown.
+            self.assertIn("net-new: 1", progress_text)
+            self.assertIn("net-new: 0", progress_text)
+
+    def test_iteration_progress_md_is_appended_not_overwritten(self) -> None:
+        """Pre-existing PROGRESS.md content from the phase loop must
+        survive the iteration heartbeat appends."""
+        from unittest import mock
+
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp).resolve()
+            (repo / "quality").mkdir()
+            (repo / "quality" / "EXPLORATION.md").write_text("ok\n")
+            seed = "# Run start\n\n## Phase 1 (Explore) complete\n"
+            (repo / "quality" / "PROGRESS.md").write_text(seed, encoding="utf-8")
+
+            def fake_run_prompt(*a, **kw):
+                a[3].parent.mkdir(parents=True, exist_ok=True)
+                a[3].write_text("ok\n")
+                return 0
+
+            args = self._args(iterations=["gap"])
+            with mock.patch.object(run_playbook, "run_prompt", fake_run_prompt), \
+                 mock.patch.object(run_playbook.lib, "cleanup_repo", lambda d: None), \
+                 mock.patch.object(run_playbook.lib, "count_bug_writeups",
+                                   side_effect=[0, 0]):
+                run_playbook.run_one_iterations(
+                    repo, ["gap"], args, "20260421-120000",
+                    phases_already_ran=False,
+                )
+
+            text = (repo / "quality" / "PROGRESS.md").read_text(encoding="utf-8")
+            # Seed survives.
+            self.assertTrue(text.startswith(seed))
+            # Heartbeat appended after.
+            self.assertIn("## Iteration: gap started", text)
+            self.assertIn("## Iteration: gap complete", text)
+
+
 if __name__ == "__main__":
     unittest.main()
