@@ -963,14 +963,38 @@ def _watch_commands_for_platform(
     """Return (recipe lines, optional advisory note) for a given
     platform.system() value. ``platform_name`` is passed in explicitly
     so tests can verify each branch without monkey-patching the
-    platform module."""
+    platform module.
+
+    v1.5.1 Phase 2.3 revision — Darwin is split from Linux. macOS does
+    not ship `watch(1)` by default; pasting `watch -n 2 '...'` into
+    stock zsh returns `zsh: command not found: watch`. The Darwin
+    recipe now uses a portable shell loop (`while true; do clear;
+    grep ...; sleep 2; done`) that runs on a fresh macOS install
+    without `brew install watch`. Linux keeps the concise `watch`
+    form since Linux ships it by default.
+    """
     name = (platform_name or "").strip()
-    if name in ("Darwin", "Linux"):
+    darwin_progress = (
+        f"Watch progress:    while true; do clear; "
+        f"grep -E '^##?' {progress_path}; sleep 2; done"
+    )
+    linux_progress = f"Watch progress:    watch -n 2 'grep \"^##\\?\" {progress_path}'"
+
+    if name == "Darwin":
         return (
             [
                 f"Watch log:         tail -f {log_path}",
                 f"Watch transcript:  tail -f {transcript_path}",
-                f"Watch progress:    watch -n 2 'grep \"^##\\?\" {progress_path}'",
+                darwin_progress,
+            ],
+            None,
+        )
+    if name == "Linux":
+        return (
+            [
+                f"Watch log:         tail -f {log_path}",
+                f"Watch transcript:  tail -f {transcript_path}",
+                linux_progress,
             ],
             None,
         )
@@ -983,11 +1007,14 @@ def _watch_commands_for_platform(
             ],
             None,
         )
+    # Unknown platform: fall back to the Darwin recipe (portable shell
+    # loop) rather than the Linux `watch` form, since `watch` is the
+    # most-often-missing of the two.
     return (
         [
             f"Watch log:         tail -f {log_path}",
             f"Watch transcript:  tail -f {transcript_path}",
-            f"Watch progress:    watch -n 2 'grep \"^##\\?\" {progress_path}'",
+            darwin_progress,
         ],
         (
             f"Non-Darwin/Linux/Windows platform detected ({name or 'unknown'}); "

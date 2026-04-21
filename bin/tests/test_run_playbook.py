@@ -1301,7 +1301,10 @@ class StartupBannerTests(unittest.TestCase):
             iterations=None, pace_seconds=0,
         )
 
-    def test_darwin_banner_uses_tail_f_and_watch_grep(self) -> None:
+    def test_darwin_banner_uses_tail_f_and_portable_progress_loop(self) -> None:
+        """v1.5.1 Phase 2.3 revision — macOS does not ship `watch(1)`, so
+        the Darwin recipe must use a shell loop that runs on a stock
+        install without brew."""
         with TemporaryDirectory() as temp_dir:
             repo = Path(temp_dir).resolve()
             log = repo.parent / f"{repo.name}-playbook-ts.log"
@@ -1309,11 +1312,15 @@ class StartupBannerTests(unittest.TestCase):
                 repo, log, ["Phase 1 (Explore)"], platform_name="Darwin",
             )
             self.assertIn("tail -f", banner)
-            self.assertIn("watch -n 2", banner)
+            # Portable shell loop, not `watch -n 2`.
+            self.assertIn("while true; do clear;", banner)
+            self.assertIn("grep -E '^##?'", banner)
+            self.assertNotIn("watch -n 2", banner)
             self.assertNotIn("Get-Content", banner)
             self.assertNotIn("Non-Darwin/Linux/Windows", banner)
 
     def test_linux_banner_uses_tail_f_and_watch_grep(self) -> None:
+        """Linux ships `watch(1)` — keep the concise form."""
         with TemporaryDirectory() as temp_dir:
             repo = Path(temp_dir).resolve()
             log = repo.parent / f"{repo.name}-playbook-ts.log"
@@ -1322,6 +1329,8 @@ class StartupBannerTests(unittest.TestCase):
             )
             self.assertIn("tail -f", banner)
             self.assertIn("watch -n 2", banner)
+            # The Darwin loop form must NOT leak into the Linux branch.
+            self.assertNotIn("while true; do clear;", banner)
             self.assertNotIn("Get-Content", banner)
 
     def test_windows_banner_uses_get_content_and_select_string(self) -> None:
