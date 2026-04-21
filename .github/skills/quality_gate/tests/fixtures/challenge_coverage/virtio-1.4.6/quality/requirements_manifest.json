@@ -1,0 +1,334 @@
+{
+  "schema_version": "1.4.6",
+  "generated_at": "2026-04-20T13:05:00Z",
+  "records": [
+    {
+      "id": "REQ-001",
+      "title": "Feature negotiation must verify device acceptance of the selected feature subset",
+      "tier": 1,
+      "functional_section": "Feature negotiation and reset",
+      "citation": {
+        "document": "formal_docs/virtio-spec-behavioral-contracts.md",
+        "document_sha256": "f136e73e746bd27df6ba45aa2977498e550b2ba7ad09d280de8301b619ef343f",
+        "section": "1. Feature Negotiation — MUST Requirements",
+        "line": 12,
+        "citation_excerpt": "- Driver MUST set FEATURES_OK status bit after writing feature bits\n- Driver MUST re-read device status after setting FEATURES_OK to confirm acceptance"
+      },
+      "summary": "The core must set FEATURES_OK, re-read status, and refuse probe if the device rejects the selected feature subset.",
+      "description": "When `virtio_dev_probe()` hands off finalized features, `virtio_features_ok()` in `drivers/virtio/virtio.c:203-235` must confirm device acceptance rather than assuming the transport accepted the subset.",
+      "user_story": "As a transport maintainer bringing a device to DRIVER_OK, I expect feature negotiation to fail loudly when the device rejects the selected subset so that later queue setup never runs on an unaccepted contract.",
+      "implementation_note": "The implementation stages feature negotiation in `virtio_dev_probe()` and confirms acceptance in `virtio_features_ok()`.",
+      "conditions_of_satisfaction": [
+        "Set `VIRTIO_CONFIG_S_FEATURES_OK` before re-reading status (`drivers/virtio/virtio.c:227-229`).",
+        "Return `-ENODEV` when the re-read lacks `FEATURES_OK` (`drivers/virtio/virtio.c:229-233`).",
+        "Reject modern memory-access configurations that omit `VIRTIO_F_VERSION_1` or `VIRTIO_F_ACCESS_PLATFORM` (`drivers/virtio/virtio.c:210-221`)."
+      ],
+      "alternative_paths": [
+        "Legacy devices may return early when `VIRTIO_F_VERSION_1` is absent (`drivers/virtio/virtio.c:224-225`)."
+      ],
+      "use_cases": ["UC-01", "UC-02"],
+      "references": [
+        "formal_docs/virtio-spec-behavioral-contracts.md:12-16",
+        "drivers/virtio/virtio.c:203-235"
+      ],
+      "specificity": "specific"
+    },
+    {
+      "id": "REQ-002",
+      "title": "Device reset must not return control until transport-visible reset completion is observable",
+      "tier": 1,
+      "functional_section": "Feature negotiation and reset",
+      "citation": {
+        "document": "formal_docs/virtio-spec-behavioral-contracts.md",
+        "document_sha256": "f136e73e746bd27df6ba45aa2977498e550b2ba7ad09d280de8301b619ef343f",
+        "section": "5. Device Reset — MUST Requirements",
+        "line": 85,
+        "citation_excerpt": "- Driver MUST write 0 to device_status to initiate reset\n- Driver MUST wait for device_status read to return 0 before reinitializing"
+      },
+      "summary": "Transport reset hooks must provide an observable completion boundary before later setup or recovery continues.",
+      "description": "The core reset entry point at `drivers/virtio/virtio.c:253-267` relies on transports like `vm_reset()` and `vp_reset()` to define when reset is actually complete.",
+      "user_story": "As a driver author resetting a device before reprobe or teardown, I expect reset to finish before control returns so that queue setup and status transitions never race an in-progress transport reset.",
+      "implementation_note": "PCI modern polls `device_status` after writing zero; MMIO currently only triggers reset with a status write.",
+      "conditions_of_satisfaction": [
+        "Each transport reset hook writes `0` to the status register (`drivers/virtio/virtio_mmio.c:255-256`, `drivers/virtio/virtio_pci_modern.c:551-552`).",
+        "At least one completion read or poll separates reset trigger from post-reset work (`drivers/virtio/virtio_pci_modern.c:553-559`).",
+        "Callers treat `config->reset()` as the completion boundary before continuing (`drivers/virtio/virtio.c:253-267`)."
+      ],
+      "alternative_paths": [
+        "Queue-local reset under `VIRTIO_F_RING_RESET` still depends on transport-visible completion before re-enable (`drivers/virtio/virtio_ring.c:3382-3399`)."
+      ],
+      "use_cases": ["UC-01", "UC-06"],
+      "references": [
+        "formal_docs/virtio-spec-behavioral-contracts.md:85-89",
+        "drivers/virtio/virtio_mmio.c:251-257",
+        "drivers/virtio/virtio_pci_modern.c:546-565"
+      ],
+      "specificity": "specific"
+    },
+    {
+      "id": "REQ-003",
+      "title": "Configuration-change interrupts must be reported as handled whenever they trigger driver-visible work",
+      "tier": 3,
+      "functional_section": "Interrupt delivery and fallback routing",
+      "summary": "Interrupt handlers must preserve handled status when config or slow-path work runs, even without regular queue completions.",
+      "description": "The contrasting paths are `drivers/virtio/virtio_mmio.c:292-306` and `drivers/virtio/virtio_pci_common.c:72-124`, where MMIO accumulates handled state and PCI INTx does not.",
+      "user_story": "As a kernel integrator debugging interrupt behavior, I expect the IRQ return value to match the work actually serviced so that config-only and slow-path events are not misclassified as spurious interrupts.",
+      "implementation_note": "MMIO sets `ret = IRQ_HANDLED` for config changes and ORs vring results; PCI INTx calls `vp_config_changed()` but returns only `vp_vring_interrupt()`.",
+      "conditions_of_satisfaction": [
+        "Config interrupts that notify the driver mark the handler as handled (`drivers/virtio/virtio_mmio.c:296-299`, `drivers/virtio/virtio_pci_common.c:73-79`).",
+        "Slow-path queue callbacks serviced during config handling count as handled work (`drivers/virtio/virtio_pci_common.c:60-79`).",
+        "The final IRQ return path accumulates config-handled state rather than discarding it when no regular queue work exists."
+      ],
+      "alternative_paths": [
+        "Shared MSI-X, per-vq MSI-X, and MMIO may deliver the same logical work through different vectors, but all must preserve truthful handled accounting."
+      ],
+      "use_cases": ["UC-04"],
+      "references": [
+        "drivers/virtio/virtio_mmio.c:292-306",
+        "drivers/virtio/virtio_pci_common.c:72-124"
+      ],
+      "specificity": "specific"
+    },
+    {
+      "id": "REQ-004",
+      "title": "Queue-discovery fallbacks must preserve the same queue numbering as the primary transport path",
+      "tier": 3,
+      "functional_section": "Interrupt delivery and fallback routing",
+      "summary": "Fallback queue discovery must preserve device-advertised queue numbering, especially for admin queues.",
+      "description": "The MSI-X and INTx admin-queue paths in `drivers/virtio/virtio_pci_common.c:391-394`, `:438-441`, `:468-470`, and `:499-502` diverge on whether they use `avq->vq_index` or `queue_idx++`.",
+      "user_story": "As a maintainer relying on degraded routing to behave like the primary path, I expect MSI-X failure to change vector policy, not queue identity so that device-advertised admin queues do not silently move under INTx fallback.",
+      "implementation_note": "MSI-X preserves `avq->vq_index`; INTx currently increments the running queue counter instead.",
+      "conditions_of_satisfaction": [
+        "Both MSI-X and INTx paths query the advertised admin queue index before creating the queue.",
+        "The admin queue creation call uses the same transport-advertised index in every routing mode.",
+        "Only driver-requested queues are permitted to remain purely sequential across fallback modes."
+      ],
+      "alternative_paths": [
+        "Shared and shared-slow MSI-X policies may share vectors, but they must still preserve queue numbering."
+      ],
+      "use_cases": ["UC-05"],
+      "references": [
+        "drivers/virtio/virtio_pci_common.c:373-512"
+      ],
+      "specificity": "specific"
+    },
+    {
+      "id": "REQ-005",
+      "title": "Slow-path queues must remain bound to their original interrupt-dispatch list across queue reset and re-enable",
+      "tier": 3,
+      "functional_section": "Interrupt delivery and fallback routing",
+      "summary": "Queue reset and re-enable must preserve slow-path queue topology instead of defaulting every callback queue into the regular list.",
+      "description": "Initial list placement in `drivers/virtio/virtio_pci_common.c:225-230` and `:338-356` distinguishes slow-path queues, while post-reset re-enable in `drivers/virtio/virtio_pci_modern.c:653-656` always targets `virtqueues`.",
+      "user_story": "As a transport maintainer recovering a queue after reset, I expect callback routing to stay on the same topology so that a reset does not silently convert a slow-path queue into a regular-queue interrupt source.",
+      "implementation_note": "Initial placement is vector-aware; current post-reset reattachment is not.",
+      "conditions_of_satisfaction": [
+        "Initial queue setup records or derives whether a queue belongs to the slow-path list.",
+        "Queue reset removes the queue from the correct current list before recovery.",
+        "Re-enable restores the queue to the same dispatch list implied by its original vector policy."
+      ],
+      "alternative_paths": [
+        "Per-vq MSI-X queues with dedicated vectors may bypass the slow-path list, but callback-bearing slow-path queues cannot."
+      ],
+      "use_cases": ["UC-05", "UC-06"],
+      "references": [
+        "drivers/virtio/virtio_pci_common.c:203-236",
+        "drivers/virtio/virtio_pci_modern.c:629-669"
+      ],
+      "specificity": "specific"
+    },
+    {
+      "id": "REQ-006",
+      "title": "Transport feature finalization must preserve every transport feature the transport later claims to support, or clear it as unsupported",
+      "tier": 3,
+      "functional_section": "Feature negotiation and reset",
+      "summary": "Shared feature filtering and transport-specific post-processing must not disagree silently about feature support.",
+      "description": "The relevant paths are `drivers/virtio/virtio.c:318-345`, `drivers/virtio/virtio_ring.c:3505-3533`, `drivers/virtio/virtio_pci_modern.c:367-381`, and `drivers/virtio/virtio_mmio.c:109-131`.",
+      "user_story": "As a maintainer reasoning about transport feature support, I expect every feature bit that a transport later advertises to survive finalization intentionally so that one file cannot claim support that another file silently removed.",
+      "implementation_note": "The shared whitelist is the default filter; transports may restore or explicitly clear bits afterward.",
+      "conditions_of_satisfaction": [
+        "The shared whitelist is treated as a closed set backed by `quality/mechanical/vring_transport_features_cases.txt`.",
+        "Any transport that relies on `VIRTIO_F_RING_RESET` or `VIRTIO_F_ADMIN_VQ` restores or preserves those bits explicitly.",
+        "Requirements and review artifacts distinguish features defined in headers from features actually preserved by finalization code."
+      ],
+      "alternative_paths": [
+        "A transport may explicitly clear a public bit as unsupported, but it must do so intentionally rather than by unnoticed fallthrough."
+      ],
+      "use_cases": ["UC-02", "UC-06"],
+      "references": [
+        "drivers/virtio/virtio_ring.c:3505-3533",
+        "drivers/virtio/virtio_pci_modern.c:367-381",
+        "drivers/virtio/virtio_mmio.c:109-131",
+        "quality/mechanical/vring_transport_features_cases.txt"
+      ],
+      "specificity": "specific"
+    },
+    {
+      "id": "REQ-007",
+      "title": "Queue-reset helper state must use the correct metadata owner for normal and admin queues",
+      "tier": 3,
+      "functional_section": "Queue lifecycle and resource symmetry",
+      "summary": "Queue-reset helpers must select queue metadata ownership the same way teardown does for normal and admin queues.",
+      "description": "Teardown special-cases admin queues in `drivers/virtio/virtio_pci_common.c:27-35` and `:271-285`, while reset helpers in `drivers/virtio/virtio_pci_modern.c:600-603` and `:640-641` always index `vp_dev->vqs[]`.",
+      "user_story": "As a maintainer enabling queue-local reset, I expect admin queues to use their dedicated metadata slot so that reset helpers do not index the wrong array entry or dereference absent queue metadata.",
+      "implementation_note": "Admin-queue ownership already exists in teardown and should be mirrored by reset helpers.",
+      "conditions_of_satisfaction": [
+        "Queue-reset helpers special-case admin queues the same way teardown already does.",
+        "Array-based lookup is used only for ordinary queue indices represented in `vp_dev->vqs[]`.",
+        "Reset-time list removal and reattachment use the metadata owner that actually stores the queue node and vector state."
+      ],
+      "alternative_paths": [
+        "Ordinary queues may continue to use `vp_dev->vqs[index]`; admin queues must use `vp_dev->admin_vq.info`."
+      ],
+      "use_cases": ["UC-05", "UC-06"],
+      "references": [
+        "drivers/virtio/virtio_pci_common.c:27-35",
+        "drivers/virtio/virtio_pci_modern.c:590-669"
+      ],
+      "specificity": "specific"
+    },
+    {
+      "id": "REQ-008",
+      "title": "Wakeup-enabled MMIO IRQ setup and teardown must be symmetric",
+      "tier": 3,
+      "functional_section": "Queue lifecycle and resource symmetry",
+      "summary": "MMIO wake-specific IRQ setup must be mirrored by wake-specific teardown before the IRQ is freed.",
+      "description": "The symmetry gap is between `drivers/virtio/virtio_mmio.c:446-465` and `drivers/virtio/virtio_mmio.c:328-337`.",
+      "user_story": "As a platform integrator using wake-capable MMIO devices, I expect wake configuration to unwind cleanly on teardown so that reprobe and power-state transitions do not inherit stale wake-enabled IRQ state.",
+      "implementation_note": "The setup path conditionally calls `enable_irq_wake(irq)` but teardown currently frees the IRQ directly.",
+      "conditions_of_satisfaction": [
+        "Wake-specific IRQ setup is guarded by the same condition the transport uses to enable wake.",
+        "Teardown disables IRQ wake before `free_irq()` when wake had been enabled.",
+        "The same symmetry holds on error cleanup after partial queue creation."
+      ],
+      "alternative_paths": [
+        "Platforms without `wakeup-source` may skip wake-specific handling, but teardown must still be correct when wake was enabled."
+      ],
+      "use_cases": ["UC-03"],
+      "references": [
+        "drivers/virtio/virtio_mmio.c:328-337",
+        "drivers/virtio/virtio_mmio.c:446-465"
+      ],
+      "specificity": "specific"
+    },
+    {
+      "id": "REQ-009",
+      "title": "Runtime error-state signaling via VIRTIO_CONFIG_S_NEEDS_RESET must remain visible through the ordinary configuration-notification path",
+      "tier": 1,
+      "functional_section": "Feature negotiation and reset",
+      "citation": {
+        "document": "formal_docs/virtio-spec-behavioral-contracts.md",
+        "document_sha256": "f136e73e746bd27df6ba45aa2977498e550b2ba7ad09d280de8301b619ef343f",
+        "section": "6. Error Handling — Edge Cases",
+        "line": 100,
+        "citation_excerpt": "- Device SHOULD set bit 64 when entering unrecoverable error state\n- If DRIVER_OK is set, device MUST send configuration change notification\n- Driver SHOULD NOT rely on completion of in-flight operations"
+      },
+      "summary": "An unrecoverable device state must stay observable through the public status bit and the documented config-notification path.",
+      "description": "The public status bit is defined in `include/uapi/linux/virtio_config.h:42-44`; explored runtime handlers forward config changes through `virtio_config_changed()` without masking that signal.",
+      "user_story": "As a driver author servicing runtime notifications, I expect an unrecoverable device state to stay observable through the documented status bit and config callback so that I can make a driver-specific recovery decision.",
+      "implementation_note": "The explored transport paths already deliver config notifications; the shared transport/core contract is to preserve that signal rather than to implement driver policy itself.",
+      "conditions_of_satisfaction": [
+        "`VIRTIO_CONFIG_S_NEEDS_RESET` remains a driver-visible public status bit (`include/uapi/linux/virtio_config.h:42-44`).",
+        "If `DRIVER_OK` is set, the shared transport/core path preserves the configuration-change notification channel that lets drivers re-read status (`drivers/virtio/virtio.c:126-145`, `drivers/virtio/virtio_mmio.c:296-303`, `drivers/virtio/virtio_pci_common.c:73-79`).",
+        "Shared transport/core code does not silently clear or remap the condition before driver-visible config handling runs."
+      ],
+      "alternative_paths": [
+        "Specific drivers may react differently after reading the bit, but MMIO and PCI must both preserve the ordinary config-notification path that exposes it."
+      ],
+      "use_cases": ["UC-04", "UC-06"],
+      "references": [
+        "formal_docs/virtio-spec-behavioral-contracts.md:100-105",
+        "include/uapi/linux/virtio_config.h:42-44",
+        "drivers/virtio/virtio.c:126-145"
+      ],
+      "specificity": "specific"
+    },
+    {
+      "id": "REQ-010",
+      "title": "Queue setup must finish transport address programming and enable the queue before the driver adds buffers",
+      "tier": 2,
+      "functional_section": "Queue lifecycle and resource symmetry",
+      "citation": {
+        "document": "formal_docs/writing_virtio_drivers.txt",
+        "document_sha256": "275cd2963cca5cc752d739bdf5432291f6dcefd250402025204108891b6a749b",
+        "section": "Driver boilerplate",
+        "line": 121,
+        "citation_excerpt": "virtio_device_ready() is used to enable the virtqueue and to\nnotify the device that the driver is ready to manage the device\n(\"DRIVER_OK\").\n\nIn any case, the virtqueues need to be enabled before adding buffers to\nthem."
+      },
+      "summary": "Queue lifecycle code must not allow drivers to submit work until transport address programming is complete and the queue has been enabled.",
+      "description": "The cited setup contract is visible in `drivers/virtio/virtio_mmio.c:390-429` and the driver documentation at `formal_docs/writing_virtio_drivers.txt:121-130`.",
+      "user_story": "As a virtio driver author adding queues, I expect setup to enforce the documented order so that buffers are never submitted to an unready or unaddressed queue.",
+      "implementation_note": "MMIO explicitly writes queue addresses before `QUEUE_READY`, and the driver documentation requires virtqueues to be enabled before adding buffers.",
+      "conditions_of_satisfaction": [
+        "Queue setup writes queue size and descriptor addresses before exposing the queue as ready (`drivers/virtio/virtio_mmio.c:390-429`).",
+        "Drivers do not add buffers until the queue has been enabled and the device is ready (`formal_docs/writing_virtio_drivers.txt:121-130`).",
+        "Legacy MMIO activation paths still complete transport address programming before queue use begins."
+      ],
+      "alternative_paths": [
+        "Legacy MMIO uses PFN-based activation instead of `QUEUE_READY`, but still must complete address programming before queue use."
+      ],
+      "use_cases": ["UC-03"],
+      "references": [
+        "formal_docs/writing_virtio_drivers.txt:121-130",
+        "drivers/virtio/virtio_mmio.c:390-429"
+      ],
+      "specificity": "specific"
+    },
+    {
+      "id": "REQ-011",
+      "title": "vDPA queue discovery must apply affinity to the same transport queue index it instantiated",
+      "tier": 3,
+      "functional_section": "Queue lifecycle and resource symmetry",
+      "summary": "When vDPA queue discovery skips unused virtqueue_info slots, affinity programming must follow the compact queue index that was actually instantiated.",
+      "description": "The queue-discovery path in `drivers/virtio/virtio_vdpa.c:347-363` compacts queue creation through `queue_idx++`, and the steady-state affinity helper at `drivers/virtio/virtio_vdpa.c:407-418` shows that `vq->index` is the authoritative transport-facing identity.",
+      "user_story": "As a transport maintainer wiring sparse virtqueue layouts into a vDPA backend, I expect queue affinity to follow the queue that was actually created so that skipped descriptor slots do not silently pin the wrong queue to the wrong CPU mask.",
+      "implementation_note": "The implementation must keep setup-time affinity programming aligned with the same queue index namespace later exposed by `virtqueue.index`.",
+      "conditions_of_satisfaction": [
+        "Unused `virtqueue_info[]` entries may remain sparse (`include/linux/virtio_config.h:22-33`).",
+        "Queue creation translates sparse descriptor slots into compact queue indices before setup-time affinity programming runs (`drivers/virtio/virtio_vdpa.c:350-356`).",
+        "The affinity callback uses the same queue index namespace that the resulting `virtqueue` exposes via `vq->index` (`drivers/virtio/virtio_vdpa.c:407-418`)."
+      ],
+      "alternative_paths": [
+        "Drivers that provide no affinity descriptor or run on backends without `set_vq_affinity` may skip affinity programming, but sparse queue numbering must still be correct when the capability exists."
+      ],
+      "use_cases": ["UC-03", "UC-06"],
+      "references": [
+        "include/linux/virtio_config.h:22-33",
+        "drivers/virtio/virtio_vdpa.c:347-363",
+        "drivers/virtio/virtio_vdpa.c:407-418"
+      ],
+      "specificity": "specific"
+    },
+    {
+      "id": "REQ-012",
+      "title": "Any probe failure after virtio_device_ready() must reset the device before deleting virtqueues",
+      "tier": 2,
+      "functional_section": "Queue lifecycle and resource symmetry",
+      "citation": {
+        "document": "formal_docs/writing_virtio_drivers.txt",
+        "document_sha256": "275cd2963cca5cc752d739bdf5432291f6dcefd250402025204108891b6a749b",
+        "section": "Driver boilerplate",
+        "line": 121,
+        "citation_excerpt": "virtio_device_ready() is used to enable the virtqueue and to\nnotify the device that the driver is ready to manage the device\n(\"DRIVER_OK\").\n\nIn any case, the virtqueues need to be enabled before adding buffers to\nthem."
+      },
+      "summary": "Once probe has crossed into live DRIVER_OK state, any later failure path must reset the device before deleting virtqueues or freeing queue-owned state.",
+      "description": "The late failure path in `drivers/virtio/virtio_input.c:321-339` comes after `virtio_device_ready()`, while the ordinary remove and freeze paths at `drivers/virtio/virtio_input.c:349-376` both reset the device before deleting queues.",
+      "user_story": "As a virtio driver author whose probe hits a late registration failure, I expect teardown to quiesce the live device before queue memory is released so that the transport cannot still treat freed queues as active.",
+      "implementation_note": "The probe-error path must mirror the reset-before-del_vqs ordering already used by ordinary remove/freeze teardown once the device has reached DRIVER_OK.",
+      "conditions_of_satisfaction": [
+        "Probe code identifies whether the device has already crossed into live `DRIVER_OK` state before late failure unwinds run (`drivers/virtio/virtio_input.c:321-325`).",
+        "Any post-ready failure path calls `virtio_reset_device()` before deleting virtqueues or freeing queue-owned buffers (`drivers/virtio/virtio_input.c:330-339`, contrasted with `drivers/virtio/virtio_input.c:349-376`).",
+        "The post-ready error path mirrors the same reset-before-del_vqs ordering used by ordinary remove/freeze teardown."
+      ],
+      "alternative_paths": [
+        "Failures that happen before `virtio_device_ready()` may delete setup state directly, but once the live transition happens the reset barrier is mandatory."
+      ],
+      "use_cases": ["UC-03", "UC-06"],
+      "references": [
+        "formal_docs/writing_virtio_drivers.txt:121-130",
+        "drivers/virtio/virtio_input.c:321-339",
+        "drivers/virtio/virtio_input.c:349-376"
+      ],
+      "specificity": "specific"
+    }
+  ]
+}

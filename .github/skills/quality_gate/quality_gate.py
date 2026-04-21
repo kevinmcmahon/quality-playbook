@@ -1702,7 +1702,7 @@ _CHALLENGE_VERDICT_RE = re.compile(
 # invariant's intent without requiring operators to regenerate baseline
 # artifacts. New v1.5.1+ runs should prefer the canonical form.
 _CHALLENGE_VERDICT_LEGACY_RE = re.compile(
-    r"^\*\*(CONFIRMED|DOWNGRADED|REJECTED)\*\*[\.\s]",
+    r"^\*\*(CONFIRMED|DOWNGRADED|REJECTED)\.?\*\*",
     re.MULTILINE,
 )
 

@@ -1,0 +1,110 @@
+{
+  "schema_version": "1.4.6",
+  "generated_at": "2026-04-20T13:19:27Z",
+  "records": [
+    {
+      "id": "BUG-001",
+      "summary": "vm_reset() returns before MMIO reset completion is observable.",
+      "requirement": "REQ-002",
+      "severity": "HIGH",
+      "source": "quality/code_reviews/2026-04-20-gpt-5.4.md",
+      "disposition": "code-fix",
+      "disposition_rationale": "The MMIO reset hook violates the documented reset-completion contract and needs a transport-side code change.",
+      "fix_type": "code",
+      "regression_test": "TestCodeReviewRegressions.test_bug_001_mmio_reset_waits_for_status_clear",
+      "regression_patch": "quality/patches/BUG-001-regression-test.patch",
+      "fix_patch": "quality/patches/BUG-001-fix.patch"
+    },
+    {
+      "id": "BUG-002",
+      "summary": "vp_interrupt() drops handled status for config-only and slow-path-only INTx events.",
+      "requirement": "REQ-003",
+      "severity": "HIGH",
+      "source": "quality/code_reviews/2026-04-20-gpt-5.4.md",
+      "disposition": "code-fix",
+      "disposition_rationale": "The interrupt handler services work but reports the wrong IRQ status, so the fix belongs in the return-value composition logic.",
+      "fix_type": "code",
+      "regression_test": "TestCodeReviewRegressions.test_bug_002_vp_interrupt_preserves_config_handled_status",
+      "regression_patch": "quality/patches/BUG-002-regression-test.patch",
+      "fix_patch": "quality/patches/BUG-002-fix.patch"
+    },
+    {
+      "id": "BUG-003",
+      "summary": "INTx fallback creates the admin queue at queue_idx++ instead of avq->vq_index.",
+      "requirement": "REQ-004",
+      "severity": "HIGH",
+      "source": "quality/code_reviews/2026-04-20-gpt-5.4.md",
+      "disposition": "code-fix",
+      "disposition_rationale": "Fallback queue creation must preserve the transport-advertised admin-queue index, which requires a code change in the INTx path.",
+      "fix_type": "code",
+      "regression_test": "TestCodeReviewRegressions.test_bug_003_intx_admin_queue_uses_transport_advertised_index",
+      "regression_patch": "quality/patches/BUG-003-regression-test.patch",
+      "fix_patch": "quality/patches/BUG-003-fix.patch"
+    },
+    {
+      "id": "BUG-004",
+      "summary": "PCI modern queue-reset helpers use vp_dev->vqs[] for admin queues instead of vp_dev->admin_vq.info.",
+      "requirement": "REQ-007",
+      "severity": "HIGH",
+      "source": "quality/code_reviews/2026-04-20-gpt-5.4.md",
+      "disposition": "code-fix",
+      "disposition_rationale": "Admin-queue reset uses the wrong metadata owner and requires a transport-side fix in both reset helpers.",
+      "fix_type": "code",
+      "regression_test": "TestCodeReviewRegressions.test_bug_004_admin_queue_reset_helpers_use_admin_metadata_slot",
+      "regression_patch": "quality/patches/BUG-004-regression-test.patch",
+      "fix_patch": "quality/patches/BUG-004-fix.patch"
+    },
+    {
+      "id": "BUG-005",
+      "summary": "Queue reset rejoins slow-path queues to virtqueues instead of slow_virtqueues.",
+      "requirement": "REQ-005",
+      "severity": "MEDIUM",
+      "source": "quality/code_reviews/2026-04-20-gpt-5.4.md",
+      "disposition": "code-fix",
+      "disposition_rationale": "The post-reset reattach logic loses the original dispatch topology and needs a list-selection fix.",
+      "fix_type": "code",
+      "regression_test": "TestCodeReviewRegressions.test_bug_005_reset_reenable_restores_slow_path_membership",
+      "regression_patch": "quality/patches/BUG-005-regression-test.patch",
+      "fix_patch": "quality/patches/BUG-005-fix.patch"
+    },
+    {
+      "id": "BUG-006",
+      "summary": "MMIO teardown frees wake-enabled IRQs without disabling IRQ wake.",
+      "requirement": "REQ-008",
+      "severity": "MEDIUM",
+      "source": "quality/code_reviews/2026-04-20-gpt-5.4.md",
+      "disposition": "code-fix",
+      "disposition_rationale": "Wake-enabled setup and teardown are asymmetric and need an MMIO teardown fix before freeing the IRQ.",
+      "fix_type": "code",
+      "regression_test": "TestCodeReviewRegressions.test_bug_006_mmio_teardown_disables_irq_wake_before_free_irq",
+      "regression_patch": "quality/patches/BUG-006-regression-test.patch",
+      "fix_patch": "quality/patches/BUG-006-fix.patch"
+    },
+    {
+      "id": "BUG-007",
+      "summary": "virtio_vdpa_find_vqs() uses the sparse descriptor slot for affinity instead of the instantiated queue index.",
+      "requirement": "REQ-011",
+      "severity": "HIGH",
+      "source": "quality/EXPLORATION_ITER2.md",
+      "disposition": "code-fix",
+      "disposition_rationale": "The bug is a queue-index mismatch inside the vDPA transport's setup-time affinity programming, so the remedy is a direct code change in virtio_vdpa_find_vqs().",
+      "fix_type": "code",
+      "regression_test": "TestCodeReviewRegressions.test_bug_007_vdpa_affinity_uses_instantiated_queue_index",
+      "regression_patch": "quality/patches/BUG-007-regression-test.patch",
+      "fix_patch": "quality/patches/BUG-007-fix.patch"
+    },
+    {
+      "id": "BUG-008",
+      "summary": "virtinput_probe() deletes virtqueues after virtio_device_ready() without resetting the device first.",
+      "requirement": "REQ-012",
+      "severity": "HIGH",
+      "source": "quality/EXPLORATION_ITER2.md",
+      "disposition": "code-fix",
+      "disposition_rationale": "The failure path has already crossed into live device state and must mirror the driver's own reset-before-del_vqs teardown ordering, so the fix belongs in the probe unwind code.",
+      "fix_type": "code",
+      "regression_test": "TestCodeReviewRegressions.test_bug_008_virtinput_probe_resets_before_del_vqs_after_ready",
+      "regression_patch": "quality/patches/BUG-008-regression-test.patch",
+      "fix_patch": "quality/patches/BUG-008-fix.patch"
+    }
+  ]
+}

@@ -1894,16 +1894,27 @@ class TestChallengeGateCoverage(unittest.TestCase):
         self.assertEqual(fails, 0, out)
         self.assertIn("PASS:", out)
 
-    def test_fixture_b_missing_records_fails_and_names_bugs(self) -> None:
-        fails, _, out = self._run("fixture_b_missing")
-        # Synthetic placeholder for Phase 5.3: 8 triggered, 6 records present,
-        # BUG-007 and BUG-008 missing → 2 failures naming those IDs.
+    def test_virtio_1_4_6_fixture_fails_and_names_missing_bugs(self) -> None:
+        """v1.5.1 Item 5.3 — the preserved virtio-1.4.6 reproduction.
+
+        Source: repos/benchmark-1.5.0/virtio-1.4.6/quality/{bugs_manifest.json,
+        requirements_manifest.json, challenge/BUG-001..006-challenge.md}.
+        The BUG-007/008 challenge records are intentionally absent — that
+        asymmetry is the evidence that motivated Item 5.2's invariant.
+
+        Expected: the six preserved records satisfy the verdict-line
+        check (legacy form, accommodated in the invariant); BUG-007 and
+        BUG-008 are reported as missing. The invariant fails exactly
+        twice and the failure lines name those two IDs.
+        """
+        fails, _, out = self._run("virtio-1.4.6")
         self.assertGreaterEqual(fails, 2)
         self.assertIn("BUG-007", out)
         self.assertIn("BUG-008", out)
-        # And the 6 existing records must NOT be reported as missing.
-        self.assertNotIn("BUG-001: challenge record missing", out)
-        self.assertNotIn("BUG-006: challenge record missing", out)
+        # The 6 existing records must NOT be reported as missing.
+        for bug_id in ("BUG-001", "BUG-002", "BUG-003",
+                       "BUG-004", "BUG-005", "BUG-006"):
+            self.assertNotIn(f"{bug_id}: challenge record missing", out)
 
     def test_fixture_c_bad_verdict_fails(self) -> None:
         fails, _, out = self._run("fixture_c_bad_verdict")
