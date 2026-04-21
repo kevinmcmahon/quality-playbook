@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.5.0",
+  "generated_at": "2026-04-21T12:00:00Z",
+  "records": [
+    {"id": "BUG-001", "severity": "HIGH", "title": "reset contract broken",
+     "disposition": "code-fix", "fix_type": "code"},
+    {"id": "BUG-002", "severity": "HIGH", "title": "IRQ accounting defect",
+     "disposition": "code-fix", "fix_type": "code"},
+    {"id": "BUG-003", "severity": "HIGH", "title": "fallback parity gap",
+     "disposition": "code-fix", "fix_type": "code"},
+    {"id": "BUG-004", "severity": "HIGH", "title": "metadata ownership leak",
+     "disposition": "code-fix", "fix_type": "code"},
+    {"id": "BUG-005", "severity": "MEDIUM", "title": "dispatch topology",
+     "disposition": "code-fix", "fix_type": "code"},
+    {"id": "BUG-006", "severity": "MEDIUM", "title": "IRQ wake symmetry",
+     "disposition": "code-fix", "fix_type": "code"},
+    {"id": "BUG-007", "severity": "HIGH", "title": "affinity sparse slot",
+     "source": "quality/EXPLORATION_ITER2.md",
+     "disposition": "code-fix", "fix_type": "code"},
+    {"id": "BUG-008", "severity": "HIGH", "title": "vdpa queue ordering",
+     "source": "quality/EXPLORATION_ITER2.md",
+     "disposition": "code-fix", "fix_type": "code"}
+  ]
+}

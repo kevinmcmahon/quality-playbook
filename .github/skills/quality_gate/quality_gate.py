@@ -1686,6 +1686,231 @@ def check_v1_5_0_semantic_check(q):
         )
 
 
+# --- v1.5.1 Item 5.2: challenge-gate coverage invariant -------------------
+
+# Canonical verdict-line regex from Impl-Plan Item 5.2. Matches a top-level
+# "**Verdict:** CONFIRMED/DOWNGRADED/REJECTED" line as a stand-alone line.
+_CHALLENGE_VERDICT_RE = re.compile(
+    r"^\*\*Verdict:\*\*\s+(CONFIRMED|DOWNGRADED|REJECTED)\s*$",
+    re.MULTILINE,
+)
+# Legacy final-verdict form used by challenge records generated before the
+# canonical regex was specified (including the preserved virtio-1.4.6
+# evidence at repos/benchmark-1.5.0/virtio-1.4.6/quality/challenge/).
+# The briefing says "this invariant only verifies the challenge ran" — the
+# legacy form unambiguously records a final verdict, so it satisfies the
+# invariant's intent without requiring operators to regenerate baseline
+# artifacts. New v1.5.1+ runs should prefer the canonical form.
+_CHALLENGE_VERDICT_LEGACY_RE = re.compile(
+    r"^\*\*(CONFIRMED|DOWNGRADED|REJECTED)\*\*[\.\s]",
+    re.MULTILINE,
+)
+
+# Trigger-pattern keyword tables (case-insensitive substring matching).
+_CHALLENGE_SECURITY_SEVERITIES = frozenset({"CRITICAL", "HIGH"})
+_CHALLENGE_SECURITY_KEYWORDS = (
+    "credential", "secret", "auth", "injection", "xss", "csrf",
+    "ssrf", "privilege", "bypass", "leak",
+)
+_CHALLENGE_SIBLING_KEYWORDS = (
+    "sibling", "parallel", "parity", "contrasted with", "same concern",
+    "in contrast", "other path", "other branch",
+)
+_CHALLENGE_MISSING_KEYWORDS = (
+    "never", "does not", "doesn't", "missing", "absent", "fails to",
+)
+_CHALLENGE_DESIGN_KEYWORDS = (
+    "todo", "why", "ooda", "design decision",
+)
+_CHALLENGE_ITERATION_KEYWORDS = (
+    "gap", "unfiltered", "parity", "adversarial", "iteration",
+)
+
+
+def _bug_writeup_text(q, bug_id):
+    """Return lowercased writeup text for ``bug_id`` (empty string if absent).
+
+    Writeups live at quality/writeups/BUG-NNN.md. Reading failures are
+    treated as empty text — the invariant still runs on the manifest fields
+    (title / summary / source) which are present independently.
+    """
+    path = q / "writeups" / f"{bug_id}.md"
+    if not path.is_file():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8", errors="ignore").lower()
+    except OSError:
+        return ""
+
+
+def _bug_req_has_tier_12_citation(req_id, requirements_records):
+    """True iff req_id resolves to a REQ with a non-empty citation and
+    tier in {1, 2}. Used by the "No spec basis" trigger pattern."""
+    if not req_id or not isinstance(requirements_records, list):
+        return False
+    for rec in requirements_records:
+        if not isinstance(rec, dict):
+            continue
+        if rec.get("id") != req_id:
+            continue
+        if rec.get("tier") not in (1, 2):
+            return False
+        citation = rec.get("citation")
+        if isinstance(citation, dict) and citation:
+            return True
+        return False
+    return False
+
+
+def _contains_any(text, keywords):
+    """Case-insensitive substring OR across a keyword tuple."""
+    if not text:
+        return False
+    lowered = text.lower()
+    return any(kw in lowered for kw in keywords)
+
+
+def _classify_bug_triggers(rec, q, requirements_records):
+    """Return the list of trigger-pattern names that fired for one bug.
+    Empty list means the bug does not require a challenge record.
+
+    Patterns mirror Impl-Plan Item 5.2 verbatim. Input aliasing:
+      - title: prefers rec['title'], falls back to rec['summary'].
+      - requirement: prefers rec['requirement'], falls back to rec['req_id']
+        (v1.4.x uses req_id; v1.5.1+ converges on requirement).
+      - source_comments: optional, older runs may omit it.
+      - source / discovery_phase: substring-matched against the
+        iteration-derived keyword list.
+    """
+    fired = []
+
+    bug_id = rec.get("id", "")
+    title = rec.get("title") or rec.get("summary") or ""
+    severity = (rec.get("severity") or "").upper()
+    writeup = _bug_writeup_text(q, bug_id) if bug_id else ""
+    title_plus_writeup = f"{title}\n{writeup}"
+
+    # 1. Security-class.
+    if severity in _CHALLENGE_SECURITY_SEVERITIES and _contains_any(
+        title_plus_writeup, _CHALLENGE_SECURITY_KEYWORDS
+    ):
+        fired.append("security-class")
+
+    # 2. No spec basis.
+    requirement = rec.get("requirement") or rec.get("req_id")
+    has_valid_citation = _bug_req_has_tier_12_citation(requirement, requirements_records)
+    if not requirement or not has_valid_citation:
+        fired.append("no-spec-basis")
+
+    # 3. Sibling-path divergence.
+    if _contains_any(writeup, _CHALLENGE_SIBLING_KEYWORDS):
+        fired.append("sibling-path-divergence")
+
+    # 4. Missing functionality.
+    if _contains_any(writeup, _CHALLENGE_MISSING_KEYWORDS):
+        fired.append("missing-functionality")
+
+    # 5. Design-decision comment (optional field).
+    source_comments = rec.get("source_comments")
+    if isinstance(source_comments, str) and _contains_any(
+        source_comments, _CHALLENGE_DESIGN_KEYWORDS
+    ):
+        fired.append("design-decision-comment")
+
+    # 6. Iteration-derived.
+    source = rec.get("source") or ""
+    discovery_phase = rec.get("discovery_phase") or ""
+    iter_haystack = f"{source}\n{discovery_phase}"
+    if _contains_any(iter_haystack, _CHALLENGE_ITERATION_KEYWORDS):
+        fired.append("iteration-derived")
+
+    return fired
+
+
+def _challenge_record_has_verdict(path):
+    """True iff the file exists and contains either the canonical or
+    legacy verdict line per the invariant's accept set."""
+    if not path.is_file():
+        return False
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+    if _CHALLENGE_VERDICT_RE.search(text):
+        return True
+    if _CHALLENGE_VERDICT_LEGACY_RE.search(text):
+        return True
+    return False
+
+
+def check_challenge_gate_coverage(q):
+    """v1.5.1 Item 5.2 — every bug whose fingerprints trigger the challenge
+    gate must have a quality/challenge/BUG-NNN-challenge.md with a valid
+    verdict line.
+
+    N/A when quality/bugs_manifest.json is absent (zero-bug runs can't
+    have un-challenged bugs). Runs on the current quality/ tree only;
+    no cross-run state.
+    """
+    data = _v150_manifest(q, "bugs_manifest.json")
+    if data is None:
+        # N/A — the plan explicitly says "invariant is N/A if the file is
+        # absent". Consistent with other quality_gate invariants that silently
+        # skip when their input isn't present.
+        return
+    records = data.get("records")
+    if not isinstance(records, list):
+        return
+
+    reqs_data = _v150_manifest(q, "requirements_manifest.json") or {}
+    req_records = reqs_data.get("records") if isinstance(reqs_data, dict) else None
+
+    challenge_dir = q / "challenge"
+    triggered = 0
+    missing = []   # list of (bug_id, [pattern names]) for bugs with no record
+    bad_verdict = []  # list of (bug_id, [pattern names]) for record w/o verdict
+
+    for rec in records:
+        if not isinstance(rec, dict):
+            continue
+        bug_id = rec.get("id")
+        if not bug_id:
+            continue
+        fired = _classify_bug_triggers(rec, q, req_records)
+        if not fired:
+            continue
+        triggered += 1
+        record_path = challenge_dir / f"{bug_id}-challenge.md"
+        if not record_path.is_file():
+            missing.append((bug_id, fired))
+        elif not _challenge_record_has_verdict(record_path):
+            bad_verdict.append((bug_id, fired))
+
+    if missing:
+        for bug_id, fired in missing:
+            fail(
+                "quality/challenge/",
+                f"{bug_id}: challenge record missing (triggered by: {', '.join(fired)}) "
+                f"— expected {bug_id}-challenge.md with a **Verdict:** line",
+            )
+    if bad_verdict:
+        for bug_id, fired in bad_verdict:
+            fail(
+                f"quality/challenge/{bug_id}-challenge.md",
+                f"missing or malformed verdict line (triggered by: {', '.join(fired)}) "
+                "— expected a line matching `^\\*\\*Verdict:\\*\\*\\s+(CONFIRMED|DOWNGRADED|REJECTED)` "
+                "or the legacy final-verdict form",
+            )
+
+    if triggered == 0:
+        pass_("challenge gate coverage: no bug triggered the challenge gate (vacuous)")
+    elif not missing and not bad_verdict:
+        pass_(
+            f"challenge gate coverage: {triggered} triggered bug(s) all have valid "
+            "challenge records"
+        )
+
+
 def check_v1_5_0_gate_invariants(repo_dir, q):
     """Dispatcher that runs every Layer-1 mechanical check from schemas.md §10."""
     check_v1_5_0_plaintext_extensions(repo_dir)
@@ -1696,6 +1921,10 @@ def check_v1_5_0_gate_invariants(repo_dir, q):
     # Phase 6 invariant #17 runs after requirements_manifest so it sees
     # shape-validated REQ records.
     check_v1_5_0_semantic_check(q)
+    # v1.5.1 Item 5.2: challenge-gate coverage runs last. It depends on
+    # requirements_manifest.json for the "No spec basis" pattern but
+    # does not redo schema checks that the prior invariants already cover.
+    check_challenge_gate_coverage(q)
 
 
 def check_repo(repo_dir, version_arg, strictness):

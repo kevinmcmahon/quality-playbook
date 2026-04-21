@@ -1874,5 +1874,104 @@ class TestV150SemanticCheckOutputFormat(V150SemanticCheckFixtureBase):
         )
 
 
+class TestChallengeGateCoverage(unittest.TestCase):
+    """v1.5.1 Item 5.2: check_challenge_gate_coverage() invariant.
+
+    Fixtures live under tests/fixtures/challenge_coverage/. Each fixture
+    mirrors a real quality/ layout (bugs_manifest.json + optional
+    challenge/ + optional writeups/). The invariant reads the fixture
+    and its outcome is asserted here.
+    """
+
+    FIXTURES = Path(__file__).resolve().parent / "fixtures" / "challenge_coverage"
+
+    def _run(self, fixture_name):
+        q = self.FIXTURES / fixture_name / "quality"
+        return _capture_all_output(quality_gate.check_challenge_gate_coverage, q)
+
+    def test_fixture_a_all_records_present_passes(self) -> None:
+        fails, _, out = self._run("fixture_a_pass")
+        self.assertEqual(fails, 0, out)
+        self.assertIn("PASS:", out)
+
+    def test_fixture_b_missing_records_fails_and_names_bugs(self) -> None:
+        fails, _, out = self._run("fixture_b_missing")
+        # Synthetic placeholder for Phase 5.3: 8 triggered, 6 records present,
+        # BUG-007 and BUG-008 missing → 2 failures naming those IDs.
+        self.assertGreaterEqual(fails, 2)
+        self.assertIn("BUG-007", out)
+        self.assertIn("BUG-008", out)
+        # And the 6 existing records must NOT be reported as missing.
+        self.assertNotIn("BUG-001: challenge record missing", out)
+        self.assertNotIn("BUG-006: challenge record missing", out)
+
+    def test_fixture_c_bad_verdict_fails(self) -> None:
+        fails, _, out = self._run("fixture_c_bad_verdict")
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("BUG-001", out)
+        self.assertIn("verdict line", out)
+
+    def test_fixture_d_rejected_verdict_passes(self) -> None:
+        fails, _, out = self._run("fixture_d_rejected")
+        self.assertEqual(fails, 0, out)
+        self.assertIn("PASS:", out)
+
+    def test_fixture_e_iteration_derived_alone_requires_record(self) -> None:
+        """Iteration-derived pattern fires on `source` alone; when the
+        record exists with a valid verdict, the invariant PASSes even
+        though no other pattern matched."""
+        fails, _, out = self._run("fixture_e_iteration")
+        self.assertEqual(fails, 0, out)
+        self.assertIn("PASS:", out)
+
+    def test_fixture_f_absent_manifest_is_na(self) -> None:
+        """Absent bugs_manifest.json → invariant returns without emitting
+        PASS or FAIL (consistent with quality_gate N/A convention)."""
+        fails, _, out = self._run("fixture_f_no_manifest")
+        self.assertEqual(fails, 0, out)
+        # No PASS line either — the invariant silently no-ops.
+        self.assertNotIn("PASS:", out)
+        self.assertNotIn("FAIL", out)
+
+    def test_bug_with_no_triggers_does_not_require_record(self) -> None:
+        """Direct-call unit check: a bug with severity LOW, a good
+        requirement, clean source, and no writeup keywords must not
+        require a challenge record."""
+        with tempfile.TemporaryDirectory() as tmp:
+            q = Path(tmp) / "quality"
+            q.mkdir()
+            (q / "bugs_manifest.json").write_text(json.dumps({
+                "schema_version": "1.5.0",
+                "generated_at": "2026-04-21T00:00:00Z",
+                "records": [{
+                    "id": "BUG-100", "severity": "LOW",
+                    "title": "cosmetic label typo",
+                    "requirement": "REQ-001",
+                    "disposition": "code-fix", "fix_type": "code",
+                }],
+            }))
+            (q / "requirements_manifest.json").write_text(json.dumps({
+                "schema_version": "1.5.0",
+                "generated_at": "2026-04-21T00:00:00Z",
+                "records": [{
+                    "id": "REQ-001", "tier": 1,
+                    "functional_section": "UI",
+                    "description": "Labels match spec",
+                    "citation": {
+                        "document": "formal_docs/ui.md",
+                        "document_sha256": "deadbeef00000000000000000000000000000000000000000000000000000000",
+                        "section": "1.1",
+                        "citation_excerpt": "Labels shall match the spec verbatim.",
+                    },
+                }],
+            }))
+            fails, _, out = _capture_all_output(
+                quality_gate.check_challenge_gate_coverage, q
+            )
+            # No trigger fired → no record required → PASS as "vacuous".
+            self.assertEqual(fails, 0, out)
+            self.assertIn("vacuous", out)
+
+
 if __name__ == "__main__":
     unittest.main()

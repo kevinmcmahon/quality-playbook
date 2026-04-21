@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.5.0",
+  "generated_at": "2026-04-21T12:00:00Z",
+  "records": [
+    {"id": "BUG-001", "severity": "HIGH", "title": "auth token missing rotation",
+     "disposition": "code-fix", "fix_type": "code"},
+    {"id": "BUG-002", "severity": "MEDIUM", "title": "parity path ignores ACK",
+     "disposition": "code-fix", "fix_type": "code"},
+    {"id": "BUG-003", "severity": "LOW", "title": "API never validates payload size",
+     "disposition": "code-fix", "fix_type": "code"},
+    {"id": "BUG-004", "severity": "HIGH", "title": "cache key collision",
+     "disposition": "code-fix", "fix_type": "code"},
+    {"id": "BUG-005", "severity": "HIGH", "title": "transport retries forever",
+     "disposition": "code-fix", "fix_type": "code"},
+    {"id": "BUG-006", "severity": "LOW", "title": "no-op log hook",
+     "disposition": "code-fix", "fix_type": "code"}
+  ]
+}
