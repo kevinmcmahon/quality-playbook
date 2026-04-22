@@ -1029,6 +1029,122 @@ class TestWriteups(FixtureBase):
         # Content check fires — no +/- lines inside.
         self.assertIn("writeup(s) have empty ```diff blocks", stdout)
 
+    def test_writeup_with_unfilled_sentinel_fails(self):
+        """v1.5.1 Item 5.2 hardening: every one of the five template
+        sentinels in _WRITEUP_TEMPLATE_SENTINELS must trigger the
+        "contain unfilled template sentinels" FAIL when it appears
+        verbatim in a writeup. The writeup is otherwise valid (real
+        diff fence with +/- content) so the failure is attributable
+        to the sentinel and not to a co-firing check."""
+        for sentinel in quality_gate._WRITEUP_TEMPLATE_SENTINELS:
+            with self.subTest(sentinel=sentinel):
+                # Rebuild a clean tree per subtest so prior iterations
+                # don't leak state.
+                self.tearDown()
+                self.setUp()
+                tree = minimal_zero_bug_tree()
+                add_one_bug(tree)
+                tree["quality/writeups/BUG-001.md"] = (
+                    "# BUG-001\n\n"
+                    f"{sentinel}\n\n"
+                    "## The fix\n\n"
+                    "```diff\n"
+                    "- old\n"
+                    "+ new\n"
+                    "```\n"
+                )
+                self.write(tree)
+                stdout, _ = self.gate()
+                self.assertIn(
+                    "writeup(s) contain unfilled template sentinels",
+                    stdout,
+                    msg=f"sentinel {sentinel!r} did not trip the FAIL",
+                )
+                # And the corresponding PASS must NOT appear.
+                self.assertNotIn(
+                    "PASS: No writeups contain unfilled template sentinels",
+                    stdout,
+                    msg=f"sentinel {sentinel!r} failed to suppress the PASS line",
+                )
+
+    def test_writeup_with_empty_diff_fence_fails(self):
+        """A diff fence containing only context lines (no +/- body)
+        must trip the "empty ```diff blocks" FAIL and must NOT produce
+        the "contain unified-diff content" PASS."""
+        tree = minimal_zero_bug_tree()
+        add_one_bug(tree)
+        tree["quality/writeups/BUG-001.md"] = (
+            "# BUG-001\n\n"
+            "## The fix\n\n"
+            "```diff\n"
+            " context line one\n"
+            "\n"
+            " context line two\n"
+            "```\n"
+        )
+        self.write(tree)
+        stdout, _ = self.gate()
+        self.assertIn("writeup(s) have empty ```diff blocks", stdout)
+        self.assertNotIn(
+            "PASS: All writeup ```diff blocks contain unified-diff content",
+            stdout,
+        )
+
+    def test_writeup_diff_with_only_file_headers_is_empty(self):
+        """Pins the header-exclusion logic in _writeup_diff_is_non_empty:
+        a diff that contains only `--- a/file` and `+++ b/file` header
+        lines and no actual hunk content must be flagged as empty.
+        Without header exclusion the check would see `-` and `+`
+        prefixes on those lines and mis-classify the diff as non-empty."""
+        tree = minimal_zero_bug_tree()
+        add_one_bug(tree)
+        tree["quality/writeups/BUG-001.md"] = (
+            "# BUG-001\n\n"
+            "## The fix\n\n"
+            "```diff\n"
+            "--- a/src/foo.py\n"
+            "+++ b/src/foo.py\n"
+            "```\n"
+        )
+        self.write(tree)
+        stdout, _ = self.gate()
+        self.assertIn("writeup(s) have empty ```diff blocks", stdout)
+
+    def test_writeup_clean_passes_all_new_checks(self):
+        """A hydrated writeup with a real diff body and no sentinels
+        must produce all three new PASS messages (presence,
+        non-empty content, no sentinels). This explicitly covers the
+        sentinel PASS and the non-empty-content PASS that
+        test_all_writeups_with_diffs above does not assert."""
+        tree = minimal_zero_bug_tree()
+        add_one_bug(tree)
+        # Use a clearly hydrated summary so no sentinel phrase fires.
+        tree["quality/writeups/BUG-001.md"] = (
+            "# BUG-001\n\n"
+            "## Summary\n"
+            "fetch_stop_arrivals() crashes on naive ExpectedArrivalTime.\n\n"
+            "## The fix\n\n"
+            "```diff\n"
+            "--- a/bus_tracker.py\n"
+            "+++ b/bus_tracker.py\n"
+            "- eta = parsed - datetime.now(timezone.utc)\n"
+            "+ if parsed.tzinfo is None:\n"
+            "+     eta = None\n"
+            "+ else:\n"
+            "+     eta = parsed - datetime.now(timezone.utc)\n"
+            "```\n"
+        )
+        self.write(tree)
+        stdout, _ = self.gate()
+        self.assertIn("PASS: All 1 writeup(s) have inline fix diffs", stdout)
+        self.assertIn(
+            "PASS: All writeup ```diff blocks contain unified-diff content",
+            stdout,
+        )
+        self.assertIn(
+            "PASS: No writeups contain unfilled template sentinels", stdout
+        )
+
 
 class TestVersionStamps(FixtureBase):
     def test_matching_versions_pass(self):
