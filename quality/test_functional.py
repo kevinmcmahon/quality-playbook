@@ -379,7 +379,7 @@ class DocsPresentTests(unittest.TestCase):
 
 
 class ArchivePreviousRunTests(unittest.TestCase):
-    """REQ-009. Source: run_playbook.archive_previous_run (v1.5.0 revision r1:
+    """REQ-009. Source: run_playbook.archive_previous_run (v1.5.1 revision r1:
     delegates to archive_lib.archive_run with status='partial', so archive
     folders land at quality/runs/<ts>-PARTIAL/)."""
 

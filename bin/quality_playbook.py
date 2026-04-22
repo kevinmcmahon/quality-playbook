@@ -44,7 +44,7 @@ _SUBCOMMANDS = {
     "migrate": {
         "module": migrate_v1_5_0_layout,
         "help": (
-            "Idempotently migrate a pre-v1.5.0 repo into the consolidated "
+            "Idempotently migrate a pre-v1.5.1 repo into the consolidated "
             "quality/ layout. See `migrate --help`."
         ),
     },

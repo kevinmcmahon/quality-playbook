@@ -1,4 +1,4 @@
-> Quality Playbook v1.5.0 — Data Contract (`schemas.md`)
+> Quality Playbook v1.5.1 — Data Contract (`schemas.md`)
 > Versioned with the playbook skill. Do not edit per-run.
 
 # Quality Playbook Data Schemas
@@ -34,7 +34,7 @@ nothing more. If you find yourself describing a process here, move it to
 ### 1.2 What `schemas.md` does NOT cover
 
 - On-disk file layout, directory conventions, run archival policy — see the
-  v1.5.0 design doc and `SKILL.md`.
+  v1.5.1 design doc and `SKILL.md`.
 - Phase-by-phase prompts or review protocols — `SKILL.md`.
 - Gate check sequencing — `SKILL.md` and `quality_gate.py`.
 
@@ -63,7 +63,7 @@ updating the other is a bug.
 
 Every validator that consumes these records must run on stock Python 3 with no
 `pip install` and no virtualenv — see the "Stdlib-Only Python" section of the
-v1.5.0 design doc. Concretely: manifests are JSON (`json` module), hashes are
+v1.5.1 design doc. Concretely: manifests are JSON (`json` module), hashes are
 computed with `hashlib`, dates are ISO 8601 strings parsed with `datetime`. No
 `PyYAML`, no `jsonschema`, no external HTTP. That rules out YAML frontmatter in
 manifests even where it would read more nicely.
@@ -113,7 +113,7 @@ Example:
 
 ```json
 {
-  "schema_version": "1.5.0",
+  "schema_version": "1.5.1",
   "generated_at": "2026-04-19T14:30:22Z",
   "records": []
 }
@@ -760,7 +760,7 @@ instead of `records`:
 
 ```json
 {
-  "schema_version": "1.5.0",
+  "schema_version": "1.5.1",
   "generated_at": "2026-04-19T14:30:22Z",
   "reviews": [
     {
@@ -904,7 +904,7 @@ non-empty.
 | `run_timestamp_start`   | string          | yes      | ISO 8601 with explicit timezone. Run start.                                              |
 | `run_timestamp_end`     | string          | yes      | ISO 8601 with explicit timezone. Run end.                                                |
 | `duration_seconds`      | integer         | yes      | End minus start, rounded to whole seconds.                                               |
-| `qpb_version`           | string          | yes      | Playbook version that produced the run, e.g. `"1.5.0"`.                                  |
+| `qpb_version`           | string          | yes      | Playbook version that produced the run, e.g. `"1.5.1"`.                                  |
 | `target_repo_path`      | string          | yes      | Absolute or repo-root-relative path to the target repo.                                  |
 | `target_repo_git_sha`   | string          | yes      | Git SHA of the target repo HEAD at run start. May be `"unknown"` for non-git targets.    |
 | `target_project_type`   | string          | yes      | One of `Code`, `Skill`, `Hybrid` (per v1.5.2 project-type taxonomy).                     |
@@ -947,5 +947,5 @@ regenerated.
 
 | Version     | Change                                                                 |
 |-------------|------------------------------------------------------------------------|
-| 1.5.0       | Initial version. `FORMAL_DOC`, `REQ`, `UC`, `BUG`, `citation`, enums.  |
-| 1.5.0-rc1   | Council-of-Three Phase 1 revisions: added byte-equality extraction algorithm (§5.4) and section resolution (§5.5); removed `REQ.disposition` (resolves enum contradiction); locked `fix_type × disposition` legal-combination matrix; schematized manifest wrapper (§1.6) and `citation_semantic_check.json` (§9); inlined per-run `INDEX.md` fields (§11); tightened locator rule to `section`/`line` only; bound `REQ.tier` to cited `FORMAL_DOC.tier`; added ID uniqueness, redundant-metadata match, and array-uniqueness invariants; reframed `citation_stale` as gate-report marker (not record field); wrapped authoring-guidance field descriptions with explicit "not gate-enforced" prefix. |
+| 1.5.1       | Initial version. `FORMAL_DOC`, `REQ`, `UC`, `BUG`, `citation`, enums.  |
+| 1.5.1-rc1   | Council-of-Three Phase 1 revisions: added byte-equality extraction algorithm (§5.4) and section resolution (§5.5); removed `REQ.disposition` (resolves enum contradiction); locked `fix_type × disposition` legal-combination matrix; schematized manifest wrapper (§1.6) and `citation_semantic_check.json` (§9); inlined per-run `INDEX.md` fields (§11); tightened locator rule to `section`/`line` only; bound `REQ.tier` to cited `FORMAL_DOC.tier`; added ID uniqueness, redundant-metadata match, and array-uniqueness invariants; reframed `citation_stale` as gate-report marker (not record field); wrapped authoring-guidance field descriptions with explicit "not gate-enforced" prefix. |

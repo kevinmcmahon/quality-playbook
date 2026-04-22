@@ -2,7 +2,7 @@ virtio v1.1 — Excerpt for Phase 2 testing
 ==========================================
 
 This is a contrived plaintext excerpt created solely for Phase 2
-integration tests of the Quality Playbook v1.5.0 ingest pipeline.
+integration tests of the Quality Playbook v1.5.1 ingest pipeline.
 It is NOT a substitute for the real virtio specification.
 
 1 Introduction

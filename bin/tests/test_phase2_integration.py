@@ -49,7 +49,7 @@ class Phase2IntegrationTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             target = self._copy_fixture_to_tmp(tmp_path)
-            qpb_root = self._write_skill_md(tmp_path, "1.5.0")
+            qpb_root = self._write_skill_md(tmp_path, "1.5.1")
 
             manifest_path, records = fdi.ingest(target, qpb_root=qpb_root)
 
@@ -82,7 +82,7 @@ class Phase2IntegrationTests(unittest.TestCase):
             # Manifest file parses and wrapper matches §1.6.
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertEqual(set(manifest.keys()), {"schema_version", "generated_at", "records"})
-            self.assertEqual(manifest["schema_version"], "1.5.0")
+            self.assertEqual(manifest["schema_version"], "1.5.1")
             self.assertEqual(manifest["records"], records)
 
             # §5.4 extraction: section="2.4" returns the locked-down excerpt.
@@ -114,7 +114,7 @@ class Phase2IntegrationTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             target = self._copy_fixture_to_tmp(tmp_path)
-            qpb_root = self._write_skill_md(tmp_path, "1.5.0")
+            qpb_root = self._write_skill_md(tmp_path, "1.5.1")
 
             _, first = fdi.ingest(target, qpb_root=qpb_root)
             _, second = fdi.ingest(target, qpb_root=qpb_root)

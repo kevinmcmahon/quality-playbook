@@ -1,6 +1,6 @@
 """archive_lib.py — shared helpers for quality/ run archival and INDEX rendering.
 
-Implements the Phase 5c contract from QPB_v1.5.0_Design.md:
+Implements the Phase 5c contract from QPB_v1.5.1_Design.md:
 
 - `write_timestamped_result(quality_dir, basename, content)` writes
   `quality/results/<basename>-YYYYMMDDTHHMMSSZ.<ext>` plus a `<basename>-latest.<ext>`

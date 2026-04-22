@@ -1,6 +1,6 @@
 # quality/
 
-Everything the Quality Playbook writes lives under this directory. v1.5.0
+Everything the Quality Playbook writes lives under this directory. v1.5.1
 consolidates the layout: `control_prompts/` and the prior-run archive
 (`runs/`) are both subtrees of `quality/`, not repo-root siblings.
 
@@ -19,10 +19,10 @@ quality/
   RUN_INTEGRATION_TESTS.md    integration test protocol
   RUN_SPEC_AUDIT.md           Council-of-Three spec audit protocol
   RUN_TDD_TESTS.md            TDD red-green verification protocol
-  formal_docs_manifest.json   v1.5.0 FORMAL_DOC records
-  requirements_manifest.json  v1.5.0 REQ records
-  use_cases_manifest.json     v1.5.0 UC records
-  bugs_manifest.json          v1.5.0 BUG records (when bugs exist)
+  formal_docs_manifest.json   v1.5.1 FORMAL_DOC records
+  requirements_manifest.json  v1.5.1 REQ records
+  use_cases_manifest.json     v1.5.1 UC records
+  bugs_manifest.json          v1.5.1 BUG records (when bugs exist)
   citation_semantic_check.json  Phase 4 Council Layer-2 output
   INDEX.md                    current-run metadata (schemas.md §11)
   code_reviews/               per-pass code review reports
@@ -31,8 +31,8 @@ quality/
   patches/                    regression-test + fix patches
   mechanical/                 dispatch-function extraction artifacts
   results/                    sidecar JSON + per-bug red/green logs
-  control_prompts/            per-phase prompt captures (v1.5.0+)
-  runs/                       archived prior runs (v1.5.0+)
+  control_prompts/            per-phase prompt captures (v1.5.1+)
+  runs/                       archived prior runs (v1.5.1+)
     <timestamp>/              one folder per archived run
       quality/                full snapshot of that run's quality/ tree
       INDEX.md                per-run metadata (schemas.md §11)
@@ -45,7 +45,7 @@ quality/
 
 Written at end of every run (success or explicit archive) by
 `bin/archive_lib.archive_run` (end-of-Phase-6 hook on a clean pass) or
-`bin/migrate_v1_5_0_layout.py` (backfill for pre-v1.5.0 archives). The
+`bin/migrate_v1_5_0_layout.py` (backfill for pre-v1.5.1 archives). The
 required fields match schemas.md §11 and are enforced by the gate:
 
 - `run_timestamp_start`, `run_timestamp_end`, `duration_seconds`
@@ -110,7 +110,7 @@ still work — only the historical record moves out of version control.
   (Council-of-Three `citation_semantic_check.json`) + §1.6 (manifest
   wrapper).
 - Orchestrator: `bin/run_playbook.py` (phase execution, gate hook).
-- Migration: `bin/migrate_v1_5_0_layout.py` (pre-v1.5.0 → v1.5.0 move).
+- Migration: `bin/migrate_v1_5_0_layout.py` (pre-v1.5.1 → v1.5.1 move).
 - Archival: `bin/archive_lib.py` (`archive_run`,
   `write_timestamped_result`). Operator CLI:
   `python -m bin.quality_playbook archive [--status=failed|partial]`

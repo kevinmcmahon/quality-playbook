@@ -99,7 +99,7 @@ class WriteTimestampedResultTests(unittest.TestCase):
 class RunIndexRenderingTests(unittest.TestCase):
     def test_run_index_row_counts_bugs(self) -> None:
         payload = {
-            "qpb_version": "1.5.0",
+            "qpb_version": "1.5.1",
             "target_project_type": "Code",
             "summary": {
                 "bugs": {"HIGH": 2, "MEDIUM": 3, "LOW": 1, "code-fix": 0, "spec-fix": 0},
@@ -108,7 +108,7 @@ class RunIndexRenderingTests(unittest.TestCase):
         }
         row = al.render_run_index_row("20260419T143022Z", payload)
         self.assertIn("| 20260419T143022Z ", row)
-        self.assertIn("| 1.5.0 ", row)
+        self.assertIn("| 1.5.1 ", row)
         self.assertIn("| Code ", row)
         self.assertIn("| pass ", row)
         self.assertIn("| 6 ", row)  # 2+3+1
@@ -121,7 +121,7 @@ class RunIndexRenderingTests(unittest.TestCase):
     def test_index_markdown_contains_provenance(self) -> None:
         rendered = al.render_index_markdown(
             "20260419T143022Z",
-            {"qpb_version": "1.5.0", "summary": {"bugs": {}, "gate_verdict": "pass"}},
+            {"qpb_version": "1.5.1", "summary": {"bugs": {}, "gate_verdict": "pass"}},
             provenance="written by test",
         )
         self.assertIn("written by test", rendered)
@@ -132,7 +132,7 @@ class RunIndexRenderingTests(unittest.TestCase):
 class AppendRunIndexRowTests(unittest.TestCase):
     def _payload(self, verdict: str = "pass") -> dict:
         return {
-            "qpb_version": "1.5.0",
+            "qpb_version": "1.5.1",
             "target_project_type": "Code",
             "summary": {"bugs": {"HIGH": 1}, "gate_verdict": verdict},
         }
@@ -172,7 +172,7 @@ class AppendRunIndexRowTests(unittest.TestCase):
 class ArchiveRunTests(unittest.TestCase):
     def _seed_live_run(self, repo: Path) -> None:
         _init_git(repo)
-        _write(repo / "quality" / "BUGS.md", "# Bugs\n\n<!-- Quality Playbook v1.5.0 -->\n\n### BUG-001\n\n**Severity**: HIGH\n")
+        _write(repo / "quality" / "BUGS.md", "# Bugs\n\n<!-- Quality Playbook v1.5.1 -->\n\n### BUG-001\n\n**Severity**: HIGH\n")
         _write(repo / "quality" / "REQUIREMENTS.md", "# Requirements\n\n### REQ-001\n\n**Tier**: 3\nBody.\n")
         _write(repo / "quality" / "PROGRESS.md", "## Phase completion\n\n- [x] Phase 1: Exploration\n- [x] Phase 2: Generation\n")
         _commit(repo, "seed run content")

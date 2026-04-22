@@ -3,7 +3,7 @@
 Implements schemas.md §4 (FORMAL_DOC record shape), §1.6 (manifest wrapper),
 and §10 invariant #15 (source_path uniqueness). Stdlib-only.
 
-Sidecar metadata convention (introduced in v1.5.0, Phase 2)
+Sidecar metadata convention (introduced in v1.5.1, Phase 2)
 -----------------------------------------------------------
 
 The FORMAL_DOC schema requires a `tier` field (1 or 2) for every record,

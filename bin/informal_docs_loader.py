@@ -9,7 +9,7 @@ This module is intentionally narrow:
   - No manifest is written. informal_docs do not produce FORMAL_DOC
     records; they are LLM context only.
   - No mutations. The loader is read-only. If the target's
-    informal_docs/ is under a gitignore pattern (per the v1.5.0 design),
+    informal_docs/ is under a gitignore pattern (per the v1.5.1 design),
     this module never causes a write that would surface it.
   - Same plaintext-only policy as formal_docs: only `.txt` and `.md`
     files. Unsupported extensions fail with the same actionable guidance

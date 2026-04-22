@@ -58,7 +58,7 @@ Also check for a `references/` directory alongside SKILL.md. It should contain .
 > cp SKILL.md .claude/skills/quality-playbook/SKILL.md
 > cp references/* .claude/skills/quality-playbook/references/
 >
-> # v1.5.0: Tier 1/2 and Tier 4 source folders at the target repo root.
+> # v1.5.1: Tier 1/2 and Tier 4 source folders at the target repo root.
 > # formal_docs/README.md and informal_docs/README.md ship with the skill source.
 > mkdir -p formal_docs informal_docs
 > ```

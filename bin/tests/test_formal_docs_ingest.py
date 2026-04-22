@@ -41,7 +41,7 @@ class _IngestScaffold:
 class FormalDocsIngestTests(unittest.TestCase):
     def test_happy_path_two_documents(self) -> None:
         with TemporaryDirectory() as tmp:
-            s = _IngestScaffold(Path(tmp), qpb_version="1.5.0")
+            s = _IngestScaffold(Path(tmp), qpb_version="1.5.1")
             doc_a = s.target / "formal_docs" / "alpha.txt"
             doc_b = s.target / "formal_docs" / "beta.md"
             _write(doc_a, "alpha content\nanother line\n")
@@ -61,7 +61,7 @@ class FormalDocsIngestTests(unittest.TestCase):
             manifest = json.loads(raw)
 
             # Wrapper per §1.6.
-            self.assertEqual(manifest["schema_version"], "1.5.0")
+            self.assertEqual(manifest["schema_version"], "1.5.1")
             self.assertIn("generated_at", manifest)
             # ISO 8601 with Z suffix.
             self.assertTrue(
@@ -264,7 +264,7 @@ class FormalDocsIngestTests(unittest.TestCase):
     def test_manifest_wrapper_round_trip(self) -> None:
         """Wrapper keys match §1.6 and JSON round-trips cleanly."""
         with TemporaryDirectory() as tmp:
-            s = _IngestScaffold(Path(tmp), qpb_version="1.5.0")
+            s = _IngestScaffold(Path(tmp), qpb_version="1.5.1")
             doc = s.target / "formal_docs" / "alpha.txt"
             _write(doc, "body\n")
             _write(doc.with_name("alpha.meta.json"), json.dumps({"tier": 2}))
@@ -310,7 +310,7 @@ class FormalDocsIngestTests(unittest.TestCase):
     def test_cli_happy_path(self) -> None:
         """`python -m bin.formal_docs_ingest` prints the expected summary on success."""
         with TemporaryDirectory() as tmp:
-            s = _IngestScaffold(Path(tmp), qpb_version="1.5.0")
+            s = _IngestScaffold(Path(tmp), qpb_version="1.5.1")
             doc = s.target / "formal_docs" / "alpha.txt"
             _write(doc, "body\n")
             _write(doc.with_name("alpha.meta.json"), json.dumps({"tier": 2}))

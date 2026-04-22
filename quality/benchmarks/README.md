@@ -1,15 +1,15 @@
 # Phase 7 Benchmark Runbook
 
 Operator checklist for executing the live benchmark work that closes Phase 7
-Tasks 2, 3, and 5. Phase 7 Tasks 0, 1, and 4 landed as commits on `1.5.0`
+Tasks 2, 3, and 5. Phase 7 Tasks 0, 1, and 4 landed as commits on `1.5.1`
 and gave the tooling its live-LLM hooks; this runbook walks through the
 actual runs.
 
-All commands run from the QPB repo root on branch `1.5.0`.
+All commands run from the QPB repo root on branch `1.5.1`.
 
 ## Prerequisites
 
-- `1.5.0` branch at `1ab8441` or later (Phase 7 r0/r1/r4 landed).
+- `1.5.1` branch at `1ab8441` or later (Phase 7 r0/r1/r4 landed).
 - Benchmark target repos accessible at known paths. QPB's benchmark set:
   virtio, chi, cobra, express, httpx. Only virtio has formal spec
   content that produces Tier 1/2 REQs; the other four are Spec Gap
@@ -55,7 +55,7 @@ the run under `<repo>/quality/runs/<ts>/`.
 
 ### Capture for the comparison report
 
-Collect into `quality/benchmarks/v1.5.0-vs-v1.4.6.md` (see template):
+Collect into `quality/benchmarks/v1.5.1-vs-v1.4.6.md` (see template):
 
 - Run id and timestamp.
 - Count of Tier 1/2 REQs.
@@ -64,7 +64,7 @@ Collect into `quality/benchmarks/v1.5.0-vs-v1.4.6.md` (see template):
 - Any `overreaches` or `unclear` verdicts (with `record_id` and
   reviewer).
 - Gate `Total: N FAIL, M WARN` summary.
-- Any v1.5.0-specific bug candidates surfaced by the run (these seed
+- Any v1.5.1-specific bug candidates surfaced by the run (these seed
   `quality/bugs_manifest.json` under the QPB project as the v1.5.1
   backlog).
 
@@ -115,26 +115,26 @@ commit if they run in a single session.)
 
 After Tasks 2 and 3 archive their runs:
 
-1. Open `quality/benchmarks/v1.5.0-vs-v1.4.6.md`. The five repo sections
+1. Open `quality/benchmarks/v1.5.1-vs-v1.4.6.md`. The five repo sections
    are pre-stubbed; fill in the numbers.
 2. v1.4.6 baseline data lives under
    `quality/runs/20260418-193542/` (QPB's own v1.4.6 self-audit) and —
    for the per-target repos — in each benchmark repo's archived
    `quality/runs/<ts>/` folder from before the Phase 7 runs. If those
-   don't exist yet, the comparison is "v1.5.0 vs nothing"; record that
+   don't exist yet, the comparison is "v1.5.1 vs nothing"; record that
    explicitly rather than fabricating a baseline.
 3. Close with the Decision section. Three legal outcomes:
-   - **SHIP v1.5.0** → proceed to Phase 8 (self-audit + version bump).
+   - **SHIP v1.5.1** → proceed to Phase 8 (self-audit + version bump).
    - **ITERATE** on a specific issue → new phase with scoped work.
    - **PAUSE** → Andrew review.
-4. File any bugs found in v1.5.0 itself under QPB's
+4. File any bugs found in v1.5.1 itself under QPB's
    `quality/bugs_manifest.json` (not under the benchmark repo).
 
 ### Commit
 
 ```
-git add quality/benchmarks/v1.5.0-vs-v1.4.6.md quality/bugs_manifest.json
-git commit -m "Phase 7 r5: v1.5.0 vs v1.4.6 benchmark comparison"
+git add quality/benchmarks/v1.5.1-vs-v1.4.6.md quality/bugs_manifest.json
+git commit -m "Phase 7 r5: v1.5.1 vs v1.4.6 benchmark comparison"
 ```
 
 ## Environment notes

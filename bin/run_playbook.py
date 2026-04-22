@@ -359,7 +359,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Suppress stdout echo of logboth() output. The built-in run log "
             "is still written in full. Intended for AI-sandbox invocations "
-            "that want silent stdout; the v1.5.0 isatty() gate that used "
+            "that want silent stdout; the v1.5.1 isatty() gate that used "
             "to hide tee'd output is gone — this thread is the explicit "
             "opt-out (v1.5.1 Item 2.1, Risk Register row 1)."
         ),
@@ -700,7 +700,7 @@ Run the spec audit per quality/RUN_SPEC_AUDIT.md. Produce:
 - Regression tests and patches for any net-new spec audit bugs
 - Update BUGS.md and PROGRESS.md BUG tracker with any new findings
 
-Part B — Layer-2 semantic citation check (v1.5.0):
+Part B — Layer-2 semantic citation check (v1.5.1):
 The gate's invariant #17 (schemas.md §10) requires three Council members to
 vote on each Tier 1/2 REQ's citation_excerpt. Execute these steps:
 
@@ -1440,7 +1440,7 @@ def _prior_run_id_from_live_index(quality_dir: Path) -> Optional[str]:
 def archive_previous_run(repo_dir: Path, current_run_timestamp: str) -> None:
     """Make room for a new run by archiving whatever live quality/ content remains.
 
-    v1.5.0 unified pipeline (Phase 5 revision r1): both the Phase-1 entry
+    v1.5.1 unified pipeline (Phase 5 revision r1): both the Phase-1 entry
     archive and the end-of-Phase-6 archive go through
     `archive_lib.archive_run()` so every `quality/runs/<ts>/` folder has an
     `INDEX.md` with §11 fields and every run emits a row into

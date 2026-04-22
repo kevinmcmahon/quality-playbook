@@ -293,7 +293,7 @@ class IntegrationWithIngestTests(unittest.TestCase):
             tmp_path = Path(tmp)
             qpb_root = tmp_path / "qpb"
             qpb_root.mkdir()
-            _touch(qpb_root / "SKILL.md", "version: 1.5.0\n")
+            _touch(qpb_root / "SKILL.md", "version: 1.5.1\n")
 
             target = tmp_path / "target"
             formal = target / "formal_docs"

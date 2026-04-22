@@ -285,7 +285,7 @@ class RegressionTests(unittest.TestCase):
 
         Historical source: run_playbook.py — shutil.rmtree(control_prompts_dir)
         used to delete control_prompts/ from repo root instead of archiving it.
-        v1.5.0 update: control_prompts/ now lives under quality/, so the
+        v1.5.1 update: control_prompts/ now lives under quality/, so the
         quality/ copytree captures it naturally into the archive subtree at
         quality/runs/<ts>/quality/control_prompts/.
         """

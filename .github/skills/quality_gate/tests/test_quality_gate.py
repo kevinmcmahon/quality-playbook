@@ -1094,10 +1094,10 @@ class TestExitCodes(FixtureBase):
 class TestSkillVersionDetection(unittest.TestCase):
     def test_detects_from_frontmatter(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
-            f.write("---\nname: quality-playbook\nversion: 1.5.0\n---\n")
+            f.write("---\nname: quality-playbook\nversion: 1.5.1\n---\n")
             path = Path(f.name)
         try:
-            self.assertEqual(quality_gate.detect_skill_version([path]), "1.5.0")
+            self.assertEqual(quality_gate.detect_skill_version([path]), "1.5.1")
         finally:
             path.unlink()
 
@@ -1120,7 +1120,7 @@ class TestSkillVersionDetection(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# v1.5.0 Layer-1 checks — negative fixtures per schemas.md §10 invariants.
+# v1.5.1 Layer-1 checks — negative fixtures per schemas.md §10 invariants.
 # Each test targets one check function directly; fixtures are synthetic trees
 # and manifest JSON blobs crafted to exercise one invariant at a time.
 # ---------------------------------------------------------------------------
@@ -1574,7 +1574,7 @@ class TestV150IndexMd(V150FixtureBase):
 
 
 class TestV150LegacyRunGracefulSkip(V150FixtureBase):
-    """A repo with no v1.5.0 manifests should generate zero new FAILs."""
+    """A repo with no v1.5.1 manifests should generate zero new FAILs."""
 
     def test_all_checks_noop_on_legacy_repo(self):
         # No manifests, no formal_docs, no INDEX.md — purely v1.4.x shape.
@@ -1952,7 +1952,7 @@ class TestChallengeGateCoverage(unittest.TestCase):
             q = Path(tmp) / "quality"
             q.mkdir()
             (q / "bugs_manifest.json").write_text(json.dumps({
-                "schema_version": "1.5.0",
+                "schema_version": "1.5.1",
                 "generated_at": "2026-04-21T00:00:00Z",
                 "records": [{
                     "id": "BUG-100", "severity": "LOW",
@@ -1962,7 +1962,7 @@ class TestChallengeGateCoverage(unittest.TestCase):
                 }],
             }))
             (q / "requirements_manifest.json").write_text(json.dumps({
-                "schema_version": "1.5.0",
+                "schema_version": "1.5.1",
                 "generated_at": "2026-04-21T00:00:00Z",
                 "records": [{
                     "id": "REQ-001", "tier": 1,

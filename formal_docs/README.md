@@ -1,7 +1,7 @@
 # formal_docs/
 
 **Tier 1 and Tier 2 plaintext primary sources** — authoritative documentation
-that Quality Playbook v1.5.0 cites when deriving requirements and filing bugs.
+that Quality Playbook v1.5.1 cites when deriving requirements and filing bugs.
 Files in this folder feed `bin/formal_docs_ingest.py`, which walks the
 directory at the start of Phase 1 and writes
 `quality/formal_docs_manifest.json` (one `FORMAL_DOC` record per file, per

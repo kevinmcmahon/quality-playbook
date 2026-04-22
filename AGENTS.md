@@ -29,7 +29,7 @@ mkdir -p .github/skills/references
 cp SKILL.md .github/skills/SKILL.md
 cp quality_gate.sh .github/skills/quality_gate.sh
 cp references/* .github/skills/references/
-# v1.5.0: Tier 1/2 and Tier 4 source folders at the target repo root.
+# v1.5.1: Tier 1/2 and Tier 4 source folders at the target repo root.
 # formal_docs/README.md and informal_docs/README.md ship with the skill source.
 mkdir -p formal_docs informal_docs
 # Optional: append suggested .gitignore rules for adopters.

@@ -29,7 +29,7 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
-# Allow soft import of bin/citation_verifier for v1.5.0 byte-equality checks.
+# Allow soft import of bin/citation_verifier for v1.5.1 byte-equality checks.
 # The gate lives at .github/skills/quality_gate/quality_gate.py inside the QPB
 # install; the repo root is three parents up. When the gate is installed
 # standalone into a target repo without bin/, the import fails silently and
@@ -1179,10 +1179,10 @@ def check_run_metadata(q):
 
 
 # ---------------------------------------------------------------------------
-# v1.5.0 Layer-1 mechanical invariants (schemas.md §10).
+# v1.5.1 Layer-1 mechanical invariants (schemas.md §10).
 #
-# Each check gracefully no-ops on pre-v1.5.0 runs (absent manifests = legacy
-# repo; nothing to enforce). When the v1.5.0 artifacts are present every
+# Each check gracefully no-ops on pre-v1.5.1 runs (absent manifests = legacy
+# repo; nothing to enforce). When the v1.5.1 artifacts are present every
 # invariant below is enforced mechanically and FAILs with a specific
 # <path>: <reason> message so the operator can fix the single artifact
 # without re-running the whole playbook.
@@ -1465,7 +1465,7 @@ def check_v1_5_0_requirements_manifest(repo_dir, q):
                 f"record_id={req_id}: has invalid tier {tier!r} (expected integer 1–5)",
             )
 
-    pass_("requirements_manifest.json: v1.5.0 Layer-1 REQ checks complete")
+    pass_("requirements_manifest.json: v1.5.1 Layer-1 REQ checks complete")
 
 
 def check_v1_5_0_bugs_manifest(q):
@@ -1510,7 +1510,7 @@ def check_v1_5_0_bugs_manifest(q):
                 f"({disp}, {ft}) per schemas.md §3.4 / §10 invariant #12",
             )
 
-    pass_("bugs_manifest.json: v1.5.0 Layer-1 BUG checks complete")
+    pass_("bugs_manifest.json: v1.5.1 Layer-1 BUG checks complete")
 
 
 def check_v1_5_0_index_md(q):
@@ -1527,7 +1527,7 @@ def check_v1_5_0_index_md(q):
     if not path.is_file():
         if is_v150_run:
             fail(
-                "quality/INDEX.md does not exist (required on every v1.5.0 run per "
+                "quality/INDEX.md does not exist (required on every v1.5.1 run per "
                 "schemas.md §10 invariant #10)"
             )
         return

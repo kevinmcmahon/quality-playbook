@@ -1,7 +1,7 @@
 """Phase 7 variation fixtures — deliberately-broken test cases.
 
 Each fixture under bin/tests/fixtures/phase7_variations/<variation>/ is a
-partial v1.5.0 target repo: formal_docs/ with a plaintext + sidecar,
+partial v1.5.1 target repo: formal_docs/ with a plaintext + sidecar,
 quality/formal_docs_manifest.json, and quality/requirements_manifest.json.
 The test driver copies the fixture into a tempdir, runs the relevant
 Phase 5+6 gate checks, and asserts the expected failure lines (or
@@ -101,7 +101,7 @@ class Phase7EmptyInformalDocs(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             repo = _copy_fixture("empty_informal_docs", Path(tmp))
             q = repo / "quality"
-            # INDEX.md is required by invariant #10 when v1.5.0 manifests
+            # INDEX.md is required by invariant #10 when v1.5.1 manifests
             # are present. Stub one in so the fixture isolates the
             # informal_docs/ check rather than the INDEX check.
             (q / "INDEX.md").write_text(
