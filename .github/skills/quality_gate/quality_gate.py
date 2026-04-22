@@ -987,7 +987,7 @@ _WRITEUP_TEMPLATE_SENTINELS = (
 )
 
 # Matches a ```diff fenced block and captures its body for content inspection.
-_WRITEUP_DIFF_BLOCK_RE = re.compile(r"```diff\s*\n(.*?)```", re.DOTALL)
+_WRITEUP_DIFF_BLOCK_RE = re.compile(r"```diff\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
 
 
 def _writeup_diff_is_non_empty(text):
@@ -1022,7 +1022,14 @@ def check_writeups(q, bug_count):
                 text = wf.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
-            if "```diff" in text:
+            # Presence test uses the same regex as the content test so the
+            # two can never disagree on whether a fence exists. Case-insensitive
+            # match accepts ```diff / ```Diff / ```DIFF uniformly — operators
+            # routinely uppercase the fence tag and the gate must not silently
+            # skip those writeups (the content non-emptiness check would then
+            # never fire, producing a confusing "no inline fix diffs" FAIL on a
+            # writeup that visibly contains a unified diff).
+            if _WRITEUP_DIFF_BLOCK_RE.search(text):
                 writeup_diff_count += 1
                 if not _writeup_diff_is_non_empty(text):
                     empty_diff_writeups.append(wf.name)

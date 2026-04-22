@@ -984,6 +984,51 @@ class TestWriteups(FixtureBase):
         stdout, _ = self.gate()
         self.assertIn("No writeups for 1 confirmed bug(s)", stdout)
 
+    def test_writeup_uppercase_diff_fence_passes(self):
+        """v1.5.1 Item 2 regression guard: a writeup that opens its fence
+        with ```Diff (mixed case) carries a real unified diff and must be
+        recognised as such. Both the presence check and the non-empty
+        content check pass through the same case-insensitive regex —
+        neither can silently skip a drifted-case fence."""
+        tree = minimal_zero_bug_tree()
+        add_one_bug(tree)
+        tree["quality/writeups/BUG-001.md"] = (
+            "# BUG-001\n\n"
+            "## The fix\n\n"
+            "```Diff\n"
+            "- old line\n"
+            "+ new line\n"
+            "```\n"
+        )
+        self.write(tree)
+        stdout, _ = self.gate()
+        self.assertIn("PASS: All 1 writeup(s) have inline fix diffs", stdout)
+        self.assertIn("PASS: All writeup ```diff blocks contain unified-diff content", stdout)
+
+    def test_writeup_empty_uppercase_diff_fence_fails(self):
+        """Paired with the test above: an uppercase ```DIFF fence with no
+        `+`/`-` body must trip the empty-diff FAIL just like the lowercase
+        case. This proves the case-insensitive regex is wired into BOTH
+        the presence detection and the content inspection — if one were
+        still case-sensitive, this fixture would produce a misleading
+        pass/fail combination."""
+        tree = minimal_zero_bug_tree()
+        add_one_bug(tree)
+        tree["quality/writeups/BUG-001.md"] = (
+            "# BUG-001\n\n"
+            "## The fix\n\n"
+            "```DIFF\n"
+            "some context line\n"
+            "another context line\n"
+            "```\n"
+        )
+        self.write(tree)
+        stdout, _ = self.gate()
+        # Fence IS detected — presence check accepts DIFF.
+        self.assertIn("PASS: All 1 writeup(s) have inline fix diffs", stdout)
+        # Content check fires — no +/- lines inside.
+        self.assertIn("writeup(s) have empty ```diff blocks", stdout)
+
 
 class TestVersionStamps(FixtureBase):
     def test_matching_versions_pass(self):
