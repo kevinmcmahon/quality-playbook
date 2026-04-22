@@ -106,6 +106,8 @@ The skill pipeline uses a four-pass generate-then-verify architecture. The two h
 
 **Pass A (Naive Coverage).** A Haiku-style prompt: "Read the skill. Understand what it does. Produce a comprehensive requirements document organized by functional area with testable acceptance criteria." No citation rigor required. Output: draft REQ list with proposed source references ("I think this comes from the Phase 1 section of SKILL.md"). High recall, low precision — tolerates overreach because Pass B will filter.
 
+Pass A is section-iterative for any skill above a small-input threshold (SKILL.md plus reference files exceeding a few hundred lines total). Rather than one prompt over the entire skill, Pass A walks the SKILL.md section tree in order, generating draft REQs for one section at a time, appending to a persistent drafts artifact, and advancing a section cursor. This is a direct response to the failure mode where single-shot generation over long inputs silently drops coverage on later sections under context pressure; the mechanical defense is per-section progress with disk as the ledger. See "Execution Discipline" below.
+
 **Critical constraint:** Pass A can propose source references but CANNOT produce `citation_excerpt` values. Only Pass B is allowed to populate excerpts, and only by mechanical extraction. This prevents hallucinated citations from laundering through.
 
 **Pass B (Citation Extraction).** For each draft REQ from Pass A, mechanically search SKILL.md and reference files for supporting text. Uses grep / structured parsing — not LLM judgment. Populates `citation_excerpt` where found. This is the same mechanical citation extractor v1.5.0 uses for code-project formal docs; no new machinery, repurposed machinery.
@@ -117,6 +119,18 @@ The skill pipeline uses a four-pass generate-then-verify architecture. The two h
 **Pass D (Coverage Audit).** Diff Pass A's full draft list against Pass C's verified formal list. Draft REQs without formal equivalents need explicit rejection rationale. This catches the case where mechanical citation extraction missed something that should have been found — either the extractor needs a second try, or the Pass A item was an overreach, but the decision is explicit rather than silent.
 
 This architecture means each pass does one thing well: Pass A brings coverage (the Haiku strength), Pass B brings mechanical citation discipline (the v1.5.0 strength), Pass C brings formal structure, Pass D brings accountability for what the earlier passes missed or dropped.
+
+### Execution Discipline — Disk is the Ledger
+
+A generate-then-verify pipeline is only as reliable as its per-pass persistence. When any pass runs long — Pass A against a multi-thousand-line SKILL.md plus reference files, Pass B mechanically searching every draft REQ, Pass C converting hundreds of cited drafts into formal records — it must survive interruption and LLM auto-compaction without losing coverage. Three invariants follow, and they are correctness constraints, not performance optimizations:
+
+1. **Disk is the source of truth, not the model's working context.** Every pass writes its incremental output to a persistent artifact before advancing its cursor. The artifact — not the conversation history — is what the next pass reads. Intermediate artifacts are structured (JSONL for draft lists, JSON for progress state) so that downstream passes can resume without re-parsing unstructured prose.
+
+2. **Each pass has a cursor and resumes from it.** Pass A iterates sections of SKILL.md and reference files; Pass B iterates Pass A drafts; Pass C iterates cited drafts; Pass D iterates the Pass A list for diff. Each iteration updates a progress file atomically (tmp + rename) *after* the unit of work lands on disk. Killing a pass mid-run and restarting it continues from the last cursor position, not from scratch.
+
+3. **Compaction is routine, not exceptional.** Any LLM-driven pass prompt includes an explicit recovery procedure — re-read the pass instructions, read the progress file, verify continuity against the last-written artifact, resume from the cursor — because the prompt cannot assume its own working memory persists across an auto-compaction event.
+
+The empirical basis for these invariants: prior summarizer work on a comparable-scale input (14MB of chat history, thousands of records per file) showed that unbounded single-shot LLM generation over large inputs degrades into templated stub output or silently-skipped input regions once context pressure rises. The only mechanical defense is per-unit progress with disk as the ledger. Pass A over a 1,500-line SKILL.md plus multiple reference files is structurally the same problem; the pipeline treats it as such from the start rather than discovering it under load.
 
 ### Why This Maps to Existing Infrastructure
 
@@ -282,3 +296,7 @@ These don't block v1.5.2 design but need answers during implementation:
 3. **When SKILL.md is Tier 1 (its own formal spec), what authority resolves SKILL.md-vs-reference-file conflicts?** Lean: SKILL.md wins because it's the primary; reference files are supporting. Explicit precedence rule in `schemas.md`.
 
 4. **Can the Hybrid case have mixed tier distributions (some REQs Tier 1 from SKILL.md, others Tier 1 from an external spec)?** Lean: yes. The tier depends on REQ origin, not project.
+
+5. **What is the unit of iteration for Pass A, and how does it handle nested subsections?** Lean: top-level heading (`##` in SKILL.md) is the default iteration unit. Sections exceeding an implementation-defined line threshold (candidate: 300 lines) get split at the next heading level down. Meta sections (Why This Exists, Overview) and near-empty sections are skipped with an explicit skip-rationale line written to the drafts artifact so Pass D can account for every section even when it produced zero REQs.
+
+6. **What triggers the section-iterative path versus single-shot Pass A?** Lean: any skill where SKILL.md plus reference files together exceed a threshold (candidate: 500 lines total). Smaller skills run Pass A single-shot and skip the cursor machinery. The threshold is tunable and logged in the run manifest.

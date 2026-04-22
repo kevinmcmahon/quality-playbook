@@ -1,32 +1,34 @@
 # Quality Playbook v1.5.2 — Implementation Plan
 
 *Companion to: `QPB_v1.5.2_Design.md`*
-*Status: draft — to be reviewed and updated after v1.5.0 ships*
-*Depends on: v1.5.0 complete (schemas.md, tier system, citation verification, disposition field all in place)*
+*Status: draft — to be reviewed and updated after v1.5.1 ships (v1.5.0 machinery, v1.5.1 operator-flow and observability)*
+*Depends on: v1.5.0 complete (schemas.md, tier system, citation verification, disposition field) and v1.5.1 complete (operator-flow fixes, observability stack, invocation flexibility, challenge-gate invariant, self-audit)*
 
-This plan is deliberately more provisional than the v1.5.0 plan. v1.5.0's implementation will surface real constraints (what the schema actually looks like, how the citation gate actually behaves, where the orchestrator's extension points actually are) that will affect how v1.5.2 builds on top. This document captures the intended shape; it should be revisited and refined once v1.5.0 is stable.
+This plan is deliberately more provisional than the v1.5.0 plan. v1.5.0's implementation surfaced the schema and citation-gate constraints v1.5.2 builds on; v1.5.1's Phase 4 benchmark validation surfaces the observability and pacing characteristics of real end-to-end runs, which in turn inform how aggressive the per-pass progress machinery in Phase 3 of this plan needs to be. This document captures the intended shape; it should be revisited and refined once v1.5.1 is stable and Phase 4 benchmarks have been reviewed.
 
 ---
 
 ## Operating Principles
 
-- v1.5.2 builds on v1.5.0, doesn't replace it. The code-project path remains primary; skill-project handling is additive.
+- v1.5.2 builds on v1.5.0 and v1.5.1, doesn't replace them. The code-project path remains primary; skill-project handling is additive.
 - Every phase produces a concrete deliverable that can be committed and benchmarked independently.
 - The Haiku-generated REQUIREMENTS.md is the success benchmark throughout. At every phase, compare QPB's self-audit output against it.
 - No regression on code projects. The five code benchmark repos must continue to work.
+- **Disk is the source of truth for every LLM-driven pass.** Any pass that generates requirements, extracts citations, or audits coverage writes its output incrementally to a persistent artifact and advances a cursor in a progress file before moving on. Passes are resumable: killing one mid-run and restarting it continues from the last cursor position, not from scratch. Pass prompts include explicit compaction-recovery instructions (re-read the pass spec, read the progress file, verify continuity against disk, resume from cursor) so that auto-compaction is routine rather than catastrophic. See Phase 3 "Per-pass execution protocol" for the mechanics. This principle is a correctness invariant for skill projects, whose SKILL.md inputs are long enough that single-shot generation degrades under context pressure.
 
 ---
 
-## Phase 0 — v1.5.0 Stabilization
+## Phase 0 — v1.5.1 Stabilization and Benchmark Confirmation
 
-Goal: v1.5.0 is shipped, tagged, and running clean on all five code benchmark repos. No outstanding gate failures. Benchmark yields documented as v1.5.2 baseline.
+Goal: v1.5.1 is shipped, tagged, and validated against the full code-project benchmark suite. v1.5.0's divergence model, tier system, and citation schema are in place; v1.5.1's operator-flow fixes, observability stack, invocation flexibility, challenge-gate invariant, and self-audit are complete. Benchmark yields from v1.5.1's Phase 4 are documented as the v1.5.2 baseline (replacing the earlier v1.5.0 baseline).
 
 Work items:
-- All v1.5.0 phases complete per `QPB_v1.5.0_Implementation_Plan.md`
-- v1.5.0 tagged and released
-- Benchmark baselines captured in `previous_runs/v1.5.0/`
+- All v1.5.0 and v1.5.1 phases complete per their respective implementation plans
+- v1.5.1 tagged and released
+- Benchmark baselines captured under `previous_runs/v1.5.1/` (per the v1.5.1 Phase 4 comparison report) — these are the regression baseline v1.5.2 code-project runs compare against
+- Observability data from v1.5.1 Phase 4 reviewed (silent-gap frequency, pacing behavior under real LLM load) — feeds the Phase 3 per-pass progress design in this plan
 
-Gate to Phase 1: v1.5.0 self-audit passes cleanly; no pending v1.5.0 bugs without dispositions.
+Gate to Phase 1: v1.5.1 self-audit passes cleanly; Phase 4 comparison report signed off with PASS or PASS_WITH_CAVEATS; no pending v1.5.0 or v1.5.1 bugs without dispositions.
 
 ---
 
@@ -80,24 +82,81 @@ Goal: implement the four-pass derivation architecture for skill projects.
 
 The pipeline separates coverage breadth (Pass A) from citation precision (Pass B–C) from accountability (Pass D). Each pass has a narrow, specific job and a clear contract with the next.
 
+### Per-Pass Execution Protocol
+
+Every pass in Phase 3 obeys the same execution protocol, defined once here and referenced from each pass spec below. This is the mechanical implementation of the "disk is source of truth" operating principle.
+
+**Artifact layout.** For each run, Phase 3 creates a working directory under `quality/phase3/` (or the project's equivalent quality folder):
+
+```
+quality/phase3/
+  pass_a_drafts.jsonl        # one draft REQ per line; appended as Pass A iterates
+  pass_a_progress.json       # section cursor + status
+  pass_b_citations.jsonl     # Pass A drafts annotated with citation_excerpt + citation_status
+  pass_b_progress.json       # draft-idx cursor + status
+  pass_c_formal.jsonl        # formal REQ records with v1.5.0 citation schema
+  pass_c_progress.json       # citation-idx cursor + status
+  pass_d_audit.json          # {promoted, rejected, demoted_to_tier_5} with rationale per draft
+  pass_d_progress.json       # Pass A-idx cursor + status
+```
+
+All writes to JSONL files are append-only; all writes to progress.json files are atomic tmp-file-then-rename so the file is never observed in a half-written state.
+
+**Progress file shape (per pass):**
+
+```json
+{
+  "pass": "A" | "B" | "C" | "D",
+  "unit": "section" | "draft" | "citation" | "audit-entry",
+  "cursor": <integer; 0-based index of the next unprocessed unit>,
+  "total": <integer or null; filled in once total is known>,
+  "status": "running" | "paused" | "complete" | "blocked",
+  "last_updated": "<ISO-8601 UTC>",
+  "notes": "<free-form, optional; used for blocked or paused>"
+}
+```
+
+The cursor always equals the idx of the next unit that still needs work. It advances only *after* the unit's output has been appended to the pass's JSONL artifact. Restarting a pass reads the progress file, reads the last record in the corresponding JSONL (verifying it matches `cursor - 1`), rolls the cursor back to match disk state on any discrepancy, and resumes. The verify-and-roll-back step is mandatory — stale progress files observed in practice (both in-house summarizer work and in field) always mean disk is further ahead than the progress file, never behind.
+
+**Pass prompt recovery preamble.** Every LLM-driven pass prompt includes the following recovery procedure near the top, as a required block:
+
+> If this session has experienced auto-compaction — you will see a conversation summary where recent tool-call history should be, or a continuation banner — do this before continuing:
+> 1. Re-read the pass specification you were given. Do not try to reconstruct it from the compacted summary.
+> 2. Read the pass's progress file (`pass_X_progress.json`).
+> 3. Read the last record of the pass's JSONL artifact and confirm its idx equals `cursor - 1`. If not, roll the cursor back to match disk state and note the discrepancy.
+> 4. Resume the per-unit workflow from the cursor.
+> Disk is the source of truth. The conversation is not.
+
+**Batch-size discipline.** Prompts process one unit at a time by default. Grouping multiple units into a single LLM call is permitted only where the unit size is small enough that the grouping cannot meaningfully shift context pressure — and even then, each unit's output is written individually before the next unit is read. No pass writes multiple units to disk in one shot; if that pattern emerges it indicates scripting drift and the pass should be re-scoped.
+
+**Fail-loud thresholds.** Each pass records per-unit wall-clock time in the JSONL record. If observed throughput exceeds an implementation-defined ceiling (candidate: >5 units/minute for Pass A section processing), the pass halts and emits a diagnostic — this is the tripwire for the "scripting instead of summarizing" failure observed in prior summarizer work, where the LLM degrades into templated stub generation. The ceiling is calibrated per pass; the point is to have one, not to tune it perfectly in v1.5.2 Phase 3.
+
+**Restart and idempotency.** A pass that completes cleanly updates its progress file to `status: "complete"` and records total unit count. Downstream passes refuse to start unless the upstream pass's progress shows `complete`. Re-running a completed pass is a no-op unless its artifact is explicitly cleared; this prevents accidental double-run coverage loss.
+
 ### Pass A — Naive Coverage
 
-- Prompt modeled on the Haiku session: "Read the skill, understand what it does, produce a comprehensive requirements document organized by functional area with testable acceptance criteria."
-- Output format: machine-parseable list of draft REQs, each with `title`, `description`, `acceptance_criteria`, and `proposed_source_ref` (free-text like "Phase 1 section of SKILL.md")
+- Iteration unit: one SKILL.md top-level section (or reference-file top-level section) at a time. Pass A walks the section tree in document order, not all at once.
+- Section enumeration step (first, before LLM work): parse SKILL.md and each reference file for top-level headings, emit `pass_a_sections.json` listing `{section_idx, document, heading, line_start, line_end, skip_reason}`. Meta sections (Why This Exists, Overview, acknowledgments) get `skip_reason` populated; Pass A still emits a drafts-artifact line for them with `skipped: true` so Pass D can account for every section.
+- Section-split rule: any section exceeding the implementation-defined line threshold (candidate: 300 lines) gets split at the next heading level down and each subsection becomes its own iteration unit. This keeps per-unit prompt size bounded. Calibration note: the threshold is for instructional prose (SKILL.md and reference-file content), which is denser per line than generic documentation or code. Initial calibration should start lower rather than higher — a 150–200 line section of operational prose already contains more testable claims than most tuners will intuit from a line count alone. Tune upward if Pass A under-produces REQs per section, downward if it begins degrading into stub output.
+- Per-section prompt modeled on the Haiku session: "Given this section of SKILL.md and the surrounding context, produce draft REQs covering every testable claim in the section. High recall; overreach is acceptable because Pass B will filter." The prompt includes the Per-Pass Execution Protocol recovery preamble.
+- Output format: machine-parseable JSONL, one draft REQ per line, each with `draft_idx`, `section_idx`, `title`, `description`, `acceptance_criteria`, and `proposed_source_ref` (free-text like "Phase 1 section of SKILL.md"). One JSONL record per draft REQ; sections that legitimately produce zero REQs still emit a single `{section_idx, no_reqs: true, rationale: "..."}` line so Pass D can distinguish "skipped with reason" from "silently missed".
 - **Constraint: Pass A MUST NOT produce `citation_excerpt` values.** It can propose source references but not excerpts. Enforced structurally in the output schema (no `citation_excerpt` field).
-- Prompt engineering: reuse language from the Haiku session that produced the 95-REQ output. Calibrate against Haiku's output structure.
+- **Execution protocol: section-iterative with cursor.** After processing each section, append its draft records to `pass_a_drafts.jsonl`, update `pass_a_progress.json` (cursor = next section_idx), and only then advance. Restart reads the progress file, verifies the last JSONL record's `section_idx` equals `cursor - 1`, and resumes from the cursor. Per-section wall-clock time is recorded; a section that produces more than the throughput ceiling triggers the fail-loud tripwire.
+- For small skills (SKILL.md plus reference files below a threshold; candidate: 500 lines total), Pass A may run single-shot over the entire input and skip the cursor machinery. The single-shot-eligibility decision is made at section-enumeration time and logged in the run manifest.
+- Prompt engineering: reuse language from the Haiku session that produced the 95-REQ output. Calibrate against Haiku's output structure, but scope each Haiku-style prompt to one section's worth of input.
 
 ### Pass B — Citation Extraction
 
-- For each draft REQ from Pass A, mechanically search SKILL.md and reference files for supporting text
-- Implementation: grep-based matching on the `acceptance_criteria` field, with fuzzy matching (stemming, tokenization) for robustness
-- Populates `citation_excerpt` where found, `citation_status = verified`
-- For drafts where no supporting text found: `citation_status = unverified`, flagged for Pass C to decide
-- Reuse v1.5.0's citation extractor — no new machinery
+- Iteration unit: one Pass A draft record at a time (driven by `draft_idx`). Pass B is mechanical, not LLM-driven, but still obeys the per-pass execution protocol so that a crash mid-extraction does not require re-running the whole corpus.
+- For each draft REQ from Pass A, mechanically search SKILL.md and reference files for supporting text.
+- Implementation: grep-based matching on the `acceptance_criteria` field, with fuzzy matching (stemming, tokenization) for robustness.
+- Output: append one record to `pass_b_citations.jsonl` per draft, populating `citation_excerpt` where found with `citation_status = verified`; otherwise `citation_status = unverified`, flagged for Pass C to decide. Update `pass_b_progress.json` after each record.
+- Reuse v1.5.0's citation extractor — no new machinery.
 
 ### Pass C — Formal REQ Production
 
-- Convert each cited draft into a proper REQ record with tier, ID, full v1.5.0 citation schema
+- Iteration unit: one Pass B record at a time (driven by draft_idx). Output appended to `pass_c_formal.jsonl`; progress cursor updated after each record per the execution protocol.
+- Convert each cited draft into a proper REQ record with tier, ID, full v1.5.0 citation schema.
 - Disposition logic:
   - `citation_status = verified` → promote to Tier 1, full REQ record
   - `citation_status = unverified`, source is SKILL.md or reference file → Council review; either drafted Pass A overreach (reject) or citation extractor missed it (manual citation or second extraction attempt)
@@ -105,10 +164,13 @@ The pipeline separates coverage breadth (Pass A) from citation precision (Pass B
 
 ### Pass D — Coverage Audit
 
-- Produce a diff report: Pass A draft list vs. Pass C formal REQ list
-- Every Pass A draft that didn't make it to Pass C must have a recorded rejection rationale
-- Output: `skill_coverage_audit.json` with three sections: `promoted` (A→C), `rejected` (with rationale), `demoted_to_tier_5` (with note)
-- Flagged for Phase 4 Council if rejection rationale is weak or rejection rate > 30%
+- Iteration unit: one Pass A draft record (by `draft_idx`) at a time. Pass D cross-references each draft against the Pass C formal list to classify it as promoted, rejected, or demoted, and records a rationale per draft. Cursor advances per draft.
+- Produce a diff report: Pass A draft list vs. Pass C formal REQ list.
+- Every Pass A draft that didn't make it to Pass C must have a recorded rejection rationale. No silent drops.
+- Output: `pass_d_audit.json` (consolidated at end-of-pass) with three sections: `promoted` (A→C), `rejected` (with rationale), `demoted_to_tier_5` (with note). Intermediate per-draft decisions also flushed to `pass_d_progress.json.notes` so a crashed Pass D can resume.
+- Also produce `pass_d_section_coverage.json`: for every section enumerated in Pass A, report how many drafts it produced, how many were promoted, and whether any drafts are still pending resolution. Any section with zero promoted REQs and no explicit skip-rationale is flagged as a completeness gap.
+- Explicit-skip routing: sections that Pass A emitted with `skipped: true` or `no_reqs: true, rationale: "..."` are pre-dispositioned as `intentional-skip` in Pass D's output and excluded from the Council review queue by default. They remain visible in `pass_d_section_coverage.json` for audit, but they do not surface as items requiring human adjudication. The Council inbox stays scoped to items that actually need judgment: rejected drafts, Tier 5 demotions, weak rationales, and unflagged zero-REQ sections. A separate escalation flag exists for the implementer to force a skip into Council review if the rationale looks suspect on spot-check, but this is opt-in rather than default.
+- Flagged for Phase 4 Council if rejection rationale is weak or rejection rate > 30%.
 
 ### Reference-File Coverage
 
@@ -131,6 +193,9 @@ Gate to Phase 4:
 - Pass C formal REQ count within 50% of Haiku's 95 REQs (intermediate gate; full parity comes after Phase 4)
 - Pass D rejection rate documented; every rejection has rationale
 - Same 10 use cases covered as Haiku (may have different IDs)
+- **All four passes are resumable**: a forced kill-and-restart at any point during Phase 3 continues from the last cursor position and produces byte-identical (or logically-equivalent) final artifacts compared to an uninterrupted run. Verified on QPB's own SKILL.md with at least one mid-pass kill per pass.
+- **Every enumerated section has an accounted outcome in `pass_d_section_coverage.json`** — either REQs produced or an explicit skip-rationale. No silent section drops.
+- Per-pass progress files reach `status: "complete"` at pass end; downstream passes refuse to start without this signal (verified by deliberately removing an upstream `complete` status and confirming Phase 3 refuses to advance).
 
 ---
 
@@ -258,6 +323,9 @@ Gate to release: self-audit completes cleanly OR any failures are explicitly dis
 | Execution divergence has too few archived runs to be useful | Low for QPB (has bootstrap history); Medium for new projects | Document minimum run threshold; emit confidence caveat with low-N findings |
 | Hybrid projects produce unwieldy REQUIREMENTS.md length | Medium | Functional section grouping (from v1.5.0) handles this; verify during Phase 7 |
 | Cross-model inconsistency on skill derivation | Medium | Test with opus + sonnet + copilot+gpt explicitly in Phase 7; adjust prompts if variance too high |
+| Single-shot Pass A over long skills silently drops coverage under context pressure | High for skills with >500 lines of input; empirically observed in prior summarizer work on comparable-scale inputs | Section-iterative Pass A with per-section cursor and compaction-recovery prompt preamble; throughput ceiling as fail-loud tripwire (see Phase 3 Per-Pass Execution Protocol) |
+| Pass interrupted mid-run requires full restart, wasting cost and inviting inconsistency | Medium | Every pass writes intermediate artifacts and advances a progress cursor atomically; restart resumes from cursor. Gate to Phase 4 requires explicit kill-and-restart verification. |
+| Progress file and on-disk artifact drift out of sync (progress lags writes or leads writes) | Medium; observed in prior summarizer work where batched progress updates lagged per-record writes | Progress cursor updates are atomic and required after every single unit of work, never in batches. Restart logic verifies last JSONL record matches `cursor - 1` and rolls the cursor back to disk state on discrepancy. |
 
 ---
 
