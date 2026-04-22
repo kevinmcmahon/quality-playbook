@@ -48,6 +48,48 @@ class RunPlaybookTests(unittest.TestCase):
         self.assertIn("Skip Phase 0 and Phase 0b entirely", prompt)
         self.assertIn("quality/EXPLORATION.md", prompt)
 
+    def test_phase1_prompt_pins_progress_md_checkbox_format(self) -> None:
+        """Regression test for the 2026-04-21 bus-tracker curated-arm
+        abort: Phase 5 gate checks for the substring `- [x] Phase 4` in
+        PROGRESS.md, but Phase 1 used to leave the format ambiguous and
+        agents sometimes picked a Markdown table. Pin the checkbox form
+        in Phase 1's initialization instructions. If this regresses,
+        table-format PROGRESS.md files slip through again and the
+        Phase 5 gate fires a false abort."""
+        prompt = run_playbook.phase1_prompt(no_seeds=True)
+        # The exact Phase 1 line the template emits — makes the contract
+        # visible in the assertion.
+        self.assertIn("- [x] Phase 1", prompt)
+        # The Phase 4 line must appear unchecked in the template so the
+        # Phase 5 gate's substring check is the only live signal — the
+        # template itself doesn't pre-satisfy the gate.
+        self.assertIn("- [ ] Phase 4", prompt)
+        # Explicit anti-pattern callout so agents know tables are not OK.
+        self.assertIn("table", prompt.lower())
+
+    def test_later_phase_prompts_include_checkbox_reminder(self) -> None:
+        """Phases 2-6 must reinforce the checkbox format in their
+        'mark Phase N complete' instructions — Phase 1's template alone
+        isn't enough when an agent re-reads PROGRESS.md mid-run and
+        decides to reshape it."""
+        for phase_fn, label in (
+            (run_playbook.phase2_prompt, "Phase 2 - Generate"),
+            (run_playbook.phase3_prompt, "Phase 3 - Code Review"),
+            (run_playbook.phase4_prompt, "Phase 4 - Spec Audit"),
+            (run_playbook.phase5_prompt, "Phase 5 - Reconciliation"),
+            (run_playbook.phase6_prompt, "Phase 6 - Verify"),
+        ):
+            prompt = phase_fn()
+            self.assertIn(f"- [x] {label}", prompt,
+                          msg=f"{phase_fn.__name__} missing checkbox reminder for '{label}'")
+
+    def test_iteration_prompt_preserves_checkbox_tracker(self) -> None:
+        """Iteration strategies must not reshape PROGRESS.md's phase
+        tracker into a table when adding iteration sections."""
+        prompt = run_playbook.iteration_prompt("gap")
+        self.assertIn("checkbox", prompt.lower())
+        self.assertIn("- [x] Phase N", prompt)
+
     def test_single_pass_prompt_changes_with_seed_mode(self) -> None:
         self.assertIn("Skip Phase 0 and Phase 0b", run_playbook.single_pass_prompt(no_seeds=True))
         self.assertNotIn("Skip Phase 0 and Phase 0b", run_playbook.single_pass_prompt(no_seeds=False))
@@ -102,7 +144,11 @@ class RunPlaybookTests(unittest.TestCase):
         self.assertEqual(run_playbook.phase_list_from_mode("3,4,5"), ["3", "4", "5"])
 
     def test_iteration_prompt_contains_strategy(self) -> None:
-        self.assertTrue(run_playbook.iteration_prompt("parity").endswith("using the parity strategy."))
+        """The prompt mentions the strategy by name. It no longer ends
+        with exactly 'using the <strategy> strategy.' — the 2026-04-21
+        format-drift fix appends a PROGRESS.md checkbox reminder after
+        the strategy sentence, so the assertion is substring-based."""
+        self.assertIn("using the parity strategy", run_playbook.iteration_prompt("parity"))
 
     def test_archive_previous_run_archives_and_removes_live_dirs(self) -> None:
         """Phase 5 revision r1: archive_previous_run now delegates to

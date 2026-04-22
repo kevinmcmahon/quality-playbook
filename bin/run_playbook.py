@@ -603,7 +603,27 @@ When Phase 1 is complete, write your full exploration findings to quality/EXPLOR
 - Testable requirements derived (REQ-NNN format)
 - Use cases derived (UC-NN format)
 
-Also initialize quality/PROGRESS.md with the run metadata and mark Phase 1 complete.
+Also initialize quality/PROGRESS.md with the run metadata and the phase tracker in the EXACT checkbox format below. This format is a hard contract: the Phase 5 gate checks for the substring `- [x] Phase 4` before allowing reconciliation to start, and it only matches the checkbox form. Do NOT substitute a Markdown table, bulleted prose, or any other layout — table-format runs have aborted mid-pipeline because the gate does not see "Complete" in a table cell as equivalent.
+
+Template for the phase tracker section of PROGRESS.md (fill in the Skill version from SKILL.md metadata):
+
+```
+# Quality Playbook Progress
+
+Skill version: <vX.Y.Z>
+Date: <YYYY-MM-DD>
+
+## Phase tracker
+
+- [x] Phase 1 - Explore
+- [ ] Phase 2 - Generate
+- [ ] Phase 3 - Code Review
+- [ ] Phase 4 - Spec Audit
+- [ ] Phase 5 - Reconciliation
+- [ ] Phase 6 - Verify
+```
+
+As each later phase completes it will flip its own `- [ ]` to `- [x]` — keep the line text (including the phase name after the dash) stable so substring matching in the Phase 5 gate and downstream tooling works.
 
 IMPORTANT: Do NOT proceed to Phase 2. Your only job is exploration and writing findings to disk. Write thorough, detailed findings - the next phase will read EXPLORATION.md to generate artifacts, so everything important must be captured in that file.
 """
@@ -630,7 +650,7 @@ Execute Phase 2: Generate all quality artifacts. Use the exploration findings in
 - quality/COMPLETENESS_REPORT.md (baseline, without verdict)
 - If dispatch/enumeration contracts exist: quality/mechanical/ with verify.sh and extraction artifacts. Run verify.sh immediately and save receipts.
 
-Update PROGRESS.md: mark Phase 2 complete, update artifact inventory.
+Update PROGRESS.md: mark Phase 2 complete (use the checkbox format `- [x] Phase 2 - Generate` — do NOT switch to a table), update artifact inventory.
 
 IMPORTANT: Do NOT proceed to Phase 3 (code review). Your job is artifact generation only. The next phase will execute the review protocols you generated.
 """
@@ -655,7 +675,7 @@ Run the 3-pass code review per quality/RUN_CODE_REVIEW.md. For every confirmed b
 - Write code review reports to quality/code_reviews/
 - Update PROGRESS.md BUG tracker
 
-Mark Phase 3 (Code review + regression tests) complete in PROGRESS.md.
+Mark Phase 3 (Code review + regression tests) complete in PROGRESS.md (use the checkbox format `- [x] Phase 3 - Code Review` — do NOT switch to a table).
 
 IMPORTANT: Do NOT proceed to Phase 4 (spec audit). The next phase will run the spec audit with a fresh context window.
 """
@@ -711,7 +731,7 @@ vote on each Tier 1/2 REQ's citation_excerpt. Execute these steps:
 4. Verify the output file exists. Phase 6's gate invariant #17 requires
    it on every Tier 1/2 run.
 
-Mark Phase 4 (Spec audit + triage + semantic check) complete in PROGRESS.md.
+Mark Phase 4 (Spec audit + triage + semantic check) complete in PROGRESS.md (use the checkbox format `- [x] Phase 4 - Spec Audit` — the Phase 5 entry gate looks for that exact substring and will abort if it finds a table row or any other layout).
 
 IMPORTANT: Do NOT proceed to Phase 5 (reconciliation). The next phase will handle reconciliation and TDD.
 """
@@ -736,7 +756,7 @@ Execute Phase 5: Reconciliation + TDD + Closure.
 6. If mechanical verification artifacts exist, run quality/mechanical/verify.sh and save receipts.
 7. Run terminal gate verification, write it to PROGRESS.md.
 
-Mark Phase 5 complete in PROGRESS.md.
+Mark Phase 5 complete in PROGRESS.md (use the checkbox format `- [x] Phase 5 - Reconciliation` — do NOT switch to a table).
 
 IMPORTANT: Do NOT skip writeup inline diffs or TDD logs. The next phase runs quality_gate.py which will FAIL on missing patches, missing diffs, or missing TDD logs.
 """
@@ -763,7 +783,7 @@ Step 6.4: File-by-file verification checklist (read one file at a time, check, m
 Step 6.5: Metadata consistency check.
 
 Append each step's result to quality/results/phase6-verification.log.
-Mark Phase 6 complete in PROGRESS.md.
+Mark Phase 6 complete in PROGRESS.md (use the checkbox format `- [x] Phase 6 - Verify` — do NOT switch to a table).
 """
 
 
@@ -784,7 +804,13 @@ def single_pass_prompt(no_seeds: bool) -> str:
 
 
 def iteration_prompt(strategy: str) -> str:
-    return f"{SKILL_FALLBACK_GUIDE} Run the next iteration using the {strategy} strategy."
+    return (
+        f"{SKILL_FALLBACK_GUIDE} Run the next iteration using the {strategy} strategy. "
+        "Any updates to quality/PROGRESS.md must keep the existing phase tracker in checkbox "
+        "format (`- [x] Phase N - <name>`) — do not rewrite it as a table. The orchestrator "
+        "appends `## Iteration: <strategy> started/complete` sections itself; iteration work "
+        "should not touch the existing phase tracker lines."
+    )
 
 
 def next_strategy(strategy: str) -> str:
