@@ -974,6 +974,35 @@ def check_patches(q, bug_count, bug_ids, strictness):
     info(f"Total: {total_patches} patch file(s) in quality/patches/")
 
 
+# Unfilled-template sentinel phrases produced by the Phase 5 writeup stub.
+# Presence of any of these strings in a writeup is strong evidence that the
+# template was emitted without hydrating its content fields from BUGS.md.
+# See bin/run_playbook.py::phase5_prompt for the generating prompt.
+_WRITEUP_TEMPLATE_SENTINELS = (
+    "is a confirmed code bug in ``",
+    "The affected implementation lives at ``",
+    "Patch path: ``",
+    "- Regression test: ``",
+    "- Regression patch: ``",
+)
+
+# Matches a ```diff fenced block and captures its body for content inspection.
+_WRITEUP_DIFF_BLOCK_RE = re.compile(r"```diff\s*\n(.*?)```", re.DOTALL)
+
+
+def _writeup_diff_is_non_empty(text):
+    """True if any ```diff block in ``text`` contains at least one unified-diff
+    line (a `+` or `-` that is not the `+++`/`---` file-header prefix)."""
+    for block in _WRITEUP_DIFF_BLOCK_RE.findall(text):
+        for line in block.splitlines():
+            stripped = line.lstrip()
+            if stripped.startswith("+++") or stripped.startswith("---"):
+                continue
+            if stripped.startswith(("+", "-")):
+                return True
+    return False
+
+
 def check_writeups(q, bug_count):
     """Bug writeups section (benchmark 30)."""
     print("[Bug Writeups]")
@@ -983,12 +1012,22 @@ def check_writeups(q, bug_count):
     writeups_dir = q / "writeups"
     writeup_count = 0
     writeup_diff_count = 0
+    empty_diff_writeups = []
+    sentinel_writeups = []
     if writeups_dir.is_dir():
         writeup_files = sorted(p for p in writeups_dir.glob("BUG-*.md") if p.is_file())
         writeup_count = len(writeup_files)
         for wf in writeup_files:
-            if file_contains(wf, r"```diff"):
+            try:
+                text = wf.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if "```diff" in text:
                 writeup_diff_count += 1
+                if not _writeup_diff_is_non_empty(text):
+                    empty_diff_writeups.append(wf.name)
+            if any(s in text for s in _WRITEUP_TEMPLATE_SENTINELS):
+                sentinel_writeups.append(wf.name)
 
     if writeup_count >= bug_count:
         pass_(f"{writeup_count} writeup(s) for {bug_count} bug(s)")
@@ -1004,6 +1043,32 @@ def check_writeups(q, bug_count):
             fail(f"Only {writeup_diff_count}/{writeup_count} writeup(s) have inline fix diffs (all require section 6 diff)")
         else:
             fail("No writeups have inline fix diffs (section 6 'The fix' must include a ```diff block)")
+
+        # Non-empty-diff content check. A ```diff fence with no `+`/`-` body
+        # is a template stub — the legacy presence-only check let these pass.
+        if empty_diff_writeups:
+            preview = ", ".join(empty_diff_writeups[:5])
+            suffix = f" (+{len(empty_diff_writeups) - 5} more)" if len(empty_diff_writeups) > 5 else ""
+            fail(
+                f"{len(empty_diff_writeups)} writeup(s) have empty ```diff blocks "
+                f"(fence present, no +/- lines): {preview}{suffix}"
+            )
+        else:
+            pass_("All writeup ```diff blocks contain unified-diff content")
+
+        # Template-sentinel check. Any of these strings remaining in a writeup
+        # means the Phase 5 stub was emitted without hydrating from BUGS.md.
+        if sentinel_writeups:
+            preview = ", ".join(sentinel_writeups[:5])
+            suffix = f" (+{len(sentinel_writeups) - 5} more)" if len(sentinel_writeups) > 5 else ""
+            fail(
+                f"{len(sentinel_writeups)} writeup(s) contain unfilled template "
+                f"sentinels (empty backticks after 'is a confirmed code bug in', "
+                f"'The affected implementation lives at', 'Patch path:', "
+                f"'Regression test:', or 'Regression patch:'): {preview}{suffix}"
+            )
+        else:
+            pass_("No writeups contain unfilled template sentinels")
 
 
 def check_version_stamps(repo_dir, q):
