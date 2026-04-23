@@ -1,0 +1,17 @@
+{
+  "_schema_note": "Per-repo sidecar tier overrides for stage_formal_docs.py. Each top-level key is a short repo name (matching setup_repos.sh). Values map the staged filename (post-conversion: .rst -> .txt, .html -> .txt) to a sidecar entry. A bare integer is shorthand for {\"tier\": N}. Unknown filenames warn but do not fail. v1.5.1 Item 1.1 — briefing minimum for virtio: virtio.txt Tier 1, virtio-spec-behavioral-contracts.md Tier 1, writing_virtio_drivers.txt Tier 2.",
+
+  "virtio": {
+    "virtio.txt": 1,
+    "virtio-spec-behavioral-contracts.md": 1,
+    "writing_virtio_drivers.txt": 2,
+    "linux-coding-style.txt": 2,
+    "virtio-community-development-history.md": 2,
+    "index.txt": 2
+  },
+
+  "chi": {},
+  "cobra": {},
+  "express": {},
+  "httpx": {}
+}

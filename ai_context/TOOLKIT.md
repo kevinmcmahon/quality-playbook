@@ -383,7 +383,7 @@ git apply quality/patches/BUG-NNN-fix.patch
 
 ### quality_gate.py
 
-The gate script validates all artifacts mechanically. It is the sole mechanical gate — the legacy `quality_gate.sh` was retired in v1.4.5. Target repos install the standalone module at `.github/skills/quality_gate.py` (in the source tree this is a symlink into the `.github/skills/quality_gate/` package, which also ships the 108-test unit-test suite in `quality_gate/tests/`). Run it after the playbook completes:
+The gate script validates all artifacts mechanically. It is the sole mechanical gate — the legacy `quality_gate.sh` was retired in v1.4.5. Target repos install the standalone module at `.github/skills/quality_gate.py` (in the source tree this is a symlink into the `.github/skills/quality_gate/` package, which also ships the 171-test unit-test suite in `quality_gate/tests/`). Run it after the playbook completes:
 
 ```bash
 python3 .github/skills/quality_gate.py .
@@ -393,7 +393,9 @@ If it reports FAIL results, the most common causes:
 - Missing `quality/patches/BUG-NNN-regression-test.patch` files
 - BUGS.md heading format (`### BUG-NNN` not `## BUG-NNN`)
 - Missing fields in `tdd-results.json`
-- Writeups without inline fix diffs
+- Writeups without inline fix diffs (the presence check uses a case-insensitive regex as of v1.5.1, so ` ```Diff ` and ` ```DIFF ` fences are recognized and will not produce a spurious "no inline fix diffs" FAIL)
+- Writeups containing unfilled template sentinels (v1.5.1 check — the five strings `"is a confirmed code bug in \`\`"`, `"The affected implementation lives at \`\`"`, `"Patch path: \`\`"`, `"- Regression test: \`\`"`, `"- Regression patch: \`\`"` are evidence the Phase 5 stub was emitted without hydrating from BUGS.md, which was the bus-tracker-1.5.0 failure mode)
+- Writeups whose ` ```diff ` fence is present but contains no `+` / `-` hunk lines other than file headers (v1.5.1 check — a fence with only context lines or only `--- a/…` / `+++ b/…` headers is treated as empty)
 - Missing red-phase or green-phase log files (v1.3.49+)
 - Missing `quality/results/run-YYYY-MM-DDTHH-MM-SS.json` run-metadata file (v1.4.6 fix — `check_run_metadata` now enforces this)
 - `EXPLORATION.md` missing one of the five required section headings: `## Open Exploration Findings`, `## Quality Risks`, `## Pattern Applicability Matrix`, `## Candidate Bugs for Phase 2`, `## Gate Self-Check` (v1.4.6 fix — `_check_exploration_sections` enforces these)
@@ -444,6 +446,8 @@ The guard remains in the committed test file until the fix is merged upstream.
 ### Bug writeups
 
 Each TDD-verified bug gets a self-contained writeup at `quality/writeups/BUG-NNN.md`. This file is designed to be emailed to a maintainer, attached to a Jira ticket, or reviewed outside the repository. It includes the bug description, spec basis, code location, regression test, fix patch with an inline diff, and the TDD verification results. A reviewer can read the writeup and understand the bug without navigating the rest of the quality artifacts.
+
+**Hydration from BUGS.md (v1.5.1).** The Phase 5 prompt now carries a MANDATORY HYDRATION STEP: before writing a writeup, the agent re-opens `quality/BUGS.md`, locates the `### BUG-NNN:` entry, and copies specific fields (Location, Spec basis, Minimal reproduction, Expected / Actual behavior, Regression test, Patches) into specific writeup sections. The gate enforces two mechanical floor checks on the result — any of five template-sentinel strings in the rendered writeup fails the gate, as does a ` ```diff ` fence that contains no `+` / `-` hunk lines (only context lines or only file headers). These checks close the bus-tracker-1.5.0 failure mode where the playbook produced skeletal writeups that passed the legacy gate.
 
 ### The evidentiary standard for confirming bugs
 

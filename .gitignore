@@ -13,6 +13,15 @@ repos/
 docs_gathered/
 **/docs_gathered/
 
+# Tier 4 informal documentation — run-specific content (AI chats, design
+# notes, retrospectives), not tracked in the skill's own repo. The README
+# is tracked so operators know what the folder is for on a fresh clone.
+# Ignore folder contents (not the folder itself) so the re-include for the
+# README actually takes effect — a pattern ending in `/` would block git
+# from recursing and silently ignore the !exception.
+informal_docs/*
+!informal_docs/README.md
+
 # Bootstrap self-audit run history — TRACKED as project history:
 #   quality/          self-audit output (proof of work)
 #   previous_runs/    archived prior runs (iteration evidence)

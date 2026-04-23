@@ -1,0 +1,29 @@
+virtio v1.1 — Excerpt for Phase 2 testing
+==========================================
+
+This is a contrived plaintext excerpt created solely for Phase 2
+integration tests of the Quality Playbook v1.5.1 ingest pipeline.
+It is NOT a substitute for the real virtio specification.
+
+1 Introduction
+
+The virtio family of interfaces provides a standard abstraction
+for virtual devices sitting across a host/guest boundary.
+
+2 Device Initialization
+
+Before a device may be used by the driver, it must be placed into
+a known initial state through the procedure described in this
+section.
+
+2.4 Device initialization
+The driver MUST perform the following steps, in order, before the
+device is considered operational. Each step has specific precondition
+and failure-recovery semantics which the driver MUST honor.
+On failure of VIRTIO_F_VERSION_1 feature negotiation, the device
+MUST reset itself and MUST NOT accept further driver writes until
+RESET has completed.
+
+2.5 Reserved
+
+Reserved for future versions of the specification.

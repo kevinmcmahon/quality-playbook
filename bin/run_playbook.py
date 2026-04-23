@@ -9,12 +9,15 @@ argument is treated literally as a directory path.
 from __future__ import annotations
 
 import argparse
+import io
 import os
+import platform
 import shlex
 import shutil
 import signal
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -22,8 +25,12 @@ from typing import List, Optional, Sequence, Tuple
 
 try:
     from . import benchmark_lib as lib
+    from . import archive_lib
+    from . import progress_monitor
 except ImportError:
     import benchmark_lib as lib
+    import archive_lib
+    import progress_monitor
 
 
 ALL_STRATEGIES = ["gap", "unfiltered", "parity", "adversarial"]
@@ -83,6 +90,175 @@ class GateCheck:
     messages: List[str]
 
 
+def _parse_progress_interval(value: str) -> int:
+    """Parse the --progress-interval argument. Range 1..60 seconds.
+
+    v1.5.1 Item 2.2 / Impl-Plan Open Question 4: 2s feels responsive;
+    1s is busier; 5s feels slow. The upper bound at 60s is a sanity
+    cap — polling slower than once a minute isn't a progress monitor.
+    """
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise argparse.ArgumentTypeError(
+            f"--progress-interval must be an integer; got {value!r}"
+        )
+    if not 1 <= parsed <= 60:
+        raise argparse.ArgumentTypeError(
+            f"--progress-interval must be between 1 and 60 seconds; got {parsed}"
+        )
+    return parsed
+
+
+# v1.5.1 Item 3.1: phase IDs supported by the orchestrator come from the
+# one source of truth (phase_label's dict keys — see below). The parser
+# derives its valid-phase set from this list so a future phase addition
+# (e.g. v1.5.2 Phase 7) only needs to update phase_label().
+_VALID_PHASE_IDS = frozenset({"1", "2", "3", "4", "5", "6"})
+
+
+def _parse_iterations(value: str) -> List[str]:
+    """Parse --iterations "strat1,strat2,..." into an ordered list.
+
+    v1.5.1 Item 3.2. Strategies: gap, unfiltered, parity, adversarial.
+    Order matters (gap -> unfiltered -> parity -> adversarial is the
+    canonical discovery sequence, but operators may pick a subset).
+    Rejects unknown strategies, duplicates, empty lists.
+    """
+    if not value or value.strip() == "":
+        raise argparse.ArgumentTypeError("--iterations value cannot be empty")
+    raw = [item.strip() for item in value.split(",")]
+    if any(not item for item in raw):
+        raise argparse.ArgumentTypeError(
+            f"--iterations '{value}' contains an empty token"
+        )
+    seen: set[str] = set()
+    for item in raw:
+        if item not in VALID_STRATEGIES:
+            raise argparse.ArgumentTypeError(
+                f"--iterations: unknown strategy '{item}'. Must be one of: "
+                f"{', '.join(ALL_STRATEGIES)}"
+            )
+        if item in seen:
+            raise argparse.ArgumentTypeError(
+                f"--iterations: strategy '{item}' appears more than once in '{value}'"
+            )
+        seen.add(item)
+    return raw
+
+
+def _parse_pace_seconds(value: str) -> int:
+    """Parse --pace-seconds. Range 0..3600. Default 0."""
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise argparse.ArgumentTypeError(
+            f"--pace-seconds must be an integer; got {value!r}"
+        )
+    if not 0 <= parsed <= 3600:
+        raise argparse.ArgumentTypeError(
+            f"--pace-seconds must be between 0 and 3600 seconds; got {parsed}"
+        )
+    return parsed
+
+
+def _parse_phase_groups(value: str) -> List[List[str]]:
+    """Parse a --phase-groups spec into a canonical list-of-lists.
+
+    v1.5.1 Item 3.1. Input form: "N,N+N,N,..." — comma-separated groups,
+    each group either a single phase ID or '+'-joined phase IDs.
+
+    Validation (all violations raise argparse.ArgumentTypeError):
+      - Empty spec rejected.
+      - Empty group ('1,,2') rejected.
+      - Empty '+' segment ('1+') rejected.
+      - Non-integer tokens ('a', '1,b') rejected.
+      - Phase IDs outside _VALID_PHASE_IDS rejected.
+      - Duplicate phase IDs across the whole spec rejected.
+      - Cross-group descending order rejected (first-phase-in-group key).
+      - Within-group phase IDs may be supplied out of order; they are
+        sorted before being returned (e.g. '4+3' normalizes to ['3','4']).
+
+    Returns: a list of sorted phase-ID lists, with outer list in
+    ascending first-phase order. Example: '1,3+4,6' -> [['1'], ['3','4'], ['6']].
+    """
+    if value is None:
+        raise argparse.ArgumentTypeError("--phase-groups requires a value")
+    if not value.strip():
+        raise argparse.ArgumentTypeError("--phase-groups value cannot be empty")
+
+    raw_groups = value.split(",")
+    if any(not g.strip() for g in raw_groups):
+        raise argparse.ArgumentTypeError(
+            f"--phase-groups '{value}' contains an empty group "
+            "(check for leading/trailing/double commas)"
+        )
+
+    parsed_groups: List[List[str]] = []
+    seen_phases: set[str] = set()
+    for raw in raw_groups:
+        group_raw = raw.strip()
+        segments = group_raw.split("+")
+        if any(not s.strip() for s in segments):
+            raise argparse.ArgumentTypeError(
+                f"--phase-groups group '{group_raw}' contains an empty "
+                "segment (check for trailing '+' or '++')"
+            )
+        phases_in_group: List[str] = []
+        for seg in segments:
+            phase = seg.strip()
+            try:
+                int(phase)
+            except ValueError:
+                raise argparse.ArgumentTypeError(
+                    f"--phase-groups: '{phase}' is not an integer phase ID"
+                )
+            if phase not in _VALID_PHASE_IDS:
+                raise argparse.ArgumentTypeError(
+                    f"--phase-groups: phase '{phase}' is out of range; "
+                    f"valid IDs are {sorted(_VALID_PHASE_IDS, key=int)}"
+                )
+            if phase in seen_phases:
+                raise argparse.ArgumentTypeError(
+                    f"--phase-groups: phase '{phase}' appears more than once "
+                    f"in '{value}' (duplicates rejected)"
+                )
+            seen_phases.add(phase)
+            phases_in_group.append(phase)
+        phases_in_group.sort(key=int)
+        parsed_groups.append(phases_in_group)
+
+    # Cross-group ordering must be strictly ascending on the first-phase key.
+    first_phases = [int(group[0]) for group in parsed_groups]
+    if first_phases != sorted(first_phases):
+        raise argparse.ArgumentTypeError(
+            f"--phase-groups '{value}': groups must appear in ascending order "
+            "by first phase (e.g. '1,3+4,6' is valid; '3,2' is not)"
+        )
+    return parsed_groups
+
+
+def _format_phase_groups(groups: Sequence[Sequence[str]]) -> str:
+    """Render a parsed phase-groups structure back into the CLI spec form."""
+    return ",".join("+".join(g) for g in groups)
+
+
+def _phase_groups_from_phase_mode(phase_mode: Optional[str]) -> Optional[List[List[str]]]:
+    """Translate legacy --phase / --phase all into canonical phase-groups.
+
+    --phase all       -> [['1'], ['2'], ..., ['6']]  (seven-group full sweep)
+    --phase 3,4,5     -> [['3'], ['4'], ['5']]
+    --phase 3         -> [['3']]
+    --phase (empty)   -> None
+    None              -> None
+    """
+    if not phase_mode:
+        return None
+    if phase_mode == "all":
+        return [[p] for p in sorted(_VALID_PHASE_IDS, key=int)]
+    return [[p] for p in phase_mode.split(",") if p]
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run the Quality Playbook against one or more target directories.",
@@ -103,6 +279,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--phase", help="Run specific phase(s): 1-6, all, or comma-separated values like 3,4,5.")
     parser.add_argument("--single-pass", dest="phase", action="store_const", const="", help=argparse.SUPPRESS)
     parser.add_argument("--multi-pass", dest="phase", action="store_const", const="all", help=argparse.SUPPRESS)
+    # v1.5.1 Item 3.1: --phase-groups is the new canonical phase selector.
+    # --phase N / --phase all remain as sugar that expands to phase-groups;
+    # cross-flag mutex is enforced in parse_args() below (argparse's native
+    # mutually_exclusive_group would reject legitimate --phase-groups +
+    # --next-iteration combinations, so the check lives there instead).
+    parser.add_argument(
+        "--phase-groups",
+        dest="phase_groups_raw",
+        type=_parse_phase_groups,
+        help=(
+            "Phase grouping spec: comma-separated groups, each group 'N' or "
+            "'N+N+...'. Example: '1,2,3+4,5+6' runs 4 prompts — phases 3 and "
+            "4 share one prompt, phases 5 and 6 share another. Phase IDs "
+            "must be 1-6, groups ascending, no duplicates."
+        ),
+    )
     parser.add_argument("--next-iteration", action="store_true", help="Iterate on an existing quality/ run.")
     parser.add_argument(
         "--full-run",
@@ -122,7 +314,91 @@ def build_parser() -> argparse.ArgumentParser:
             "Lists reject duplicates and do not accept 'all' as a member."
         ),
     )
+    # v1.5.1 Item 3.2: unified --phase-groups + iterations invocation.
+    # --iterations supersedes the --next-iteration + --strategy pair for
+    # the unified path; the old flags remain for single-strategy use.
+    parser.add_argument(
+        "--iterations",
+        dest="iterations",
+        type=_parse_iterations,
+        help=(
+            "Iteration strategies to run after phase groups complete. "
+            "Comma-separated; order matters. Strategies: gap, unfiltered, "
+            "parity, adversarial. Can be combined with --phase-groups for "
+            "a single unified invocation (e.g. --phase-groups '1,2,3+4' "
+            "--iterations 'gap,unfiltered')."
+        ),
+    )
+    parser.add_argument(
+        "--pace-seconds",
+        dest="pace_seconds",
+        type=_parse_pace_seconds,
+        default=0,
+        metavar="N",
+        help=(
+            "Seconds of idle sleep between consecutive phase groups and "
+            "between consecutive iteration strategies (0 <= N <= 3600, "
+            "default 0). Use to throttle against per-minute rate limits."
+        ),
+    )
     parser.add_argument("--model", help="Runner model override (copilot: gpt-5.4, claude: sonnet/opus/etc).")
+    parser.add_argument(
+        "--no-formal-docs",
+        dest="no_formal_docs",
+        action="store_true",
+        help=(
+            "Suppress the pre-run warning when formal_docs/ is missing, empty, "
+            "or contains plaintext without .meta.json sidecars. Use for self-audit "
+            "bootstrap and minimal-repo cases that legitimately have no formal docs."
+        ),
+    )
+    parser.add_argument(
+        "--no-stdout-echo",
+        dest="no_stdout_echo",
+        action="store_true",
+        help=(
+            "Suppress stdout echo of logboth() output. The built-in run log "
+            "is still written in full. Intended for AI-sandbox invocations "
+            "that want silent stdout; the v1.5.1 isatty() gate that used "
+            "to hide tee'd output is gone — this thread is the explicit "
+            "opt-out (v1.5.1 Item 2.1, Risk Register row 1)."
+        ),
+    )
+    # v1.5.1 Item 2.2: live progress monitor flags. --verbose and --quiet
+    # are mutually exclusive; --progress-interval has a small 1..60 range.
+    verbosity = parser.add_mutually_exclusive_group()
+    verbosity.add_argument(
+        "--verbose",
+        dest="verbose",
+        action="store_true",
+        help=(
+            "Stream the current phase's transcript to stdout in addition to "
+            "PROGRESS.md headers. Useful for watching the run without "
+            "opening a second terminal."
+        ),
+    )
+    verbosity.add_argument(
+        "--quiet",
+        dest="quiet",
+        action="store_true",
+        help=(
+            "Suppress both the PROGRESS.md header monitor and the --verbose "
+            "transcript tail. Phase-boundary announcements and errors still "
+            "print. The run log file is written in full regardless."
+        ),
+    )
+    parser.add_argument(
+        "--progress-interval",
+        dest="progress_interval",
+        type=_parse_progress_interval,
+        default=2,
+        metavar="N",
+        help=(
+            "Seconds between PROGRESS.md polls (1 <= N <= 60, default 2). "
+            "Lower values are more responsive but produce more stat() calls; "
+            "higher values feel slower."
+        ),
+    )
     parser.add_argument("--kill", action="store_true", help="Kill processes from the current or last parallel run.")
     parser.add_argument(
         "targets",
@@ -141,6 +417,22 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         args.targets = ["."]
     if args.worker:
         args.parallel = False
+
+    # v1.5.1 Item 3.1 mutex. --phase-groups vs --phase / --full-run are
+    # redundant (--phase and --full-run are sugar). --phase-groups vs
+    # --next-iteration is allowed (Item 3.2 relies on this).
+    phase_groups_raw = getattr(args, "phase_groups_raw", None)
+    if phase_groups_raw is not None and args.phase:
+        parser.error(
+            "--phase-groups is not compatible with --phase. --phase is sugar "
+            "for a single-group spec; pass one or the other."
+        )
+    if phase_groups_raw is not None and args.full_run:
+        parser.error(
+            "--phase-groups is not compatible with --full-run. --full-run is "
+            "sugar for a fixed phase-groups + iterations plan."
+        )
+
     if args.next_iteration and args.phase:
         parser.error("--next-iteration is not compatible with --phase. Iteration uses a single prompt.")
     if args.full_run and args.next_iteration:
@@ -151,6 +443,33 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         validate_phase_mode(args.phase, parser)
     if not args.next_iteration and not args.full_run and args.strategy != ["gap"]:
         print("WARNING: --strategy is ignored without --next-iteration or --full-run", file=sys.stderr)
+
+    # v1.5.1 Item 3.2 mutex.
+    if args.iterations is not None and args.full_run:
+        parser.error(
+            "--iterations is not compatible with --full-run. --full-run is "
+            "sugar for a fixed iterations plan; pass one or the other."
+        )
+    if args.iterations is not None and args.next_iteration:
+        parser.error(
+            "--iterations is not compatible with --next-iteration. "
+            "--iterations is the multi-strategy successor; use it alone."
+        )
+
+    # v1.5.1 Item 3.1: canonicalize phase selection into args.phase_groups.
+    # Precedence: explicit --phase-groups > --full-run > --phase > none.
+    if phase_groups_raw is not None:
+        args.phase_groups = phase_groups_raw
+    elif args.full_run:
+        args.phase_groups = [[p] for p in sorted(_VALID_PHASE_IDS, key=int)]
+    else:
+        args.phase_groups = _phase_groups_from_phase_mode(args.phase)
+
+    # v1.5.1 Item 3.2: --full-run sugar also expands to the full iterations
+    # list so the unified dispatcher sees a uniform shape. Explicit
+    # --iterations wins; absent both, args.iterations stays None.
+    if args.iterations is None and args.full_run:
+        args.iterations = list(ALL_STRATEGIES)
     return args
 
 
@@ -266,7 +585,7 @@ SKILL_FALLBACK_GUIDE = (
 def phase1_prompt(no_seeds: bool) -> str:
     seed_instruction = ""
     if no_seeds:
-        seed_instruction = "Skip Phase 0 and Phase 0b entirely - do not look for previous_runs/ or sibling versioned directories. This is a clean benchmark run. Start directly at Phase 1."
+        seed_instruction = "Skip Phase 0 and Phase 0b entirely - do not look for quality/runs/ or sibling versioned directories. This is a clean benchmark run. Start directly at Phase 1."
 
     return f"""You are a quality engineer. {SKILL_FALLBACK_GUIDE} For this phase read ONLY the sections up through Phase 1 (stop at the \"---\" line before \"Phase 2\"). Also read the reference files (under whichever references/ directory matches the install path you resolved) that are relevant to exploration.
 
@@ -284,7 +603,27 @@ When Phase 1 is complete, write your full exploration findings to quality/EXPLOR
 - Testable requirements derived (REQ-NNN format)
 - Use cases derived (UC-NN format)
 
-Also initialize quality/PROGRESS.md with the run metadata and mark Phase 1 complete.
+Also initialize quality/PROGRESS.md with the run metadata and the phase tracker in the EXACT checkbox format below. This format is a hard contract: the Phase 5 gate checks for the substring `- [x] Phase 4` before allowing reconciliation to start, and it only matches the checkbox form. Do NOT substitute a Markdown table, bulleted prose, or any other layout — table-format runs have aborted mid-pipeline because the gate does not see "Complete" in a table cell as equivalent.
+
+Template for the phase tracker section of PROGRESS.md (fill in the Skill version from SKILL.md metadata):
+
+```
+# Quality Playbook Progress
+
+Skill version: <vX.Y.Z>
+Date: <YYYY-MM-DD>
+
+## Phase tracker
+
+- [x] Phase 1 - Explore
+- [ ] Phase 2 - Generate
+- [ ] Phase 3 - Code Review
+- [ ] Phase 4 - Spec Audit
+- [ ] Phase 5 - Reconciliation
+- [ ] Phase 6 - Verify
+```
+
+As each later phase completes it will flip its own `- [ ]` to `- [x]` — keep the line text (including the phase name after the dash) stable so substring matching in the Phase 5 gate and downstream tooling works.
 
 IMPORTANT: Do NOT proceed to Phase 2. Your only job is exploration and writing findings to disk. Write thorough, detailed findings - the next phase will read EXPLORATION.md to generate artifacts, so everything important must be captured in that file.
 """
@@ -311,7 +650,7 @@ Execute Phase 2: Generate all quality artifacts. Use the exploration findings in
 - quality/COMPLETENESS_REPORT.md (baseline, without verdict)
 - If dispatch/enumeration contracts exist: quality/mechanical/ with verify.sh and extraction artifacts. Run verify.sh immediately and save receipts.
 
-Update PROGRESS.md: mark Phase 2 complete, update artifact inventory.
+Update PROGRESS.md: mark Phase 2 complete (use the checkbox format `- [x] Phase 2 - Generate` — do NOT switch to a table), update artifact inventory.
 
 IMPORTANT: Do NOT proceed to Phase 3 (code review). Your job is artifact generation only. The next phase will execute the review protocols you generated.
 """
@@ -336,7 +675,7 @@ Run the 3-pass code review per quality/RUN_CODE_REVIEW.md. For every confirmed b
 - Write code review reports to quality/code_reviews/
 - Update PROGRESS.md BUG tracker
 
-Mark Phase 3 (Code review + regression tests) complete in PROGRESS.md.
+Mark Phase 3 (Code review + regression tests) complete in PROGRESS.md (use the checkbox format `- [x] Phase 3 - Code Review` — do NOT switch to a table).
 
 IMPORTANT: Do NOT proceed to Phase 4 (spec audit). The next phase will run the spec audit with a fresh context window.
 """
@@ -351,7 +690,9 @@ Read these files to get context:
 3. quality/BUGS.md - bugs found in Phase 3 (code review)
 4. .github/skills/SKILL.md - read the Phase 4 section (\"Phase 4: Spec Audit and Triage\"). Also read .github/skills/references/spec_audit.md.
 
-Execute Phase 4: Spec Audit + Triage.
+Execute Phase 4: Spec Audit + Triage + Layer-2 semantic citation check.
+
+Part A — spec audit:
 Run the spec audit per quality/RUN_SPEC_AUDIT.md. Produce:
 - Individual auditor reports at quality/spec_audits/YYYY-MM-DD-auditor-N.md (one per auditor)
 - Triage synthesis at quality/spec_audits/YYYY-MM-DD-triage.md
@@ -359,7 +700,38 @@ Run the spec audit per quality/RUN_SPEC_AUDIT.md. Produce:
 - Regression tests and patches for any net-new spec audit bugs
 - Update BUGS.md and PROGRESS.md BUG tracker with any new findings
 
-Mark Phase 4 (Spec audit + triage) complete in PROGRESS.md.
+Part B — Layer-2 semantic citation check (v1.5.1):
+The gate's invariant #17 (schemas.md §10) requires three Council members to
+vote on each Tier 1/2 REQ's citation_excerpt. Execute these steps:
+
+1. Generate per-Council-member prompts:
+     python3 -m bin.quality_playbook semantic-check plan .
+   This writes one or more prompt files to
+   quality/council_semantic_check_prompts/<member>.txt per member in the
+   Council roster (bin/council_config.py: claude-opus-4.7, gpt-5.4,
+   gemini-2.5-pro). For >15 Tier 1/2 REQs, prompts are split into batches
+   of 5 (<member>-batch<N>.txt).
+   If no Tier 1/2 REQs exist (Spec Gap run), this step writes an empty
+   quality/citation_semantic_check.json directly — skip steps 2-4.
+
+2. For each Council member's prompt file, feed the prompt to that model
+   (the same roster that ran Part A) and capture its JSON-array response
+   to quality/council_semantic_check_responses/<member>.json. If the
+   member was batched, concatenate the per-batch responses into a single
+   array in the response file. Every entry must have req_id, verdict
+   (supports|overreaches|unclear), and reasoning.
+
+3. Assemble the semantic-check output:
+     python3 -m bin.quality_playbook semantic-check assemble . \\
+       --member claude-opus-4.7 --response quality/council_semantic_check_responses/claude-opus-4.7.json \\
+       --member gpt-5.4         --response quality/council_semantic_check_responses/gpt-5.4.json \\
+       --member gemini-2.5-pro  --response quality/council_semantic_check_responses/gemini-2.5-pro.json
+   This writes quality/citation_semantic_check.json per schemas.md §9.
+
+4. Verify the output file exists. Phase 6's gate invariant #17 requires
+   it on every Tier 1/2 run.
+
+Mark Phase 4 (Spec audit + triage + semantic check) complete in PROGRESS.md (use the checkbox format `- [x] Phase 4 - Spec Audit` — the Phase 5 entry gate looks for that exact substring and will abort if it finds a table row or any other layout).
 
 IMPORTANT: Do NOT proceed to Phase 5 (reconciliation). The next phase will handle reconciliation and TDD.
 """
@@ -378,15 +750,93 @@ Execute Phase 5: Reconciliation + TDD + Closure.
 
 1. Run the Post-Review Reconciliation per references/requirements_pipeline.md. Update COMPLETENESS_REPORT.md.
 2. Run closure verification: every BUG in the tracker must have either a regression test or an explicit exemption.
-3. Write bug writeups at quality/writeups/BUG-NNN.md for EVERY confirmed bug. Each writeup MUST include an inline fix diff in a ```diff code block - this is gate-enforced.
+3. Write bug writeups at quality/writeups/BUG-NNN.md for EVERY confirmed bug. The canonical template is the \"Bug writeup generation\" section of .github/skills/SKILL.md — read that section before writing. Use the exact field headings listed there: **Summary, Spec reference, The code, Observable consequence, Depth judgment, The fix, The test, Related issues**. Sections 1–4, 6, 7 are required in every writeup; section 5 (Depth judgment) fires only when the consequence isn't self-evident from the immediate code; section 8 (Related issues) is included only when related bugs exist. Do NOT introduce fields that aren't in the template (no \"Minimal reproduction\" as a top-level field, no \"Patch path:\" as a top-level field — those belong inside Spec reference and The test respectively).
+
+   **MANDATORY HYDRATION STEP.** Before writing a writeup, re-open quality/BUGS.md and locate the `### BUG-NNN:` entry for the bug you are about to write up. Every confirmed bug in BUGS.md already has the content you need — your job is to copy it into the writeup's sections, not to invent it. If a field is missing from BUGS.md, that is a reconciliation error to surface in PROGRESS.md, not a field to fabricate. Use this field map:
+
+   | BUGS.md field              | Writeup section              | How to use it                                                                 |
+   |----------------------------|------------------------------|-------------------------------------------------------------------------------|
+   | Title line (### BUG-NNN:…) | Summary                      | One sentence naming the function/code path and the observable failure.        |
+   | Primary requirement        | Spec reference               | `- Requirement: REQ-NNN`                                                      |
+   | Spec basis                 | Spec reference               | `- Spec basis: <doc path + line range(s), semicolon-separated if multiple>` plus a ≤15-word contract quote copied verbatim from the cited lines. |
+   | Location                   | The code                     | Cite `file:line` and describe what the current path does there.               |
+   | Minimal reproduction       | Observable consequence       | Weave into the consequence paragraph as the triggering input.                 |
+   | Expected + Actual behavior | Observable consequence       | The actual behavior is the observable failure; the expected defines the gap.  |
+   | Regression test            | The test                     | `- Regression test: <function name>` — verbatim from BUGS.md.                 |
+   | Patches (regression)       | The test                     | `- Regression patch: <path>` — verbatim from BUGS.md.                         |
+   | Patches (fix)              | The fix + The test           | If a fix patch file exists, read it and paste the unified diff inside ```diff; also list the patch path as `- Fix patch: <path>` under The test. If no fix patch exists (confirmed-open bug), write the minimal concrete unified diff directly in The fix anyway — SKILL.md requires an inline diff in every writeup. In the no-patch case, omit the `Fix patch:` bullet from The test. |
+   | Red/green logs             | The test                     | `- Red receipt: quality/results/BUG-NNN.red.log` and the matching green path. |
+
+   **Worked example.** The BUGS.md entry for BUG-004 is:
+
+       ### BUG-004: naive upstream timestamps crash ETA math
+       - Source: Code Review
+       - Severity: HIGH
+       - Primary requirement: REQ-006
+       - Location: bus_tracker.py:138-144
+       - Spec basis: quality/REQUIREMENTS.md:163-172; quality/QUALITY.md:57-65
+       - Minimal reproduction: Return a visit whose ExpectedArrivalTime is an ISO string
+         without timezone information, such as 2026-04-21T12:00:00.
+       - Expected behavior: The affected arrival degrades to unknown-time while the rest
+         of the stop remains usable.
+       - Actual behavior: datetime.fromisoformat() returns a naive datetime and
+         subtracting it from datetime.now(timezone.utc) raises TypeError, aborting the
+         stop/request path.
+       - Regression test: quality.test_regression.TestPhase3Regressions.test_bug_004_fetch_stop_arrivals_degrades_naive_timestamps
+       - Patches: quality/patches/BUG-004-regression-test.patch, quality/patches/BUG-004-fix.patch
+
+   The hydrated writeup sections look like this (sketch — paste the real diff from the
+   fix patch file into ```diff, don't make one up):
+
+       ## Summary
+       fetch_stop_arrivals() crashes the whole stop/request path when an upstream visit
+       carries a naive ExpectedArrivalTime, instead of degrading that arrival to
+       unknown-time.
+
+       ## Spec reference
+       - Requirement: REQ-006
+       - Spec basis: quality/REQUIREMENTS.md:163-172; quality/QUALITY.md:57-65
+       - Behavioral contract quote: \"degrade a bad per-arrival timestamp to unknown-time instead of aborting the whole response path\"
+
+       ## The code
+       At bus_tracker.py:138-144, the parser calls datetime.fromisoformat(...) on
+       ExpectedArrivalTime and subtracts the result from datetime.now(timezone.utc)…
+
+       ## Observable consequence
+       When the upstream visit returns ExpectedArrivalTime=\"2026-04-21T12:00:00\"
+       (no timezone), fromisoformat() returns a naive datetime, the subtraction
+       raises TypeError, and the entire stop/request path aborts rather than the
+       single affected arrival degrading to unknown-time.
+
+       ## The fix
+       ```diff
+       <paste the real unified diff from quality/patches/BUG-004-fix.patch here>
+       ```
+
+       ## The test
+       - Regression test: quality.test_regression.TestPhase3Regressions.test_bug_004_fetch_stop_arrivals_degrades_naive_timestamps
+       - Regression patch: quality/patches/BUG-004-regression-test.patch
+       - Fix patch: quality/patches/BUG-004-fix.patch
+       - Red receipt: quality/results/BUG-004.red.log
+       - Green receipt: quality/results/BUG-004.green.log
+
+   **Confirmation checklist (per writeup, before moving to the next bug).** (a) Every
+   required section has populated content copied from BUGS.md or the patch files —
+   no empty backticks, no sentinel filler like \"is a confirmed code bug in ``\" or
+   \"The affected implementation lives at ``\" or \"Patch path: ``\". (b) The ```diff
+   fence contains at least one `+` or `-` line from the actual fix patch. (c) The
+   Summary names a real function or code path, not the BUG identifier. (d) No
+   angle-bracket placeholders (e.g., `<...>`) remain in the final writeup — those are
+   pedagogical markers from the worked example and from SKILL.md, never acceptable
+   output.
 4. Run the TDD red-green cycle: for each confirmed bug, run the regression test against unpatched code -> quality/results/BUG-NNN.red.log. If a fix patch exists, run against patched code -> quality/results/BUG-NNN.green.log. If the test runner is unavailable, create the log with NOT_RUN on the first line.
 5. Generate sidecar JSON: quality/results/tdd-results.json and quality/results/integration-results.json (schema_version \"1.1\", canonical fields: id, requirement, red_phase, green_phase, verdict, fix_patch_present, writeup_path).
 6. If mechanical verification artifacts exist, run quality/mechanical/verify.sh and save receipts.
 7. Run terminal gate verification, write it to PROGRESS.md.
 
-Mark Phase 5 complete in PROGRESS.md.
+Mark Phase 5 complete in PROGRESS.md (use the checkbox format `- [x] Phase 5 - Reconciliation` — do NOT switch to a table).
 
-IMPORTANT: Do NOT skip writeup inline diffs or TDD logs. The next phase runs quality_gate.py which will FAIL on missing patches, missing diffs, or missing TDD logs.
+IMPORTANT: quality_gate.py will FAIL Phase 5 if any writeup is missing a non-empty ```diff block or contains any of these sentinel phrases verbatim: \"is a confirmed code bug in ``\", \"The affected implementation lives at ``\", \"Patch path: ``\", \"- Regression test: ``\", \"- Regression patch: ``\". Those two checks are the hard gate. Skipping the BUGS.md hydration step above is not gate-enforced but will produce writeups that read as unpopulated stubs and fail a human review — do not skip it.
 """
 
 
@@ -411,7 +861,7 @@ Step 6.4: File-by-file verification checklist (read one file at a time, check, m
 Step 6.5: Metadata consistency check.
 
 Append each step's result to quality/results/phase6-verification.log.
-Mark Phase 6 complete in PROGRESS.md.
+Mark Phase 6 complete in PROGRESS.md (use the checkbox format `- [x] Phase 6 - Verify` — do NOT switch to a table).
 """
 
 
@@ -432,7 +882,13 @@ def single_pass_prompt(no_seeds: bool) -> str:
 
 
 def iteration_prompt(strategy: str) -> str:
-    return f"{SKILL_FALLBACK_GUIDE} Run the next iteration using the {strategy} strategy."
+    return (
+        f"{SKILL_FALLBACK_GUIDE} Run the next iteration using the {strategy} strategy. "
+        "Any updates to quality/PROGRESS.md must keep the existing phase tracker in checkbox "
+        "format (`- [x] Phase N - <name>`) — do not rewrite it as a table. The orchestrator "
+        "appends `## Iteration: <strategy> started/complete` sections itself; iteration work "
+        "should not touch the existing phase tracker lines."
+    )
 
 
 def next_strategy(strategy: str) -> str:
@@ -538,6 +994,252 @@ def log_file_for(repo_dir: Path, timestamp: str) -> Path:
     return repo_dir.parent / f"{repo_dir.name}-playbook-{timestamp}.log"
 
 
+# v1.5.1 Item 2.1: built-in logging + unbuffered stdout. The prior run
+# ceremony required operators to set PYTHONUNBUFFERED=1 and pipe through
+# tee; the built-in log + line-buffered stdout make both unnecessary.
+_CONFIGURE_LOGGING_PREFIX = "Writing run log to: "
+
+
+def configure_logging(
+    repo_dir: Path,
+    timestamp: str,
+    *,
+    no_stdout_echo: bool = False,
+    stream: Optional[object] = None,
+) -> Path:
+    """Compute the canonical log path, announce it on stdout, and install
+    line-buffered stdout. Called exactly once per run entry point.
+
+    Implements v1.5.1 Item 2.1 (docs/design/QPB_v1.5.1_Design.md Item 3).
+
+    - Canonical log path comes from log_file_for(); no path derivation is
+      reinvented here. The directory is created on demand so the first
+      lib.logboth() call never has to.
+    - Prints "Writing run log to: <abs path>" as the very first line of run
+      output so operators (and Item 2.3's banner) can key off a stable
+      prefix. _CONFIGURE_LOGGING_PREFIX is exposed for tests.
+    - Installs line-buffered stdout via sys.stdout.reconfigure(). Python
+      3.7+; the project targets 3.10+. Replaces the operator-side
+      PYTHONUNBUFFERED=1 / -u ceremony.
+    - no_stdout_echo=True flips benchmark_lib.logboth's default echo to
+      False for the whole run. The escape hatch for AI-sandbox invocations
+      that legitimately want silent stdout (Risk Register row 1).
+    - The optional `stream` kwarg lets tests capture the announcement
+      without monkey-patching sys.stdout. Production callers leave it at
+      None and inherit sys.stdout.
+    """
+    log_path = log_file_for(repo_dir, timestamp).resolve()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    lib.set_default_echo(not no_stdout_echo)
+
+    # reconfigure() is a no-op on streams that don't support it (e.g. an
+    # io.StringIO passed by tests); guard it to stay test-friendly.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except (AttributeError, io.UnsupportedOperation):
+        pass
+
+    target = stream if stream is not None else sys.stdout
+    target.write(f"{_CONFIGURE_LOGGING_PREFIX}{log_path}\n")
+    try:
+        target.flush()
+    except (AttributeError, io.UnsupportedOperation):
+        pass
+    return log_path
+
+
+# v1.5.1 Item 2.3: cross-platform startup banner. Per design-doc Item 5
+# the canonical source for "how do I watch this run from a second
+# terminal?" is the banner — documentation refers back to it rather than
+# duplicating platform-specific commands. Keystroke mode switching
+# (termios/tty/msvcrt) is explicitly deferred; we print static recipes.
+
+_BANNER_RULE = "=" * 72
+
+
+def _watch_commands_for_platform(
+    platform_name: str,
+    log_path: Path,
+    transcript_path: Path,
+    progress_path: Path,
+) -> Tuple[List[str], Optional[str]]:
+    """Return (recipe lines, optional advisory note) for a given
+    platform.system() value. ``platform_name`` is passed in explicitly
+    so tests can verify each branch without monkey-patching the
+    platform module.
+
+    v1.5.1 Phase 2.3 revision — Darwin is split from Linux. macOS does
+    not ship `watch(1)` by default; pasting `watch -n 2 '...'` into
+    stock zsh returns `zsh: command not found: watch`. The Darwin
+    recipe now uses a portable shell loop (`while true; do clear;
+    grep ...; sleep 2; done`) that runs on a fresh macOS install
+    without `brew install watch`. Linux keeps the concise `watch`
+    form since Linux ships it by default.
+    """
+    name = (platform_name or "").strip()
+    darwin_progress = (
+        f"Watch progress:    while true; do clear; "
+        f"grep -E '^##?' {progress_path}; sleep 2; done"
+    )
+    linux_progress = f"Watch progress:    watch -n 2 'grep \"^##\\?\" {progress_path}'"
+
+    if name == "Darwin":
+        return (
+            [
+                f"Watch log:         tail -f {log_path}",
+                f"Watch transcript:  tail -f {transcript_path}",
+                darwin_progress,
+            ],
+            None,
+        )
+    if name == "Linux":
+        return (
+            [
+                f"Watch log:         tail -f {log_path}",
+                f"Watch transcript:  tail -f {transcript_path}",
+                linux_progress,
+            ],
+            None,
+        )
+    if name == "Windows":
+        return (
+            [
+                f"Watch log:         Get-Content -Path {log_path} -Wait -Tail 20",
+                f"Watch transcript:  Get-Content -Path {transcript_path} -Wait -Tail 20",
+                f"Watch progress:    Get-Content -Path {progress_path} -Wait | Select-String '^##?'",
+            ],
+            None,
+        )
+    # Unknown platform: fall back to the Darwin recipe (portable shell
+    # loop) rather than the Linux `watch` form, since `watch` is the
+    # most-often-missing of the two.
+    return (
+        [
+            f"Watch log:         tail -f {log_path}",
+            f"Watch transcript:  tail -f {transcript_path}",
+            darwin_progress,
+        ],
+        (
+            f"Non-Darwin/Linux/Windows platform detected ({name or 'unknown'}); "
+            "commands may need adjustment."
+        ),
+    )
+
+
+def build_startup_banner(
+    repo_dir: Path,
+    log_path: Path,
+    run_plan: Sequence[str],
+    *,
+    qpb_version: Optional[str] = None,
+    platform_name: Optional[str] = None,
+) -> str:
+    """Assemble the startup-banner string for a run.
+
+    The orchestrator calls this once at run start and feeds the result
+    through logboth() so it lands in both stdout and the log file.
+    Paths in the banner are absolute so operators can copy-paste them
+    into a second terminal without worrying about cwd.
+
+    ``platform_name`` defaults to platform.system(); tests pass an
+    explicit value ('Darwin', 'Linux', 'Windows', 'FreeBSD', ...) to
+    exercise each branch.
+    """
+    log_path = log_path.resolve()
+    repo_dir = repo_dir.resolve()
+    transcript_dir = repo_dir / "quality" / "control_prompts"
+    # First phase's transcript is a predictable, copy-paste-ready path.
+    # When the run advances, operators update the N in phaseN.output.txt;
+    # the banner's job is to give them a working starting point.
+    transcript_path = transcript_dir / "phase1.output.txt"
+    progress_path = repo_dir / "quality" / "PROGRESS.md"
+
+    if platform_name is None:
+        platform_name = platform.system()
+
+    version = qpb_version or lib.detect_skill_version() or "unknown"
+
+    lines = [
+        _BANNER_RULE,
+        f"QPB v{version} run starting",
+        _BANNER_RULE,
+        f"Target:            {repo_dir}",
+        f"Log file:          {log_path}",
+    ]
+    recipe_lines, advisory = _watch_commands_for_platform(
+        platform_name, log_path, transcript_path, progress_path
+    )
+    lines.extend(recipe_lines)
+    if advisory:
+        lines.append(f"  Note: {advisory}")
+    lines.append("")
+    lines.append("Plan:")
+    if run_plan:
+        for entry in run_plan:
+            lines.append(f"  {entry}")
+    else:
+        lines.append("  (single-prompt run; no explicit phase list)")
+    lines.append(_BANNER_RULE)
+    return "\n".join(lines)
+
+
+def _run_plan_entries(args: argparse.Namespace) -> List[str]:
+    """Run-plan summary for the startup banner.
+
+    v1.5.1 Item 2.3 base: phase list (from --phase / --full-run).
+    v1.5.1 Item 3.1: when --phase-groups (or sugar that expanded to
+    phase_groups) is in effect, render one line per group naming its
+    phases. Multi-phase groups render as "Phase group K (phases N, M)".
+    Iteration strategies and pace are Item 3.2 additions.
+    """
+    entries: List[str] = []
+    phase_groups = getattr(args, "phase_groups", None)
+    if phase_groups:
+        for idx, group in enumerate(phase_groups, start=1):
+            if len(group) == 1:
+                entries.append(f"Phase group {idx}      (phase {group[0]})")
+            else:
+                joined = ", ".join(group)
+                entries.append(f"Phase group {idx}      (phases {joined})")
+    elif getattr(args, "next_iteration", False):
+        strategies = ",".join(getattr(args, "strategy", []) or ["gap"])
+        entries.append(f"Iteration strategies: {strategies}")
+    # Item 3.2 iteration + pace block.
+    iterations = getattr(args, "iterations", None)
+    if iterations:
+        for strat in iterations:
+            entries.append(f"Iteration:            {strat}")
+    elif getattr(args, "full_run", False):
+        # full_run sugar is expanded in parse_args; guard here for
+        # callers that pass a bare Namespace without going through
+        # parse_args (e.g. tests and the internal full-run re-dispatch).
+        for strat in ALL_STRATEGIES:
+            entries.append(f"Iteration:            {strat}")
+    pace = int(getattr(args, "pace_seconds", 0) or 0)
+    if pace > 0:
+        entries.append(f"Pace:                 {pace}s between prompts")
+    return entries
+
+
+def print_startup_banner(
+    repo_dir: Path,
+    log_path: Path,
+    args: argparse.Namespace,
+    *,
+    platform_name: Optional[str] = None,
+) -> None:
+    """Emit the startup banner via logboth so it lands in both stdout
+    and the run log file. Single call site in each run entry point."""
+    banner = build_startup_banner(
+        repo_dir,
+        log_path,
+        _run_plan_entries(args),
+        platform_name=platform_name,
+    )
+    lib.logboth(log_path, banner)
+
+
 def run_prompt(repo_dir: Path, prompt: str, pass_name: str, output_file: Path, log_file: Path, runner: str, model: Optional[str]) -> int:
     command = command_for_runner(runner, prompt, model)
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -592,24 +1294,405 @@ def docs_present(repo_dir: Path) -> bool:
     )
 
 
-def archive_previous_run(repo_dir: Path, timestamp: str) -> None:
-    quality_dir = repo_dir / "quality"
-    control_prompts_dir = repo_dir / "control_prompts"
+# v1.5.1 Item 1.3: pre-run formal_docs guard.
+_FORMAL_DOCS_PLAINTEXT_EXTS = frozenset({".txt", ".md"})
+_FORMAL_DOCS_SIDECAR_SUFFIX = ".meta.json"
+_FORMAL_DOCS_SKIPPED = frozenset({"README.md"})
+_FORMAL_DOCS_BACKUP_DIR = ".sidecar_backups"
+
+
+def _formal_docs_plaintext(formal_docs_dir: Path) -> List[Path]:
+    """Return plaintext files under formal_docs/ that ingest would consider.
+
+    Mirrors the collect rules in bin/formal_docs_ingest.collect_documents and
+    bin/setup_formal_docs._collect_documents so the guard's notion of
+    'orphan plaintext' matches what the reader will actually see.
+    """
+    if not formal_docs_dir.is_dir():
+        return []
+    files: List[Path] = []
+    for path in sorted(formal_docs_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        if path.name in _FORMAL_DOCS_SKIPPED:
+            continue
+        if path.name.endswith(_FORMAL_DOCS_SIDECAR_SUFFIX):
+            continue
+        if _FORMAL_DOCS_BACKUP_DIR in path.parts:
+            continue
+        if path.suffix.lower() in _FORMAL_DOCS_PLAINTEXT_EXTS:
+            files.append(path)
+    return files
+
+
+def _formal_docs_orphans(plaintext: Sequence[Path]) -> List[Path]:
+    """Return plaintext files whose sibling .meta.json is absent."""
+    orphans: List[Path] = []
+    for doc in plaintext:
+        sidecar = doc.with_name(doc.stem + _FORMAL_DOCS_SIDECAR_SUFFIX)
+        if not sidecar.is_file():
+            orphans.append(doc)
+    return orphans
+
+
+def formal_docs_guard_banner(repo_dir: Path) -> Optional[str]:
+    """Return a multi-line warning banner, or None if formal_docs/ is clean.
+
+    Clean = directory exists AND either (a) has no plaintext files (handled
+    elsewhere — an empty formal_docs/ triggers the 'empty' warning) or
+    (b) every plaintext file has a matching sidecar.
+
+    The three trigger conditions are: missing directory, empty directory,
+    orphan plaintext. The warning is non-blocking; the caller prints it
+    and proceeds.
+
+    v1.5.1 Phase 1 rev (Council — gpt-5.4 blocker 3): the remediation
+    command uses sys.executable (an absolute path to the running
+    interpreter) and an absolute path to bin/setup_formal_docs.py derived
+    from this module's __file__. Operators can copy-paste the command
+    from any working directory and have it resolve correctly; the prior
+    ``python3 bin/setup_formal_docs.py <...>`` form only worked when run
+    from the repo root.
+    """
+    formal_docs_dir = repo_dir / "formal_docs"
+    helper_path = (Path(__file__).resolve().parent / "setup_formal_docs.py")
+    remediation = f"{sys.executable} {helper_path} {formal_docs_dir}"
+    staging_pointer = (
+        "Staging: repos/setup_repos.sh (v1.5.1 Item 1.1) converts "
+        "docs_gathered/ into formal_docs/ and invokes the setup helper."
+    )
+    suppress_hint = (
+        "Suppress this warning with --no-formal-docs for self-audit "
+        "bootstrap / minimal-repo cases that legitimately have no formal docs."
+    )
+
+    if not formal_docs_dir.is_dir():
+        trigger = f"formal_docs/ is missing at {formal_docs_dir}"
+    else:
+        plaintext = _formal_docs_plaintext(formal_docs_dir)
+        if not plaintext:
+            trigger = f"formal_docs/ is empty at {formal_docs_dir}"
+        else:
+            orphans = _formal_docs_orphans(plaintext)
+            if not orphans:
+                return None
+            shown = orphans[:10]
+            remainder = len(orphans) - len(shown)
+            names: List[str] = []
+            for doc in shown:
+                try:
+                    rel = doc.relative_to(formal_docs_dir).as_posix()
+                except ValueError:
+                    rel = doc.name
+                names.append(f"    - {rel}")
+            if remainder > 0:
+                names.append(f"    ... and {remainder} more")
+            trigger_lines = [
+                f"formal_docs/ has plaintext files without .meta.json sidecars ({len(orphans)}):",
+                *names,
+            ]
+            trigger = "\n".join(trigger_lines)
+
+    banner = [
+        "",
+        "=" * 72,
+        "WARN: pre-run formal_docs guard triggered",
+        "",
+        f"  {trigger}" if "\n" not in trigger else trigger,
+        "",
+        f"  Remediation: {remediation}",
+        f"  {staging_pointer}",
+        f"  {suppress_hint}",
+        "=" * 72,
+        "",
+    ]
+    return "\n".join(banner)
+
+
+def _clear_live_quality(quality_dir: Path) -> None:
+    """Remove every live child of quality/ except the runs/ archive subtree and
+    RUN_INDEX.md (the append-only history that lives alongside runs/)."""
     if not quality_dir.is_dir():
         return
-    archive_root = repo_dir / "previous_runs" / timestamp
-    partial_dir = repo_dir / "previous_runs" / (timestamp + ".partial")
-    archive_root.parent.mkdir(parents=True, exist_ok=True)
-    if archive_root.exists():
-        shutil.rmtree(archive_root)
-    if partial_dir.exists():
-        shutil.rmtree(partial_dir)
-    shutil.copytree(quality_dir, partial_dir / "quality")
-    if control_prompts_dir.is_dir():
-        shutil.copytree(control_prompts_dir, partial_dir / "control_prompts")
-    partial_dir.rename(archive_root)
-    shutil.rmtree(quality_dir, ignore_errors=True)
-    shutil.rmtree(control_prompts_dir, ignore_errors=True)
+    for child in list(quality_dir.iterdir()):
+        if child.name in ("runs", "RUN_INDEX.md"):
+            continue
+        if child.is_dir():
+            shutil.rmtree(child, ignore_errors=True)
+        else:
+            child.unlink(missing_ok=True)
+
+
+def _prior_run_id_from_live_index(quality_dir: Path) -> Optional[str]:
+    """Return the prior run's compact timestamp from quality/INDEX.md, or None."""
+    index_path = quality_dir / "INDEX.md"
+    if not index_path.is_file():
+        return None
+    payload = archive_lib.load_index_payload(index_path)
+    if not isinstance(payload, dict):
+        return None
+    ts = payload.get("run_timestamp_start")
+    if not isinstance(ts, str) or not ts:
+        return None
+    return archive_lib.compact_from_extended(ts)
+
+
+def archive_previous_run(repo_dir: Path, current_run_timestamp: str) -> None:
+    """Make room for a new run by archiving whatever live quality/ content remains.
+
+    v1.5.1 unified pipeline (Phase 5 revision r1): both the Phase-1 entry
+    archive and the end-of-Phase-6 archive go through
+    `archive_lib.archive_run()` so every `quality/runs/<ts>/` folder has an
+    `INDEX.md` with §11 fields and every run emits a row into
+    `quality/RUN_INDEX.md`.
+
+    Branches, in order:
+
+    1. If quality/ has no live content beyond runs/, nothing to do.
+    2. If quality/INDEX.md names a prior run whose archive folder already
+       exists under quality/runs/<prior-ts>/, the prior run was auto-archived
+       at its own successful Phase 6 — just clear the live tree.
+    3. Otherwise archive the live tree as a partial prior run, using the
+       prior run's own start timestamp when available (from INDEX.md), else
+       falling back to the current run's timestamp.
+    """
+    quality_dir = repo_dir / "quality"
+    if not quality_dir.is_dir():
+        return
+    if not any(child.name != "runs" for child in quality_dir.iterdir()):
+        return
+
+    prior_ts = _prior_run_id_from_live_index(quality_dir)
+    if prior_ts and (quality_dir / "runs" / prior_ts).is_dir():
+        _clear_live_quality(quality_dir)
+        return
+
+    archive_ts = prior_ts or current_run_timestamp
+    try:
+        archive_lib.archive_run(
+            repo_dir,
+            archive_ts,
+            status="partial",
+            gate_verdict_override="partial",
+        )
+    except archive_lib.ArchiveError:
+        # Archive target already exists under a -PARTIAL suffix — the prior
+        # attempt was already preserved. Clear the live tree and continue.
+        pass
+    _clear_live_quality(quality_dir)
+
+
+def _build_invocation_flags(args: Optional[argparse.Namespace], **overrides) -> dict:
+    """Assemble the invocation_flags dict persisted in INDEX.md.
+
+    Follows the additive pattern established in Phase 1 revision
+    (bin/archive_lib.py:404-441): new flags are additional keys in the
+    same dict, never a reshape. Defaults come from argparse Namespace
+    attributes with getattr() so legacy callers still work. Explicit
+    kwargs override Namespace values for the (rare) call sites that
+    pass a value directly for testability.
+
+    v1.5.1 Phase 3: new keys ``phase_groups`` (string | null),
+    ``iterations`` (string | null), ``pace_seconds`` (int, default 0),
+    ``full_run`` (bool, default false).
+    """
+    defaults = {
+        "no_formal_docs": False,
+        "no_stdout_echo": False,
+        "verbose": False,
+        "quiet": False,
+        "progress_interval": 2,
+        "phase_groups": None,
+        "iterations": None,
+        "pace_seconds": 0,
+        "full_run": False,
+    }
+    if args is not None:
+        defaults["no_formal_docs"] = bool(getattr(args, "no_formal_docs", False))
+        defaults["no_stdout_echo"] = bool(getattr(args, "no_stdout_echo", False))
+        defaults["verbose"] = bool(getattr(args, "verbose", False))
+        defaults["quiet"] = bool(getattr(args, "quiet", False))
+        interval = getattr(args, "progress_interval", 2)
+        defaults["progress_interval"] = int(interval) if interval is not None else 2
+        # Phase 3 additions.
+        phase_groups = getattr(args, "phase_groups", None)
+        if phase_groups:
+            defaults["phase_groups"] = _format_phase_groups(phase_groups)
+        iterations = getattr(args, "iterations", None)
+        if iterations:
+            defaults["iterations"] = ",".join(iterations)
+        defaults["pace_seconds"] = int(getattr(args, "pace_seconds", 0) or 0)
+        defaults["full_run"] = bool(getattr(args, "full_run", False))
+
+    # Explicit overrides win over args values.
+    for key, value in overrides.items():
+        if key == "progress_interval":
+            defaults[key] = int(value)
+        elif key == "pace_seconds":
+            defaults[key] = int(value)
+        elif key in ("phase_groups", "iterations"):
+            defaults[key] = value  # keep None or string as provided
+        elif key in ("no_formal_docs", "no_stdout_echo", "verbose", "quiet", "full_run"):
+            defaults[key] = bool(value)
+        else:
+            defaults[key] = value
+    return defaults
+
+
+def _index_flag_kwargs(args: argparse.Namespace) -> dict:
+    """Convert an args Namespace into the kwargs write_live_index_* expects.
+
+    Centralizes the args-to-INDEX flag mapping so the three call sites
+    (Phase 1 stub, singlepass stub, Phase 6 final re-render) stay in sync
+    as new flags are added. `phase_groups` / `iterations` are serialized
+    to their canonical string spec form.
+    """
+    phase_groups_list = getattr(args, "phase_groups", None)
+    iterations_list = getattr(args, "iterations", None)
+    return {
+        "no_formal_docs": getattr(args, "no_formal_docs", False),
+        "no_stdout_echo": getattr(args, "no_stdout_echo", False),
+        "verbose": getattr(args, "verbose", False),
+        "quiet": getattr(args, "quiet", False),
+        "progress_interval": getattr(args, "progress_interval", 2),
+        "phase_groups": _format_phase_groups(phase_groups_list) if phase_groups_list else None,
+        "iterations": ",".join(iterations_list) if iterations_list else None,
+        "pace_seconds": getattr(args, "pace_seconds", 0) or 0,
+        "full_run": getattr(args, "full_run", False),
+    }
+
+
+def write_live_index_stub(
+    repo_dir: Path,
+    timestamp: str,
+    *,
+    no_formal_docs: bool = False,
+    no_stdout_echo: bool = False,
+    verbose: bool = False,
+    quiet: bool = False,
+    progress_interval: int = 2,
+    phase_groups: Optional[str] = None,
+    iterations: Optional[str] = None,
+    pace_seconds: int = 0,
+    full_run: bool = False,
+) -> None:
+    """Render a minimal quality/INDEX.md at run start so the gate's invariant #10
+    check has something to validate if the run is interrupted mid-flight.
+
+    v1.5.1 Phase 1 rev (Council — gpt-5.4 blocker 2): ``no_formal_docs`` is
+    persisted under ``invocation_flags`` so later auditors can distinguish
+    an intentionally-empty formal_docs/ run from an accidentally-empty one.
+
+    v1.5.1 Phase 2: additional flags land in the same ``invocation_flags``
+    dict — ``no_stdout_echo`` (Item 2.1), ``verbose`` / ``quiet`` /
+    ``progress_interval`` (Item 2.2). The dict is additive per the
+    convention in bin/archive_lib.py:404-441.
+    """
+    quality_dir = repo_dir / "quality"
+    quality_dir.mkdir(parents=True, exist_ok=True)
+    start_ext = archive_lib.extended_from_compact(timestamp)
+    flags = _build_invocation_flags(
+        None,
+        no_formal_docs=no_formal_docs,
+        no_stdout_echo=no_stdout_echo,
+        verbose=verbose,
+        quiet=quiet,
+        progress_interval=progress_interval,
+        phase_groups=phase_groups,
+        iterations=iterations,
+        pace_seconds=pace_seconds,
+        full_run=full_run,
+    )
+    payload = {
+        "run_timestamp_start": start_ext,
+        "run_timestamp_end": start_ext,
+        "duration_seconds": 0,
+        "qpb_version": lib.detect_skill_version() or "unknown",
+        "target_repo_path": ".",
+        "target_repo_git_sha": archive_lib._git_head_sha(repo_dir),
+        "target_project_type": "Code",  # TODO(v1.5.2): Code/Skill/Hybrid detector.
+        "phases_executed": [],
+        "summary": {"requirements": {}, "bugs": {}, "gate_verdict": "partial"},
+        "artifacts": [],
+        "invocation_flags": flags,
+    }
+    (quality_dir / "INDEX.md").write_text(
+        archive_lib.render_index_markdown(
+            timestamp,
+            payload,
+            provenance=(
+                "written by bin/run_playbook at Phase 1 entry (stub; "
+                "re-rendered at end of Phase 6)"
+            ),
+        ),
+        encoding="utf-8",
+    )
+
+
+def write_live_index_final(
+    repo_dir: Path,
+    timestamp: str,
+    *,
+    gate_verdict: str,
+    no_formal_docs: bool = False,
+    no_stdout_echo: bool = False,
+    verbose: bool = False,
+    quiet: bool = False,
+    progress_interval: int = 2,
+    phase_groups: Optional[str] = None,
+    iterations: Optional[str] = None,
+    pace_seconds: int = 0,
+    full_run: bool = False,
+) -> None:
+    """Re-render quality/INDEX.md at end of Phase 6 with the run's real counts.
+
+    `gate_verdict` is one of pass | fail | partial. Counts come from
+    `archive_lib.build_index_payload()` walking the live quality/ tree;
+    `run_timestamp_start` is forced to the run's true start and
+    `run_timestamp_end` is captured now so `duration_seconds` is real.
+
+    v1.5.1 Phase 1 rev (Council — gpt-5.4 blocker 2): ``no_formal_docs`` is
+    persisted under ``invocation_flags`` so the Phase-6 re-render preserves
+    the flag state recorded by the Phase-1 stub.
+
+    v1.5.1 Phase 2: additional flags land in the same ``invocation_flags``
+    dict — ``no_stdout_echo`` (Item 2.1), ``verbose`` / ``quiet`` /
+    ``progress_interval`` (Item 2.2).
+    """
+    quality_dir = repo_dir / "quality"
+    flags = _build_invocation_flags(
+        None,
+        no_formal_docs=no_formal_docs,
+        no_stdout_echo=no_stdout_echo,
+        verbose=verbose,
+        quiet=quiet,
+        progress_interval=progress_interval,
+        phase_groups=phase_groups,
+        iterations=iterations,
+        pace_seconds=pace_seconds,
+        full_run=full_run,
+    )
+    payload = archive_lib.build_index_payload(
+        repo_dir,
+        quality_dir,
+        target_repo_path=".",
+        target_project_type="Code",
+        gate_verdict_override=gate_verdict,
+        invocation_flags=flags,
+    )
+    start_ext = archive_lib.extended_from_compact(timestamp)
+    end_ext = archive_lib.utc_extended_timestamp()
+    payload["run_timestamp_start"] = start_ext
+    payload["run_timestamp_end"] = end_ext
+    payload["duration_seconds"] = archive_lib._duration_seconds(start_ext, end_ext)
+    (quality_dir / "INDEX.md").write_text(
+        archive_lib.render_index_markdown(
+            timestamp,
+            payload,
+            provenance="written by bin/run_playbook at end of Phase 6 (final counts)",
+        ),
+        encoding="utf-8",
+    )
 
 
 def final_artifact_gaps(repo_dir: Path) -> List[str]:
@@ -631,22 +1714,208 @@ def final_artifact_gaps(repo_dir: Path) -> List[str]:
     return missing
 
 
-def run_one_phase(repo_dir: Path, phase: str, phase_list: Sequence[str], args: argparse.Namespace, log_file: Path) -> bool:
+def run_one_phase(
+    repo_dir: Path,
+    phase: str,
+    phase_list: Sequence[str],
+    args: argparse.Namespace,
+    log_file: Path,
+    timestamp: str,
+) -> bool:
     gate = check_phase_gate(repo_dir, phase)
     for message in gate.messages:
         lib.logboth(log_file, lib.log(f"  {message}"))
     if not gate.ok:
         return False
 
-    phase_index = phase_list.index(phase) + 1
+    phase_index = phase_list.index(phase) + 1 if phase in phase_list else 1
     prompt = build_phase_prompt(phase, no_seeds=args.no_seeds)
-    output_file = repo_dir / "control_prompts" / f"phase{phase}.output.txt"
-    lib.logboth(log_file, lib.log(f"  Phase {phase_index}/{len(phase_list)} ({phase_label(phase)}): {repo_dir.name}"))
+    output_file = repo_dir / "quality" / "control_prompts" / f"phase{phase}.output.txt"
+    lib.logboth(log_file, lib.log(f"  Phase {phase_index}/{len(phase_list) or 1} ({phase_label(phase)}): {repo_dir.name}"))
     exit_code = run_prompt(repo_dir, prompt, f"phase{phase}", output_file, log_file, args.runner, args.model)
     if exit_code:
         lib.logboth(log_file, lib.log(f"  ABORT Phase {phase}: child runner exited {exit_code}"))
         return False
 
+    _log_phase_completion(repo_dir, phase, log_file, args, timestamp)
+    return True
+
+
+def _pace_between_prompts(
+    seconds: int,
+    log_file: Path,
+    monitor: Optional["progress_monitor.ProgressMonitor"] = None,
+    *,
+    sleep_fn: Optional[callable] = None,
+) -> None:
+    """Sleep ``seconds`` between consecutive prompts, emitting a heartbeat.
+
+    v1.5.1 Item 3.2 (Phase 3 revision: dedupe pacing heartbeat). When
+    ``seconds > 0``:
+      - If ``monitor`` is provided, call monitor.set_pacing(seconds)
+        before sleeping. The monitor thread emits exactly one
+        ``Pacing: Ns before next prompt…`` line on its next
+        _poll_once() cycle (within progress_interval seconds).
+      - Sleep for ``seconds``.
+      - monitor.clear_pacing() in a try/finally so an exception during
+        sleep (KeyboardInterrupt in practice) still disarms the monitor.
+
+    Prior to the Phase 3 revision, this function also emitted a
+    timestamped ``Pacing:`` line via logboth before set_pacing. Council
+    (both adversarial seats) flagged that as duplicate output since the
+    monitor's own heartbeat produces the same literal line. The
+    monitor is now the sole source of the heartbeat; operators running
+    with --quiet get no heartbeat (as expected — they opted out of
+    progress output entirely).
+
+    ``sleep_fn`` is patchable for tests; production callers leave it
+    at None to use time.sleep().
+    """
+    if seconds <= 0:
+        return
+    if monitor is not None:
+        monitor.set_pacing(seconds)
+    try:
+        (sleep_fn or time.sleep)(seconds)
+    finally:
+        if monitor is not None:
+            monitor.clear_pacing()
+
+
+def _build_group_prompt(phases: Sequence[str], no_seeds: bool) -> str:
+    """Concatenate per-phase prompt bodies for a multi-phase group.
+
+    v1.5.1 Item 3.1. The first phase's prompt opens the combined prompt
+    with no prefix; subsequent phases are separated by a single
+    visible header line so the LLM can tell which phase's work
+    it's producing. Per Impl-Plan Open Question 5 (lean: visible,
+    minimal), the header is a plain `=== Phase N (Label) ===` string.
+    """
+    parts: List[str] = []
+    for i, phase in enumerate(phases):
+        body = build_phase_prompt(phase, no_seeds=no_seeds)
+        if i > 0:
+            parts.append(f"\n\n=== Phase {phase} ({phase_label(phase)}) ===\n\n")
+        parts.append(body)
+    return "".join(parts)
+
+
+def _group_transcript_path(repo_dir: Path, phases: Sequence[str]) -> Path:
+    """Transcript file for a group. Single-phase groups reuse the
+    legacy phaseN.output.txt name; multi-phase groups join with '-'
+    (e.g. phase3-4.output.txt)."""
+    suffix = "-".join(phases)
+    return repo_dir / "quality" / "control_prompts" / f"phase{suffix}.output.txt"
+
+
+def _group_pass_label(phases: Sequence[str]) -> str:
+    """Pass label used by run_prompt (appears in the per-prompt log header)."""
+    return "phase" + "-".join(phases)
+
+
+def run_one_phase_group(
+    repo_dir: Path,
+    group: Sequence[str],
+    phase_groups: Sequence[Sequence[str]],
+    args: argparse.Namespace,
+    log_file: Path,
+    timestamp: str,
+    monitor: "progress_monitor.ProgressMonitor",
+) -> bool:
+    """Execute a single phase group as one LLM call.
+
+    v1.5.1 Item 3.1. For a single-phase group this is equivalent to the
+    prior per-phase flow (and delegates to run_one_phase to preserve
+    that path's per-phase post-hoc logging). For a multi-phase group
+    the per-phase prompt bodies are concatenated into one prompt and
+    submitted to the runner once; gate checks are performed at the
+    group boundary (first-phase gate; a failure aborts the run).
+
+    The progress monitor's set_transcript_path() is called once per
+    phase in the group so the monitor-call count matches phase count,
+    not group count — but for a multi-phase group all phase-level
+    transcript pointers resolve to the group's consolidated file
+    (stub per-phase files are created for operator-facing consistency).
+    """
+    if not group:
+        return True
+
+    if len(group) == 1:
+        phase = group[0]
+        # Flatten every phase across all groups into the counter list so
+        # single-phase groups keep their historical "Phase X/Y" header.
+        flat = [p for g in phase_groups for p in g]
+        monitor.set_transcript_path(_group_transcript_path(repo_dir, [phase]))
+        return run_one_phase(repo_dir, phase, flat, args, log_file, timestamp)
+
+    # Multi-phase group path.
+    gate = check_phase_gate(repo_dir, group[0])
+    for message in gate.messages:
+        lib.logboth(log_file, lib.log(f"  {message}"))
+    if not gate.ok:
+        return False
+
+    group_transcript = _group_transcript_path(repo_dir, group)
+    group_transcript.parent.mkdir(parents=True, exist_ok=True)
+    # Per-phase transcript stubs + monitor registration. Earlier phases
+    # in the group get a small pointer file; the last phase reuses the
+    # group transcript path directly so tail + grep keep working.
+    for i, phase in enumerate(group):
+        per_phase_path = _group_transcript_path(repo_dir, [phase])
+        monitor.set_transcript_path(per_phase_path)
+        if i < len(group) - 1 and per_phase_path != group_transcript:
+            per_phase_path.write_text(
+                f"# Phase {phase} ran as part of group {'+'.join(group)}.\n"
+                f"# Combined transcript: {group_transcript}\n",
+                encoding="utf-8",
+            )
+    # Monitor ends up pointing at the last phase's transcript file; the
+    # group actually writes to the group-transcript path, so point the
+    # monitor there for the actual subprocess output.
+    monitor.set_transcript_path(group_transcript)
+
+    group_label = "+".join(group)
+    labels = ", ".join(f"{p} ({phase_label(p)})" for p in group)
+    lib.logboth(
+        log_file,
+        lib.log(f"  Phase group {group_label}: {labels} — single prompt"),
+    )
+
+    prompt = _build_group_prompt(group, no_seeds=args.no_seeds)
+    exit_code = run_prompt(
+        repo_dir,
+        prompt,
+        _group_pass_label(group),
+        group_transcript,
+        log_file,
+        args.runner,
+        args.model,
+    )
+    if exit_code:
+        lib.logboth(log_file, lib.log(f"  ABORT Phase group {group_label}: child runner exited {exit_code}"))
+        return False
+
+    # Per-phase completion summaries: walk each phase's post-hoc output
+    # expectations individually so the operator sees which phase wrote
+    # which artifacts (matching the single-phase logging).
+    for phase in group:
+        _log_phase_completion(repo_dir, phase, log_file, args, timestamp)
+    return True
+
+
+def _log_phase_completion(
+    repo_dir: Path,
+    phase: str,
+    log_file: Path,
+    args: argparse.Namespace,
+    timestamp: str,
+) -> None:
+    """Emit the same post-hoc completion logging single-phase groups do.
+
+    Factored out so run_one_phase_group's multi-phase path and
+    run_one_phase share the same line. Phase 6 also re-renders INDEX.md
+    here — same behavior as before the refactor.
+    """
     quality_dir = repo_dir / "quality"
     if phase == "1":
         lib.logboth(log_file, lib.log(f"  Phase 1 complete: {count_lines(quality_dir / 'EXPLORATION.md')} lines in EXPLORATION.md"))
@@ -678,24 +1947,116 @@ def run_one_phase(repo_dir: Path, phase: str, phase_list: Sequence[str], args: a
             if lines:
                 gate_result = lines[-1]
         lib.logboth(log_file, lib.log(f"  Phase 6 complete: {gate_result}"))
-    return True
+        gate_passed = _gate_pass(gate_result, quality_dir)
+        verdict = "pass" if gate_passed else ("partial" if "warn" in gate_result.lower() else "fail")
+        try:
+            write_live_index_final(
+                repo_dir,
+                timestamp,
+                gate_verdict=verdict,
+                **_index_flag_kwargs(args),
+            )
+        except Exception as exc:  # noqa: BLE001 — log and continue
+            lib.logboth(log_file, lib.log(f"  WARN write_live_index_final skipped: {exc}"))
+        if gate_passed:
+            try:
+                archive_lib.archive_run(
+                    repo_dir,
+                    timestamp,
+                    status="success",
+                    gate_verdict_override="pass",
+                )
+            except archive_lib.ArchiveError as exc:
+                lib.logboth(log_file, lib.log(f"  WARN archive_run skipped: {exc}"))
 
 
-def run_one_phased(repo_dir: Path, phase_list: Sequence[str], args: argparse.Namespace, timestamp: str) -> int:
-    log_file = log_file_for(repo_dir, timestamp)
+def _gate_pass(gate_result_line: str, quality_dir: Path) -> bool:
+    """Return True if the end-of-Phase-6 gate state indicates a clean pass."""
+    if "PASS" in gate_result_line.upper() and "FAIL" not in gate_result_line.upper():
+        return True
+    latest = quality_dir / "results" / "gate-report-latest.json"
+    if latest.is_file():
+        try:
+            import json
+
+            data = json.loads(latest.read_text(encoding="utf-8", errors="ignore"))
+            verdict = str(data.get("gate_verdict") or data.get("gate_result") or "").lower()
+            return verdict == "pass"
+        except (json.JSONDecodeError, OSError):
+            return False
+    return False
+
+
+def run_one_phased(repo_dir: Path, phase_groups: Sequence[Sequence[str]], args: argparse.Namespace, timestamp: str) -> int:
+    """Execute one or more phase groups for a single target repo.
+
+    v1.5.1 Item 3.1: takes a list-of-lists (each inner list is a group).
+    Single-phase groups hit the legacy run_one_phase path; multi-phase
+    groups concatenate prompts via run_one_phase_group. Gate checks
+    happen at the group boundary.
+    """
+    log_file = configure_logging(
+        repo_dir,
+        timestamp,
+        no_stdout_echo=getattr(args, "no_stdout_echo", False),
+    )
+    print_startup_banner(repo_dir, log_file, args)
     if not docs_present(repo_dir):
         print(lib.log(f"WARN: {repo_dir.name} - docs_gathered/ is missing or empty; proceeding with code-only analysis"))
+    if not getattr(args, "no_formal_docs", False):
+        banner = formal_docs_guard_banner(repo_dir)
+        if banner is not None:
+            lib.logboth(log_file, banner, echo=True)
 
-    if "1" in phase_list:
+    flat_phases = [p for group in phase_groups for p in group]
+    if "1" in flat_phases:
         archive_previous_run(repo_dir, timestamp)
+        # Write a minimal quality/INDEX.md up front so an interrupted run
+        # still satisfies schemas.md §10 invariant #10 when the gate is
+        # invoked out-of-band on the partial tree.
+        write_live_index_stub(
+            repo_dir,
+            timestamp,
+            **_index_flag_kwargs(args),
+        )
 
-    (repo_dir / "control_prompts").mkdir(parents=True, exist_ok=True)
-    lib.logboth(log_file, lib.log(f"Starting playbook (phases: {','.join(phase_list)}): {repo_dir.name} (runner={args.runner})"))
-    for phase in phase_list:
-        if not run_one_phase(repo_dir, phase, phase_list, args, log_file):
-            lib.logboth(log_file, lib.log(f"ABORT: Phase {phase} gate failed for {repo_dir.name}"))
-            return 1
-    lib.logboth(log_file, lib.log(f"Playbook complete (phases: {','.join(phase_list)}): {repo_dir.name}"))
+    (repo_dir / "quality" / "control_prompts").mkdir(parents=True, exist_ok=True)
+    plan_desc = _format_phase_groups(phase_groups)
+    lib.logboth(log_file, lib.log(f"Starting playbook (phase groups: {plan_desc}): {repo_dir.name} (runner={args.runner})"))
+
+    # v1.5.1 Item 2.2: live progress monitor. Started here so the first
+    # PROGRESS.md write (inside Phase 1) gets picked up within one poll
+    # interval; torn down in the `finally` below so an abnormal Phase N
+    # exit still joins the thread.
+    monitor = progress_monitor.ProgressMonitor(
+        progress_path=repo_dir / "quality" / "PROGRESS.md",
+        log_file=log_file,
+        emit=lib.logboth,
+        interval=getattr(args, "progress_interval", 2),
+        verbose=getattr(args, "verbose", False),
+        quiet=getattr(args, "quiet", False),
+    )
+
+    exit_status = 0
+    pace_seconds = int(getattr(args, "pace_seconds", 0) or 0)
+    iterations_follow = bool(getattr(args, "iterations", None))
+    with monitor:
+        for index, group in enumerate(phase_groups):
+            if not run_one_phase_group(
+                repo_dir, group, phase_groups, args, log_file, timestamp, monitor
+            ):
+                lib.logboth(log_file, lib.log(f"ABORT: Phase group {'+'.join(group)} gate failed for {repo_dir.name}"))
+                exit_status = 1
+                break
+            # v1.5.1 Item 3.2: inter-group pacing. Skipped after the
+            # final group unless iterations follow (bridge pace).
+            is_last_group = index == len(phase_groups) - 1
+            if pace_seconds > 0 and (not is_last_group or iterations_follow):
+                _pace_between_prompts(pace_seconds, log_file, monitor)
+    if exit_status:
+        return exit_status
+
+    lib.logboth(log_file, lib.log(f"Playbook complete (phase groups: {plan_desc}): {repo_dir.name}"))
 
     missing = final_artifact_gaps(repo_dir)
     if missing:
@@ -707,9 +2068,18 @@ def run_one_phased(repo_dir: Path, phase_list: Sequence[str], args: argparse.Nam
 
 
 def run_one_singlepass(repo_dir: Path, args: argparse.Namespace, timestamp: str) -> int:
-    log_file = log_file_for(repo_dir, timestamp)
+    log_file = configure_logging(
+        repo_dir,
+        timestamp,
+        no_stdout_echo=getattr(args, "no_stdout_echo", False),
+    )
+    print_startup_banner(repo_dir, log_file, args)
     if not docs_present(repo_dir):
         print(lib.log(f"WARN: {repo_dir.name} - docs_gathered/ is missing or empty; proceeding with code-only analysis"))
+    if not getattr(args, "no_formal_docs", False):
+        banner = formal_docs_guard_banner(repo_dir)
+        if banner is not None:
+            lib.logboth(log_file, banner, echo=True)
 
     if args.next_iteration:
         if not (repo_dir / "quality" / "EXPLORATION.md").is_file():
@@ -723,11 +2093,16 @@ def run_one_singlepass(repo_dir: Path, args: argparse.Namespace, timestamp: str)
         lib.logboth(log_file, lib.log(f"Starting iteration ({strategy_name}): {repo_dir.name} (runner={args.runner}, building on existing quality/)"))
     else:
         archive_previous_run(repo_dir, timestamp)
+        write_live_index_stub(
+            repo_dir,
+            timestamp,
+            **_index_flag_kwargs(args),
+        )
         prompt = single_pass_prompt(no_seeds=args.no_seeds)
         pass_label = "full"
         lib.logboth(log_file, lib.log(f"Starting playbook (single-pass): {repo_dir.name} (runner={args.runner})"))
 
-    control_prompts = repo_dir / "control_prompts"
+    control_prompts = repo_dir / "quality" / "control_prompts"
     control_prompts.mkdir(parents=True, exist_ok=True)
     output_file = control_prompts / "playbook_run.output.txt"
     exit_code = run_prompt(repo_dir, prompt, pass_label, output_file, log_file, args.runner, args.model)
@@ -745,9 +2120,161 @@ def run_one_singlepass(repo_dir: Path, args: argparse.Namespace, timestamp: str)
     return 0
 
 
-def run_one(repo_dir: Path, phase_list: Sequence[str], args: argparse.Namespace, timestamp: str) -> int:
-    if phase_list:
-        return run_one_phased(repo_dir, phase_list, args, timestamp)
+def _append_iteration_heartbeat(progress_path: Path, line: str) -> None:
+    """Append a `## Iteration: ...` section to quality/PROGRESS.md.
+
+    v1.5.1 Phase 2 revision. Iteration strategies (gap, unfiltered,
+    parity, adversarial) can each run for tens of minutes against a
+    real LLM. Without per-strategy PROGRESS.md updates the file goes
+    stale at the Phase 6 line, and operators can't tell a 15-minute
+    iteration from a hung run.
+
+    Behavior:
+      - mkdir parents on demand so this works even when iterations
+        run before any phase wrote PROGRESS.md.
+      - Append-only — the existing phase-loop content is preserved.
+      - Each call writes one `## ` header followed by a blank line
+        and one body line. ProgressMonitor's _printed_headers set
+        (built around the `^##?\\s` regex) picks up the new section
+        on its next poll cycle and surfaces it to stdout exactly
+        once.
+    """
+    progress_path.parent.mkdir(parents=True, exist_ok=True)
+    with progress_path.open("a", encoding="utf-8") as handle:
+        handle.write(line + "\n")
+
+
+def _iso_utc_now() -> str:
+    """Compact ISO-8601 UTC timestamp for PROGRESS.md heartbeat lines."""
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def run_one_iterations(
+    repo_dir: Path,
+    iterations: Sequence[str],
+    args: argparse.Namespace,
+    timestamp: str,
+    *,
+    phases_already_ran: bool = False,
+) -> int:
+    """Run a list of iteration strategies in one process, with per-strategy
+    pacing and early-stop-on-zero-gain preserved.
+
+    v1.5.1 Item 3.2. This is the in-worker counterpart to
+    execute_strategy_list() (which spawns a fresh worker per strategy)
+    — useful when the same invocation already ran phase groups in this
+    process, so the whole unified run stays under a single log file and
+    a single ProgressMonitor lifecycle.
+
+    ``phases_already_ran`` skips the configure_logging / banner /
+    archive_previous_run / stub-INDEX setup, since those already
+    happened inside run_one_phased.
+    """
+    if phases_already_ran:
+        log_file = log_file_for(repo_dir, timestamp)
+    else:
+        log_file = configure_logging(
+            repo_dir,
+            timestamp,
+            no_stdout_echo=getattr(args, "no_stdout_echo", False),
+        )
+        print_startup_banner(repo_dir, log_file, args)
+        if not docs_present(repo_dir):
+            print(lib.log(f"WARN: {repo_dir.name} - docs_gathered/ is missing or empty; proceeding with code-only analysis"))
+        if not getattr(args, "no_formal_docs", False):
+            banner = formal_docs_guard_banner(repo_dir)
+            if banner is not None:
+                lib.logboth(log_file, banner, echo=True)
+
+    if not (repo_dir / "quality" / "EXPLORATION.md").is_file():
+        lib.logboth(
+            log_file,
+            lib.log(f"SKIP iterations: {repo_dir.name} - no quality/EXPLORATION.md"),
+        )
+        return 1
+
+    monitor = progress_monitor.ProgressMonitor(
+        progress_path=repo_dir / "quality" / "PROGRESS.md",
+        log_file=log_file,
+        emit=lib.logboth,
+        interval=getattr(args, "progress_interval", 2),
+        verbose=getattr(args, "verbose", False),
+        quiet=getattr(args, "quiet", False),
+    )
+
+    pace_seconds = int(getattr(args, "pace_seconds", 0) or 0)
+    progress_path = repo_dir / "quality" / "PROGRESS.md"
+    with monitor:
+        for index, strategy in enumerate(iterations):
+            # v1.5.1 Phase 2 rev: PROGRESS.md heartbeat at iteration entry.
+            _append_iteration_heartbeat(
+                progress_path,
+                f"\n## Iteration: {strategy} started\n\n{_iso_utc_now()}\n",
+            )
+
+            lib.logboth(log_file, lib.log(f"Starting iteration ({strategy}): {repo_dir.name}"))
+            before = lib.count_bug_writeups(repo_dir)
+
+            prompt = iteration_prompt(strategy)
+            pass_label = f"iteration-{strategy}"
+            output_file = repo_dir / "quality" / "control_prompts" / f"{pass_label}.output.txt"
+            monitor.set_transcript_path(output_file)
+            exit_code = run_prompt(
+                repo_dir, prompt, pass_label, output_file, log_file,
+                args.runner, args.model,
+            )
+            if exit_code:
+                lib.logboth(log_file, lib.log(f"  ABORT iteration {strategy}: child runner exited {exit_code}"))
+                return exit_code
+
+            after = lib.count_bug_writeups(repo_dir)
+            gained = after - before
+            lib.logboth(log_file, lib.log(f"  Iteration {strategy}: {before} -> {after} bugs (+{gained})"))
+            # v1.5.1 Phase 2 rev: PROGRESS.md heartbeat at iteration exit.
+            _append_iteration_heartbeat(
+                progress_path,
+                f"\n## Iteration: {strategy} complete\n\n"
+                f"{_iso_utc_now()} · bugs before: {before} · bugs after: {after} · net-new: {gained}\n",
+            )
+            # Early-stop-on-zero-gain: unchanged semantics from
+            # execute_strategy_list.
+            if gained == 0:
+                lib.logboth(log_file, lib.log("  No new bugs found - stopping early (diminishing returns)."))
+                break
+            is_last = index == len(iterations) - 1
+            if pace_seconds > 0 and not is_last:
+                _pace_between_prompts(pace_seconds, log_file, monitor)
+
+    lib.cleanup_repo(repo_dir)
+    return 0
+
+
+def run_one(repo_dir: Path, phase_groups: Optional[Sequence[Sequence[str]]], args: argparse.Namespace, timestamp: str) -> int:
+    """Dispatch one target through phases then iterations in this process.
+
+    v1.5.1 Item 3.1 + 3.2. The worker-side unified path:
+      1. If phase_groups set: run them (run_one_phased) — inter-group
+         pacing lives there.
+      2. If args.iterations set: run them (run_one_iterations) —
+         inter-strategy pacing lives there. When phases just ran, the
+         bridge pace between the last phase group and the first
+         iteration is emitted by run_one_phased (see iterations_follow
+         there).
+      3. If neither: fall through to single-pass / legacy iteration.
+    """
+    iterations = list(getattr(args, "iterations", None) or [])
+    if phase_groups:
+        phased_status = run_one_phased(repo_dir, phase_groups, args, timestamp)
+        if phased_status != 0:
+            return phased_status
+        if iterations:
+            return run_one_iterations(
+                repo_dir, iterations, args, timestamp, phases_already_ran=True
+            )
+        return 0
+    if iterations:
+        return run_one_iterations(repo_dir, iterations, args, timestamp)
     return run_one_singlepass(repo_dir, args, timestamp)
 
 
@@ -795,6 +2322,17 @@ def display_run_header(args: argparse.Namespace, repo_dirs: Sequence[Path], disp
     else:
         print(f"Model:    {args.model or '(default)'}")
     print(f"No seeds: {args.no_seeds}  (Phase 0/0b skipped when true)")
+    if getattr(args, "no_formal_docs", False):
+        print("No formal docs: True  (pre-run formal_docs/ guard suppressed)")
+    if getattr(args, "no_stdout_echo", False):
+        print("No stdout echo: True  (logboth stdout default disabled)")
+    if getattr(args, "verbose", False):
+        print("Progress:  verbose  (phase transcript + PROGRESS.md headers stream to stdout)")
+    elif getattr(args, "quiet", False):
+        print("Progress:  quiet    (monitor suppressed; log file still written in full)")
+    else:
+        interval = getattr(args, "progress_interval", 2)
+        print(f"Progress:  headers  (PROGRESS.md poll every {interval}s)")
     print(f"Parallel: {args.parallel}")
     if getattr(args, "full_run", False):
         print("Mode:     full-run (fresh main run + all four iteration strategies)")
@@ -907,7 +2445,13 @@ def build_worker_command(args: argparse.Namespace, target_path: str) -> List[str
     command = [sys.executable, str(Path(__file__).resolve()), "--worker", "--sequential"]
     command.append("--claude" if args.runner == "claude" else "--copilot")
     command.append("--no-seeds" if args.no_seeds else "--with-seeds")
-    if args.phase:
+    # v1.5.1 Item 3.1: prefer --phase-groups when the operator passed it
+    # explicitly OR when sugar (--phase all / --full-run) produced groups.
+    # --phase is only propagated when phase-groups was NOT derived.
+    phase_groups_raw = getattr(args, "phase_groups_raw", None)
+    if phase_groups_raw is not None:
+        command.extend(["--phase-groups", _format_phase_groups(phase_groups_raw)])
+    elif args.phase:
         command.extend(["--phase", args.phase])
     if args.next_iteration:
         command.append("--next-iteration")
@@ -917,6 +2461,33 @@ def build_worker_command(args: argparse.Namespace, target_path: str) -> List[str
         command.extend(["--strategy", ",".join(args.strategy)])
     if args.model:
         command.extend(["--model", args.model])
+    if getattr(args, "no_formal_docs", False):
+        command.append("--no-formal-docs")
+    if getattr(args, "no_stdout_echo", False):
+        command.append("--no-stdout-echo")
+    if getattr(args, "verbose", False):
+        command.append("--verbose")
+    if getattr(args, "quiet", False):
+        command.append("--quiet")
+    interval = getattr(args, "progress_interval", 2)
+    if interval and int(interval) != 2:
+        command.extend(["--progress-interval", str(int(interval))])
+    # v1.5.1 Item 3.2: unified iteration + pacing flags.
+    # v1.5.1 Phase 3 revision (Council FAIL blocker): --full-run is a
+    # sugar flag that the worker re-expands on its own side — the
+    # parent-side args.iterations population is for dispatch + INDEX.md
+    # persistence, but it must NOT leak into the worker argv alongside
+    # --full-run. Worker parse_args enforces an `--iterations +
+    # --full-run` mutex (Item 3.2 parser check), so emitting both here
+    # makes the child exit with an argparse error before doing any work.
+    # Mirrors the existing --phase-groups suppression gated on
+    # phase_groups_raw is None.
+    iterations = getattr(args, "iterations", None)
+    if iterations and not getattr(args, "full_run", False):
+        command.extend(["--iterations", ",".join(iterations)])
+    pace = int(getattr(args, "pace_seconds", 0) or 0)
+    if pace > 0:
+        command.extend(["--pace-seconds", str(pace)])
     command.append(target_path)
     return command
 
@@ -932,10 +2503,22 @@ def wait_for_processes(processes: Sequence[subprocess.Popen], pid_file: Path) ->
 
 
 def execute_run(args: argparse.Namespace, repo_dirs: Sequence[Path], timestamp: Optional[str] = None, suppress_suggestion: bool = False) -> int:
-    phase_list = phase_list_from_mode(args.phase)
+    phase_groups = getattr(args, "phase_groups", None)
+    # Legacy phase_list kept for display_run_header / suggestions that still
+    # key off the flat list. Equivalent in content; derived from phase_groups
+    # when present, else from args.phase.
+    phase_list = [p for g in phase_groups for p in g] if phase_groups else phase_list_from_mode(args.phase)
     run_timestamp = timestamp or datetime.now().strftime("%Y%m%d-%H%M%S")
 
-    if getattr(args, "full_run", False):
+    # v1.5.1 Item 3.2: --full-run now produces phase_groups + iterations at
+    # parse time and is dispatched through the unified worker-side path
+    # (run_one handles phases then iterations under one process + one
+    # monitor lifecycle). The legacy self-recursing dispatch that spawned
+    # separate workers for phases vs iterations remains reachable only
+    # when full_run is true AND the args don't carry the new canonical
+    # attributes (defensive — shouldn't happen in practice since parse_args
+    # always populates them).
+    if getattr(args, "full_run", False) and not phase_groups and not getattr(args, "iterations", None):
         print("=== Full run: fresh main run + all iteration strategies ===\n")
         main_args = argparse.Namespace(**vars(args))
         main_args.full_run = False
@@ -951,8 +2534,9 @@ def execute_run(args: argparse.Namespace, repo_dirs: Sequence[Path], timestamp: 
         iter_args.strategy = list(ALL_STRATEGIES)
         return execute_run(iter_args, repo_dirs, timestamp=run_timestamp, suppress_suggestion=suppress_suggestion)
 
-    # Multi-strategy iteration: chain each strategy in order with early stop.
-    # Single-strategy iteration falls through to the regular parallel/sequential path.
+    # Legacy multi-strategy iteration: chain each strategy in order with
+    # early stop by spawning a worker per strategy. --iterations (Item 3.2)
+    # is the unified in-worker replacement; it's dispatched via run_one.
     if args.next_iteration and len(args.strategy) > 1:
         return execute_strategy_list(args, repo_dirs, args.strategy, timestamp=run_timestamp)
 
@@ -978,7 +2562,7 @@ def execute_run(args: argparse.Namespace, repo_dirs: Sequence[Path], timestamp: 
 
     overall_status = 0
     for repo_dir in repo_dirs:
-        overall_status = max(overall_status, run_one(repo_dir, phase_list, args, run_timestamp))
+        overall_status = max(overall_status, run_one(repo_dir, phase_groups, args, run_timestamp))
         print("")
 
     print(lib.print_summary(repo_dirs))
@@ -989,7 +2573,7 @@ def execute_run(args: argparse.Namespace, repo_dirs: Sequence[Path], timestamp: 
 
 def print_suggested_next_command(args: argparse.Namespace, failures_occurred: bool = False) -> None:
     if failures_occurred:
-        print("  Run finished with errors — inspect control_prompts/ and re-run with --phase <N>")
+        print("  Run finished with errors — inspect quality/control_prompts/ and re-run with --phase <N>")
         return
     runner_flag = " --claude" if args.runner == "claude" else ""
     model_flag = f" --model {shlex.quote(args.model)}" if getattr(args, "model", None) else ""

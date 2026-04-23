@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.4.6",
+  "generated_at": "2026-04-20T12:00:00Z",
+  "records": [
+    {
+      "id": "REQ-001",
+      "title": "Device initialization",
+      "description": "Driver initialization sequence.",
+      "tier": 1,
+      "functional_section": "Device initialization",
+      "citation": {
+        "document": "formal_docs/spec.txt",
+        "document_sha256": "bf0cf20778f51c8853d2ac8e695741416420b7ddedbe8b346eb9d60468de93b9",
+        "version": "phase7-variation",
+        "section": "2.4",
+        "citation_excerpt": "2.4 Device initialization\nThe driver MUST perform the following steps, in order, before the\ndevice is considered operational."
+      },
+      "use_cases": []
+    }
+  ]
+}

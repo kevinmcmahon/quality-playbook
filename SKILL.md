@@ -3,10 +3,12 @@ name: quality-playbook
 description: "Run a complete quality engineering audit on any codebase. Derives behavioral requirements from the code, generates spec-traced functional tests, runs a three-pass code review with regression tests, executes a multi-model spec audit (Council of Three), and produces a consolidated bug report with TDD-verified patches. Finds the 35% of real defects that structural code review alone cannot catch. Works with any language. Trigger on 'quality playbook', 'spec audit', 'Council of Three', 'fitness-to-purpose', or 'coverage theater'."
 license: Complete terms in LICENSE.txt
 metadata:
-  version: 1.4.6
-  # NOTE: 12 inline occurrences of "1.4.6" exist in this file (frontmatter, banner,
-  # version stamp template, sidecar JSON examples, run metadata, recheck template). When bumping
-  # the version, update ALL occurrences — search for the old version string globally.
+  version: 1.5.1
+  # NOTE: Inline occurrences of the skill version exist throughout this file (frontmatter,
+  # banner, version stamp template, sidecar JSON examples, run metadata, recheck template).
+  # When bumping the version, update ALL occurrences — search for the old version string
+  # globally. One historical reference to v1.4.6 edgequake benchmarking is intentionally
+  # preserved in the challenge-gate section and must NOT be bumped.
   author: Andrew Stellman
   github: https://github.com/andrewstellman/quality-playbook
 ---
@@ -19,13 +21,13 @@ Before reading any other section of this skill, understand the plan and its depe
 
 **Phase 0 (Prior Run Analysis):** If previous quality runs exist, load their findings as seed data. This is automatic and only applies to re-runs.
 
-**Phase 1 (Explore):** Explore the codebase thoroughly in three stages. First, open exploration driven by domain knowledge — understand the architecture, risks, and failure modes the way an experienced developer would. Second, domain-knowledge risk analysis — step back and reason about what goes wrong in systems like this one, generating specific failure scenarios grounded in the code you just explored. Third, apply structured exploration patterns (selected for this codebase, not all six exhaustively) to catch specific bug classes that free exploration misses. Write all findings to `quality/EXPLORATION.md`. This file is the foundation — Phase 2 reads it as its primary input.
+**Phase 1 (Explore):** Run the v1.5.1 documentation intake first (`python -m bin.formal_docs_ingest <target>` to produce `quality/formal_docs_manifest.json`; `bin/informal_docs_loader.load_informal_docs(<target>)` for Tier 4 context). Then explore the codebase in three stages: open exploration driven by domain knowledge, domain-knowledge risk analysis, and selected structured exploration patterns. Write all findings to `quality/EXPLORATION.md`. This file is the foundation — Phase 2 reads it as its primary input.
 
 **Phase 2 (Generate):** Read EXPLORATION.md and produce the quality artifacts: requirements, constitution, functional tests, code review protocol, integration tests, spec audit protocol, TDD protocol, AGENTS.md.
 
 **Phase 3 (Code Review):** Run the three-pass code review against HEAD. Write regression tests for every confirmed bug. Generate patches.
 
-**Phase 4 (Spec Audit):** Three independent AI auditors review the code against requirements. Triage with verification probes. Write regression tests for net-new findings.
+**Phase 4 (Spec Audit):** Three independent AI auditors review the code against requirements. Triage with verification probes. After triage, the same Council runs the v1.5.1 Layer-2 semantic citation check — one prompt per reviewer, structured per-REQ verdicts for every Tier 1/2 citation, output to `quality/citation_semantic_check.json`. Write regression tests for net-new findings.
 
 **Phase 5 (Reconciliation):** Close the loop — every bug from code review and spec audit is tracked, regression-tested or explicitly exempted. Run TDD red-green cycle. Finalize the completeness report.
 
@@ -39,7 +41,7 @@ Every bug found traces back to a requirement, and every requirement traces back 
 
 **MANDATORY FIRST ACTION:** After reading and understanding the plan above, print the following message to the user, then explain the plan in your own words — what you'll do, what each phase produces, and why the exploration phase matters most. Emphasize that exploration starts with open-ended domain-driven investigation, followed by domain-knowledge risk analysis that reasons about what goes wrong in systems like this, then supplemented by selected structured patterns. Do not copy the plan verbatim; paraphrase it to demonstrate understanding.
 
-> Quality Playbook v1.4.6 — by Andrew Stellman
+> Quality Playbook v1.5.1 — by Andrew Stellman
 > https://github.com/andrewstellman/quality-playbook
 
 Generate a complete quality system tailored to a specific codebase. Unlike test stub generators that work mechanically from source code, this skill explores the project first — understanding its domain, architecture, specifications, and failure history — then produces a quality playbook grounded in what it finds.
@@ -89,6 +91,11 @@ The quality gate (`quality_gate.py`) validates these artifacts. If the gate chec
 
 | Artifact | Location | Required? | Created In |
 |----------|----------|-----------|------------|
+| Formal docs manifest (v1.5.1) | `quality/formal_docs_manifest.json` | Yes | Phase 1 (`bin/formal_docs_ingest.py`) |
+| Requirements manifest (v1.5.1) | `quality/requirements_manifest.json` | Yes | Phase 2 |
+| Use cases manifest (v1.5.1) | `quality/use_cases_manifest.json` | Yes | Phase 2 |
+| Bugs manifest (v1.5.1) | `quality/bugs_manifest.json` | If bugs found | Phase 3/4/5 |
+| Citation semantic check (v1.5.1) | `quality/citation_semantic_check.json` | Yes | Phase 4 (Layer 2 Council) |
 | Exploration findings | `quality/EXPLORATION.md` | Yes | Phase 1 |
 | Quality constitution | `quality/QUALITY.md` | Yes | Phase 2 |
 | Requirements (UC identifiers) | `quality/REQUIREMENTS.md` | Yes | Phase 2 |
@@ -131,7 +138,7 @@ The quality gate (`quality_gate.py`) validates these artifacts. If the gate chec
 ```json
 {
   "schema_version": "1.1",
-  "skill_version": "1.4.6",
+  "skill_version": "1.5.1",
   "date": "2026-04-12",
   "project": "repo-name",
   "bugs": [
@@ -158,7 +165,7 @@ The quality gate (`quality_gate.py`) validates these artifacts. If the gate chec
 ```json
 {
   "schema_version": "1.1",
-  "skill_version": "1.4.6",
+  "skill_version": "1.5.1",
   "date": "2026-04-12",
   "project": "repo-name",
   "recommendation": "SHIP",
@@ -179,7 +186,7 @@ Every playbook run creates a timestamped metadata file at `quality/results/run-Y
 ```json
 {
   "schema_version": "1.0",
-  "skill_version": "1.4.6",
+  "skill_version": "1.5.1",
   "project": "repo-name",
   "model": "claude-sonnet-4-6",
   "model_provider": "anthropic",
@@ -210,13 +217,13 @@ Every playbook run creates a timestamped metadata file at `quality/results/run-Y
 
 **After every phase and every iteration, STOP and print guidance.** Use a `#` header so it's prominent in the chat. The guidance must include: what just happened (one line), what the key outputs are, and the exact prompt to continue. See the end-of-phase messages defined after each phase section below.
 
-**If the user says "keep going", "continue", "next phase", "next", or anything similar**, run the next phase in sequence. If all 6 phases are complete, suggest the first iteration strategy (gap). If an iteration just finished, suggest the next strategy in the recommended cycle.
+**If the user says "keep going", "continue", "next phase", "next", or anything similar**, run the next phase in sequence. If all phases are complete, suggest the first iteration strategy (gap). If an iteration just finished, suggest the next strategy in the recommended cycle.
 
 **If the user says "run all phases", "run everything", or "run the full pipeline"**, run all phases sequentially in a single session. This uses more context but some users prefer it.
 
 **If the user asks "help", "how does this work", "what is this", or any similar phrasing**, respond with this explanation (adapt the wording naturally, don't copy verbatim):
 
-> The Quality Playbook finds bugs that structural code review alone can't catch — the 35% of real defects that require understanding what the code is *supposed* to do. It works in six phases:
+> The Quality Playbook finds bugs that structural code review alone can't catch — the 35% of real defects that require understanding what the code is *supposed* to do. It works phase by phase:
 >
 > - **Phase 1 (Explore):** Understand the codebase — architecture, risks, failure modes, specifications
 > - **Phase 2 (Generate):** Produce quality artifacts — requirements, tests, review protocols
@@ -225,7 +232,7 @@ Every playbook run creates a timestamped metadata file at `quality/results/run-Y
 > - **Phase 5 (Reconciliation):** Close the loop — TDD red-green verification for every bug
 > - **Phase 6 (Verify):** Self-check benchmarks validate all generated artifacts
 >
-> After all six phases, you can run iteration strategies (gap, unfiltered, parity, adversarial) to find additional bugs — iterations typically add 40-60% more confirmed bugs on top of the baseline.
+> After the numbered phases complete, you can run iteration strategies (gap, unfiltered, parity, adversarial) to find additional bugs — iterations typically add 40-60% more confirmed bugs on top of the baseline.
 >
 > The playbook works best when you provide documentation alongside the code — specs, API docs, design documents, community documentation. It also gets significantly better results when you run each phase separately rather than all at once.
 >
@@ -303,11 +310,11 @@ The discipline of writing exploration findings to disk is what forces thorough a
 
 ## Phase 0: Prior Run Analysis (Automatic)
 
-**This phase runs only if `previous_runs/` exists and contains prior quality artifacts.** If there are no prior runs, skip to Phase 1. If `previous_runs/` exists but is empty or contains no conformant quality artifacts (no subdirectories with `quality/BUGS.md`), skip Phase 0a and fall through to Phase 0b.
+**This phase runs only if `quality/runs/` exists and contains prior quality artifacts.** If there are no prior runs, skip to Phase 1. If `quality/runs/` exists but is empty or contains no conformant quality artifacts (no subdirectories with `quality/BUGS.md` under them), skip Phase 0a and fall through to Phase 0b.
 
 When prior runs exist, the playbook enters **continuation mode**. This enables iterative bug discovery: each run inherits confirmed findings from prior runs, verifies them mechanically, and explores for additional bugs. The iteration converges when a run finds zero net-new bugs.
 
-**Step 0a: Build the seed list.** Read `previous_runs/*/quality/BUGS.md` from all prior runs. For each confirmed bug, extract: bug ID, file:line, summary, and the regression test assertion. Deduplicate by file:line (the same bug found in multiple runs counts once). Write the merged seed list to `quality/SEED_CHECKS.md` with this format:
+**Step 0a: Build the seed list.** Read `quality/runs/*/quality/BUGS.md` from all prior runs. For each confirmed bug, extract: bug ID, file:line, summary, and the regression test assertion. Deduplicate by file:line (the same bug found in multiple runs counts once). Write the merged seed list to `quality/SEED_CHECKS.md` with this format:
 
 ```markdown
 ## Seed Checks (from N prior runs)
@@ -319,7 +326,7 @@ When prior runs exist, the playbook enters **continuation mode**. This enables i
 
 **Step 0b: Execute seed checks mechanically.** For each seed, run the assertion against the current source tree. Record PASS (bug was fixed since last run) or FAIL (bug still present). A failing seed is a confirmed carry-forward bug — it must appear in this run's BUGS.md regardless of whether any auditor independently finds it. A passing seed means the bug was fixed — note it in PROGRESS.md as "SEED-NNN: resolved since prior run."
 
-**Step 0c: Identify prior-run scope.** Read `previous_runs/*/quality/PROGRESS.md` for scope declarations. Note which subsystems were covered in prior runs. During Phase 1 exploration, prioritize areas NOT covered by prior runs to maximize the chance of finding new bugs. If all subsystems were covered in prior runs, explore the same scope but with different emphasis (e.g., different scrutiny areas, different entry points).
+**Step 0c: Identify prior-run scope.** Read `quality/runs/*/quality/PROGRESS.md` for scope declarations. Note which subsystems were covered in prior runs. During Phase 1 exploration, prioritize areas NOT covered by prior runs to maximize the chance of finding new bugs. If all subsystems were covered in prior runs, explore the same scope but with different emphasis (e.g., different scrutiny areas, different entry points).
 
 **Step 0d: Inject seeds into downstream phases.** The seed list becomes input to:
 - **Phase 3 (code review):** Add to the code review prompt: "Prior runs confirmed these bugs — verify they are still present and look for additional findings in the same subsystems."
@@ -329,18 +336,18 @@ When prior runs exist, the playbook enters **continuation mode**. This enables i
 
 ### Phase 0b: Sibling-Run Seed Discovery (Automatic)
 
-**This step runs only if `previous_runs/` does not exist OR `previous_runs/` exists but contains no conformant quality artifacts** (i.e., Phase 0a has nothing to work with) **and** the project directory is versioned (e.g., `httpx-1.3.23/` sits alongside `httpx-1.3.21/`). If `previous_runs/` exists with conformant artifacts, Phase 0a already handles seed injection — skip this step.
+**This step runs only if `quality/runs/` does not exist OR `quality/runs/` exists but contains no conformant quality artifacts** (i.e., Phase 0a has nothing to work with) **and** the project directory is versioned (e.g., `httpx-1.3.23/` sits alongside `httpx-1.3.21/`). If `quality/runs/` exists with conformant artifacts, Phase 0a already handles seed injection — skip this step.
 
-**If `previous_runs/` exists but is empty or contains only non-conformant subdirectories**, emit a warning: "Phase 0b: `previous_runs/` exists but contains no conformant artifacts — consulting sibling versioned directories for seeds." Then proceed with the sibling discovery below.
+**If `quality/runs/` exists but is empty or contains only non-conformant subdirectories**, emit a warning: "Phase 0b: `quality/runs/` exists but contains no conformant artifacts — consulting sibling versioned directories for seeds." Then proceed with the sibling discovery below.
 
-When no `previous_runs/` directory exists but sibling versioned directories do, look for prior quality artifacts in those siblings:
+When no `quality/runs/` directory exists but sibling versioned directories do, look for prior quality artifacts in those siblings:
 
 1. **Discover siblings.** List directories matching the pattern `<project-name>-<version>/quality/BUGS.md` relative to the parent directory. Exclude the current directory. Sort by version descending (most recent first).
 2. **Import confirmed bugs as seeds.** For each sibling with a `quality/BUGS.md`, extract confirmed bugs using the same format as Step 0a. Write them to `quality/SEED_CHECKS.md` with origin noted as the sibling directory name.
 3. **Execute seed checks mechanically** (same as Step 0b in Phase 0a). For each imported seed, run the assertion against the current source tree and record PASS/FAIL.
 4. **Inject into downstream phases** (same as Step 0d in Phase 0a).
 
-**Why this exists:** In v1.3.23 benchmarking, httpx produced a zero-bug result despite httpx-1.3.21 having found the `Headers.__setitem__` non-ASCII encoding bug. The model simply explored different code paths and never examined the Headers area. Sibling-run seeding ensures that bugs confirmed in prior versioned runs carry forward even without an explicit `previous_runs/` archive. This is a different failure class than mechanical tampering — it addresses **exploration non-determinism**, not evidence corruption.
+**Why this exists:** In v1.3.23 benchmarking, httpx produced a zero-bug result despite httpx-1.3.21 having found the `Headers.__setitem__` non-ASCII encoding bug. The model simply explored different code paths and never examined the Headers area. Sibling-run seeding ensures that bugs confirmed in prior versioned runs carry forward even without an explicit `quality/runs/` archive. This is a different failure class than mechanical tampering — it addresses **exploration non-determinism**, not evidence corruption.
 
 ---
 
@@ -356,7 +363,7 @@ mkdir -p quality/results
 cat > "quality/results/run-$(date -u +%Y-%m-%dT%H-%M-%S).json" <<'METADATA'
 {
   "schema_version": "1.0",
-  "skill_version": "1.4.6",
+  "skill_version": "1.5.1",
   "project": "<repo-name>",
   "model": "<model-string>",
   "model_provider": "<provider>",
@@ -376,7 +383,16 @@ cat > "quality/results/run-$(date -u +%Y-%m-%dT%H-%M-%S).json" <<'METADATA'
 METADATA
 ```
 
-Fill in `project`, `model` (exact model string, e.g., `"claude-sonnet-4-6"`), `model_provider` (e.g., `"anthropic"`, `"openai"`), `runner` (e.g., `"claude-code"`, `"copilot-cli"`, `"cursor"`), and `start_time` (UTC ISO 8601). Update this file at the end of each phase — append the completed phase to `phases_completed` and update `bug_count`/`bug_severity` as bugs are confirmed. The final update after the terminal gate fills in `end_time`, `duration_minutes`, and `gate_result`.
+Fill in `project`, `model` (exact model string, e.g., `"claude-sonnet-4-6"`), `model_provider` (e.g., `"anthropic"`, `"openai"`, `"cursor"`), `runner` (e.g., `"claude-code"`, `"copilot-cli"`, `"cursor"`), and `start_time` (UTC ISO 8601). Update this file at the end of each phase — append the completed phase to `phases_completed` and update `bug_count`/`bug_severity` as bugs are confirmed. The final update after the terminal gate fills in `end_time`, `duration_minutes`, and `gate_result`.
+
+**Second action: run v1.5.1 document ingest (before exploring any code).** Two stdlib-only modules in `bin/` produce the authoritative documentation record that Phase 1 requirement derivation depends on:
+
+1. **`python -m bin.formal_docs_ingest <target>`** — walks `formal_docs/` in the target repo, hashes every plaintext document, and writes `quality/formal_docs_manifest.json` per `schemas.md` §4 and the §1.6 manifest wrapper. If this command fails (unsupported extension, missing sidecar, case-fold collision), stop the run and surface the stderr output to the user verbatim — ingest errors are actionable and must be fixed before exploration continues.
+2. **`bin/informal_docs_loader.load_informal_docs(<target>)`** — returns a sorted list of `(path, text)` tuples from `informal_docs/`. Read the content into your working context for Tier 4 derivation in Step 7. If the folder is absent, the loader returns `[]` — proceed without informal context.
+
+**Sidecar convention.** Every plaintext file under `formal_docs/<name>.<ext>` needs a companion `formal_docs/<name>.meta.json` carrying at minimum `"tier": 1` or `"tier": 2` (plus optional `version`, `date`, `url`, `retrieved` — see `schemas.md` §4.1). Without the sidecar, ingest fails with a clear error. `README.md` under `formal_docs/` is skipped (folder-level doc, not a spec). `.meta.json` files are sidecars and are never themselves ingested.
+
+**Plaintext only — conversion happens outside the playbook.** Formal and informal docs are `.txt` or `.md` only (schemas.md §2). PDFs, DOCX, HTML, etc. are rejected with an actionable conversion hint (`pdftotext`, `pandoc -t plain`, `lynx -dump`). Do NOT attempt to parse binary or formatted documents inside the skill — run the conversion outside and commit the plaintext.
 
 Spend the first phase understanding the project. The quality playbook must be grounded in this specific codebase — not generic advice.
 
@@ -599,7 +615,7 @@ This is the most important step for the code review protocol. Everything found d
 **The five-phase pipeline:**
 
 1. **Phase A — Contract extraction.** Read all source files, list every behavioral contract. Write to `quality/CONTRACTS.md`. This is discovery — list everything, even if it seems obvious.
-2. **Phase B — Requirement derivation.** Read CONTRACTS.md and documentation. Group related contracts, enrich with user intent, write formal requirements. Write to `quality/REQUIREMENTS.md`. For each requirement, record the **doc source** with its authority tier — the specific gathered document (filename), section, and passage that establishes the expected behavior, prefixed with `[Tier N]`. If the requirement derives from source code rather than documentation, record `[Tier 3] [source] file:line` and tag it `[Req: inferred — from source]`. This doc-source field creates the forward link in the traceability chain: gathered docs → requirements → bugs → tests. Without it, a reviewer cannot verify that the requirement reflects the spec's actual intent rather than the agent's interpretation.
+2. **Phase B — Requirement derivation.** Read CONTRACTS.md and documentation. Group related contracts, enrich with user intent, write formal requirements. Write REQ records to `quality/requirements_manifest.json` (source of truth) and render to `quality/REQUIREMENTS.md`. For each requirement, record the `tier` (1–5 per schemas.md §3.1) and — when `tier ∈ {1, 2}` — the `citation` block produced by `bin/formal_docs_ingest` invoking `bin/citation_verifier` per schemas.md §5.4 / §5.5. The LLM does not shell out to `citation_verifier` directly; the excerpt is a product of the ingest pipeline and is re-verified by `quality_gate.py` at gate time. For Tier 3 REQs (code-is-the-spec), cite the source `file:line` in the `description`; citations are for FORMAL_DOC references only and must not appear on Tier 3/4/5 REQs. The tier + citation pair creates the forward link in the traceability chain: formal_docs → requirements → bugs → tests. See the tier/citation framing block later in this step for the full field list and the Tier-1-wins-over-Tier-2 rule.
 
    **Primary-source extraction rule for code-presence claims.** When writing a requirement that asserts specific constants, values, or labels are handled by a specific function (e.g., "the whitelist must preserve X, Y, and Z"), the requirement must distinguish between what the **spec says should be there** and what the **code actually contains**. Extract the actual contents from the code (case labels, map keys, if-else branches) and compare to the spec's list. If a constant appears in the spec but NOT in the code, write the requirement as "must handle X — **[NOT IN CODE]**: defined in header.h:NN but absent from function() at file.c:NN-NN." Do not write "must preserve X" without verifying X is actually preserved. This prevents a contamination chain where a requirement asserts code presence, the code review copies the assertion, the spec audit inherits it, and the triage accepts it — all without anyone reading the actual code. This exact chain was observed in v1.3.17 virtio testing: REQUIREMENTS.md asserted RING_RESET was preserved in a switch, the code review copied the list, three spec auditors inherited the claim, and the bug went undetected.
    **Mechanical verification artifact for dispatch functions (mandatory).** When a contract asserts that a function handles, preserves, or dispatches a set of named constants (feature bits, enum values, opcode tables, event types, handler registries), you must generate and execute a shell command or script that mechanically extracts the actual case labels/branches from the function body **before writing the contract line**. Save the raw output to `quality/mechanical/<function>_cases.txt`. The command must be a non-interactive pipeline (e.g., `awk` + `grep`) that cannot hallucinate — it reads file bytes and prints matches. Example:
@@ -682,22 +698,38 @@ For each use case, at least one requirement's conditions of satisfaction must be
 
 Follow the use cases with the individual requirements.
 
+**v1.5.1 tier and citation scheme (schemas.md §3.1, §5).** Every REQ carries a `tier` integer 1–5 per `schemas.md` §3.1:
+
+- **Tier 1** — project's own formal spec (a `FORMAL_DOC` record with `tier=1`; highest authority).
+- **Tier 2** — external formal standard (RFC, W3C, ISO, published API contract — a `FORMAL_DOC` record with `tier=2`).
+- **Tier 3** — source-of-truth code when no formal spec exists; the code IS the spec.
+- **Tier 4** — informal documentation loaded by `bin/informal_docs_loader.py` (AI chats, design notes).
+- **Tier 5** — inferred from code behavior with no documentation backing.
+
+For `tier ∈ {1, 2}`, the REQ also carries a `citation` block per `schemas.md` §5 with `document`, `document_sha256`, at least one of `section`/`line`, and a mechanically-extracted `citation_excerpt`. Do NOT write the excerpt by hand. The excerpt is produced at ingest time by `bin/formal_docs_ingest` invoking `bin/citation_verifier` per the deterministic algorithm in `schemas.md` §5.4 (with section resolution per §5.5) — the LLM consumes the excerpt from `formal_docs_manifest.json`; it never shells out to the verifier directly. Ingest-time extraction is how Layer 1 of the hallucination gate works. If you cannot cite a document in `quality/formal_docs_manifest.json` (with hash and locator), the REQ is at most Tier 3. `page`-only locators are diagnostic-only and are never sufficient.
+
+**Tier-1-wins-over-Tier-2 rule.** When a project's own spec (Tier 1) and an external standard (Tier 2) contradict each other, record the REQ at Tier 1 citing the project's position. A project's documented deviation from an external standard is authoritative intent, not a defect — the `upstream-spec-issue` disposition applies only when the project's spec is silent on the conflict.
+
+**Spec-Gap degradation (valid output state).** If `formal_docs_manifest.json` contains zero `FORMAL_DOC` records covering the project's own behavior, every REQ ends up at Tier 3/4/5 and the run degrades gracefully into a Spec Gap Analyzer. Report the meta-finding "0 Tier 1/2 requirements" in the completeness report as a metric, not a failure. Do NOT fabricate citations to make the tier distribution look richer — `quality_gate.py` re-invokes `bin/citation_verifier` (via `extract_excerpt`) per §5.4 at verification time and rejects any Tier 1/2 REQ whose `citation_excerpt` does not byte-equal the fresh extraction (schemas.md §10 invariant #11).
+
+**`functional_section` is a required field.** Every REQ carries a short `functional_section` string (e.g., `"Authentication"`, `"Bus enumeration"`) that groups related REQs. This is LLM-derived from the code and documentation; there is no predefined ontology. Phase 2's rendering groups REQs under these sections (with a short intro paragraph per section) and the Phase 4 Council reviews the grouping for coherence. See `schemas.md` §6.1.
+
+**Traceability is one-way: REQ → UC.** The REQ carries a `use_cases[]` list of UC-NN IDs. The UC record does NOT carry a `requirements[]` back-link — the reverse direction is derived at render time by querying REQ records for matching entries (schemas.md §7). Do not populate a `requirements[]` field on UC records.
+
 **For each requirement, provide all of these fields:**
 
-- **Summary**: State it as a testable assertion: "X must satisfy Y" or "When A, the system must B"
+- **ID**: `REQ-NNN` (zero-padded three-digit sequence).
+- **Title**: Short, one-line statement.
+- **Tier**: Integer 1–5 per schemas.md §3.1.
+- **Functional section**: Short LLM-derived string (see above).
+- **Citation** (required when `tier ∈ {1, 2}`): produced by `bin/formal_docs_ingest` invoking `bin/citation_verifier`; never hand-authored and never invoked directly by the LLM. Shape per schemas.md §5.1.
+- **Summary / Description**: State the requirement as a testable assertion: "X must satisfy Y" or "When A, the system must B".
 - **User story**: Frame it from the caller's perspective: "As a [role] doing [action], I expect [behavior] **so that** [outcome]." The "so that" clause is mandatory — it forces you to articulate the intent behind the requirement.
 - **Implementation note**: How the code achieves this requirement — the mechanism, the relevant code paths, the design choice.
 - **Conditions of satisfaction**: Specific, testable scenarios that prove this requirement is met. Include the happy path, edge cases, and failure modes. Each individual contract from Phase A that was grouped into this requirement becomes a condition of satisfaction.
 - **Alternative paths**: Multiple code paths, modes, or entry points that must all satisfy the requirement. Alternative paths are where bugs hide.
-- **References**: Cite the source — spec section, ChangeLog entry, config field definition, source comment, issue number, or domain knowledge.
-- **Doc source**: The specific gathered document and section that establishes this requirement's expected behavior, with an inline authority tier. Format: `[Tier N] [doc_filename] § [section/page]` with a ≤15-word behavioral contract quote. If derived from source code, use `[Tier 3] [source] file:line` with the relevant comment or assertion. This field feeds the TDD traceability chain — when a bug violates this requirement, the test cites this passage.
-
-  **Authority tiers:**
-  - **Tier 1 (Canonical):** Official API docs, published specs, language/protocol standards. These directly state the expected behavior.
-  - **Tier 2 (Strong secondary):** Design documents, gathered docs with behavioral contracts, well-maintained READMEs, inline Javadoc/docstrings that define public API contracts, formal locking annotations and safety invariants that document caller-facing contracts (not incidental implementation notes — the test is "was this written as a deliberate contract for callers?").
-  - **Tier 3 (Weak secondary):** Changelogs, issue summaries, troubleshooting guides, source comments, test files, migration guides.
-
-  Requirements backed only by Tier 3 sources must be tagged `[Req: inferred]` with a note explaining why no stronger source exists. The completeness report must flag the ratio of Tier 1/2/3 sources across all requirements.
+- **Use cases**: `use_cases[]` — list of `UC-NN` IDs this REQ participates in. One-way forward link.
+- **References**: Cite the source — spec section, ChangeLog entry, config field definition, source comment, issue number, or domain knowledge. For Tier 1/2 REQs the `citation` block carries the authoritative locator; free-form references are supplementary.
 - **Specificity**: **specific** (testable — must have conditions of satisfaction that a code reviewer can check against a specific code location or behavior; this is the default and counts toward coverage metrics) or **architectural-guidance** (not testable against individual code paths — covers cross-cutting properties like "remain lightweight and stdlib-compatible" or "no_std support"; informs the quality constitution but is not counted in coverage metrics; most projects should have 0–3 architectural-guidance requirements — more than 3 triggers the mandatory self-check below). The category "directional" is retired. Any requirement that would have been "directional" must either be made specific (with testable conditions) or explicitly classified as architectural-guidance.
 
   **Architectural-guidance self-check (mandatory, runs after requirement derivation).** Count the requirements tagged `architectural-guidance`. Apply both bounds:
@@ -719,11 +751,11 @@ For each subsystem, record one of the following in PROGRESS.md:
 
 A deep-documented subsystem with a "will cover" commitment and zero mapped requirements is a process failure, not a legitimate scope choice. Do not proceed to artifact generation until every commitment is satisfied or explicitly converted to a justified exclusion.
 
-**Step 7b: Bidirectional traceability check (mandatory)**
+**Step 7b: Code-path → REQ reverse traceability audit (mandatory)**
 
-**Timing: Execute Step 7a and 7b after Phase E completes** (i.e., after the overview validation gate, use case derivation, and acceptance criteria span check have all run). The reverse traceability check depends on finalized requirements AND finalized use cases.
+**Timing: Execute Step 7a and 7b after Phase E completes** (i.e., after the overview validation gate, use case derivation, and acceptance criteria span check have all run). The audit depends on finalized requirements AND finalized use cases.
 
-After requirements derivation is complete, run a reverse traceability check. Forward traceability (gathered docs → requirements → bugs → tests) is already built into the pipeline. This step checks the reverse direction: do significant code paths map back to requirement conditions?
+After requirements derivation is complete, run a reverse traceability audit. Forward traceability (gathered docs → requirements → bugs → tests) is already built into the pipeline. This step checks the reverse direction at code-path granularity: do significant code paths map back to requirement conditions? This is an audit activity — NOT a structural bidirectional link. (Structural traceability in v1.5.1 is one-way REQ → UC per `schemas.md` §7 and is enforced by schema; this audit checks code coverage against REQs, which is a separate concern.)
 
 This operates at **path/branch/helper granularity**, not file level. File-level coverage was 100% in v1.3.13 and still missed two real bugs. The question is not "does this file map to some requirement?" but "does this significant branch map to a requirement clause that states what must be preserved here?"
 
@@ -985,14 +1017,14 @@ Now write the Phase 2 artifacts. The requirements pipeline above produced REQUIR
 **Version stamp (mandatory on every generated file).** Every Markdown file the playbook generates must begin with the following attribution line immediately after the file's title heading:
 
 ```
-> Generated by [Quality Playbook](https://github.com/andrewstellman/quality-playbook) v1.4.6 — Andrew Stellman
+> Generated by [Quality Playbook](https://github.com/andrewstellman/quality-playbook) v1.5.1 — Andrew Stellman
 > Date: YYYY-MM-DD · Project: <project name>
 ```
 
 Every generated code file (test files, scripts) must begin with a comment header:
 
 ```
-# Generated by Quality Playbook v1.4.6 — https://github.com/andrewstellman/quality-playbook
+# Generated by Quality Playbook v1.5.1 — https://github.com/andrewstellman/quality-playbook
 # Author: Andrew Stellman · Date: YYYY-MM-DD · Project: <project name>
 ```
 
@@ -1012,6 +1044,34 @@ Use the comment syntax appropriate for the language (`#`, `//`, `/* */`, etc.). 
 - `quality/PROGRESS.md` is the authoritative state file and must be updated before each downstream artifact begins.
 
 **Why nine files instead of just tests?** Tests catch regressions but don't prevent new categories of bugs. The quality constitution (`QUALITY.md`) tells future sessions what "correct" means before they start writing code. The protocols (`RUN_*.md`) provide structured processes for review, integration testing, and spec auditing that produce repeatable results — instead of leaving quality to whatever the AI feels like checking. Together, these files create a quality system where each piece reinforces the others: scenarios in QUALITY.md map to tests in the functional test file, which are verified by the integration protocol, which is audited by the Council of Three.
+
+### v1.5.1 JSON manifest discipline (read before writing any artifact)
+
+Phase 2 writes two parallel renderings of every derived record: a **JSON manifest** (machine-readable, gate-validated — the source of truth) and a **Markdown artifact** (human-readable, rendered from the manifest). A phase script that updates one without updating the other is a bug.
+
+Manifests live at:
+
+- `quality/formal_docs_manifest.json` — written by `bin/formal_docs_ingest.py` in Phase 1. Do not rewrite.
+- `quality/requirements_manifest.json` — authoritative REQ records per schemas.md §6.
+- `quality/use_cases_manifest.json` — authoritative UC records per schemas.md §7.
+- `quality/bugs_manifest.json` — authoritative BUG records per schemas.md §8. Written after Phase 3/4/5 confirm bugs.
+- `quality/citation_semantic_check.json` — Phase 4 Council Layer 2 verdicts (see Phase 4 below).
+
+Every manifest follows the §1.6 wrapper with `schema_version`, `generated_at`, and a top-level records array. The four record-shaped manifests (`formal_docs_manifest.json`, `requirements_manifest.json`, `use_cases_manifest.json`, `bugs_manifest.json`) use `records` as the array key:
+
+```json
+{
+  "schema_version": "<from SKILL.md metadata.version>",
+  "generated_at": "<ISO 8601 with explicit Z timezone>",
+  "records": [ /* per-schema records, per schemas.md §4–§8 */ ]
+}
+```
+
+**Exception — `citation_semantic_check.json` uses `reviews` instead of `records`** per `schemas.md` §9.1. Same wrapper shape, different array key; the records inside are Council review entries, not REQ/UC/BUG records. If you find yourself writing `records` into `citation_semantic_check.json`, stop and re-read schemas.md §9 — the gate rejects this file as a manifest-wrapper violation (schemas.md §10 invariant #13) when the key is wrong.
+
+`schema_version` MUST equal this skill's `metadata.version` at generation time — read it from SKILL.md, do not hardcode. `generated_at` uses `datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")`. Record shapes and invariants are defined in `schemas.md` — do not redefine them in this skill. `quality_gate.py` (Phase 5/6) validates manifests field-by-field against those schemas.
+
+**REQUIREMENTS.md rendering convention.** REQUIREMENTS.md is organized by `functional_section`. Each section opens with a brief LLM-written intro paragraph describing what that functional area does, then lists the REQs under it (ordered by REQ id). Use cases render their `formal_doc_refs` but DO NOT list `requirements[]` — traceability is one-way REQ → UC, and the reverse direction is derived at render time by querying REQ records.
 
 ### File 1: `quality/QUALITY.md` — Quality Constitution
 
@@ -1101,6 +1161,20 @@ Pass 3 catches contradictions where two individually-correct pieces of code disa
 
 **BUGS.md:** After all review and audit phases, generate `quality/BUGS.md` — a consolidated bug report with full reproduction details for each confirmed bug. For each bug, include: bug ID, source (code review or spec audit), file:line, description, severity, minimal reproduction scenario (what input or sequence triggers the bug), expected vs actual behavior, references to the regression test and any proposed fix patch, and **spec basis**.
 
+**BUGS.md — v1.5.1 BUG record fields (schemas.md §8).** Every BUGS.md entry (and every `quality/writeups/BUG-NNN.md`) corresponds to a BUG record written to `quality/bugs_manifest.json`. In addition to the narrative conventions above, every BUG carries:
+
+- `id` — `BUG-NNN` zero-padded three-digit sequence.
+- `divergence_description` — one-paragraph summary of the divergence between documented intent and code behavior.
+- `documented_intent` — direct quote or close paraphrase of the REQ / spec language.
+- `code_behavior` — what the code actually does, with `file:line` references.
+- `disposition` — enum from schemas.md §3.2: `code-fix` | `spec-fix` | `upstream-spec-issue` | `mis-read` | `deferred`. Required, non-null. Do NOT invent new values.
+- `disposition_rationale` — one paragraph explaining why THIS disposition and not an adjacent one (e.g., why `code-fix` and not `upstream-spec-issue`, or why `spec-fix` and not `mis-read`). Formulaic rationales ("code is wrong because spec says so") fail the Council review.
+- `req_id` — singular. The primary REQ that revealed the divergence. If a bug appears to touch multiple REQs, split into one bug per REQ sharing a root cause and cross-link in `disposition_rationale` (schemas.md §8.1). Do NOT smuggle multiple REQ IDs into one entry.
+- `proposed_fix` — required unless `disposition == "mis-read"`. Patch-shaped when `fix_type` ∈ {`code`, `both`}; textual redline when `fix_type == "spec"`. For `mis-read` records the field is optional and, when present, documents the re-read (what the playbook misread and how the correct reading was established), not a shipped change.
+- `fix_type` — enum from schemas.md §3.4: `code` | `spec` | `both`. The combination of `disposition × fix_type` is constrained by the legal-combinations matrix in §3.4 (enforced by §10 invariant #12). Illegal pairings: `code-fix` × `spec`, `spec-fix` × `code`, `upstream-spec-issue` × `code`, `mis-read` × `both`. Consult the matrix before authoring the record — the gate rejects illegal combinations.
+
+**Divergence framing (writeup voice, schemas.md v1.5.1).** A defect is a divergence between documented intent and code implementation — not a judgment about whether the code is "good." The writeup's opening sections (Summary, Spec reference, The code) are the human rendering of `divergence_description`, `documented_intent`, and `code_behavior`. Write them to read as a **side-by-side diff**, not a narrative. The reader should be able to scan the REQ/spec language next to the code behavior and see the gap immediately. An adversarial tone ("the code is sloppy") or value judgment in the title ("Sloppy trailer handling") fails this framing — a bug is an observation of a divergence, not an accusation. Upstream maintainers engage with disposition (code-fix vs spec-fix vs upstream-spec-issue) rather than defending the code against a critique.
+
 **What counts as sufficient evidence to confirm a bug (critical).** A code-path trace that demonstrates a specific behavioral violation IS sufficient evidence to confirm a bug. You do NOT need executed request-level evidence, a running test, or an integration-level reproduction to promote a finding from candidate to confirmed. Specifically:
 
 - A code-path trace showing function A calls function B which does X but should do Y, with file:line references — **sufficient to confirm**.
@@ -1134,7 +1208,7 @@ This is an early filter that catches the most obvious false positives at confirm
 --- /dev/null
 +++ b/quality/test_regression_virtio.c
 @@ -0,0 +1,15 @@
-+// Generated by Quality Playbook v1.4.6
++// Generated by Quality Playbook v1.5.1
 +// Regression test for BUG-004: VIRTIO_F_RING_RESET missing from vring_transport_features()
 +#include <assert.h>
 +#include <string.h>
@@ -1620,6 +1694,26 @@ Run the spec audit protocol as described in File 5. The triage report **must** i
 
 **Update PROGRESS.md:** Add every confirmed **code bug** from the spec audit to the cumulative BUG tracker with source "Spec Audit". This is critical — spec-audit bugs are systematically orphaned if they aren't added to the same tracker that the closure verification reads.
 
+### Layer 2 — Semantic Citation Check (v1.5.1 Council sub-pass)
+
+After the main spec audit triage, each Council member runs a per-REQ verdict against every Tier 1/2 REQ's `citation_excerpt`. This is **Layer 2** of the hallucination gate: Layer 1 is the mechanical byte-equality check — `bin/citation_verifier` is invoked by `bin/formal_docs_ingest` at ingest time and re-invoked by `quality_gate.py` at gate time; the LLM never shells out to it directly. Layer 2 is semantic — the reviewer decides whether the excerpt actually supports the requirement as stated, or whether the requirement overreaches what the excerpt says.
+
+**Protocol.**
+
+1. **One prompt per Council member, all Tier 1/2 REQs batched in.** Not one REQ at a time (3×N prompts is too many). Not a prose response (pattern-matching risk). The reviewer receives the full list of `(req_id, citation_excerpt, REQ description)` tuples and returns a structured per-REQ JSON response.
+
+2. **Structured response schema (schemas.md §9.2).** For each REQ the reviewer records `{"req_id": "REQ-NNN", "reviewer": "<stable string>", "verdict": "supports" | "overreaches" | "unclear", "notes": "<reasoning>"}`. Valid `verdict` values are enumerated in schemas.md §3.5.
+
+3. **Batching threshold.** When a run produces more than 15 Tier 1/2 REQs, split into batches of up to 15 REQs per prompt per Council member. The same reviewer sees each batch sequentially; their response entries are concatenated into one `reviews[]` array under the same `reviewer` string.
+
+4. **Reviewer identifier stability.** Use fixed strings like `"claude-opus-4.7"`, `"gpt-5.4"`, `"gemini-2.5-pro"`. The majority computation in schemas.md §10 invariant #17 groups on this field — a typo silently becomes a fourth reviewer and breaks the 2-of-3 majority check.
+
+5. **Output.** Concatenate all Council members' responses into `quality/citation_semantic_check.json` using the §1.6 manifest wrapper, except the record array is named `reviews` rather than `records` (schemas.md §9.1). One file per run, regenerated on every audit pass.
+
+**Majority rule (gate-enforced).** For each Tier 1/2 REQ, the gate groups reviews by `req_id` and fails the run when ≥2 of 3 reviewers recorded `verdict == "overreaches"`. A single-member `overreaches` or `unclear` verdict surfaces as a warning but does not fail the gate. A REQ with fewer than three reviewer entries (missing reviewer, skipped batch) has insufficient evidence — the gate treats that as a fail.
+
+**No-op for Spec Gap runs.** If a run produces zero Tier 1/2 REQs, `citation_semantic_check.json` is still written with an empty `reviews` array — the file's existence is part of the artifact contract even when the check has nothing to evaluate.
+
 ### Post-spec-audit regression tests
 
 After the spec audit triage, check the cumulative BUG tracker in PROGRESS.md. Any spec-audit BUG that doesn't have a regression test yet needs one now. Write regression tests for spec-audit confirmed code bugs using the same conventions as code-review regression tests (expected-failure markers, test-finding alignment, executable source files).
@@ -1737,9 +1831,14 @@ If the tracker entry count does not equal M + L, stop and reconcile — a BUG wa
 - `quality/PROGRESS.md` exists (obviously — you're writing to it)
 - `quality/COVERAGE_MATRIX.md` exists
 - `quality/COMPLETENESS_REPORT.md` exists
+- `quality/formal_docs_manifest.json` exists (v1.5.1 — written by `bin/formal_docs_ingest.py` in Phase 1; empty `records[]` is valid when no formal docs present)
+- `quality/requirements_manifest.json` exists (v1.5.1 — authoritative REQ records, rendered to REQUIREMENTS.md)
+- `quality/use_cases_manifest.json` exists (v1.5.1 — authoritative UC records, rendered to USE_CASES.md / the REQUIREMENTS.md narrative)
+- `quality/citation_semantic_check.json` exists (v1.5.1 — Phase 4 Layer-2 output; empty `reviews[]` is valid for Spec Gap runs)
 - If Phase 3 ran: `quality/code_reviews/` contains at least one `.md` file
 - If Phase 4 ran: `quality/spec_audits/` contains a triage file AND individual auditor files
 - If Phase 0 or 0b ran: `quality/SEED_CHECKS.md` exists as a standalone file (not inlined in PROGRESS.md)
+- If confirmed bugs exist: `quality/bugs_manifest.json` exists (v1.5.1 — authoritative BUG records per schemas.md §8)
 - If confirmed bugs exist: `quality/results/tdd-results.json` exists
 - If confirmed bugs exist: `quality/results/BUG-NNN.red.log` exists for every confirmed bug ID in `quality/BUGS.md`
 - If confirmed bugs exist with fix patches: `quality/results/BUG-NNN.green.log` exists for each bug that has a `quality/patches/BUG-NNN-fix.patch`
@@ -1749,6 +1848,22 @@ For each missing file, create it now. Do not mark Phase 5 complete with missing 
 **Sidecar JSON post-write validation (mandatory).** After writing `quality/results/tdd-results.json` and/or `quality/results/integration-results.json`, immediately reopen each file and verify it contains all required keys. For `tdd-results.json`, the required root keys are: `schema_version`, `skill_version`, `date`, `project`, `bugs`, `summary`. Each entry in `bugs` must have: `id`, `requirement`, `red_phase`, `green_phase`, `verdict`, `fix_patch_present`, `writeup_path`. The `summary` object must include `confirmed_open` alongside `verified`, `red_failed`, `green_failed`. For `integration-results.json`, the required root keys are: `schema_version`, `skill_version`, `date`, `project`, `recommendation`, `groups`, `summary`, `uc_coverage`. Both files must have `schema_version: "1.1"`. If any key is missing, add it now — do not leave a non-conformant JSON file on disk. This validation exists because v1.3.25 benchmarking showed 6 of 8 repos with non-conformant sidecar JSON: httpx invented an alternate schema, serde used legacy shape, javalin omitted `summary` and per-bug fields, and others used invalid enum values.
 
 **Script-verified closure gate (mandatory, final step before marking Phase 5 complete).** Locate `quality_gate.py` using the same fallback as reference files (check `quality_gate.py`, `.claude/skills/quality-playbook/quality_gate.py`, `.github/skills/quality_gate.py` in order) and run it from the project root directory. This script mechanically validates: file existence, BUGS.md heading format, sidecar JSON required keys AND per-bug field names (`id`, `requirement`, `red_phase`, `green_phase`, `verdict`, `fix_patch_present`, `writeup_path`) AND enum values AND summary consistency, use case identifiers, terminal gate section, mechanical verification receipts, version stamps, writeup completeness, **regression-test patch presence for every confirmed bug**, and **inline fix diffs in every writeup** (every `quality/writeups/BUG-NNN.md` must contain a ` ```diff ` block). If the script reports any FAIL results, fix each failing check before proceeding — the most common FAILs are: (1) missing `quality/patches/BUG-NNN-regression-test.patch` files, (2) non-canonical JSON field names like `bug_id` instead of `id`, (3) missing `confirmed_open` in the TDD summary, (4) writeups without inline fix diffs (section 6 must include a concrete diff, not just "see patch file"). Do not mark Phase 5 complete until `quality_gate.py` exits 0. Append the script's full output to `quality/results/quality-gate.log`.
+
+**v1.5.1 Layer-1 mechanical checks (schemas.md §10 invariants #1–#18).** Beyond the legacy gate checks above, `quality_gate.py` in v1.5.1 also enforces the Layer-1 invariants defined in `schemas.md` §10. A compact map of what each invariant covers:
+
+- **#1–#10 — core contract checks.** Citation tier gating, citation document existence, citation hash match, citation excerpt presence + locatability (section/line only; page never sufficient), bug→REQ resolution, forward-link resolution, disposition completeness, functional section presence, no orphan formal docs, INDEX.md field presence.
+- **#11 — citation excerpt byte-equality.** The gate re-runs `bin/citation_verifier.extract_excerpt` per schemas.md §5.4 on every Tier 1/2 citation and rejects any stored `citation_excerpt` that does not byte-equal the freshly-extracted one. This is the Layer-1 anti-hallucination mechanism — it catches fabricated or paraphrased excerpts even when the locator is real.
+- **#12 — legal `fix_type × disposition` combination** per schemas.md §3.4.
+- **#13 — manifest wrapper validity** per schemas.md §1.6.
+- **#14 — REQ tier bound to cited FORMAL_DOC tier** (a Tier 1 REQ cannot cite a Tier 2 FORMAL_DOC).
+- **#15 — ID uniqueness** within each manifest.
+- **#16 — redundant citation metadata** (`version`, `date`, `url`, `retrieved`) must match FORMAL_DOC when present.
+- **#17 — semantic-check majority rule.** ≥2 of 3 `overreaches` verdicts for the same Tier 1/2 REQ fails the gate (see Layer 2 sub-pass in Phase 4).
+- **#18 — array value uniqueness** in `REQ.use_cases` and `UC.formal_doc_refs`.
+
+**`citation_stale` is a gate-report marker, not a field on the citation record.** When the stored `citation.document_sha256` diverges from the live `FORMAL_DOC.document_sha256`, `quality_gate.py` writes a `citation_stale` entry into `quality_gate_report.json` (or equivalent). Do NOT write `citation_stale` onto the citation record itself — the record stays pure input, and the stale marker is gate-report output per schemas.md §5.1 / §10 invariant #3.
+
+**Do not implement the gate in this prose.** The Layer-1 check list above is a summary of what `quality_gate.py` enforces — the authoritative definitions live in schemas.md. Implementation of the gate (Phase 5 of v1.5.1 implementation) lives in `quality_gate.py`; SKILL.md describes the protocol but does not re-state the invariants.
 
 **Use case identifier format.** REQUIREMENTS.md must use canonical use case identifiers in the format `UC-01`, `UC-02`, etc. for all derived use cases. Each use case must be labeled with its identifier. This is required for machine-readable traceability — the identifier format enables `quality_gate.py` and downstream tooling to count and cross-reference use cases programmatically. Use cases written as prose paragraphs without identifiers are non-conformant.
 
@@ -1820,6 +1935,8 @@ Append to `quality/results/phase6-verification.log`:
 ```
 
 This step covers verification benchmarks: 14 (sidecar JSON), 17 (test file extension), 18 (use case count), 20 (writeups), 23 (mechanical artifacts), 26 (version stamps), 27 (mechanical directory), 29 (triage-to-BUGS sync), 34 (BUGS.md exists), 38 (individual auditor reports), 39 (BUGS.md heading format), 40 (artifact file existence), 41 (sidecar JSON validation), 42 (script-verified closure), 43 (use case identifiers), 44 (regression-test patches), 45 (writeup inline diffs).
+
+**v1.5.1 Layer-1 invariants also run here.** `quality_gate.py` additionally enforces schemas.md §10 invariants #1–#18 (summarized in Phase 5 above). In particular, the script re-runs `bin/citation_verifier.extract_excerpt` per schemas.md §5.4 on every Tier 1/2 citation and rejects any stored `citation_excerpt` that does not byte-equal the freshly-extracted output — this is the post-ingest tampering catch. If any Layer-1 invariant fails here, fix the underlying manifest record (not the gate, not the excerpt) and re-run.
 
 ### Step 6.3: Test execution verification
 
@@ -1926,7 +2043,7 @@ Write a `## Convergence` section to PROGRESS.md:
 ```markdown
 ## Convergence
 
-Run number: N (N prior runs in previous_runs/)
+Run number: N (N prior runs in quality/runs/)
 Seeds from prior runs: S (S confirmed, R resolved)
 Net-new bugs this run: K
 Convergence: [CONVERGED | NOT CONVERGED]
@@ -1942,15 +2059,15 @@ Net-new bugs:
 **If NOT converged — automatic re-iteration.** When the convergence check shows net-new bugs > 0 and the iteration count has not reached the maximum (default: 5), the skill re-iterates automatically:
 
 1. Record the iteration number and net-new count in PROGRESS.md.
-2. Archive the current `quality/` directory: `cp -a quality/ previous_runs/<timestamp>/quality/` then `rm -rf quality/ control_prompts/`.
-3. Restart from **Phase 0** (which will now find the newly archived run in `previous_runs/`).
+2. Archive the current `quality/` directory via `bin/run_playbook.archive_previous_run(repo_dir, timestamp)` (or `bin.archive_lib.archive_run()` at Phase 6 success). These snapshot `quality/` into `quality/runs/<timestamp>/quality/` and write the per-run `INDEX.md` plus a `RUN_INDEX.md` row.
+3. Restart from **Phase 0** (which will now find the newly archived run in `quality/runs/`).
 4. Print to the user: "Iteration N found K net-new bugs. Archiving and starting iteration N+1 (max M)."
 
 The iteration counter starts at 1 for the first run. Each archive-and-restart increments it. When the counter reaches the maximum, stop iterating even if not converged and print: "Reached maximum iterations (M) without convergence. K net-new bugs found in the last run. Total confirmed bugs across all runs: T."
 
 **Iteration limits.** The default maximum is 5 iterations. If the user's prompt includes an explicit limit (e.g., "run the playbook with 3 iterations"), use that limit instead. If the user's prompt says "single run" or "no iteration," skip re-iteration entirely and treat NOT CONVERGED the same as the pre-iteration behavior: print the net-new count and suggest re-running.
 
-**Context window awareness.** If at any point during re-iteration you detect that your context window is substantially consumed (e.g., you are producing noticeably shorter or lower-quality output than earlier iterations), stop iterating, write the current state to PROGRESS.md, and print: "Stopping iteration due to context constraints. Completed N of M iterations. Re-run the playbook to continue — Phase 0 will pick up the seed list from previous_runs/." This is a safety valve, not a target — most codebases converge in 2-3 iterations.
+**Context window awareness.** If at any point during re-iteration you detect that your context window is substantially consumed (e.g., you are producing noticeably shorter or lower-quality output than earlier iterations), stop iterating, write the current state to PROGRESS.md, and print: "Stopping iteration due to context constraints. Completed N of M iterations. Re-run the playbook to continue — Phase 0 will pick up the seed list from quality/runs/." This is a safety valve, not a target — most codebases converge in 2-3 iterations.
 
 **Why this matters:** A single playbook run explores a subset of the codebase non-deterministically. The first run on virtio might find BUG-001 and BUG-004 but miss BUG-005. The second run might find BUG-005 and BUG-006. By the third run, if no net-new bugs appear, the exploration has likely covered the high-value territory. The seed list ensures previously found bugs are never lost between runs, and the convergence check tells the user when additional runs have diminishing returns. Automatic re-iteration means the skill is self-contained — callers don't need external scripts or manual re-runs to achieve convergence.
 
@@ -2066,7 +2183,7 @@ Note: The recheck schema uses `"schema_version": "1.0"` (not `"1.1"`) because it
 ```json
 {
   "schema_version": "1.0",
-  "skill_version": "1.4.6",
+  "skill_version": "1.5.1",
   "date": "YYYY-MM-DD",
   "project": "<project name>",
   "source_run": {

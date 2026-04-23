@@ -295,6 +295,47 @@ class TestCountPerBugField(unittest.TestCase):
         self.assertEqual(quality_gate.count_per_bug_field({}, "id"), 0)
 
 
+# --- fail() format tests (Phase 5 r3) ---
+
+
+class TestFailHelperFormat(unittest.TestCase):
+    """Phase 5 r3: fail() emits grep-parseable lines without a 'FAIL:' prefix."""
+
+    def setUp(self):
+        quality_gate.FAIL = 0
+
+    def _capture(self, *args, **kwargs):
+        import io
+        import contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            quality_gate.fail(*args, **kwargs)
+        return buf.getvalue().rstrip("\n")
+
+    def test_path_with_line_and_reason(self):
+        line = self._capture("quality/INDEX.md", "missing required field 'target'", line=42)
+        self.assertEqual(line, "  quality/INDEX.md:42: missing required field 'target'")
+        self.assertEqual(quality_gate.FAIL, 1)
+
+    def test_path_with_reason_only(self):
+        line = self._capture("quality/INDEX.md", "file missing")
+        self.assertEqual(line, "  quality/INDEX.md: file missing")
+
+    def test_legacy_single_arg_still_works(self):
+        line = self._capture("BUGS.md missing or not a file")
+        self.assertEqual(line, "  BUGS.md missing or not a file")
+
+    def test_no_FAIL_prefix_in_gate_module_source(self):
+        """The literal 'FAIL: ' must not appear in gate output per Phase 5 r3
+        format contract (grep acceptance criterion)."""
+        src = PACKAGE_DIR.joinpath("quality_gate.py").read_text(encoding="utf-8")
+        # Allow comments/docstrings to mention the string, but the actual
+        # print() calls must not emit it. Scan format literals.
+        import re
+        offenders = re.findall(r'print\(f?"[^"]*FAIL:\s', src)
+        self.assertEqual(offenders, [], f"unexpected FAIL: print in gate: {offenders}")
+
+
 # --- Integration tests per check section ---
 
 
@@ -306,9 +347,10 @@ class TestAllPassBaseline(FixtureBase):
         stdout, code = self.gate()
         self.assertEqual(code, 0, f"Expected PASS, got:\n{stdout}")
         self.assertIn("RESULT: GATE PASSED", stdout)
-        # No individual FAIL: lines in the per-check output (before the summary).
-        body = stdout.split("===========================================")[0]
-        self.assertNotIn("  FAIL:", body)
+        # Summary counter shows zero failures on the baseline (Phase 5 r3:
+        # individual failure lines are path:line:reason, without a FAIL:
+        # prefix — the global counter is the authoritative source).
+        self.assertIn("Total: 0 FAIL", stdout)
 
     def test_one_bug_all_pass(self):
         tree = minimal_zero_bug_tree()
@@ -325,7 +367,7 @@ class TestFileExistence(FixtureBase):
         del tree["quality/BUGS.md"]
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: BUGS.md missing", stdout)
+        self.assertIn("BUGS.md missing", stdout)
         self.assertEqual(code, 1)
 
     def test_missing_requirements_md(self):
@@ -333,7 +375,7 @@ class TestFileExistence(FixtureBase):
         del tree["quality/REQUIREMENTS.md"]
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: REQUIREMENTS.md missing", stdout)
+        self.assertIn("REQUIREMENTS.md missing", stdout)
         self.assertEqual(code, 1)
 
     def test_missing_agents_md(self):
@@ -341,7 +383,7 @@ class TestFileExistence(FixtureBase):
         del tree["AGENTS.md"]
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: AGENTS.md missing (required at project root)", stdout)
+        self.assertIn("AGENTS.md missing (required at project root)", stdout)
         self.assertEqual(code, 1)
 
     def test_missing_exploration_md(self):
@@ -349,7 +391,7 @@ class TestFileExistence(FixtureBase):
         del tree["quality/EXPLORATION.md"]
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: EXPLORATION.md missing", stdout)
+        self.assertIn("EXPLORATION.md missing", stdout)
         self.assertEqual(code, 1)
 
     def test_missing_code_reviews(self):
@@ -359,7 +401,7 @@ class TestFileExistence(FixtureBase):
         # Create empty code_reviews dir
         (self.repo / "quality" / "code_reviews").mkdir(parents=True, exist_ok=True)
         stdout, code = self.gate()
-        self.assertIn("FAIL: code_reviews/ missing or empty", stdout)
+        self.assertIn("code_reviews/ missing or empty", stdout)
 
     def test_missing_spec_audits_triage(self):
         tree = minimal_zero_bug_tree()
@@ -369,14 +411,14 @@ class TestFileExistence(FixtureBase):
         del tree["quality/spec_audits/triage_probes.sh"]
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: spec_audits/ missing triage file", stdout)
+        self.assertIn("spec_audits/ missing triage file", stdout)
 
     def test_missing_auditor_files(self):
         tree = minimal_zero_bug_tree()
         del tree["quality/spec_audits/2026-01-01-auditor-1.md"]
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: spec_audits/ missing individual auditor files", stdout)
+        self.assertIn("spec_audits/ missing individual auditor files", stdout)
 
     def test_functional_test_scala_variant(self):
         tree = minimal_zero_bug_tree()
@@ -393,7 +435,7 @@ class TestFileExistence(FixtureBase):
         del tree["quality/test_functional.py"]
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: functional test file missing", stdout)
+        self.assertIn("functional test file missing", stdout)
 
 
 class TestBugsHeading(FixtureBase):
@@ -411,7 +453,7 @@ class TestBugsHeading(FixtureBase):
         tree["quality/BUGS.md"] = "## BUG-001: bad format\n"
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: 1 heading(s) use ## instead of ###", stdout)
+        self.assertIn("1 heading(s) use ## instead of ###", stdout)
         self.assertEqual(code, 1)
 
     def test_deep_heading(self):
@@ -420,7 +462,7 @@ class TestBugsHeading(FixtureBase):
         tree["quality/BUGS.md"] = "#### BUG-001: too deep\n"
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: 1 heading(s) use #### or deeper instead of ###", stdout)
+        self.assertIn("1 heading(s) use #### or deeper instead of ###", stdout)
 
     def test_bold_format(self):
         tree = minimal_zero_bug_tree()
@@ -428,7 +470,7 @@ class TestBugsHeading(FixtureBase):
         tree["quality/BUGS.md"] = "**BUG-001**: bold\n"
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: 1 heading(s) use **BUG- format", stdout)
+        self.assertIn("1 heading(s) use **BUG- format", stdout)
 
     def test_bullet_format(self):
         tree = minimal_zero_bug_tree()
@@ -436,7 +478,7 @@ class TestBugsHeading(FixtureBase):
         tree["quality/BUGS.md"] = "- BUG-001: bullet\n"
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: 1 heading(s) use - BUG- format", stdout)
+        self.assertIn("1 heading(s) use - BUG- format", stdout)
 
     def test_zero_bug_run(self):
         tree = minimal_zero_bug_tree()
@@ -469,7 +511,7 @@ class TestTDDSidecar(FixtureBase):
         del tree["quality/results/tdd-results.json"]
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: tdd-results.json missing", stdout)
+        self.assertIn("tdd-results.json missing", stdout)
         self.assertEqual(code, 1)
 
     def test_wrong_schema_version(self):
@@ -480,7 +522,7 @@ class TestTDDSidecar(FixtureBase):
         tree["quality/results/tdd-results.json"] = json.dumps(data)
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: schema_version is '1.0', expected '1.1'", stdout)
+        self.assertIn("schema_version is '1.0', expected '1.1'", stdout)
         self.assertEqual(code, 1)
 
     def test_placeholder_date(self):
@@ -491,7 +533,7 @@ class TestTDDSidecar(FixtureBase):
         tree["quality/results/tdd-results.json"] = json.dumps(data)
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: tdd-results.json date is placeholder", stdout)
+        self.assertIn("tdd-results.json date is placeholder", stdout)
 
     def test_future_date(self):
         tree = minimal_zero_bug_tree()
@@ -521,7 +563,7 @@ class TestTDDSidecar(FixtureBase):
         tree["quality/results/tdd-results.json"] = json.dumps(data)
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: 1 non-canonical verdict value(s)", stdout)
+        self.assertIn("1 non-canonical verdict value(s)", stdout)
 
     def test_non_canonical_field_name(self):
         tree = minimal_zero_bug_tree()
@@ -541,7 +583,7 @@ class TestTDDSidecar(FixtureBase):
         tree["quality/results/tdd-results.json"] = json.dumps(data)
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: summary missing 'confirmed_open' count", stdout)
+        self.assertIn("summary missing 'confirmed_open' count", stdout)
 
     def test_missing_root_key(self):
         tree = minimal_zero_bug_tree()
@@ -551,7 +593,7 @@ class TestTDDSidecar(FixtureBase):
         tree["quality/results/tdd-results.json"] = json.dumps(data)
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: missing root key 'project'", stdout)
+        self.assertIn("missing root key 'project'", stdout)
 
 
 class TestTDDLogs(FixtureBase):
@@ -613,7 +655,7 @@ class TestTDDLogs(FixtureBase):
         del tree["quality/TDD_TRACEABILITY.md"]
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: TDD_TRACEABILITY.md missing", stdout)
+        self.assertIn("TDD_TRACEABILITY.md missing", stdout)
 
 
 class TestIntegrationSidecar(FixtureBase):
@@ -663,7 +705,7 @@ class TestIntegrationSidecar(FixtureBase):
         })
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: recommendation 'MAYBE' is non-canonical", stdout)
+        self.assertIn("recommendation 'MAYBE' is non-canonical", stdout)
 
     def test_bad_result_value(self):
         tree = minimal_zero_bug_tree()
@@ -679,7 +721,7 @@ class TestIntegrationSidecar(FixtureBase):
         })
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: 1 non-canonical groups[].result value(s)", stdout)
+        self.assertIn("1 non-canonical groups[].result value(s)", stdout)
 
     def test_bad_uc_coverage_value(self):
         tree = minimal_zero_bug_tree()
@@ -695,7 +737,7 @@ class TestIntegrationSidecar(FixtureBase):
         })
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: 1 non-canonical uc_coverage value(s)", stdout)
+        self.assertIn("1 non-canonical uc_coverage value(s)", stdout)
 
 
 class TestRecheckSidecar(FixtureBase):
@@ -737,7 +779,7 @@ class TestRecheckSidecar(FixtureBase):
         tree["quality/results/recheck-summary.md"] = "# s\n"
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: recheck schema_version is '1.1', expected '1.0'", stdout)
+        self.assertIn("recheck schema_version is '1.1', expected '1.0'", stdout)
 
     def test_missing_summary_md(self):
         tree = minimal_zero_bug_tree()
@@ -752,7 +794,7 @@ class TestRecheckSidecar(FixtureBase):
         # No recheck-summary.md
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: recheck-summary.md missing", stdout)
+        self.assertIn("recheck-summary.md missing", stdout)
 
 
 class TestUseCases(FixtureBase):
@@ -771,7 +813,7 @@ class TestUseCases(FixtureBase):
         # Requirements has only 3 UCs (from default), need 5
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: Only 3 distinct UC identifiers", stdout)
+        self.assertIn("Only 3 distinct UC identifiers", stdout)
         self.assertEqual(code, 1)
 
     def test_too_few_ucs_general_warns(self):
@@ -788,7 +830,7 @@ class TestUseCases(FixtureBase):
         tree["quality/REQUIREMENTS.md"] = "# No UCs\n"
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: No canonical UC-NN identifiers", stdout)
+        self.assertIn("No canonical UC-NN identifiers", stdout)
 
 
 class TestTestFileExtension(FixtureBase):
@@ -806,7 +848,7 @@ class TestTestFileExtension(FixtureBase):
         # test_functional.py remains — mismatch
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: test_functional.py does not match project language (go)", stdout)
+        self.assertIn("test_functional.py does not match project language (go)", stdout)
 
     def test_no_language_detected(self):
         tree = minimal_zero_bug_tree()
@@ -829,7 +871,7 @@ class TestTerminalGate(FixtureBase):
         tree["quality/PROGRESS.md"] = "# Progress\n\nSkill version: 1.4.4\n"
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: PROGRESS.md missing Terminal Gate section", stdout)
+        self.assertIn("PROGRESS.md missing Terminal Gate section", stdout)
 
     def test_terminal_section_case_insensitive(self):
         tree = minimal_zero_bug_tree()
@@ -853,7 +895,7 @@ class TestMechanicalVerification(FixtureBase):
         tree["quality/mechanical/placeholder"] = ""
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: mechanical/ exists but verify.sh missing", stdout)
+        self.assertIn("mechanical/ exists but verify.sh missing", stdout)
 
     def test_verify_sh_with_exit_0_passes(self):
         tree = minimal_zero_bug_tree()
@@ -872,7 +914,7 @@ class TestMechanicalVerification(FixtureBase):
         tree["quality/results/mechanical-verify.exit"] = "1\n"
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: mechanical-verify.exit is '1', expected 0", stdout)
+        self.assertIn("mechanical-verify.exit is '1', expected 0", stdout)
 
 
 class TestPatches(FixtureBase):
@@ -904,7 +946,7 @@ class TestPatches(FixtureBase):
         del tree["quality/test_regression.py"]
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: test_regression.* missing", stdout)
+        self.assertIn("test_regression.* missing", stdout)
         self.assertEqual(code, 1)
 
     def test_missing_test_regression_general_warns(self):
@@ -940,7 +982,168 @@ class TestWriteups(FixtureBase):
         del tree["quality/writeups/BUG-001.md"]
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: No writeups for 1 confirmed bug(s)", stdout)
+        self.assertIn("No writeups for 1 confirmed bug(s)", stdout)
+
+    def test_writeup_uppercase_diff_fence_passes(self):
+        """v1.5.1 Item 2 regression guard: a writeup that opens its fence
+        with ```Diff (mixed case) carries a real unified diff and must be
+        recognised as such. Both the presence check and the non-empty
+        content check pass through the same case-insensitive regex —
+        neither can silently skip a drifted-case fence."""
+        tree = minimal_zero_bug_tree()
+        add_one_bug(tree)
+        tree["quality/writeups/BUG-001.md"] = (
+            "# BUG-001\n\n"
+            "## The fix\n\n"
+            "```Diff\n"
+            "- old line\n"
+            "+ new line\n"
+            "```\n"
+        )
+        self.write(tree)
+        stdout, _ = self.gate()
+        self.assertIn("PASS: All 1 writeup(s) have inline fix diffs", stdout)
+        self.assertIn("PASS: All writeup ```diff blocks contain unified-diff content", stdout)
+
+    def test_writeup_empty_uppercase_diff_fence_fails(self):
+        """Paired with the test above: an uppercase ```DIFF fence with no
+        `+`/`-` body must trip the empty-diff FAIL just like the lowercase
+        case. This proves the case-insensitive regex is wired into BOTH
+        the presence detection and the content inspection — if one were
+        still case-sensitive, this fixture would produce a misleading
+        pass/fail combination."""
+        tree = minimal_zero_bug_tree()
+        add_one_bug(tree)
+        tree["quality/writeups/BUG-001.md"] = (
+            "# BUG-001\n\n"
+            "## The fix\n\n"
+            "```DIFF\n"
+            "some context line\n"
+            "another context line\n"
+            "```\n"
+        )
+        self.write(tree)
+        stdout, _ = self.gate()
+        # Fence IS detected — presence check accepts DIFF.
+        self.assertIn("PASS: All 1 writeup(s) have inline fix diffs", stdout)
+        # Content check fires — no +/- lines inside.
+        self.assertIn("writeup(s) have empty ```diff blocks", stdout)
+
+    def test_writeup_with_unfilled_sentinel_fails(self):
+        """v1.5.1 Item 5.2 hardening: every one of the five template
+        sentinels in _WRITEUP_TEMPLATE_SENTINELS must trigger the
+        "contain unfilled template sentinels" FAIL when it appears
+        verbatim in a writeup. The writeup is otherwise valid (real
+        diff fence with +/- content) so the failure is attributable
+        to the sentinel and not to a co-firing check."""
+        for sentinel in quality_gate._WRITEUP_TEMPLATE_SENTINELS:
+            with self.subTest(sentinel=sentinel):
+                # Rebuild a clean tree per subtest so prior iterations
+                # don't leak state.
+                self.tearDown()
+                self.setUp()
+                tree = minimal_zero_bug_tree()
+                add_one_bug(tree)
+                tree["quality/writeups/BUG-001.md"] = (
+                    "# BUG-001\n\n"
+                    f"{sentinel}\n\n"
+                    "## The fix\n\n"
+                    "```diff\n"
+                    "- old\n"
+                    "+ new\n"
+                    "```\n"
+                )
+                self.write(tree)
+                stdout, _ = self.gate()
+                self.assertIn(
+                    "writeup(s) contain unfilled template sentinels",
+                    stdout,
+                    msg=f"sentinel {sentinel!r} did not trip the FAIL",
+                )
+                # And the corresponding PASS must NOT appear.
+                self.assertNotIn(
+                    "PASS: No writeups contain unfilled template sentinels",
+                    stdout,
+                    msg=f"sentinel {sentinel!r} failed to suppress the PASS line",
+                )
+
+    def test_writeup_with_empty_diff_fence_fails(self):
+        """A diff fence containing only context lines (no +/- body)
+        must trip the "empty ```diff blocks" FAIL and must NOT produce
+        the "contain unified-diff content" PASS."""
+        tree = minimal_zero_bug_tree()
+        add_one_bug(tree)
+        tree["quality/writeups/BUG-001.md"] = (
+            "# BUG-001\n\n"
+            "## The fix\n\n"
+            "```diff\n"
+            " context line one\n"
+            "\n"
+            " context line two\n"
+            "```\n"
+        )
+        self.write(tree)
+        stdout, _ = self.gate()
+        self.assertIn("writeup(s) have empty ```diff blocks", stdout)
+        self.assertNotIn(
+            "PASS: All writeup ```diff blocks contain unified-diff content",
+            stdout,
+        )
+
+    def test_writeup_diff_with_only_file_headers_is_empty(self):
+        """Pins the header-exclusion logic in _writeup_diff_is_non_empty:
+        a diff that contains only `--- a/file` and `+++ b/file` header
+        lines and no actual hunk content must be flagged as empty.
+        Without header exclusion the check would see `-` and `+`
+        prefixes on those lines and mis-classify the diff as non-empty."""
+        tree = minimal_zero_bug_tree()
+        add_one_bug(tree)
+        tree["quality/writeups/BUG-001.md"] = (
+            "# BUG-001\n\n"
+            "## The fix\n\n"
+            "```diff\n"
+            "--- a/src/foo.py\n"
+            "+++ b/src/foo.py\n"
+            "```\n"
+        )
+        self.write(tree)
+        stdout, _ = self.gate()
+        self.assertIn("writeup(s) have empty ```diff blocks", stdout)
+
+    def test_writeup_clean_passes_all_new_checks(self):
+        """A hydrated writeup with a real diff body and no sentinels
+        must produce all three new PASS messages (presence,
+        non-empty content, no sentinels). This explicitly covers the
+        sentinel PASS and the non-empty-content PASS that
+        test_all_writeups_with_diffs above does not assert."""
+        tree = minimal_zero_bug_tree()
+        add_one_bug(tree)
+        # Use a clearly hydrated summary so no sentinel phrase fires.
+        tree["quality/writeups/BUG-001.md"] = (
+            "# BUG-001\n\n"
+            "## Summary\n"
+            "fetch_stop_arrivals() crashes on naive ExpectedArrivalTime.\n\n"
+            "## The fix\n\n"
+            "```diff\n"
+            "--- a/bus_tracker.py\n"
+            "+++ b/bus_tracker.py\n"
+            "- eta = parsed - datetime.now(timezone.utc)\n"
+            "+ if parsed.tzinfo is None:\n"
+            "+     eta = None\n"
+            "+ else:\n"
+            "+     eta = parsed - datetime.now(timezone.utc)\n"
+            "```\n"
+        )
+        self.write(tree)
+        stdout, _ = self.gate()
+        self.assertIn("PASS: All 1 writeup(s) have inline fix diffs", stdout)
+        self.assertIn(
+            "PASS: All writeup ```diff blocks contain unified-diff content",
+            stdout,
+        )
+        self.assertIn(
+            "PASS: No writeups contain unfilled template sentinels", stdout
+        )
 
 
 class TestVersionStamps(FixtureBase):
@@ -957,7 +1160,7 @@ class TestVersionStamps(FixtureBase):
         )
         self.write(tree)
         stdout, _ = self.gate()
-        self.assertIn("FAIL: PROGRESS.md version '1.3.99' != '1.4.4'", stdout)
+        self.assertIn("PROGRESS.md version '1.3.99' != '1.4.4'", stdout)
 
     def test_missing_version_in_progress(self):
         tree = minimal_zero_bug_tree()
@@ -1006,7 +1209,7 @@ class TestStrictnessModes(FixtureBase):
         del tree["quality/spec_audits/triage_probes.sh"]
         self.write(tree)
         stdout, code = self.gate()
-        self.assertIn("FAIL: No executable triage evidence found", stdout)
+        self.assertIn("No executable triage evidence found", stdout)
         self.assertEqual(code, 1)
 
     def test_triage_probes_missing_general_warns(self):
@@ -1052,10 +1255,10 @@ class TestExitCodes(FixtureBase):
 class TestSkillVersionDetection(unittest.TestCase):
     def test_detects_from_frontmatter(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
-            f.write("---\nname: quality-playbook\nversion: 1.5.0\n---\n")
+            f.write("---\nname: quality-playbook\nversion: 1.5.1\n---\n")
             path = Path(f.name)
         try:
-            self.assertEqual(quality_gate.detect_skill_version([path]), "1.5.0")
+            self.assertEqual(quality_gate.detect_skill_version([path]), "1.5.1")
         finally:
             path.unlink()
 
@@ -1075,6 +1278,871 @@ class TestSkillVersionDetection(unittest.TestCase):
                 quality_gate.detect_skill_version([p1, p2]),
                 "1.1.1",
             )
+
+
+# ---------------------------------------------------------------------------
+# v1.5.1 Layer-1 checks — negative fixtures per schemas.md §10 invariants.
+# Each test targets one check function directly; fixtures are synthetic trees
+# and manifest JSON blobs crafted to exercise one invariant at a time.
+# ---------------------------------------------------------------------------
+
+
+import io
+from contextlib import redirect_stdout
+
+
+V150_VIRTIO_EXCERPT_TEXT = (
+    "Intro\n"
+    "\n"
+    "2.4 Device initialization\n"
+    "The driver MUST perform the following steps, in order, before the\n"
+    "device is considered operational.\n"
+)
+V150_VIRTIO_SHA = __import__("hashlib").sha256(V150_VIRTIO_EXCERPT_TEXT.encode("utf-8")).hexdigest()
+V150_VIRTIO_EXCERPT = (
+    "2.4 Device initialization\n"
+    "The driver MUST perform the following steps, in order, before the\n"
+    "device is considered operational."
+)
+
+
+def _capture_fail_output(func, *args, **kwargs):
+    """Run a gate check function and return (fail_count, full_stdout)."""
+    quality_gate.FAIL = 0
+    quality_gate.WARN = 0
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        func(*args, **kwargs)
+    return quality_gate.FAIL, buf.getvalue()
+
+
+class V150FixtureBase(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self._tmp.name)
+        self.q = self.repo / "quality"
+        self.q.mkdir(parents=True)
+        quality_gate.FAIL = 0
+        quality_gate.WARN = 0
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def write_manifest(self, name, records_key, payload, *, schema_version="1.4.6"):
+        wrapper = {
+            "schema_version": schema_version,
+            "generated_at": "2026-04-19T14:30:22Z",
+            records_key: payload,
+        }
+        (self.q / name).write_text(json.dumps(wrapper), encoding="utf-8")
+
+    def write_formal_doc(self):
+        (self.repo / "formal_docs").mkdir()
+        (self.repo / "formal_docs" / "virtio-excerpt.txt").write_text(
+            V150_VIRTIO_EXCERPT_TEXT, encoding="utf-8"
+        )
+        self.write_manifest(
+            "formal_docs_manifest.json",
+            "records",
+            [
+                {
+                    "source_path": "formal_docs/virtio-excerpt.txt",
+                    "document_sha256": V150_VIRTIO_SHA,
+                    "tier": 2,
+                }
+            ],
+        )
+
+    def good_req_record(self, req_id="REQ-001"):
+        return {
+            "id": req_id,
+            "tier": 2,
+            "functional_section": "Device initialization",
+            "citation": {
+                "document": "formal_docs/virtio-excerpt.txt",
+                "document_sha256": V150_VIRTIO_SHA,
+                "section": "2.4",
+                "citation_excerpt": V150_VIRTIO_EXCERPT,
+            },
+        }
+
+
+class TestV150PlaintextExtensions(V150FixtureBase):
+    def test_pdf_in_formal_docs_fails(self):
+        (self.repo / "formal_docs").mkdir()
+        (self.repo / "formal_docs" / "spec.pdf").write_text("%PDF", encoding="utf-8")
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_plaintext_extensions, self.repo
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("spec.pdf", out)
+        self.assertIn("schemas.md §2", out)
+
+    def test_docx_in_informal_docs_fails(self):
+        (self.repo / "informal_docs").mkdir()
+        (self.repo / "informal_docs" / "notes.docx").write_bytes(b"PK")
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_plaintext_extensions, self.repo
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("notes.docx", out)
+
+    def test_readme_skipped(self):
+        (self.repo / "formal_docs").mkdir()
+        (self.repo / "formal_docs" / "README.md").write_text("folder doc")
+        fails, _ = _capture_fail_output(
+            quality_gate.check_v1_5_0_plaintext_extensions, self.repo
+        )
+        self.assertEqual(fails, 0)
+
+    def test_meta_json_sidecar_skipped(self):
+        (self.repo / "formal_docs").mkdir()
+        (self.repo / "formal_docs" / "spec.txt").write_text("body\n")
+        (self.repo / "formal_docs" / "spec.meta.json").write_text('{"tier": 2}')
+        fails, _ = _capture_fail_output(
+            quality_gate.check_v1_5_0_plaintext_extensions, self.repo
+        )
+        self.assertEqual(fails, 0)
+
+    def test_absent_folders_is_noop(self):
+        fails, _ = _capture_fail_output(
+            quality_gate.check_v1_5_0_plaintext_extensions, self.repo
+        )
+        self.assertEqual(fails, 0)
+
+
+class TestV150ManifestWrappers(V150FixtureBase):
+    def test_records_shaped_manifest_missing_schema_version_fails(self):
+        (self.q / "formal_docs_manifest.json").write_text(
+            json.dumps({"generated_at": "2026-04-19T14:30:22Z", "records": []})
+        )
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_manifest_wrappers, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("schema_version", out)
+
+    def test_semantic_check_with_records_instead_of_reviews_fails(self):
+        (self.q / "citation_semantic_check.json").write_text(
+            json.dumps({
+                "schema_version": "1.4.6",
+                "generated_at": "2026-04-19T14:30:22Z",
+                "records": [],
+            })
+        )
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_manifest_wrappers, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("reviews", out)
+        self.assertIn("schemas.md §9.1", out)
+
+    def test_records_manifest_with_reviews_key_fails(self):
+        (self.q / "bugs_manifest.json").write_text(
+            json.dumps({
+                "schema_version": "1.4.6",
+                "generated_at": "2026-04-19T14:30:22Z",
+                "records": [],
+                "reviews": [],
+            })
+        )
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_manifest_wrappers, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("reviews", out)
+
+    def test_records_not_an_array_fails(self):
+        (self.q / "requirements_manifest.json").write_text(
+            json.dumps({
+                "schema_version": "1.4.6",
+                "generated_at": "2026-04-19T14:30:22Z",
+                "records": {"not": "array"},
+            })
+        )
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_manifest_wrappers, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("'records'", out)
+
+
+class TestV150RequirementsManifest(V150FixtureBase):
+    def test_tier_1_without_citation_fails(self):
+        self.write_formal_doc()
+        # Re-write formal_docs with tier=1 so binding cross-check succeeds.
+        self.write_manifest(
+            "formal_docs_manifest.json",
+            "records",
+            [
+                {
+                    "source_path": "formal_docs/virtio-excerpt.txt",
+                    "document_sha256": V150_VIRTIO_SHA,
+                    "tier": 1,
+                }
+            ],
+        )
+        self.write_manifest(
+            "requirements_manifest.json",
+            "records",
+            [{"id": "REQ-001", "tier": 1, "functional_section": "Foo"}],
+        )
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_requirements_manifest, self.repo, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("REQ-001", out)
+        self.assertIn("invariant #1", out)
+
+    def test_tier_3_with_citation_fails(self):
+        self.write_manifest(
+            "requirements_manifest.json",
+            "records",
+            [
+                {
+                    "id": "REQ-042",
+                    "tier": 3,
+                    "functional_section": "Foo",
+                    "citation": {"document": "x", "citation_excerpt": "y"},
+                }
+            ],
+        )
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_requirements_manifest, self.repo, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("REQ-042", out)
+
+    def test_missing_functional_section_fails(self):
+        self.write_manifest(
+            "requirements_manifest.json",
+            "records",
+            [{"id": "REQ-010", "tier": 3, "functional_section": ""}],
+        )
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_requirements_manifest, self.repo, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("REQ-010", out)
+        self.assertIn("functional_section", out)
+        self.assertIn("invariant #8", out)
+
+    def test_byte_equality_mismatch_fails(self):
+        self.write_formal_doc()
+        rec = self.good_req_record()
+        rec["citation"]["citation_excerpt"] = "tampered paraphrase that doesn't match"
+        self.write_manifest("requirements_manifest.json", "records", [rec])
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_requirements_manifest, self.repo, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("byte-equal", out)
+        self.assertIn("invariant #11", out)
+
+    def test_tier_mismatch_with_formal_doc_fails(self):
+        self.write_formal_doc()  # FORMAL_DOC tier=2
+        rec = self.good_req_record()
+        rec["tier"] = 1  # REQ claims Tier 1
+        # citation must still exist for Tier 1 REQs
+        self.write_manifest("requirements_manifest.json", "records", [rec])
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_requirements_manifest, self.repo, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("invariant #14", out)
+
+    def test_good_tier_2_req_passes(self):
+        self.write_formal_doc()
+        self.write_manifest(
+            "requirements_manifest.json", "records", [self.good_req_record()]
+        )
+        fails, _ = _capture_fail_output(
+            quality_gate.check_v1_5_0_requirements_manifest, self.repo, self.q
+        )
+        self.assertEqual(fails, 0)
+
+    def test_page_only_locator_fails(self):
+        self.write_formal_doc()
+        rec = self.good_req_record()
+        rec["citation"] = {
+            "document": "formal_docs/virtio-excerpt.txt",
+            "document_sha256": V150_VIRTIO_SHA,
+            "page": 3,  # page alone is insufficient
+            "citation_excerpt": "x",
+        }
+        self.write_manifest("requirements_manifest.json", "records", [rec])
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_requirements_manifest, self.repo, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("section or line", out)
+
+    # --- Phase 5 r5: three negative fixtures flagged by Council B7. -----------
+
+    def test_empty_excerpt_fails_invariant_4(self):
+        """Tier-1/2 REQ with citation_excerpt='' fails invariant #4."""
+        self.write_formal_doc()
+        rec = self.good_req_record()
+        rec["citation"]["citation_excerpt"] = ""  # blank excerpt
+        self.write_manifest("requirements_manifest.json", "records", [rec])
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_requirements_manifest, self.repo, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("citation_excerpt", out)
+        self.assertIn("invariant #4", out)
+
+    def test_unresolvable_location_fails(self):
+        """Citation pointing at a section that doesn't exist in the plaintext
+        fails via the verifier's CitationResolutionError branch."""
+        self.write_formal_doc()
+        rec = self.good_req_record()
+        rec["citation"]["section"] = "99.99"  # not present in the fixture text
+        # Any stored excerpt will not byte-equal extraction since extraction fails.
+        self.write_manifest("requirements_manifest.json", "records", [rec])
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_requirements_manifest, self.repo, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("citation location does not resolve", out)
+        self.assertIn("invariant #4", out)
+
+    def test_missing_formal_doc_fails_invariant_2(self):
+        """Citation referencing a source_path not in formal_docs_manifest.json
+        fails invariant #2 (document not in manifest)."""
+        self.write_formal_doc()  # adds virtio-excerpt.txt
+        rec = self.good_req_record()
+        rec["citation"]["document"] = "formal_docs/nonexistent.txt"
+        self.write_manifest("requirements_manifest.json", "records", [rec])
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_requirements_manifest, self.repo, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("not in formal_docs_manifest.json", out)
+        self.assertIn("invariant #2", out)
+
+
+class TestV150BugsManifest(V150FixtureBase):
+    def test_missing_disposition_fails(self):
+        self.write_manifest(
+            "bugs_manifest.json",
+            "records",
+            [{"id": "BUG-001"}],
+        )
+        fails, out = _capture_fail_output(quality_gate.check_v1_5_0_bugs_manifest, self.q)
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("BUG-001", out)
+        self.assertIn("disposition", out)
+
+    def test_invalid_disposition_enum_fails(self):
+        self.write_manifest(
+            "bugs_manifest.json",
+            "records",
+            [{"id": "BUG-002", "disposition": "rewrite", "fix_type": "code"}],
+        )
+        fails, out = _capture_fail_output(quality_gate.check_v1_5_0_bugs_manifest, self.q)
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("BUG-002", out)
+        self.assertIn("rewrite", out)
+
+    def test_illegal_fix_type_disposition_combo_fails(self):
+        self.write_manifest(
+            "bugs_manifest.json",
+            "records",
+            [
+                {
+                    "id": "BUG-003",
+                    "disposition": "code-fix",
+                    "fix_type": "spec",
+                    "disposition_rationale": "because",
+                }
+            ],
+        )
+        fails, out = _capture_fail_output(quality_gate.check_v1_5_0_bugs_manifest, self.q)
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("BUG-003", out)
+        self.assertIn("invariant #12", out)
+
+    def test_missing_rationale_fails(self):
+        self.write_manifest(
+            "bugs_manifest.json",
+            "records",
+            [{"id": "BUG-004", "disposition": "mis-read", "fix_type": "code"}],
+        )
+        fails, out = _capture_fail_output(quality_gate.check_v1_5_0_bugs_manifest, self.q)
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("disposition_rationale", out)
+
+
+class TestV150IndexMd(V150FixtureBase):
+    def _valid_index(self):
+        return (
+            "# Run Index — 20260419T143022Z\n\n"
+            "```json\n"
+            + json.dumps(
+                {
+                    "run_timestamp_start": "2026-04-19T14:30:22Z",
+                    "run_timestamp_end": "2026-04-19T14:45:22Z",
+                    "duration_seconds": 900,
+                    "qpb_version": "1.4.6",
+                    "target_repo_path": ".",
+                    "target_repo_git_sha": "abc123",
+                    "target_project_type": "Code",
+                    "phases_executed": [],
+                    "summary": {"requirements": {}, "bugs": {}, "gate_verdict": "pass"},
+                    "artifacts": [],
+                }
+            )
+            + "\n```\n"
+        )
+
+    def test_missing_index_md_fails_when_v1_5_0_manifests_present(self):
+        self.write_manifest("requirements_manifest.json", "records", [])
+        fails, out = _capture_fail_output(quality_gate.check_v1_5_0_index_md, self.q)
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("INDEX.md", out)
+        self.assertIn("invariant #10", out)
+
+    def test_legacy_run_without_manifests_is_noop(self):
+        fails, _ = _capture_fail_output(quality_gate.check_v1_5_0_index_md, self.q)
+        self.assertEqual(fails, 0)
+
+    def test_missing_required_field_fails(self):
+        text = self._valid_index().replace(
+            '"duration_seconds": 900,', ""
+        )
+        (self.q / "INDEX.md").write_text(text, encoding="utf-8")
+        fails, out = _capture_fail_output(quality_gate.check_v1_5_0_index_md, self.q)
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("duration_seconds", out)
+
+    def test_empty_string_field_fails(self):
+        payload = json.loads(self._valid_index().split("```json\n")[1].split("\n```")[0])
+        payload["qpb_version"] = ""
+        (self.q / "INDEX.md").write_text(
+            "# Run Index\n\n```json\n" + json.dumps(payload) + "\n```\n",
+            encoding="utf-8",
+        )
+        fails, out = _capture_fail_output(quality_gate.check_v1_5_0_index_md, self.q)
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("qpb_version", out)
+        self.assertIn("empty", out)
+
+    def test_valid_index_passes(self):
+        (self.q / "INDEX.md").write_text(self._valid_index(), encoding="utf-8")
+        fails, _ = _capture_fail_output(quality_gate.check_v1_5_0_index_md, self.q)
+        self.assertEqual(fails, 0)
+
+
+class TestV150LegacyRunGracefulSkip(V150FixtureBase):
+    """A repo with no v1.5.1 manifests should generate zero new FAILs."""
+
+    def test_all_checks_noop_on_legacy_repo(self):
+        # No manifests, no formal_docs, no INDEX.md — purely v1.4.x shape.
+        fails, _ = _capture_fail_output(
+            quality_gate.check_v1_5_0_gate_invariants, self.repo, self.q
+        )
+        self.assertEqual(fails, 0)
+
+
+# ---------------------------------------------------------------------------
+# Phase 6 — §10 invariant #17 semantic-check enforcement
+# ---------------------------------------------------------------------------
+
+
+def _capture_all_output(func, *args, **kwargs):
+    """Run a check function and return (fail_count, warn_count, stdout)."""
+    quality_gate.FAIL = 0
+    quality_gate.WARN = 0
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        func(*args, **kwargs)
+    return quality_gate.FAIL, quality_gate.WARN, buf.getvalue()
+
+
+class V150SemanticCheckFixtureBase(V150FixtureBase):
+    """Shared scaffolding for Phase 6 invariant #17 fixture tests."""
+
+    def write_reqs(self, tiers):
+        """Seed requirements_manifest.json with N Tier 1/2 REQs."""
+        records = []
+        for idx, tier in enumerate(tiers, start=1):
+            records.append({
+                "id": f"REQ-{idx:03d}",
+                "tier": tier,
+                "functional_section": "Test",
+                "description": f"Requirement {idx}",
+            })
+        self.write_manifest("requirements_manifest.json", "records", records)
+
+    def write_reviews(self, reviews):
+        """Seed citation_semantic_check.json with the given reviews list."""
+        payload = {
+            "schema_version": "1.4.6",
+            "generated_at": "2026-04-19T14:30:22Z",
+            "reviews": reviews,
+        }
+        (self.q / "citation_semantic_check.json").write_text(
+            json.dumps(payload), encoding="utf-8"
+        )
+
+
+class TestV150SemanticCheckHappyPath(V150SemanticCheckFixtureBase):
+    def test_three_supports_passes(self):
+        self.write_reqs([1])
+        reviews = [
+            {"req_id": "REQ-001", "reviewer": m, "verdict": "supports", "notes": ""}
+            for m in ("claude-opus-4.7", "gpt-5.4", "gemini-2.5-pro")
+        ]
+        self.write_reviews(reviews)
+        fails, warns, _ = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertEqual(fails, 0)
+        self.assertEqual(warns, 0)
+
+    def test_three_tier12_reqs_nine_supports_passes(self):
+        """Phase 6 Council-briefing fixture #1 (Phase 7 r0 carryover):
+        3 Tier 1/2 REQs × 3 reviewers = 9 supports, gate passes."""
+        self.write_reqs([1, 2, 1])
+        reviews = [
+            {"req_id": rid, "reviewer": m, "verdict": "supports", "notes": ""}
+            for rid in ("REQ-001", "REQ-002", "REQ-003")
+            for m in ("claude-opus-4.7", "gpt-5.4", "gemini-2.5-pro")
+        ]
+        self.write_reviews(reviews)
+        fails, warns, _ = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertEqual(fails, 0)
+        self.assertEqual(warns, 0)
+
+    def test_no_tier_12_reqs_passes(self):
+        """Spec Gap: all REQs Tier 3 → invariant vacuously satisfied."""
+        self.write_reqs([3, 4, 5])
+        self.write_reviews([])
+        fails, warns, _ = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertEqual(fails, 0)
+
+
+class TestV150SemanticCheckMajorityOverreach(V150SemanticCheckFixtureBase):
+    def test_two_of_three_overreaches_fails(self):
+        self.write_reqs([1])
+        self.write_reviews([
+            {"req_id": "REQ-001", "reviewer": "claude-opus-4.7", "verdict": "overreaches", "notes": "too strong"},
+            {"req_id": "REQ-001", "reviewer": "gpt-5.4", "verdict": "overreaches", "notes": "agree"},
+            {"req_id": "REQ-001", "reviewer": "gemini-2.5-pro", "verdict": "supports", "notes": ""},
+        ])
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("record_id=REQ-001", out)
+        self.assertIn("majority overreaches", out)
+        self.assertIn("invariant #17", out)
+
+    def test_unanimous_overreaches_fails(self):
+        self.write_reqs([2])
+        self.write_reviews([
+            {"req_id": "REQ-001", "reviewer": m, "verdict": "overreaches", "notes": ""}
+            for m in ("claude-opus-4.7", "gpt-5.4", "gemini-2.5-pro")
+        ])
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("3/3", out)
+
+
+class TestV150SemanticCheckSingleOverreachWarns(V150SemanticCheckFixtureBase):
+    def test_single_overreaches_warns_but_passes(self):
+        self.write_reqs([1])
+        self.write_reviews([
+            {"req_id": "REQ-001", "reviewer": "claude-opus-4.7", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gpt-5.4", "verdict": "overreaches", "notes": "concern"},
+            {"req_id": "REQ-001", "reviewer": "gemini-2.5-pro", "verdict": "supports", "notes": ""},
+        ])
+        fails, warns, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertEqual(fails, 0)
+        self.assertGreaterEqual(warns, 1)
+        self.assertIn("gpt-5.4", out)
+        self.assertIn("1/3", out)
+
+    def test_one_unclear_warns(self):
+        self.write_reqs([2])
+        self.write_reviews([
+            {"req_id": "REQ-001", "reviewer": "claude-opus-4.7", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gpt-5.4", "verdict": "unclear", "notes": "ambiguous"},
+            {"req_id": "REQ-001", "reviewer": "gemini-2.5-pro", "verdict": "supports", "notes": ""},
+        ])
+        fails, warns, _ = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertEqual(fails, 0)
+        self.assertGreaterEqual(warns, 1)
+
+
+class TestV150SemanticCheckMissingReviews(V150SemanticCheckFixtureBase):
+    def test_two_reviews_fails(self):
+        self.write_reqs([1])
+        self.write_reviews([
+            {"req_id": "REQ-001", "reviewer": "claude-opus-4.7", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gpt-5.4", "verdict": "supports", "notes": ""},
+        ])
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("fewer than 3 reviews", out)
+        self.assertIn("§9.4", out)
+
+    def test_zero_reviews_for_tier_12_req_fails(self):
+        self.write_reqs([1])
+        self.write_reviews([])
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("fewer than 3 reviews", out)
+
+
+class TestV150SemanticCheckTierViolations(V150SemanticCheckFixtureBase):
+    def test_review_for_tier_3_req_fails(self):
+        self.write_reqs([1, 3])  # REQ-001 tier 1, REQ-002 tier 3
+        self.write_reviews([
+            {"req_id": "REQ-001", "reviewer": "claude-opus-4.7", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gpt-5.4", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gemini-2.5-pro", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-002", "reviewer": "claude-opus-4.7", "verdict": "supports", "notes": ""},
+        ])
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("REQ-002", out)
+        self.assertIn("tier-3", out)
+
+    def test_review_for_unknown_req_fails(self):
+        self.write_reqs([1])
+        self.write_reviews([
+            {"req_id": "REQ-001", "reviewer": "claude-opus-4.7", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gpt-5.4", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gemini-2.5-pro", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-999", "reviewer": "claude-opus-4.7", "verdict": "supports", "notes": ""},
+        ])
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("REQ-999", out)
+        self.assertIn("does not exist", out)
+
+
+class TestV150SemanticCheckMissingFile(V150SemanticCheckFixtureBase):
+    def test_missing_with_tier_12_reqs_fails(self):
+        self.write_reqs([1])
+        # No semantic-check file written.
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("file missing", out)
+        self.assertIn("invariant #17", out)
+
+    def test_missing_without_tier_12_reqs_warns(self):
+        """Spec Gap: no Tier 1/2 REQs → missing file is a warning, not a failure."""
+        self.write_reqs([3, 4, 5])
+        fails, warns, _ = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertEqual(fails, 0)
+        self.assertGreaterEqual(warns, 1)
+
+
+class TestV150SemanticCheckShapeValidation(V150SemanticCheckFixtureBase):
+    def test_invalid_verdict_enum_fails(self):
+        self.write_reqs([1])
+        self.write_reviews([
+            {"req_id": "REQ-001", "reviewer": "claude-opus-4.7", "verdict": "maybe", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gpt-5.4", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gemini-2.5-pro", "verdict": "supports", "notes": ""},
+        ])
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("invalid verdict", out)
+        self.assertIn("maybe", out)
+
+    def test_duplicate_reviewer_fails(self):
+        self.write_reqs([1])
+        self.write_reviews([
+            {"req_id": "REQ-001", "reviewer": "claude-opus-4.7", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "claude-opus-4.7", "verdict": "overreaches", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gpt-5.4", "verdict": "supports", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gemini-2.5-pro", "verdict": "supports", "notes": ""},
+        ])
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("duplicate review", out)
+
+    def test_non_object_entry_fails(self):
+        self.write_reqs([1])
+        payload = {
+            "schema_version": "1.4.6",
+            "generated_at": "2026-04-19T14:30:22Z",
+            "reviews": ["not an object"],
+        }
+        (self.q / "citation_semantic_check.json").write_text(
+            json.dumps(payload), encoding="utf-8"
+        )
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+
+
+class TestV150SemanticCheckOutputFormat(V150SemanticCheckFixtureBase):
+    def test_failure_format_matches_path_record_id_pattern(self):
+        """Regression: every semantic-check failure line fits the
+        `<path>: record_id=<id>: <reason>` pattern."""
+        self.write_reqs([1])
+        self.write_reviews([
+            {"req_id": "REQ-001", "reviewer": "claude-opus-4.7", "verdict": "overreaches", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gpt-5.4", "verdict": "overreaches", "notes": ""},
+            {"req_id": "REQ-001", "reviewer": "gemini-2.5-pro", "verdict": "supports", "notes": ""},
+        ])
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_0_semantic_check, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        # Each failure line should match the path: record_id= pattern.
+        import re
+        failure_lines = [
+            line for line in out.splitlines()
+            if line.startswith("  citation_semantic_check.json")
+            and "PASS:" not in line and "WARN:" not in line
+        ]
+        self.assertTrue(
+            any(re.search(r":\s*record_id=\S+: ", line) for line in failure_lines),
+            f"no line matches record_id= pattern: {failure_lines!r}",
+        )
+
+
+class TestChallengeGateCoverage(unittest.TestCase):
+    """v1.5.1 Item 5.2: check_challenge_gate_coverage() invariant.
+
+    Fixtures live under tests/fixtures/challenge_coverage/. Each fixture
+    mirrors a real quality/ layout (bugs_manifest.json + optional
+    challenge/ + optional writeups/). The invariant reads the fixture
+    and its outcome is asserted here.
+    """
+
+    FIXTURES = Path(__file__).resolve().parent / "fixtures" / "challenge_coverage"
+
+    def _run(self, fixture_name):
+        q = self.FIXTURES / fixture_name / "quality"
+        return _capture_all_output(quality_gate.check_challenge_gate_coverage, q)
+
+    def test_fixture_a_all_records_present_passes(self) -> None:
+        fails, _, out = self._run("fixture_a_pass")
+        self.assertEqual(fails, 0, out)
+        self.assertIn("PASS:", out)
+
+    def test_virtio_1_4_6_fixture_fails_and_names_missing_bugs(self) -> None:
+        """v1.5.1 Item 5.3 — the preserved virtio-1.4.6 reproduction.
+
+        Source: repos/benchmark-1.5.0/virtio-1.4.6/quality/{bugs_manifest.json,
+        requirements_manifest.json, challenge/BUG-001..006-challenge.md}.
+        The BUG-007/008 challenge records are intentionally absent — that
+        asymmetry is the evidence that motivated Item 5.2's invariant.
+
+        Expected: the six preserved records satisfy the verdict-line
+        check (legacy form, accommodated in the invariant); BUG-007 and
+        BUG-008 are reported as missing. The invariant fails exactly
+        twice and the failure lines name those two IDs.
+        """
+        fails, _, out = self._run("virtio-1.4.6")
+        self.assertGreaterEqual(fails, 2)
+        self.assertIn("BUG-007", out)
+        self.assertIn("BUG-008", out)
+        # The 6 existing records must NOT be reported as missing.
+        for bug_id in ("BUG-001", "BUG-002", "BUG-003",
+                       "BUG-004", "BUG-005", "BUG-006"):
+            self.assertNotIn(f"{bug_id}: challenge record missing", out)
+
+    def test_fixture_c_bad_verdict_fails(self) -> None:
+        fails, _, out = self._run("fixture_c_bad_verdict")
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("BUG-001", out)
+        self.assertIn("verdict line", out)
+
+    def test_fixture_d_rejected_verdict_passes(self) -> None:
+        fails, _, out = self._run("fixture_d_rejected")
+        self.assertEqual(fails, 0, out)
+        self.assertIn("PASS:", out)
+
+    def test_fixture_e_iteration_derived_alone_requires_record(self) -> None:
+        """Iteration-derived pattern fires on `source` alone; when the
+        record exists with a valid verdict, the invariant PASSes even
+        though no other pattern matched."""
+        fails, _, out = self._run("fixture_e_iteration")
+        self.assertEqual(fails, 0, out)
+        self.assertIn("PASS:", out)
+
+    def test_fixture_f_absent_manifest_is_na(self) -> None:
+        """Absent bugs_manifest.json → invariant returns without emitting
+        PASS or FAIL (consistent with quality_gate N/A convention)."""
+        fails, _, out = self._run("fixture_f_no_manifest")
+        self.assertEqual(fails, 0, out)
+        # No PASS line either — the invariant silently no-ops.
+        self.assertNotIn("PASS:", out)
+        self.assertNotIn("FAIL", out)
+
+    def test_bug_with_no_triggers_does_not_require_record(self) -> None:
+        """Direct-call unit check: a bug with severity LOW, a good
+        requirement, clean source, and no writeup keywords must not
+        require a challenge record."""
+        with tempfile.TemporaryDirectory() as tmp:
+            q = Path(tmp) / "quality"
+            q.mkdir()
+            (q / "bugs_manifest.json").write_text(json.dumps({
+                "schema_version": "1.5.1",
+                "generated_at": "2026-04-21T00:00:00Z",
+                "records": [{
+                    "id": "BUG-100", "severity": "LOW",
+                    "title": "cosmetic label typo",
+                    "requirement": "REQ-001",
+                    "disposition": "code-fix", "fix_type": "code",
+                }],
+            }))
+            (q / "requirements_manifest.json").write_text(json.dumps({
+                "schema_version": "1.5.1",
+                "generated_at": "2026-04-21T00:00:00Z",
+                "records": [{
+                    "id": "REQ-001", "tier": 1,
+                    "functional_section": "UI",
+                    "description": "Labels match spec",
+                    "citation": {
+                        "document": "formal_docs/ui.md",
+                        "document_sha256": "deadbeef00000000000000000000000000000000000000000000000000000000",
+                        "section": "1.1",
+                        "citation_excerpt": "Labels shall match the spec verbatim.",
+                    },
+                }],
+            }))
+            fails, _, out = _capture_all_output(
+                quality_gate.check_challenge_gate_coverage, q
+            )
+            # No trigger fired → no record required → PASS as "vacuous".
+            self.assertEqual(fails, 0, out)
+            self.assertIn("vacuous", out)
 
 
 if __name__ == "__main__":

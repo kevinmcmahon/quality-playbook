@@ -29,6 +29,20 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
+# Allow soft import of bin/citation_verifier for v1.5.1 byte-equality checks.
+# The gate lives at .github/skills/quality_gate/quality_gate.py inside the QPB
+# install; the repo root is three parents up. When the gate is installed
+# standalone into a target repo without bin/, the import fails silently and
+# byte-equality is skipped with a WARN rather than a hard FAIL.
+_CITATION_VERIFIER = None
+try:
+    _QPB_ROOT = SCRIPT_DIR.parent.parent.parent
+    if str(_QPB_ROOT) not in sys.path:
+        sys.path.insert(0, str(_QPB_ROOT))
+    from bin import citation_verifier as _CITATION_VERIFIER  # noqa: E402
+except Exception:  # noqa: BLE001 — missing / misinstalled bin/ is tolerable
+    _CITATION_VERIFIER = None
+
 # Global counters — reset per invocation via main(). Tests that call check_repo
 # directly should reset these in setUp.
 FAIL = 0
@@ -41,9 +55,32 @@ def _reset_counters():
     WARN = 0
 
 
-def fail(msg):
+def fail(msg, reason=None, *, line=None):
+    """Emit a structured failure line and increment FAIL.
+
+    Phase 5 r3 format: `<path>[:<line>]: <reason>` — no "FAIL:" label, so
+    output is grep-parseable as `^[^:]+:[0-9]*:? .+$`. The prefix `FAIL:` is
+    deliberately removed; the global FAIL counter (summarised in main()) is
+    the authoritative count of failures per run.
+
+    Preferred forms:
+        fail("quality/INDEX.md", "file missing")
+            -> "  quality/INDEX.md: file missing"
+        fail("quality/INDEX.md", "missing required field 'x'", line=42)
+            -> "  quality/INDEX.md:42: missing required field 'x'"
+
+    Legacy single-arg form (transitional; still supported — most v1.4.x
+    messages already embed a path-like token):
+        fail("BUGS.md missing or not a file")
+            -> "  BUGS.md missing or not a file"
+    """
     global FAIL
-    print(f"  FAIL: {msg}")
+    if reason is None:
+        print(f"  {msg}")
+    elif line is None:
+        print(f"  {msg}: {reason}")
+    else:
+        print(f"  {msg}:{line}: {reason}")
     FAIL += 1
 
 
@@ -937,6 +974,35 @@ def check_patches(q, bug_count, bug_ids, strictness):
     info(f"Total: {total_patches} patch file(s) in quality/patches/")
 
 
+# Unfilled-template sentinel phrases produced by the Phase 5 writeup stub.
+# Presence of any of these strings in a writeup is strong evidence that the
+# template was emitted without hydrating its content fields from BUGS.md.
+# See bin/run_playbook.py::phase5_prompt for the generating prompt.
+_WRITEUP_TEMPLATE_SENTINELS = (
+    "is a confirmed code bug in ``",
+    "The affected implementation lives at ``",
+    "Patch path: ``",
+    "- Regression test: ``",
+    "- Regression patch: ``",
+)
+
+# Matches a ```diff fenced block and captures its body for content inspection.
+_WRITEUP_DIFF_BLOCK_RE = re.compile(r"```diff\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
+
+
+def _writeup_diff_is_non_empty(text):
+    """True if any ```diff block in ``text`` contains at least one unified-diff
+    line (a `+` or `-` that is not the `+++`/`---` file-header prefix)."""
+    for block in _WRITEUP_DIFF_BLOCK_RE.findall(text):
+        for line in block.splitlines():
+            stripped = line.lstrip()
+            if stripped.startswith("+++") or stripped.startswith("---"):
+                continue
+            if stripped.startswith(("+", "-")):
+                return True
+    return False
+
+
 def check_writeups(q, bug_count):
     """Bug writeups section (benchmark 30)."""
     print("[Bug Writeups]")
@@ -946,12 +1012,29 @@ def check_writeups(q, bug_count):
     writeups_dir = q / "writeups"
     writeup_count = 0
     writeup_diff_count = 0
+    empty_diff_writeups = []
+    sentinel_writeups = []
     if writeups_dir.is_dir():
         writeup_files = sorted(p for p in writeups_dir.glob("BUG-*.md") if p.is_file())
         writeup_count = len(writeup_files)
         for wf in writeup_files:
-            if file_contains(wf, r"```diff"):
+            try:
+                text = wf.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            # Presence test uses the same regex as the content test so the
+            # two can never disagree on whether a fence exists. Case-insensitive
+            # match accepts ```diff / ```Diff / ```DIFF uniformly — operators
+            # routinely uppercase the fence tag and the gate must not silently
+            # skip those writeups (the content non-emptiness check would then
+            # never fire, producing a confusing "no inline fix diffs" FAIL on a
+            # writeup that visibly contains a unified diff).
+            if _WRITEUP_DIFF_BLOCK_RE.search(text):
                 writeup_diff_count += 1
+                if not _writeup_diff_is_non_empty(text):
+                    empty_diff_writeups.append(wf.name)
+            if any(s in text for s in _WRITEUP_TEMPLATE_SENTINELS):
+                sentinel_writeups.append(wf.name)
 
     if writeup_count >= bug_count:
         pass_(f"{writeup_count} writeup(s) for {bug_count} bug(s)")
@@ -967,6 +1050,32 @@ def check_writeups(q, bug_count):
             fail(f"Only {writeup_diff_count}/{writeup_count} writeup(s) have inline fix diffs (all require section 6 diff)")
         else:
             fail("No writeups have inline fix diffs (section 6 'The fix' must include a ```diff block)")
+
+        # Non-empty-diff content check. A ```diff fence with no `+`/`-` body
+        # is a template stub — the legacy presence-only check let these pass.
+        if empty_diff_writeups:
+            preview = ", ".join(empty_diff_writeups[:5])
+            suffix = f" (+{len(empty_diff_writeups) - 5} more)" if len(empty_diff_writeups) > 5 else ""
+            fail(
+                f"{len(empty_diff_writeups)} writeup(s) have empty ```diff blocks "
+                f"(fence present, no +/- lines): {preview}{suffix}"
+            )
+        else:
+            pass_("All writeup ```diff blocks contain unified-diff content")
+
+        # Template-sentinel check. Any of these strings remaining in a writeup
+        # means the Phase 5 stub was emitted without hydrating from BUGS.md.
+        if sentinel_writeups:
+            preview = ", ".join(sentinel_writeups[:5])
+            suffix = f" (+{len(sentinel_writeups) - 5} more)" if len(sentinel_writeups) > 5 else ""
+            fail(
+                f"{len(sentinel_writeups)} writeup(s) contain unfilled template "
+                f"sentinels (empty backticks after 'is a confirmed code bug in', "
+                f"'The affected implementation lives at', 'Patch path:', "
+                f"'Regression test:', or 'Regression patch:'): {preview}{suffix}"
+            )
+        else:
+            pass_("No writeups contain unfilled template sentinels")
 
 
 def check_version_stamps(repo_dir, q):
@@ -1076,6 +1185,820 @@ def check_run_metadata(q):
 # --- Per-repo entry point ---
 
 
+# ---------------------------------------------------------------------------
+# v1.5.1 Layer-1 mechanical invariants (schemas.md §10).
+#
+# Each check gracefully no-ops on pre-v1.5.1 runs (absent manifests = legacy
+# repo; nothing to enforce). When the v1.5.1 artifacts are present every
+# invariant below is enforced mechanically and FAILs with a specific
+# <path>: <reason> message so the operator can fix the single artifact
+# without re-running the whole playbook.
+# ---------------------------------------------------------------------------
+
+_V150_VALID_DISPOSITIONS = (
+    "code-fix",
+    "spec-fix",
+    "upstream-spec-issue",
+    "mis-read",
+    "deferred",
+)
+_V150_VALID_FIX_TYPES = ("code", "spec", "both")
+_V150_ILLEGAL_FIX_PAIRS = {
+    ("code-fix", "spec"),
+    ("spec-fix", "code"),
+    ("upstream-spec-issue", "code"),
+    ("mis-read", "both"),
+}
+_V150_SUPPORTED_EXTENSIONS = (".txt", ".md")
+_V150_REQUIRED_INDEX_FIELDS = (
+    "run_timestamp_start",
+    "run_timestamp_end",
+    "duration_seconds",
+    "qpb_version",
+    "target_repo_path",
+    "target_repo_git_sha",
+    "target_project_type",
+    "phases_executed",
+    "summary",
+    "artifacts",
+)
+_V150_REQUIRED_SUMMARY_KEYS = ("requirements", "bugs", "gate_verdict")
+
+
+def _v150_manifest(q, name):
+    """Return the parsed top-level JSON object or None if absent/invalid."""
+    path = q / name
+    if not path.is_file():
+        return None
+    data = load_json(path)
+    if isinstance(data, dict):
+        return data
+    fail(f"{path.name}: not a valid JSON object (schemas.md §1.6)")
+    return None
+
+
+def check_v1_5_0_plaintext_extensions(repo_dir):
+    """§10 invariant #9 — formal_docs/ and informal_docs/ contain only .txt/.md."""
+    for folder_name in ("formal_docs", "informal_docs"):
+        folder = repo_dir / folder_name
+        if not folder.is_dir():
+            continue
+        any_file = False
+        for path in sorted(folder.rglob("*")):
+            if not path.is_file():
+                continue
+            any_file = True
+            if path.name == "README.md":
+                continue
+            if path.name.endswith(".meta.json"):
+                continue
+            ext = path.suffix.lower()
+            if ext not in _V150_SUPPORTED_EXTENSIONS:
+                rel = path.relative_to(repo_dir).as_posix()
+                fail(
+                    f"{rel}: unsupported extension {ext or '(none)'} under {folder_name}/ "
+                    "(schemas.md §2 allows only .txt, .md; §10 invariant #9)"
+                )
+        if any_file:
+            pass_(f"{folder_name}/: all files use supported extensions")
+
+
+def check_v1_5_0_manifest_wrappers(q):
+    """§10 invariant #13 — manifest wrapper shape.
+
+    Four record-shaped manifests (formal_docs / requirements / use_cases /
+    bugs) use `records`; citation_semantic_check.json uses `reviews`
+    (schemas.md §9.1). Every manifest must carry schema_version +
+    generated_at as non-empty strings.
+    """
+    record_shaped = (
+        "formal_docs_manifest.json",
+        "requirements_manifest.json",
+        "use_cases_manifest.json",
+        "bugs_manifest.json",
+    )
+    for name in record_shaped:
+        data = _v150_manifest(q, name)
+        if data is None:
+            continue
+        for key in ("schema_version", "generated_at"):
+            if not isinstance(data.get(key), str) or not data[key]:
+                fail(f"{name}: missing or empty top-level {key!r} (schemas.md §1.6)")
+        if not isinstance(data.get("records"), list):
+            fail(f"{name}: missing or non-array top-level 'records' (schemas.md §1.6)")
+        if "reviews" in data:
+            fail(
+                f"{name}: has 'reviews' key — reserved for citation_semantic_check.json "
+                "per schemas.md §9.1 / §10 invariant #13"
+            )
+        else:
+            pass_(f"{name}: manifest wrapper valid")
+
+    data = _v150_manifest(q, "citation_semantic_check.json")
+    if data is not None:
+        for key in ("schema_version", "generated_at"):
+            if not isinstance(data.get(key), str) or not data[key]:
+                fail(
+                    f"citation_semantic_check.json: missing or empty top-level {key!r} "
+                    "(schemas.md §1.6)"
+                )
+        if not isinstance(data.get("reviews"), list):
+            fail(
+                "citation_semantic_check.json: missing or non-array top-level 'reviews' "
+                "(schemas.md §9.1 — semantic check uses 'reviews', not 'records')"
+            )
+        if "records" in data:
+            fail(
+                "citation_semantic_check.json: has 'records' key — semantic check uses "
+                "'reviews' per schemas.md §9.1 / §10 invariant #13"
+            )
+        else:
+            pass_("citation_semantic_check.json: manifest wrapper valid")
+
+
+def _check_citation_block(repo_dir, req_id, citation, formal_docs_by_path, req_tier):
+    excerpt = citation.get("citation_excerpt")
+    if not isinstance(excerpt, str) or not excerpt:
+        fail(
+            "requirements_manifest.json",
+            f"record_id={req_id}: citation has empty or missing citation_excerpt "
+            "(schemas.md §10 invariant #4)",
+        )
+        return
+    doc_path_str = citation.get("document")
+    if not isinstance(doc_path_str, str) or not doc_path_str:
+        fail(
+            "requirements_manifest.json",
+            f"record_id={req_id}: citation missing 'document' field",
+        )
+        return
+    section = citation.get("section")
+    line = citation.get("line")
+    has_section = isinstance(section, str) and section.strip()
+    has_line = isinstance(line, int) and not isinstance(line, bool)
+    if not has_section and not has_line:
+        fail(
+            "requirements_manifest.json",
+            f"record_id={req_id}: citation has no section or line locator "
+            "(page alone is insufficient; schemas.md §10 invariant #4)",
+        )
+        return
+
+    fd_rec = formal_docs_by_path.get(doc_path_str)
+    if fd_rec is None:
+        fail(
+            "requirements_manifest.json",
+            f"record_id={req_id}: citation document {doc_path_str!r} "
+            "not in formal_docs_manifest.json (schemas.md §10 invariant #2)",
+        )
+        return
+    fd_tier = fd_rec.get("tier")
+    if fd_tier != req_tier:
+        fail(
+            "requirements_manifest.json",
+            f"record_id={req_id}: tier={req_tier} does not match cited FORMAL_DOC "
+            f"tier={fd_tier!r} (schemas.md §10 invariant #14)",
+        )
+    fd_sha = fd_rec.get("document_sha256")
+    cite_sha = citation.get("document_sha256")
+    if isinstance(fd_sha, str) and isinstance(cite_sha, str) and fd_sha != cite_sha:
+        fail(
+            "requirements_manifest.json",
+            f"record_id={req_id}: citation.document_sha256 does not match FORMAL_DOC "
+            "(schemas.md §10 invariant #3 — citation_stale)",
+        )
+
+    if _CITATION_VERIFIER is None:
+        warn(
+            f"requirements_manifest.json: record_id={req_id}: byte-equality skipped — "
+            "bin/citation_verifier unavailable on this install"
+        )
+        return
+
+    doc_path = repo_dir / doc_path_str
+    if not doc_path.is_file():
+        fail(
+            "requirements_manifest.json",
+            f"record_id={req_id}: citation document not on disk: {doc_path_str}",
+        )
+        return
+    try:
+        bytes_ = doc_path.read_bytes()
+        fresh = _CITATION_VERIFIER.extract_excerpt(
+            bytes_, doc_path.suffix.lower(), section if has_section else None,
+            line if has_line else None,
+        )
+    except _CITATION_VERIFIER.CitationResolutionError as exc:
+        fail(
+            "requirements_manifest.json",
+            f"record_id={req_id}: citation location does not resolve in "
+            f"{doc_path_str}: {exc.message} (schemas.md §10 invariant #4)",
+        )
+        return
+    except Exception as exc:  # noqa: BLE001 — fail with a real message
+        fail(
+            "requirements_manifest.json",
+            f"record_id={req_id}: citation verifier errored: {exc}",
+        )
+        return
+
+    if fresh != excerpt:
+        fail(
+            "requirements_manifest.json",
+            f"record_id={req_id}: citation_excerpt is not byte-equal to fresh "
+            f"extraction from {doc_path_str} "
+            "(schemas.md §10 invariant #11 — Layer-1 anti-hallucination)",
+        )
+
+
+def check_v1_5_0_requirements_manifest(repo_dir, q):
+    """§10 invariants #1, #4, #8, #11, #14 — REQ shape, citation gating, functional_section."""
+    req_data = _v150_manifest(q, "requirements_manifest.json")
+    if req_data is None:
+        return
+    records = req_data.get("records")
+    if not isinstance(records, list):
+        return  # wrapper check already reported
+    fd_data = _v150_manifest(q, "formal_docs_manifest.json")
+    formal_docs_by_path = {}
+    if fd_data and isinstance(fd_data.get("records"), list):
+        for rec in fd_data["records"]:
+            if isinstance(rec, dict) and isinstance(rec.get("source_path"), str):
+                formal_docs_by_path[rec["source_path"]] = rec
+
+    for idx, rec in enumerate(records):
+        if not isinstance(rec, dict):
+            fail(
+                "requirements_manifest.json",
+                f"record_id=<#{idx}>: not a JSON object",
+            )
+            continue
+        req_id = rec.get("id", f"<#{idx}>")
+
+        fs = rec.get("functional_section")
+        if not isinstance(fs, str) or not fs.strip():
+            fail(
+                "requirements_manifest.json",
+                f"record_id={req_id}: has empty or missing functional_section "
+                "(schemas.md §10 invariant #8)",
+            )
+
+        tier = rec.get("tier")
+        citation = rec.get("citation")
+        if tier in (1, 2):
+            if not isinstance(citation, dict):
+                fail(
+                    "requirements_manifest.json",
+                    f"record_id={req_id}: is tier {tier} but has no citation block "
+                    "(schemas.md §10 invariant #1)",
+                )
+                continue
+            _check_citation_block(repo_dir, req_id, citation, formal_docs_by_path, tier)
+        elif tier in (3, 4, 5):
+            if citation is not None:
+                fail(
+                    "requirements_manifest.json",
+                    f"record_id={req_id}: is tier {tier} but carries a citation block "
+                    "(citations are for Tier 1/2 only per schemas.md §10 invariant #1)",
+                )
+        elif tier is None:
+            fail(
+                "requirements_manifest.json",
+                f"record_id={req_id}: missing 'tier' field",
+            )
+        else:
+            fail(
+                "requirements_manifest.json",
+                f"record_id={req_id}: has invalid tier {tier!r} (expected integer 1–5)",
+            )
+
+    pass_("requirements_manifest.json: v1.5.1 Layer-1 REQ checks complete")
+
+
+def check_v1_5_0_bugs_manifest(q):
+    """§10 invariants #7, #12 — disposition completeness + legal fix_type × disposition."""
+    data = _v150_manifest(q, "bugs_manifest.json")
+    if data is None:
+        return
+    records = data.get("records")
+    if not isinstance(records, list):
+        return
+    for idx, rec in enumerate(records):
+        if not isinstance(rec, dict):
+            continue
+        bug_id = rec.get("id", f"<#{idx}>")
+        disp = rec.get("disposition")
+        if disp not in _V150_VALID_DISPOSITIONS:
+            fail(
+                "bugs_manifest.json",
+                f"record_id={bug_id}: has invalid or missing disposition {disp!r} "
+                f"(schemas.md §10 invariant #7, valid: "
+                f"{', '.join(_V150_VALID_DISPOSITIONS)})",
+            )
+            continue
+        rationale = rec.get("disposition_rationale")
+        if not isinstance(rationale, str) or not rationale.strip():
+            fail(
+                "bugs_manifest.json",
+                f"record_id={bug_id}: has empty or missing disposition_rationale "
+                "(schemas.md §10 invariant #7)",
+            )
+        ft = rec.get("fix_type")
+        if ft not in _V150_VALID_FIX_TYPES:
+            fail(
+                "bugs_manifest.json",
+                f"record_id={bug_id}: has invalid or missing fix_type {ft!r}",
+            )
+            continue
+        if (disp, ft) in _V150_ILLEGAL_FIX_PAIRS:
+            fail(
+                "bugs_manifest.json",
+                f"record_id={bug_id}: illegal disposition × fix_type combination "
+                f"({disp}, {ft}) per schemas.md §3.4 / §10 invariant #12",
+            )
+
+    pass_("bugs_manifest.json: v1.5.1 Layer-1 BUG checks complete")
+
+
+def check_v1_5_0_index_md(q):
+    """§10 invariant #10 — quality/INDEX.md exists with all §11 required fields."""
+    path = q / "INDEX.md"
+    v150_artifacts = (
+        "formal_docs_manifest.json",
+        "requirements_manifest.json",
+        "use_cases_manifest.json",
+        "bugs_manifest.json",
+        "citation_semantic_check.json",
+    )
+    is_v150_run = any((q / name).is_file() for name in v150_artifacts)
+    if not path.is_file():
+        if is_v150_run:
+            fail(
+                "quality/INDEX.md does not exist (required on every v1.5.1 run per "
+                "schemas.md §10 invariant #10)"
+            )
+        return
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    match = re.search(r"```json\n(.*?)\n```", text, re.DOTALL)
+    if not match:
+        fail("quality/INDEX.md: no fenced JSON block found (schemas.md §11)")
+        return
+    try:
+        payload = json.loads(match.group(1))
+    except json.JSONDecodeError as exc:
+        fail(f"quality/INDEX.md: fenced JSON block invalid: {exc}")
+        return
+    if not isinstance(payload, dict):
+        fail("quality/INDEX.md: fenced JSON block is not a JSON object")
+        return
+    for key in _V150_REQUIRED_INDEX_FIELDS:
+        if key not in payload:
+            fail(f"quality/INDEX.md: missing required field {key!r} (schemas.md §11)")
+            continue
+        val = payload[key]
+        if isinstance(val, str) and not val:
+            fail(f"quality/INDEX.md: field {key!r} is empty string (schemas.md §11)")
+    summary = payload.get("summary")
+    if isinstance(summary, dict):
+        for sub in _V150_REQUIRED_SUMMARY_KEYS:
+            if sub not in summary:
+                fail(
+                    f"quality/INDEX.md: summary missing {sub!r} sub-key "
+                    "(schemas.md §11)"
+                )
+    pass_("quality/INDEX.md: §11 fields present")
+
+
+_V150_VALID_VERDICTS = ("supports", "overreaches", "unclear")
+
+
+def check_v1_5_0_semantic_check(q):
+    """§10 invariant #17 — Council-of-Three majority-overreaches rule.
+
+    Layer-2 semantic check (Phase 6). Gate does NOT re-run the semantic
+    review; it parses quality/citation_semantic_check.json and applies
+    the majority-overreaches rule:
+
+      - ≥2 of 3 `overreaches` for the same Tier 1/2 REQ → FAIL.
+      - isolated 1/3 `overreaches` or `unclear` → WARN.
+      - <3 reviews for any Tier 1/2 REQ → FAIL (schemas.md §9.4).
+      - review entry for a Tier 3/4/5 REQ → FAIL (only Tier 1/2 are
+        semantically reviewable since they carry citations).
+
+    When requirements_manifest.json has zero Tier 1/2 REQs the
+    citation_semantic_check.json file is still expected (emitted with
+    empty reviews[]); its absence in that case warns rather than
+    fails to avoid breaking Spec Gap runs.
+    """
+    req_data = _v150_manifest(q, "requirements_manifest.json")
+    tier_by_req = {}
+    if req_data and isinstance(req_data.get("records"), list):
+        for rec in req_data["records"]:
+            if isinstance(rec, dict):
+                rid = rec.get("id")
+                tier = rec.get("tier")
+                if isinstance(rid, str) and isinstance(tier, int) and not isinstance(tier, bool):
+                    tier_by_req[rid] = tier
+    tier_12_req_ids = {rid for rid, t in tier_by_req.items() if t in (1, 2)}
+
+    sc_path = q / "citation_semantic_check.json"
+    if not sc_path.is_file():
+        if tier_12_req_ids:
+            fail(
+                "quality/citation_semantic_check.json",
+                "file missing (schemas.md §10 invariant #17 requires a semantic "
+                "check for every Tier 1/2 REQ)",
+            )
+        else:
+            # Spec Gap: no Tier 1/2 REQs to review. File is expected but its
+            # absence doesn't break the invariant since there's nothing to
+            # enforce. Warn so the orchestrator knows to emit the empty file.
+            warn(
+                "quality/citation_semantic_check.json: file missing; no Tier 1/2 "
+                "REQs present so invariant #17 has nothing to enforce — emit an "
+                "empty reviews[] for contract completeness"
+            )
+        return
+
+    data = _v150_manifest(q, "citation_semantic_check.json")
+    if data is None:
+        return  # wrapper check already reported the failure
+    reviews = data.get("reviews")
+    if not isinstance(reviews, list):
+        return  # wrapper check already reported
+
+    by_req = {}
+    seen_reviewers = {}
+    for idx, entry in enumerate(reviews):
+        if not isinstance(entry, dict):
+            fail(
+                "citation_semantic_check.json",
+                f"reviews[#{idx}]: not a JSON object",
+            )
+            continue
+        rid = entry.get("req_id")
+        reviewer = entry.get("reviewer")
+        verdict = entry.get("verdict")
+        notes = entry.get("notes")
+        if not isinstance(rid, str) or not rid:
+            fail(
+                "citation_semantic_check.json",
+                f"reviews[#{idx}]: missing or non-string req_id",
+            )
+            continue
+        if not isinstance(reviewer, str) or not reviewer:
+            fail(
+                "citation_semantic_check.json",
+                f"record_id={rid}: missing or non-string reviewer",
+            )
+            continue
+        if verdict not in _V150_VALID_VERDICTS:
+            fail(
+                "citation_semantic_check.json",
+                f"record_id={rid}: reviewer={reviewer!r} invalid verdict "
+                f"{verdict!r}; expected one of {_V150_VALID_VERDICTS}",
+            )
+            continue
+        if not isinstance(notes, str):
+            fail(
+                "citation_semantic_check.json",
+                f"record_id={rid}: reviewer={reviewer!r} notes must be a string",
+            )
+            continue
+        # §9.4 common-mistake: tier check — review entries must belong to
+        # Tier 1/2 REQs only.
+        tier = tier_by_req.get(rid)
+        if tier is None:
+            fail(
+                "citation_semantic_check.json",
+                f"record_id={rid}: reviewer={reviewer!r} reviews a REQ that does "
+                "not exist in requirements_manifest.json",
+            )
+            continue
+        if tier not in (1, 2):
+            fail(
+                "citation_semantic_check.json",
+                f"record_id={rid}: reviewer={reviewer!r} reviews a tier-{tier} "
+                "REQ; semantic check applies to Tier 1/2 only (schemas.md §9.4)",
+            )
+            continue
+        # Detect duplicate (req_id, reviewer) pairs — a typo that would slip a
+        # vote past the majority computation.
+        pair_key = seen_reviewers.setdefault(rid, set())
+        if reviewer in pair_key:
+            fail(
+                "citation_semantic_check.json",
+                f"record_id={rid}: duplicate review from reviewer={reviewer!r}",
+            )
+            continue
+        pair_key.add(reviewer)
+        by_req.setdefault(rid, []).append(entry)
+
+    # §9.4: every Tier 1/2 REQ needs at least 3 reviews.
+    for rid in sorted(tier_12_req_ids):
+        entries = by_req.get(rid, [])
+        if len(entries) < 3:
+            fail(
+                "citation_semantic_check.json",
+                f"record_id={rid}: fewer than 3 reviews ({len(entries)} present) "
+                "— schemas.md §9.4 requires one entry per council member for "
+                "every Tier 1/2 REQ",
+            )
+            continue
+        overreach_count = sum(1 for e in entries if e.get("verdict") == "overreaches")
+        unclear_count = sum(1 for e in entries if e.get("verdict") == "unclear")
+        if overreach_count >= 2:
+            reviewers_flagged = ", ".join(
+                sorted(
+                    str(e.get("reviewer"))
+                    for e in entries
+                    if e.get("verdict") == "overreaches"
+                )
+            )
+            fail(
+                "citation_semantic_check.json",
+                f"record_id={rid}: semantic check majority overreaches "
+                f"({overreach_count}/{len(entries)} reviewers flagged: "
+                f"{reviewers_flagged}) — schemas.md §10 invariant #17",
+            )
+        elif overreach_count == 1:
+            flagged = next(
+                str(e.get("reviewer"))
+                for e in entries
+                if e.get("verdict") == "overreaches"
+            )
+            warn(
+                f"citation_semantic_check.json: record_id={rid}: 1/{len(entries)} "
+                f"reviewer ({flagged}) flagged as `overreaches` — surfaced for "
+                "human review; not a gate failure unless ≥2 agree"
+            )
+        if unclear_count >= 1 and overreach_count == 0:
+            flagged = ", ".join(
+                sorted(
+                    str(e.get("reviewer"))
+                    for e in entries
+                    if e.get("verdict") == "unclear"
+                )
+            )
+            warn(
+                f"citation_semantic_check.json: record_id={rid}: "
+                f"{unclear_count}/{len(entries)} reviewer(s) flagged as "
+                f"`unclear` ({flagged}) — surfaced for human review"
+            )
+
+    if not tier_12_req_ids:
+        pass_(
+            "citation_semantic_check.json: no Tier 1/2 REQs to review "
+            "(invariant #17 vacuously satisfied)"
+        )
+    else:
+        pass_(
+            f"citation_semantic_check.json: §10 invariant #17 checks complete "
+            f"for {len(tier_12_req_ids)} Tier 1/2 REQ(s)"
+        )
+
+
+# --- v1.5.1 Item 5.2: challenge-gate coverage invariant -------------------
+
+# Canonical verdict-line regex from Impl-Plan Item 5.2. Matches a top-level
+# "**Verdict:** CONFIRMED/DOWNGRADED/REJECTED" line as a stand-alone line.
+_CHALLENGE_VERDICT_RE = re.compile(
+    r"^\*\*Verdict:\*\*\s+(CONFIRMED|DOWNGRADED|REJECTED)\s*$",
+    re.MULTILINE,
+)
+# Legacy final-verdict form used by challenge records generated before the
+# canonical regex was specified (including the preserved virtio-1.4.6
+# evidence at repos/benchmark-1.5.0/virtio-1.4.6/quality/challenge/).
+# The briefing says "this invariant only verifies the challenge ran" — the
+# legacy form unambiguously records a final verdict, so it satisfies the
+# invariant's intent without requiring operators to regenerate baseline
+# artifacts. New v1.5.1+ runs should prefer the canonical form.
+_CHALLENGE_VERDICT_LEGACY_RE = re.compile(
+    r"^\*\*(CONFIRMED|DOWNGRADED|REJECTED)\.?\*\*",
+    re.MULTILINE,
+)
+
+# Trigger-pattern keyword tables (case-insensitive substring matching).
+_CHALLENGE_SECURITY_SEVERITIES = frozenset({"CRITICAL", "HIGH"})
+_CHALLENGE_SECURITY_KEYWORDS = (
+    "credential", "secret", "auth", "injection", "xss", "csrf",
+    "ssrf", "privilege", "bypass", "leak",
+)
+_CHALLENGE_SIBLING_KEYWORDS = (
+    "sibling", "parallel", "parity", "contrasted with", "same concern",
+    "in contrast", "other path", "other branch",
+)
+_CHALLENGE_MISSING_KEYWORDS = (
+    "never", "does not", "doesn't", "missing", "absent", "fails to",
+)
+_CHALLENGE_DESIGN_KEYWORDS = (
+    "todo", "why", "ooda", "design decision",
+)
+_CHALLENGE_ITERATION_KEYWORDS = (
+    "gap", "unfiltered", "parity", "adversarial", "iteration",
+)
+
+
+def _bug_writeup_text(q, bug_id):
+    """Return lowercased writeup text for ``bug_id`` (empty string if absent).
+
+    Writeups live at quality/writeups/BUG-NNN.md. Reading failures are
+    treated as empty text — the invariant still runs on the manifest fields
+    (title / summary / source) which are present independently.
+    """
+    path = q / "writeups" / f"{bug_id}.md"
+    if not path.is_file():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8", errors="ignore").lower()
+    except OSError:
+        return ""
+
+
+def _bug_req_has_tier_12_citation(req_id, requirements_records):
+    """True iff req_id resolves to a REQ with a non-empty citation and
+    tier in {1, 2}. Used by the "No spec basis" trigger pattern."""
+    if not req_id or not isinstance(requirements_records, list):
+        return False
+    for rec in requirements_records:
+        if not isinstance(rec, dict):
+            continue
+        if rec.get("id") != req_id:
+            continue
+        if rec.get("tier") not in (1, 2):
+            return False
+        citation = rec.get("citation")
+        if isinstance(citation, dict) and citation:
+            return True
+        return False
+    return False
+
+
+def _contains_any(text, keywords):
+    """Case-insensitive substring OR across a keyword tuple."""
+    if not text:
+        return False
+    lowered = text.lower()
+    return any(kw in lowered for kw in keywords)
+
+
+def _classify_bug_triggers(rec, q, requirements_records):
+    """Return the list of trigger-pattern names that fired for one bug.
+    Empty list means the bug does not require a challenge record.
+
+    Patterns mirror Impl-Plan Item 5.2 verbatim. Input aliasing:
+      - title: prefers rec['title'], falls back to rec['summary'].
+      - requirement: prefers rec['requirement'], falls back to rec['req_id']
+        (v1.4.x uses req_id; v1.5.1+ converges on requirement).
+      - source_comments: optional, older runs may omit it.
+      - source / discovery_phase: substring-matched against the
+        iteration-derived keyword list.
+    """
+    fired = []
+
+    bug_id = rec.get("id", "")
+    title = rec.get("title") or rec.get("summary") or ""
+    severity = (rec.get("severity") or "").upper()
+    writeup = _bug_writeup_text(q, bug_id) if bug_id else ""
+    title_plus_writeup = f"{title}\n{writeup}"
+
+    # 1. Security-class.
+    if severity in _CHALLENGE_SECURITY_SEVERITIES and _contains_any(
+        title_plus_writeup, _CHALLENGE_SECURITY_KEYWORDS
+    ):
+        fired.append("security-class")
+
+    # 2. No spec basis.
+    requirement = rec.get("requirement") or rec.get("req_id")
+    has_valid_citation = _bug_req_has_tier_12_citation(requirement, requirements_records)
+    if not requirement or not has_valid_citation:
+        fired.append("no-spec-basis")
+
+    # 3. Sibling-path divergence.
+    if _contains_any(writeup, _CHALLENGE_SIBLING_KEYWORDS):
+        fired.append("sibling-path-divergence")
+
+    # 4. Missing functionality.
+    if _contains_any(writeup, _CHALLENGE_MISSING_KEYWORDS):
+        fired.append("missing-functionality")
+
+    # 5. Design-decision comment (optional field).
+    source_comments = rec.get("source_comments")
+    if isinstance(source_comments, str) and _contains_any(
+        source_comments, _CHALLENGE_DESIGN_KEYWORDS
+    ):
+        fired.append("design-decision-comment")
+
+    # 6. Iteration-derived.
+    source = rec.get("source") or ""
+    discovery_phase = rec.get("discovery_phase") or ""
+    iter_haystack = f"{source}\n{discovery_phase}"
+    if _contains_any(iter_haystack, _CHALLENGE_ITERATION_KEYWORDS):
+        fired.append("iteration-derived")
+
+    return fired
+
+
+def _challenge_record_has_verdict(path):
+    """True iff the file exists and contains either the canonical or
+    legacy verdict line per the invariant's accept set."""
+    if not path.is_file():
+        return False
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+    if _CHALLENGE_VERDICT_RE.search(text):
+        return True
+    if _CHALLENGE_VERDICT_LEGACY_RE.search(text):
+        return True
+    return False
+
+
+def check_challenge_gate_coverage(q):
+    """v1.5.1 Item 5.2 — every bug whose fingerprints trigger the challenge
+    gate must have a quality/challenge/BUG-NNN-challenge.md with a valid
+    verdict line.
+
+    N/A when quality/bugs_manifest.json is absent (zero-bug runs can't
+    have un-challenged bugs). Runs on the current quality/ tree only;
+    no cross-run state.
+    """
+    data = _v150_manifest(q, "bugs_manifest.json")
+    if data is None:
+        # N/A — the plan explicitly says "invariant is N/A if the file is
+        # absent". Consistent with other quality_gate invariants that silently
+        # skip when their input isn't present.
+        return
+    records = data.get("records")
+    if not isinstance(records, list):
+        return
+
+    reqs_data = _v150_manifest(q, "requirements_manifest.json") or {}
+    req_records = reqs_data.get("records") if isinstance(reqs_data, dict) else None
+
+    challenge_dir = q / "challenge"
+    triggered = 0
+    missing = []   # list of (bug_id, [pattern names]) for bugs with no record
+    bad_verdict = []  # list of (bug_id, [pattern names]) for record w/o verdict
+
+    for rec in records:
+        if not isinstance(rec, dict):
+            continue
+        bug_id = rec.get("id")
+        if not bug_id:
+            continue
+        fired = _classify_bug_triggers(rec, q, req_records)
+        if not fired:
+            continue
+        triggered += 1
+        record_path = challenge_dir / f"{bug_id}-challenge.md"
+        if not record_path.is_file():
+            missing.append((bug_id, fired))
+        elif not _challenge_record_has_verdict(record_path):
+            bad_verdict.append((bug_id, fired))
+
+    if missing:
+        for bug_id, fired in missing:
+            fail(
+                "quality/challenge/",
+                f"{bug_id}: challenge record missing (triggered by: {', '.join(fired)}) "
+                f"— expected {bug_id}-challenge.md with a **Verdict:** line",
+            )
+    if bad_verdict:
+        for bug_id, fired in bad_verdict:
+            fail(
+                f"quality/challenge/{bug_id}-challenge.md",
+                f"missing or malformed verdict line (triggered by: {', '.join(fired)}) "
+                "— expected a line matching `^\\*\\*Verdict:\\*\\*\\s+(CONFIRMED|DOWNGRADED|REJECTED)` "
+                "or the legacy final-verdict form",
+            )
+
+    if triggered == 0:
+        pass_("challenge gate coverage: no bug triggered the challenge gate (vacuous)")
+    elif not missing and not bad_verdict:
+        pass_(
+            f"challenge gate coverage: {triggered} triggered bug(s) all have valid "
+            "challenge records"
+        )
+
+
+def check_v1_5_0_gate_invariants(repo_dir, q):
+    """Dispatcher that runs every Layer-1 mechanical check from schemas.md §10."""
+    check_v1_5_0_plaintext_extensions(repo_dir)
+    check_v1_5_0_manifest_wrappers(q)
+    check_v1_5_0_requirements_manifest(repo_dir, q)
+    check_v1_5_0_bugs_manifest(q)
+    check_v1_5_0_index_md(q)
+    # Phase 6 invariant #17 runs after requirements_manifest so it sees
+    # shape-validated REQ records.
+    check_v1_5_0_semantic_check(q)
+    # v1.5.1 Item 5.2: challenge-gate coverage runs last. It depends on
+    # requirements_manifest.json for the "No spec basis" pattern but
+    # does not redo schema checks that the prior invariants already cover.
+    check_challenge_gate_coverage(q)
+
+
 def check_repo(repo_dir, version_arg, strictness):
     """Run all checks for one repo. Writes output via pass_/fail_/warn/info."""
     repo_dir = Path(repo_dir)
@@ -1102,6 +2025,7 @@ def check_repo(repo_dir, version_arg, strictness):
     skill_version = check_version_stamps(repo_dir, q)
     check_cross_run_contamination(repo_dir, q, version_arg, skill_version)
     check_run_metadata(q)
+    check_v1_5_0_gate_invariants(repo_dir, q)
 
     print("")
 

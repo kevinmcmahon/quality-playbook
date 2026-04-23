@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.5.1",
+  "generated_at": "2026-04-21T12:00:00Z",
+  "records": [
+    {
+      "id": "REQ-009",
+      "title": "Config range check",
+      "description": "Config values must fall within their declared range.",
+      "tier": 1,
+      "functional_section": "Configuration",
+      "citation": {
+        "document": "formal_docs/config-spec.md",
+        "document_sha256": "deadbeef00000000000000000000000000000000000000000000000000000000",
+        "section": "2.1",
+        "line": 12,
+        "citation_excerpt": "Every configurable value shall be validated against its declared range."
+      }
+    }
+  ]
+}

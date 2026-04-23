@@ -283,25 +283,30 @@ class RegressionTests(unittest.TestCase):
         """BUG-004 / REQ-009: After archive_previous_run, control_prompts/ must
         exist in the archive directory.
 
-        Source: run_playbook.py:576 — shutil.rmtree(control_prompts_dir) deletes
-        instead of archiving.
-        Current: control_prompts/ is deleted, not archived.
-        Desired: previous_runs/ts/control_prompts/ exists with files preserved.
+        Historical source: run_playbook.py — shutil.rmtree(control_prompts_dir)
+        used to delete control_prompts/ from repo root instead of archiving it.
+        v1.5.1 update: control_prompts/ now lives under quality/, so the
+        quality/ copytree captures it naturally into the archive subtree at
+        quality/runs/<ts>/quality/control_prompts/.
         """
         with TemporaryDirectory() as tmp:
             repo = Path(tmp)
             _write(repo / "quality" / "file.md", "q\n")
-            _write(repo / "control_prompts" / "phase1.output.txt", "diagnostic data\n")
-            run_playbook.archive_previous_run(repo, "2026-04-18T23-43-14")
-            archived_cp = repo / "previous_runs" / "2026-04-18T23-43-14" / "control_prompts"
+            _write(repo / "quality" / "control_prompts" / "phase1.output.txt", "diagnostic data\n")
+            run_playbook.archive_previous_run(repo, "20260418T234314Z")
+            archived_cp = (
+                repo / "quality" / "runs" / "20260418T234314Z-PARTIAL"
+                / "quality" / "control_prompts"
+            )
             archived_file = archived_cp / "phase1.output.txt"
             self.assertTrue(
                 archived_cp.is_dir(),
-                "control_prompts/ must be archived to previous_runs/ts/control_prompts/"
+                "control_prompts/ must be archived to "
+                "quality/runs/<ts>-PARTIAL/quality/control_prompts/",
             )
             self.assertTrue(
                 archived_file.is_file(),
-                "Archived control_prompts/ must contain the original files"
+                "Archived control_prompts/ must contain the original files",
             )
 
     # ------------------------------------------------------------------ #
@@ -741,7 +746,9 @@ class UnfilteredIterationRegressions(unittest.TestCase):
             args = _make_args()
             log_file = repo / "phase.log"
             with mock.patch.object(run_playbook, "run_prompt", return_value=31):
-                result = run_playbook.run_one_phase(repo, "1", ["1"], args, log_file)
+                result = run_playbook.run_one_phase(
+                    repo, "1", ["1"], args, log_file, "20260419T120000Z"
+                )
         self.assertFalse(result)
 
     def test_reg_unfiltered22_run_one_singlepass_propagates_child_failure(self):
