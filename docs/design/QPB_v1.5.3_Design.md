@@ -5,6 +5,52 @@
 *Owner: Andrew Stellman*
 *Depends on: `QPB_v1.5.0_Design.md` (divergence model, tier system, citation schema, disposition field), `QPB_v1.5.1_Design.md` (Phase 5 writeup hardening), `QPB_v1.5.2_Design.md` (bug-family amplification, operational polish)*
 
+---
+
+## Motivation
+
+### The goal: teach QPB to audit AI skills, not just code
+
+QPB v1.5.0 through v1.5.2 evolved against code projects — virtio, chi, cobra, express, httpx, gson. For that class of target the divergence model works: specifications live in `formal_docs/` as RFCs or design docs, implementation lives in source files, and a defect is a divergence between the two. When the target is an AI skill — SKILL.md plus reference files, no compiler, no runtime, no separate implementation — the model breaks because there is no separation. The specification and the implementation are the same artifact. The prose is the program.
+
+v1.5.3 extends QPB to cover that case without disturbing the code path. Phase 0 gains a project-type classifier that decides whether the target is a Code project, a Skill project, or a Hybrid (like QPB itself — SKILL.md plus `bin/` Python plus `quality_gate.py`). For Code projects, nothing changes. For Skill and Hybrid projects, a skill-specific four-pass derivation pipeline generates requirements from SKILL.md's section tree rather than from a separation that doesn't exist.
+
+### The Haiku experiment is the evidence
+
+On 2026-04-19, Claude Haiku 4.5 was given `docs_gathered/` (14 MB of QPB's own design history) and the existing `quality/REQUIREMENTS.md`, and asked three questions: what does this system do, what are its major features, and how much of the system does REQUIREMENTS.md span. Haiku immediately named the gap — the existing REQUIREMENTS.md covers only the Python orchestration layer and explicitly omits SKILL.md, phase-specific references, and orchestrator agent prompts. Asked to produce a comprehensive document covering the entire skill, Haiku produced a 2,129-line file with 95 REQ references organized by phase, 10 use cases spanning all seven phases plus iteration modes and bootstrap self-audit, explicit coverage of SKILL.md sections and reference files.
+
+QPB's own v1.4.5 self-audit, running its full six-phase procedure over the same codebase, produced 721 lines, 40 REQs, and was focused almost entirely on the Python infrastructure. The smaller, cheaper model with two simple prompts beat QPB's own procedure by nearly 3× on the dimension the procedure was designed to optimize. That's not a model-quality gap; it's a systemic gap in what the procedure is looking for.
+
+The Haiku-generated document is preserved at `AI-Driven Development/Haiku QPB requirements analysis/REQUIREMENTS.md` and is the benchmark v1.5.3 measures itself against.
+
+### Why this is systemic, not a model-quality problem
+
+QPB's six-phase pipeline assumes the thing under review is source code: Phase 1 explores the codebase, Phase 2 generates requirements from documentation *about* the code, Phase 3 reviews the code, Phase 4 audits the spec against the code, Phase 5 reconciles, Phase 6 verifies. Each step's prompt language is tuned for that shape. Applied to a skill, Phase 1 misclassifies SKILL.md as "documentation" (an input) rather than "the thing being specified" (the artifact under review). The tier system assumes Tier 1 intent lives in external specs and Tier 3–5 lives in the source; for a skill, documented intent AND implementation live in the same prose, so the tier question has no natural answer. The requirements pipeline — contract extraction → requirement derivation → verification → completeness — produces plumbing-level REQs from code, not section-level REQs from prose.
+
+Haiku succeeded on QPB's skill because the operator's explicit instruction ("cover the entire skill, including the skill definition") bypassed these implicit assumptions. A general-purpose user won't think to give that instruction, and shouldn't have to. For QPB to audit skills reliably, the classification has to happen mechanically before Phase 1 starts.
+
+### Why a four-pass generate-then-verify pipeline
+
+Two different failure modes need two different defenses, and mixing them loses both.
+
+Coverage (recall) is the strength of the Haiku-style prompt: read the whole skill, produce comprehensive requirements organized by functional area. That prompt runs high-recall on purpose — it over-produces rather than under-produces, because anything it misses in a single pass doesn't get another chance. Citation discipline (precision) is the strength of v1.5.0's mechanical citation extractor: given a draft REQ, grep SKILL.md and references for supporting text, populate `citation_excerpt` only from mechanical extraction, reject REQs with no supporting text. That extractor runs high-precision on purpose — it refuses to hallucinate citations, even when the REQ "feels right."
+
+Mixing them produces the v1.4.x failure mode in reverse: the Phase 2 prompt asks one model to both cover comprehensively and cite rigorously, the model hedges toward whichever feels safer (citation rigor), coverage drops. Separating the passes lets each do what it's best at. Pass A generates coverage. Pass B extracts citations mechanically. Pass C converts cited drafts to formal REQs. Pass D diffs Pass A's full draft list against Pass C's verified list and forces explicit rationale for anything that dropped. The architecture is the pipeline equivalent of generate-and-verify rather than generate-while-verifying.
+
+### Disk is the ledger, not a performance optimization
+
+Pass A over a 1,500-line SKILL.md plus reference files is the same shape of problem as the summarizer work over 14 MB of chat history: unbounded single-shot generation degrades into templated stub output or silently-skipped input regions once context pressure rises. The mechanical defense is per-section progress with disk as the ledger. Every pass writes incrementally; every pass has a cursor in a progress file; every pass can resume from the last cursor position after interruption or auto-compaction. This isn't an optimization — it's a correctness invariant for pipelines that operate over long inputs.
+
+### The measurable outcome
+
+Success for v1.5.3 is a QPB self-audit that produces requirements coverage comparable to Haiku's 2,129-line benchmark. Specifically: the v1.5.3 self-audit should produce at least 80 REQ references with per-phase organization, cover SKILL.md section-by-section, and explicitly span reference files. If the self-audit still produces 40-REQ Python-only output, the pipeline hasn't done what it was designed to do and needs tuning before shipping.
+
+### What v1.5.3 is not
+
+Not a replacement for the code path — it's additive, and Code projects continue to run through the v1.5.0 divergence pipeline unchanged. Not new LLM machinery — the four-pass pipeline reuses v1.5.0's mechanical citation extractor and schema machinery in different passes, rather than inventing new infrastructure. Not the bug-family amplification work (that's v1.5.2) or the operator-experience work (that sits between v1.5.0 and v1.5.3 in the scope-revision record). Not an attempt to generalize the classifier beyond Code / Skill / Hybrid — those three categories cover every target QPB has encountered, and expanding the taxonomy is a later-release problem if it's a problem at all.
+
+---
+
 ## Purpose of This Document
 
 v1.5.3 addresses a category QPB currently fails on: AI skills. The playbook does a good job finding defects in code projects (virtio, chi, httpx, etc.) but produces incomplete requirements when the thing being audited is itself an AI skill — a prose-structured artifact where instructions ARE the program.

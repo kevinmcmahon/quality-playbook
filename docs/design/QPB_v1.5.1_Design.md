@@ -6,6 +6,42 @@
 *Depends on: `QPB_v1.5.0_Design.md` (formal_docs pipeline, plaintext + sidecar convention, phase orchestrator, quality gate)*
 *Predecessor of: `QPB_v1.5.2_Design.md` (skill-handling)*
 
+> **Scope-revision note (2026-04-22):** This design captured the intended scope for v1.5.1 — seven operator-experience UX items plus one correctness fix (challenge-gate-on-iterations). The release that actually shipped under the `v1.5.1` tag is narrower and different: Phase 5 writeup hardening (enforce-writeup gate, template-sentinel detection, case-insensitive diff fences) to close a stub-writeup regression observed on `bus-tracker-1.5.0`. The UX items described below and the challenge-gate-on-iterations fix were not in the 2026-04-22 release; they remain candidates for a later release. The Motivation section immediately below describes the original intent so the doc stays internally consistent; the scope delta is noted here for anyone trying to reconcile the design with the shipped CHANGELOG.
+
+---
+
+## Motivation
+
+### The goal: make v1.5.0's correctness reachable by an operator who isn't already inside Andrew's head
+
+v1.5.0's overnight benchmark run on 2026-04-18 demonstrated the problem. Five repos ran through the full pipeline (virtio, chi, cobra, express, httpx), all completed without errors, and all five produced systematically empty output: Spec Gap across the board, `citation_semantic_check.json` empty everywhere, 100% of derived REQs classified as Tier 3. The pipeline passed its own gate. The defect model was correct. The divergence machinery worked. But no operator reading those five run directories would know what the tool had actually found, because it had found nothing — and it had found nothing because `setup_repos.sh` stopped one step short of what the pipeline needed. Plaintext files had to land in `formal_docs/` with matching `.meta.json` sidecars. `setup_repos.sh` stopped at `docs_gathered/`. No pre-run check loudly warned that the run was about to produce empty output.
+
+The manual re-staging of virtio on 2026-04-19 made the cost concrete: three plaintext files to create by hand, three `.meta.json` sidecars to author by hand, and the sidecar format exists exclusively to satisfy the parser. Even the operator already convinced that QPB is worth running has to do per-file scribe work before they see their first bug. Andrew's direct feedback on it: *"just providing a bunch of json files is also real friction."*
+
+The rerun then surfaced a second layer of friction — observability during execution. `PYTHONUNBUFFERED=1 python3 -u bin/run_playbook.py ... 2>&1 | tee logfile.log` was the canonical invocation, and every component of that ceremony was load-bearing: the `-u` and the env var to defeat Python's block-buffering when piped, the `tee` to capture a log the orchestrator should be writing itself, the `2>&1` to merge stderr. The operator had to know this line to debug their own run. And even with all of it in place, `logboth()`'s `isatty()` gate silently suppressed stdout when the output was piped, so the operator saw nothing for minutes at a stretch while a 15-million-token run was in flight and couldn't distinguish "hung" from "still working."
+
+### Why operator experience is the next-most-important thing after correctness
+
+v1.5.0 optimized for correctness, and that was the right sequencing — without divergence working, no operator-flow improvement adds value because the tool finds nothing. But the moment correctness is in place, the friction surface between the tool and its adopters becomes the thing gating adoption. An auditor who runs QPB once, encounters the plaintext-staging gap silently, and sees an empty `BUGS.md` will assume the tool doesn't find things in their codebase. They won't get far enough to discover it does. The sidecar JSON work is worse because it signals that the tool requires tribute — a clerical tax paid before any value is extracted. Block-buffered stdout is worst of all because it looks like the tool is broken on their machine specifically.
+
+v1.5.0 pushed these decisions outward to the operator on the assumption that operators would notice and handle them. The overnight benchmark campaign is the evidence that operators — even the tool's author — don't notice them in time. The fixes belong inside the tool.
+
+### The challenge-gate-on-iterations correctness fix rides along
+
+Separately, the 2026-04-20 virtio-1.4.6 rerun in `repos/benchmark-1.5.0/` added two new HIGH-severity bugs via the gap iteration strategy (BUG-007 vDPA affinity mis-indexing, BUG-008 `virtinput_probe()` reset-before-del_vqs). Both matched `references/challenge_gate.md` auto-trigger patterns. Neither received a challenge-gate review. `quality/challenge/` contained only BUG-001 through BUG-006, and the terminal gate had no invariant tying the BUG tracker's HIGH/CRITICAL entries to the challenge directory. The iteration agent had read "every confirmed bug" as "every bug confirmed during this pass," not "every entry in the manifest."
+
+The fix has two halves — a spec change in `references/iteration.md` and a mechanical invariant in `quality_gate.py`. Both are small. It's a correctness fix rather than a UX fix, but it's adjacent to v1.5.0's boundary (it's about closing the loop on v1.5.0's iteration machinery) and doesn't warrant waiting a release cycle. Riding along was cheaper than splitting it.
+
+### The seven UX items, grouped
+
+Four of the UX items tackle the staging path (plaintext converter, sidecar auto-setup, pre-run guard, tier heuristic). Three tackle the run-time experience (built-in logging with unbuffered stdout, live progress monitor, cross-platform command recipes in the startup banner). Together they replace the tee ceremony and the silent-output period with a pipeline that tells the operator what it's doing, writes its own durable log, and carries an operator through staging → run → results without the operator having to know any of v1.5.0's implicit assumptions. The specific design for each item lives below.
+
+### What v1.5.1 is (as-designed) not
+
+Not a re-architecture of the divergence model — v1.5.0's defect definition, tier system, formal/informal split, and sidecar schema are unchanged. Not new capability — nothing here finds bugs that v1.5.0 couldn't. Not the AI-skills work — that's v1.5.2 (as originally scoped; now v1.5.3). Not a writeup-gate change — that pattern surfaced later and ended up being what the actual v1.5.1 release shipped (see the scope-revision note above). The work captured here is narrow by construction: the seven UX items fix specific documented friction, and the challenge-gate fix closes one mechanical hole. Anything bigger belongs in a subsequent release.
+
+---
+
 ## Purpose of This Document
 
 v1.5.1 addresses a category of friction that v1.5.0 surfaced but did not solve: operator experience. The playbook is correct on the benchmark but painful to run. Every sharp edge discovered during the v1.5.0 overnight benchmark campaign and the subsequent manual re-staging becomes a design item here.
