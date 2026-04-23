@@ -1,315 +1,205 @@
 # Quality Playbook v1.5.2 — Implementation Plan
 
 *Companion to: `QPB_v1.5.2_Design.md`*
-*Status: draft — to be reviewed and updated after v1.5.1 ships (v1.5.0 machinery, v1.5.1 operator-flow and observability)*
-*Depends on: v1.5.0 complete (schemas.md, tier system, citation verification, disposition field) and v1.5.1 complete (operator-flow fixes, observability stack, invocation flexibility, challenge-gate invariant, self-audit)*
+*Status: draft — to be refined once v1.5.1 is merged to main and the v1.5.2 branch is cut*
+*Depends on: v1.5.1 shipped (Phase 5 writeup hardening, case-insensitive diff fence gate, 171-test gate suite)*
 
-This plan is deliberately more provisional than the v1.5.0 plan. v1.5.0's implementation surfaced the schema and citation-gate constraints v1.5.2 builds on; v1.5.1's Phase 4 benchmark validation surfaces the observability and pacing characteristics of real end-to-end runs, which in turn inform how aggressive the per-pass progress machinery in Phase 3 of this plan needs to be. This document captures the intended shape; it should be revisited and refined once v1.5.1 is stable and Phase 4 benchmarks have been reviewed.
+This plan ships bug-family amplification plus operational polish on top of v1.5.1. The scope is deliberately narrow: prompt-layer changes to Phase 1 and Phase 2, one schema field, one runner behavior fix, a README documentation pass, and a prompt-only runner-reliability improvement. No new iteration strategies, no Council changes, no writeup-gate changes, no code-path restructuring.
+
+The AI-skills work previously numbered v1.5.2 is renumbered to v1.5.3 and lives in `QPB_v1.5.3_Design.md` / `QPB_v1.5.3_Implementation_Plan.md`.
 
 ---
 
 ## Operating Principles
 
-- v1.5.2 builds on v1.5.0 and v1.5.1, doesn't replace them. The code-project path remains primary; skill-project handling is additive.
-- Every phase produces a concrete deliverable that can be committed and benchmarked independently.
-- The Haiku-generated REQUIREMENTS.md is the success benchmark throughout. At every phase, compare QPB's self-audit output against it.
-- No regression on code projects. The five code benchmark repos must continue to work.
-- **Disk is the source of truth for every LLM-driven pass.** Any pass that generates requirements, extracts citations, or audits coverage writes its output incrementally to a persistent artifact and advances a cursor in a progress file before moving on. Passes are resumable: killing one mid-run and restarting it continues from the last cursor position, not from scratch. Pass prompts include explicit compaction-recovery instructions (re-read the pass spec, read the progress file, verify continuity against disk, resume from cursor) so that auto-compaction is routine rather than catastrophic. See Phase 3 "Per-pass execution protocol" for the mechanics. This principle is a correctness invariant for skill projects, whose SKILL.md inputs are long enough that single-shot generation degrades under context pressure.
+- **No regression on existing benchmarks.** chi, cobra, virtio, bootstrap must produce bug counts within ±15% of their v1.5.1 baselines. The compensation-grid rule is additive — it surfaces previously-missed bugs, never suppresses existing ones.
+- **v1.4.5 RING_RESET family is the canonical validation target.** Any prompt change must be verified by re-running virtio against the current kernel source and recovering the four-bug family.
+- **Prompt-layer first, runner-layer second.** Where a prompt-layer fix suffices (incremental candidate-stub writes, explicit-iterations respect via argparse wiring), ship it and park heavier runner changes pending evidence.
+- **Benchmark gates every phase.** No phase lands without a fresh virtio run confirming the change behaves as designed.
 
 ---
 
-## Phase 0 — v1.5.1 Stabilization and Benchmark Confirmation
+## Phase 0 — v1.5.1 Ship Confirmation
 
-Goal: v1.5.1 is shipped, tagged, and validated against the full code-project benchmark suite. v1.5.0's divergence model, tier system, and citation schema are in place; v1.5.1's operator-flow fixes, observability stack, invocation flexibility, challenge-gate invariant, and self-audit are complete. Benchmark yields from v1.5.1's Phase 4 are documented as the v1.5.2 baseline (replacing the earlier v1.5.0 baseline).
+Goal: v1.5.1 merged to main, tagged, pushed; benchmarks from v1.5.1 captured as the regression baseline.
 
 Work items:
-- All v1.5.0 and v1.5.1 phases complete per their respective implementation plans
-- v1.5.1 tagged and released
-- Benchmark baselines captured under `previous_runs/v1.5.1/` (per the v1.5.1 Phase 4 comparison report) — these are the regression baseline v1.5.2 code-project runs compare against
-- Observability data from v1.5.1 Phase 4 reviewed (silent-gap frequency, pacing behavior under real LLM load) — feeds the Phase 3 per-pass progress design in this plan
 
-Gate to Phase 1: v1.5.1 self-audit passes cleanly; Phase 4 comparison report signed off with PASS or PASS_WITH_CAVEATS; no pending v1.5.0 or v1.5.1 bugs without dispositions.
+- Merge branch `1.5.1` into main (no-ff)
+- Tag `v1.5.1`; push tag
+- Capture v1.5.1 baselines: virtio-1.5.1 (8 bugs), chi-1.5.1 (9 bugs), cobra-1.5.1 (whatever count), bootstrap-1.5.1 (self-audit clean)
+- Document baseline bug counts and overlap notes in `quality/benchmark_history.md` (or equivalent)
+
+Gate to Phase 1: v1.5.1 is the current `main` HEAD; `SKILL.md` reports version 1.5.1; all four baseline bug counts are recorded.
 
 ---
 
-## Phase 1 — Project Type Classifier
+## Phase 1 — Schema: `pattern:` tag on requirements
 
-Goal: implement the Phase 0 project-type classification step that determines Code / Skill / Hybrid.
+Goal: add an optional `pattern:` field to the requirement spec so Phase 1 can mark whitelist / parity / compensation requirements for Phase 2 grid emission.
 
 Work items:
-- Add a `classify_project.py` module (or equivalent) that runs before Phase 1
-- Heuristic implementation:
-  - Check for SKILL.md at repo root
-  - Count SKILL.md prose word count vs. total code LOC across repo
-  - Check for orchestrator markers (`bin/`, runners, validators)
-- Output: `quality/project_type.json` with classification + confidence + rationale
-- Classification is writable by the Phase 4 Council if the heuristic is wrong
 
-Test fixtures needed:
-- A pure Skill project (prose-only SKILL.md, no orchestrator). If none exists in the benchmark, create a minimal one. Candidate: a stripped-down version of one of the example skills in `AI-Driven Development/Articles/Research/` if any exist, otherwise a synthetic fixture.
-- Verify all five code benchmarks classify as Code
-- Verify QPB itself classifies as Hybrid
+- `schemas.md`: add `pattern` field to the REQ schema. Valid values: `whitelist`, `parity`, `compensation`, or omitted (default = no grid).
+- `.github/skills/quality_gate/quality_gate.py`: extend REQ parsing to read the optional field; gate does not fail if absent; gate does fail if present with an invalid value.
+- Add unit tests for the new field (valid values, invalid values, omitted field) — minimum four cases.
+- `references/` or `SKILL.md`: document the `pattern:` field with one-paragraph explanation of when each value applies.
 
-Deliverable: classifier module, project_type.json output, test fixtures, classification verified on entire benchmark suite.
+**Files touched:** `schemas.md`, `.github/skills/quality_gate/quality_gate.py`, `.github/skills/quality_gate/tests/test_quality_gate.py`, `SKILL.md` (one-paragraph addition).
 
-Gate to Phase 2: classification is correct on all known-type projects (5 code, 1 skill fixture, 1 hybrid).
+**Acceptance:** schema doc contains `pattern:` field definition; gate tests pass (175+); requirements with `pattern: whitelist` / `parity` / `compensation` round-trip through the gate; requirements without the field round-trip unchanged.
 
 ---
 
-## Phase 2 — Schema Extensions
+## Phase 2 — Phase 1 cartesian use-case rule
 
-Goal: extend `schemas.md` (from v1.5.0) to support skill-specific concepts without breaking code-project usage.
-
-Extensions needed:
-- `REQ.source_type` field: {code-derived, skill-section, reference-file, execution-observation}
-- `REQ.skill_section` field: populated when `source_type = skill-section`, names which SKILL.md section the REQ came from
-- `BUG.divergence_type` field: {code-spec, internal-prose, prose-to-code, execution}
-- `FORMAL_DOC.role` field: {external-spec, project-spec, skill-self-spec, skill-reference}
-  - `skill-self-spec` applies when SKILL.md is its own formal document (Skill/Hybrid projects)
-  - `skill-reference` applies to files like `exploration_patterns.md`
-
-Precedence rule for Skill/Hybrid: when SKILL.md (skill-self-spec) and a reference file (skill-reference) conflict, SKILL.md wins. This is documented in `schemas.md` as an explicit precedence rule, not left implicit.
-
-Deliverable: updated `schemas.md` with new fields, updated validation in quality gate, no regression on code-project runs.
-
-Gate to Phase 3: all five code benchmark repos pass the updated gate with no changes to their artifacts.
-
----
-
-## Phase 3 — Skill-Specific Derivation Pipeline (Generate-Then-Verify)
-
-Goal: implement the four-pass derivation architecture for skill projects.
-
-The pipeline separates coverage breadth (Pass A) from citation precision (Pass B–C) from accountability (Pass D). Each pass has a narrow, specific job and a clear contract with the next.
-
-### Per-Pass Execution Protocol
-
-Every pass in Phase 3 obeys the same execution protocol, defined once here and referenced from each pass spec below. This is the mechanical implementation of the "disk is source of truth" operating principle.
-
-**Artifact layout.** For each run, Phase 3 creates a working directory under `quality/phase3/` (or the project's equivalent quality folder):
-
-```
-quality/phase3/
-  pass_a_drafts.jsonl        # one draft REQ per line; appended as Pass A iterates
-  pass_a_progress.json       # section cursor + status
-  pass_b_citations.jsonl     # Pass A drafts annotated with citation_excerpt + citation_status
-  pass_b_progress.json       # draft-idx cursor + status
-  pass_c_formal.jsonl        # formal REQ records with v1.5.0 citation schema
-  pass_c_progress.json       # citation-idx cursor + status
-  pass_d_audit.json          # {promoted, rejected, demoted_to_tier_5} with rationale per draft
-  pass_d_progress.json       # Pass A-idx cursor + status
-```
-
-All writes to JSONL files are append-only; all writes to progress.json files are atomic tmp-file-then-rename so the file is never observed in a half-written state.
-
-**Progress file shape (per pass):**
-
-```json
-{
-  "pass": "A" | "B" | "C" | "D",
-  "unit": "section" | "draft" | "citation" | "audit-entry",
-  "cursor": <integer; 0-based index of the next unprocessed unit>,
-  "total": <integer or null; filled in once total is known>,
-  "status": "running" | "paused" | "complete" | "blocked",
-  "last_updated": "<ISO-8601 UTC>",
-  "notes": "<free-form, optional; used for blocked or paused>"
-}
-```
-
-The cursor always equals the idx of the next unit that still needs work. It advances only *after* the unit's output has been appended to the pass's JSONL artifact. Restarting a pass reads the progress file, reads the last record in the corresponding JSONL (verifying it matches `cursor - 1`), rolls the cursor back to match disk state on any discrepancy, and resumes. The verify-and-roll-back step is mandatory — stale progress files observed in practice (both in-house summarizer work and in field) always mean disk is further ahead than the progress file, never behind.
-
-**Pass prompt recovery preamble.** Every LLM-driven pass prompt includes the following recovery procedure near the top, as a required block:
-
-> If this session has experienced auto-compaction — you will see a conversation summary where recent tool-call history should be, or a continuation banner — do this before continuing:
-> 1. Re-read the pass specification you were given. Do not try to reconstruct it from the compacted summary.
-> 2. Read the pass's progress file (`pass_X_progress.json`).
-> 3. Read the last record of the pass's JSONL artifact and confirm its idx equals `cursor - 1`. If not, roll the cursor back to match disk state and note the discrepancy.
-> 4. Resume the per-unit workflow from the cursor.
-> Disk is the source of truth. The conversation is not.
-
-**Batch-size discipline.** Prompts process one unit at a time by default. Grouping multiple units into a single LLM call is permitted only where the unit size is small enough that the grouping cannot meaningfully shift context pressure — and even then, each unit's output is written individually before the next unit is read. No pass writes multiple units to disk in one shot; if that pattern emerges it indicates scripting drift and the pass should be re-scoped.
-
-**Fail-loud thresholds.** Each pass records per-unit wall-clock time in the JSONL record. If observed throughput exceeds an implementation-defined ceiling (candidate: >5 units/minute for Pass A section processing), the pass halts and emits a diagnostic — this is the tripwire for the "scripting instead of summarizing" failure observed in prior summarizer work, where the LLM degrades into templated stub generation. The ceiling is calibrated per pass; the point is to have one, not to tune it perfectly in v1.5.2 Phase 3.
-
-**Restart and idempotency.** A pass that completes cleanly updates its progress file to `status: "complete"` and records total unit count. Downstream passes refuse to start unless the upstream pass's progress shows `complete`. Re-running a completed pass is a no-op unless its artifact is explicitly cleared; this prevents accidental double-run coverage loss.
-
-### Pass A — Naive Coverage
-
-- Iteration unit: one SKILL.md top-level section (or reference-file top-level section) at a time. Pass A walks the section tree in document order, not all at once.
-- Section enumeration step (first, before LLM work): parse SKILL.md and each reference file for top-level headings, emit `pass_a_sections.json` listing `{section_idx, document, heading, line_start, line_end, skip_reason}`. Meta sections (Why This Exists, Overview, acknowledgments) get `skip_reason` populated; Pass A still emits a drafts-artifact line for them with `skipped: true` so Pass D can account for every section.
-- Section-split rule: any section exceeding the implementation-defined line threshold (candidate: 300 lines) gets split at the next heading level down and each subsection becomes its own iteration unit. This keeps per-unit prompt size bounded. Calibration note: the threshold is for instructional prose (SKILL.md and reference-file content), which is denser per line than generic documentation or code. Initial calibration should start lower rather than higher — a 150–200 line section of operational prose already contains more testable claims than most tuners will intuit from a line count alone. Tune upward if Pass A under-produces REQs per section, downward if it begins degrading into stub output.
-- Per-section prompt modeled on the Haiku session: "Given this section of SKILL.md and the surrounding context, produce draft REQs covering every testable claim in the section. High recall; overreach is acceptable because Pass B will filter." The prompt includes the Per-Pass Execution Protocol recovery preamble.
-- Output format: machine-parseable JSONL, one draft REQ per line, each with `draft_idx`, `section_idx`, `title`, `description`, `acceptance_criteria`, and `proposed_source_ref` (free-text like "Phase 1 section of SKILL.md"). One JSONL record per draft REQ; sections that legitimately produce zero REQs still emit a single `{section_idx, no_reqs: true, rationale: "..."}` line so Pass D can distinguish "skipped with reason" from "silently missed".
-- **Constraint: Pass A MUST NOT produce `citation_excerpt` values.** It can propose source references but not excerpts. Enforced structurally in the output schema (no `citation_excerpt` field).
-- **Execution protocol: section-iterative with cursor.** After processing each section, append its draft records to `pass_a_drafts.jsonl`, update `pass_a_progress.json` (cursor = next section_idx), and only then advance. Restart reads the progress file, verifies the last JSONL record's `section_idx` equals `cursor - 1`, and resumes from the cursor. Per-section wall-clock time is recorded; a section that produces more than the throughput ceiling triggers the fail-loud tripwire.
-- For small skills (SKILL.md plus reference files below a threshold; candidate: 500 lines total), Pass A may run single-shot over the entire input and skip the cursor machinery. The single-shot-eligibility decision is made at section-enumeration time and logged in the run manifest.
-- Prompt engineering: reuse language from the Haiku session that produced the 95-REQ output. Calibrate against Haiku's output structure, but scope each Haiku-style prompt to one section's worth of input.
-
-### Pass B — Citation Extraction
-
-- Iteration unit: one Pass A draft record at a time (driven by `draft_idx`). Pass B is mechanical, not LLM-driven, but still obeys the per-pass execution protocol so that a crash mid-extraction does not require re-running the whole corpus.
-- For each draft REQ from Pass A, mechanically search SKILL.md and reference files for supporting text.
-- Implementation: grep-based matching on the `acceptance_criteria` field, with fuzzy matching (stemming, tokenization) for robustness.
-- Output: append one record to `pass_b_citations.jsonl` per draft, populating `citation_excerpt` where found with `citation_status = verified`; otherwise `citation_status = unverified`, flagged for Pass C to decide. Update `pass_b_progress.json` after each record.
-- Reuse v1.5.0's citation extractor — no new machinery.
-
-### Pass C — Formal REQ Production
-
-- Iteration unit: one Pass B record at a time (driven by draft_idx). Output appended to `pass_c_formal.jsonl`; progress cursor updated after each record per the execution protocol.
-- Convert each cited draft into a proper REQ record with tier, ID, full v1.5.0 citation schema.
-- Disposition logic:
-  - `citation_status = verified` → promote to Tier 1, full REQ record
-  - `citation_status = unverified`, source is SKILL.md or reference file → Council review; either drafted Pass A overreach (reject) or citation extractor missed it (manual citation or second extraction attempt)
-  - `citation_status = unverified`, claim is behavioral (not from any doc) → demote to Tier 5 (inferred), note that no documentation supports it
-
-### Pass D — Coverage Audit
-
-- Iteration unit: one Pass A draft record (by `draft_idx`) at a time. Pass D cross-references each draft against the Pass C formal list to classify it as promoted, rejected, or demoted, and records a rationale per draft. Cursor advances per draft.
-- Produce a diff report: Pass A draft list vs. Pass C formal REQ list.
-- Every Pass A draft that didn't make it to Pass C must have a recorded rejection rationale. No silent drops.
-- Output: `pass_d_audit.json` (consolidated at end-of-pass) with three sections: `promoted` (A→C), `rejected` (with rationale), `demoted_to_tier_5` (with note). Intermediate per-draft decisions also flushed to `pass_d_progress.json.notes` so a crashed Pass D can resume.
-- Also produce `pass_d_section_coverage.json`: for every section enumerated in Pass A, report how many drafts it produced, how many were promoted, and whether any drafts are still pending resolution. Any section with zero promoted REQs and no explicit skip-rationale is flagged as a completeness gap.
-- Explicit-skip routing: sections that Pass A emitted with `skipped: true` or `no_reqs: true, rationale: "..."` are pre-dispositioned as `intentional-skip` in Pass D's output and excluded from the Council review queue by default. They remain visible in `pass_d_section_coverage.json` for audit, but they do not surface as items requiring human adjudication. The Council inbox stays scoped to items that actually need judgment: rejected drafts, Tier 5 demotions, weak rationales, and unflagged zero-REQ sections. A separate escalation flag exists for the implementer to force a skip into Council review if the rationale looks suspect on spot-check, but this is opt-in rather than default.
-- Flagged for Phase 4 Council if rejection rationale is weak or rejection rate > 30%.
-
-### Reference-File Coverage
-
-- Passes A-D repeat over each file in `references/` (or equivalent)
-- Cross-reference detection: where SKILL.md names a reference file, extract the reference's actual content and compare claims
-- Contradictions flagged as internal divergences (handled in Phase 4 of this plan)
-
-### Completeness Audit
-
-- Every operational section of SKILL.md must produce at least one REQ after Pass D
-- Meta sections (Why This Exists, Overview, etc.) are exempt — maintained in a small allowlist
-- Orphan sections flagged for Phase 4 Council review
-
-Tuning: distinguishing "operational" from "meta" sections requires prompt engineering. Iterate against QPB's own SKILL.md until orphan set matches human judgment.
-
-Deliverable: four-pass skill-derivation code path with explicit output at each stage, applied to QPB's self-audit, compared to Haiku benchmark.
-
-Gate to Phase 4:
-- Pass A draft count within 10% of Haiku's REQ count (coverage parity check)
-- Pass C formal REQ count within 50% of Haiku's 95 REQs (intermediate gate; full parity comes after Phase 4)
-- Pass D rejection rate documented; every rejection has rationale
-- Same 10 use cases covered as Haiku (may have different IDs)
-- **All four passes are resumable**: a forced kill-and-restart at any point during Phase 3 continues from the last cursor position and produces byte-identical (or logically-equivalent) final artifacts compared to an uninterrupted run. Verified on QPB's own SKILL.md with at least one mid-pass kill per pass.
-- **Every enumerated section has an accounted outcome in `pass_d_section_coverage.json`** — either REQs produced or an explicit skip-rationale. No silent section drops.
-- Per-pass progress files reach `status: "complete"` at pass end; downstream passes refuse to start without this signal (verified by deliberately removing an upstream `complete` status and confirming Phase 3 refuses to advance).
-
----
-
-## Phase 4 — Internal and Prose-to-Code Divergence Detection
-
-Goal: implement static divergence checks for skills.
+Goal: `phase1_prompt()` emits per-site use cases when a requirement's `References` field names ≥2 files with a shared path-suffix role.
 
 Work items:
-- Internal divergence: for each pair of REQs citing the same document, check if their `citation_excerpt` content supports compatible claims. Contradictions flagged as bugs with disposition `spec-fix`.
-- Prose-to-code divergence: for Hybrid projects, scan SKILL.md claims that reference code (e.g., "quality_gate.py runs 45 checks") and cross-check against the actual code. Tool: the Phase 4 Council gets the REQ + the referenced code region + asks "does the code match the prose claim?"
-- Output: bugs with `divergence_type = internal-prose` or `prose-to-code`
-- Dispositions populated by the Council, not auto-assigned
 
-Test fixtures:
-- A SKILL.md with a deliberate internal contradiction (two sections disagreeing on artifact count)
-- A Hybrid project with a deliberate prose-to-code divergence
+- `bin/run_playbook.py::phase1_prompt()`: add a section instructing the reviewer, for each requirement with ≥2 same-suffix references, to also emit one UC per site (UC-N.a, UC-N.b, …) with per-site Actors, Preconditions, Flow, Postconditions.
+- Include the REQ-010 / VIRTIO_F_RING_RESET case as the worked example embedded in the prompt (per the Phase 5 hydration pattern established in v1.5.1).
+- Add a confirmation checklist to the prompt: "For each requirement I emitted with ≥2 same-suffix references, I also emitted per-site UCs" (per the v1.5.1 hardening pattern).
 
-Deliverable: divergence detection implemented, verified on fixtures, verified on QPB's actual self-audit (may find real bugs).
+**Files touched:** `bin/run_playbook.py::phase1_prompt()`. No gate changes (the grid itself is validated at Phase 2).
 
-Gate to Phase 5: fixtures correctly flagged; any real divergences found on QPB are triaged (either fixed or dispositioned as known/deferred).
+**Acceptance:** Re-running Phase 1 against `virtio-1.5.2` source produces UC-10a (PCI modern), UC-10b (MMIO), UC-10c (vDPA) for REQ-010 (or whatever the REQ number lands on). Chi and cobra Phase 1 runs produce no new per-site UCs for requirements that don't have symmetric references (regression check: no over-emission).
 
 ---
 
-## Phase 5 — Execution Divergence Infrastructure
+## Phase 3 — Phase 2 mechanical compensation grid
 
-Goal: implement the third divergence category — comparing SKILL.md promises against observed behavior in prior runs — by aggregating existing `quality_gate.py` results across archived runs.
-
-**Scope boundary (strict):** this phase does NOT build an LLM evaluation harness. It does NOT parse unstructured LLM outputs, grade intermediate reasoning, or evaluate semantic quality. It consumes existing structured gate results and recognizes patterns across them. If the work starts drifting into "grading LLM outputs," stop and re-scope.
+Goal: `phase2_prompt()` produces a compensation grid for any requirement tagged `pattern: whitelist | parity | compensation` and defaults NO cells to BUG.
 
 Work items:
-- Gate result loader: read `quality_gate.py` output files from each archived run in `previous_runs/`
-- REQ-to-gate-check mapper: for each skill REQ (derived in Phase 3 from SKILL.md sections), identify which gate check(s) implement it. Mapping is authored explicitly in the REQ record, not inferred.
-- Pattern aggregator: for each REQ, count pass/fail rate of its associated gate checks across all archived runs
-- Divergence reporter: flag REQs where the associated gate check failed in ≥1 of the last K runs (K = 5 by default)
-- Output: bugs with `divergence_type = execution`, citing the SKILL.md REQ, the associated gate check, and the archived run IDs where the check failed
 
-What this explicitly does NOT do:
-- Does not parse LLM output prose for quality
-- Does not re-run any archived runs
-- Does not evaluate whether gate-passing runs are "actually good"
-- Does not produce statistical confidence intervals on LLM behavior
+- `bin/run_playbook.py::phase2_prompt()`: add a MANDATORY GRID STEP for pattern-tagged requirements:
+  1. Enumerate the authoritative item set (uapi header, spec section, documented constants) — mechanical extraction, not freehand list.
+  2. Enumerate the sites from the requirement's per-site UCs.
+  3. Produce a grid of (item × site × present?) using code inspection to fill cells.
+  4. Apply the BUG-default rule: cells where the item is defined in authoritative source AND absent from shared filter AND absent from site compensation default to BUG. Downgrade to QUESTION requires a per-cell written rationale citing the authoritative source.
+  5. Emit one BUG entry per defaulted cell with file:line citation, spec basis, and expected vs actual behavior — the standard BUG format used elsewhere in the playbook.
+- Include the RING_RESET grid as the worked example in the prompt (four bits × three transports = 12 cells, six cells BUG by default).
+- Add a confirmation checklist to the prompt: "For each `pattern:`-tagged requirement, I produced a grid, applied the BUG-default rule, and wrote one BUG per defaulted cell or a per-cell downgrade rationale."
 
-Confidence handling: a REQ whose gate check failed in 1 of 5 runs is a lower-urgency flag than one that failed in 5 of 5. Failure count reported in the bug record. Gate does not auto-reject on low-failure-count findings but surfaces them for Council review.
+**Files touched:** `bin/run_playbook.py::phase2_prompt()`. Gate changes: extend `check_code_review` (or equivalent) to fail when a `pattern:`-tagged requirement has no grid or has fewer than (items × sites) cells populated.
 
-Minimum run threshold: if fewer than 3 prior runs exist, execution divergence check runs with a confidence caveat in the bug record. With 0 prior runs, the check is skipped entirely.
-
-Deliverable: execution divergence module scoped strictly to gate-result aggregation, tested against QPB's archived previous_runs, findings triaged.
-
-Gate to Phase 6: at least one real execution divergence surfaced from QPB's bootstrap history (expected based on v1.4.x self-audits known to have had gate failures on skill-related checks).
+**Acceptance:** Re-running Phase 2 only against `virtio-1.5.2` surfaces BUG entries for the RING_RESET family (MMIO RING_RESET, vDPA RING_RESET + ADMIN_VQ, all-transports NOTIF_CONFIG_DATA, vDPA SR_IOV), matching the v1.4.5 BUG-001/002/004/016 findings. Running Phase 2 against chi and cobra produces no spurious BUG-default entries for untagged requirements.
 
 ---
 
-## Phase 6 — Quality Gate Updates
+## Phase 4 — Respect explicit `--iterations`
 
-Goal: quality_gate.py enforces skill-project requirements.
+Goal: bypass the diminishing-returns early-stop when `--iterations` was provided as an explicit list on the CLI rather than expanded from `--full-run`.
 
-New checks to add:
-- Skill/Hybrid projects: every operational SKILL.md section has at least one REQ citing it
-- Skill/Hybrid projects: every reference file has at least one REQ or is explicitly marked as non-normative
-- Hybrid projects: cross-cutting REQs that span SKILL.md and code both populate
-- All projects: project_type.json exists and matches actual repo layout
+Work items:
 
-Failure modes output specific file+section references so fixes don't require re-running the full playbook.
+- `bin/run_playbook.py` argparse: add an internal marker (e.g., `args._iterations_explicit = True`) set only when `--iterations` appeared in argv directly. `--full-run` expansion sets the marker to `False`.
+- Two early-stop sites (`:2241-2244` and `:2306-2309`): guard on the marker. Bypass early-stop when `_iterations_explicit` is `True`.
+- New tests in `bin/tests/` covering three fixtures:
+  1. Explicit list of 4 strategies, first returns 5 bugs, second returns 0, third returns 2, fourth returns 0. Assert all 4 run.
+  2. `--full-run` where the second expanded strategy returns 0 bugs. Assert third and fourth do NOT run.
+  3. Explicit list of 1 strategy returning 0 bugs. Assert the strategy completes (regression guard).
 
-Deliverable: updated quality_gate.py, test fixtures for each new failure mode, no regression on code projects.
+**Files touched:** `bin/run_playbook.py`, `bin/tests/test_run_playbook_iterations.py` (new or extended).
 
-Gate to Phase 7: gate correctly flags deliberately-broken skill fixtures; all five code benchmarks still pass.
-
----
-
-## Phase 7 — Full Benchmark Validation
-
-Goal: run v1.5.2 against all five code benchmark repos AND against QPB itself (Hybrid) AND against the skill test fixture (pure Skill).
-
-Expected outcomes:
-- **Code projects** (virtio, chi, cobra, express, httpx): bug yields within ±10% of v1.5.0 baseline. No new false positives from skill-specific checks (they shouldn't fire).
-- **QPB self-audit** (Hybrid): REQ count and structure at parity with Haiku benchmark (within ±20% of Haiku's 95 REQs, same 10 UCs in some form). Real skill-related bugs surfaced and triaged.
-- **Pure skill fixture**: clean run. Section-to-REQ mapping produces expected structure.
-- Cross-model consistency: repeating self-audit with claude-opus, claude-sonnet, copilot+gpt produces comparable coverage (within ±20% REQ count, same UC set).
-
-Deliverable: comparison report across all 7 runs (5 code + QPB + skill fixture), cross-model report for self-audit, go/no-go decision for release.
-
-Gate to release: all success criteria from design doc met; no unresolved regressions on code benchmarks.
+**Acceptance:** All existing runner tests pass. New iteration tests pass. `python3 bin/run_playbook.py virtio-1.5.2 --iterations gap,unfiltered,parity,adversarial` runs all four strategies regardless of preceding yields.
 
 ---
 
-## Phase 8 — Self-Audit Bootstrap
+## Phase 5 — README CLI documentation + rate-limit paragraph
 
-Goal: QPB v1.5.2 audits itself one more time with full v1.5.2 machinery, artifacts committed as bootstrap evidence.
+Goal: README fully documents the phase/iteration/full-run interaction and carries the rate-limit warning surfaced by casbin-1.5.1.
 
-Same pattern as v1.5.0 Phase 8. Any bugs found go to v1.5.3 backlog.
+Work items:
 
-Deliverable: v1.5.2 self-audit complete, artifacts in `quality/` and archived to `previous_runs/v1.5.2/`.
+1. New subsection "Running the playbook: phases, iterations, and macros" after the existing "Run the playbook" step. Content:
+   - Phases 1–6 summary (one sentence each), noting that `--phase all` runs them sequentially and `--phase N` or `--phase N,M` runs subsets.
+   - Iteration strategies (gap, unfiltered, parity, adversarial) with one-line purpose for each.
+   - Three invocation modes:
+     - `--phase all`: all six phases, no iterations.
+     - `--iterations <list>`: runs named strategies explicitly. Every named strategy completes regardless of yields (honors operator intent).
+     - `--full-run`: all phases + all iterations, with early-stop when an iteration returns zero.
+   - When to use each: iterative development → `--phase`; full audit → `--full-run`; specific follow-up → `--iterations`.
 
-Gate to release: self-audit completes cleanly OR any failures are explicitly dispositioned.
+2. New "Rate limits" paragraph in the existing warnings area:
+   - GPT-5.4 Copilot enforces a 54-hour cooldown when a single prompt exceeds ~15M tokens. Observed on casbin-1.5.1 full-run (2026-04-22).
+   - Claude Code's plan usage compounds on large repos. A full-run on a Linux kernel driver can consume 5%+ of a Max-plan weekly budget.
+   - Recommendations: use `--pace-seconds` for long runs; run iterations as separate prompts via `--iterations <one-strategy>` rather than `--full-run` when rate-limit risk is high; stagger multi-repo runs (2–3 at a time).
+
+**Files touched:** `README.md`.
+
+**Acceptance:** A fresh reader answers "how do I run just adversarial?", "what's the early-stop rule?", and "what rate limits should I plan for?" from the README alone. README CI does not regress; the new sections render cleanly.
 
 ---
 
-## Release
+## Phase 6 — Runner reliability: incremental candidate stubs
 
-- Tag v1.5.2
-- Update release notes citing the Haiku demonstration as originating evidence
-- Document the project-type classification as the key v1.5.2 feature
-- Start v1.5.3 backlog
+Goal: iteration prompts write candidate BUG stubs to disk on identification, not at end-of-review, so mid-prompt termination preserves at minimum the candidate IDs and file:line anchors.
+
+Scope decision: **prompt-only in v1.5.2.** Runner-level checkpointing (heartbeat files, resume tokens) is parked pending evidence the prompt-only approach is insufficient.
+
+Work items:
+
+- `bin/run_playbook.py::iteration_prompt()`: add a MANDATORY INCREMENTAL WRITE STEP:
+  - When the agent identifies a candidate bug, immediately append a stub to `quality/code_reviews/<iteration>-candidates.md` with: candidate ID, file:line, one-sentence description, status `candidate`.
+  - Details (spec basis, expected/actual, fix) are written after the candidate stub lands, not before.
+  - End-of-review consolidation reads the candidates file and promotes stubs to final entries.
+- Documentation in the prompt: "The candidates file is your disk ledger. If this session terminates, the file is what survives. Write stubs on identification; fill in details after."
+
+**Files touched:** `bin/run_playbook.py::iteration_prompt()`. No gate changes.
+
+**Acceptance:** A scripted interrupt test — start a chi iteration prompt, kill it after 2 minutes — leaves `quality/code_reviews/<iteration>-candidates.md` on disk with at least one candidate stub (assuming the agent identified at least one candidate before the kill).
+
+---
+
+## Phase 7 — Benchmark re-validation
+
+Goal: confirm v1.5.2 recovers the RING_RESET family without regressing existing benchmark yields.
+
+Work items:
+
+- Fresh `setup_repos.sh virtio chi cobra` → `virtio-1.5.2`, `chi-1.5.2`, `cobra-1.5.2`.
+- `python3 bin/run_playbook.py virtio-1.5.2 chi-1.5.2 cobra-1.5.2 --full-run`.
+- Diff `virtio-1.5.2/quality/BUGS.md` against `virtio-1.5.1/quality/BUGS.md` (v1.5.1 baseline, 8 bugs) and `benchmark-1.4.5/virtio-1.4.5/quality/BUGS.md` (RING_RESET family reference).
+- Diff chi-1.5.2 and cobra-1.5.2 bug counts against their v1.5.1 baselines (regression check).
+- Bootstrap self-audit: run v1.5.2 against QPB itself; confirm gate passes.
+
+**Acceptance:**
+- virtio-1.5.2 BUGS.md contains the 8 bugs from virtio-1.5.1 (or explicit rationale for any not reproduced) PLUS at least 4 new RING_RESET-family BUGs covering MMIO RING_RESET, vDPA RING_RESET/ADMIN_VQ, NOTIF_CONFIG_DATA, vDPA SR_IOV.
+- chi-1.5.2 and cobra-1.5.2 bug counts within ±15% of v1.5.1 baselines.
+- Bootstrap self-audit: gate passes, no new regressions from v1.5.2 machinery itself.
+
+---
+
+## Phase 8 — Self-audit bootstrap
+
+Goal: QPB v1.5.2 audits itself one more time with full v1.5.2 machinery; artifacts committed as bootstrap evidence.
+
+Same pattern as v1.5.0 and v1.5.1 Phase 8 (per those plans). Any bugs found go to v1.5.3 backlog.
+
+**Acceptance:** bootstrap self-audit completes; `quality/` artifacts committed; any failures explicitly dispositioned.
+
+---
+
+## Phase 9 — Release
+
+- Bump `version:` in `SKILL.md` to `1.5.2`.
+- Update `CHANGELOG.md` with the bug-family amplification summary, operational polish items, and benchmark recovery evidence (virtio RING_RESET family).
+- Update `README.md` "What's new in v1.5.2" section (mirror CHANGELOG bullets).
+- Update `ai_context/DEVELOPMENT_CONTEXT.md` with a v1.5.2 bullet; update the known-issues section to remove the RING_RESET family entry (now recovered).
+- Update `ai_context/TOOLKIT.md` writeup-quality section if any new gate behavior was added in Phase 1 (pattern-tag gate check).
+- Tag `v1.5.2`; merge `1.5.2` → `main`; push tag.
+- Council-of-Three review: **required** for this release. The two substantive design changes (Levers 1 and 2) are behavioral and deserve a three-model review (gpt-5.4, gpt-5.3-codex, claude-sonnet-4.6) before Phase 7 benchmark re-validation locks in.
 
 ---
 
 ## Parking Lot (deferred from v1.5.2)
 
-- Runtime skill validation (executing another skill and observing in real time)
-- Automatic skill repair (generating SKILL.md prose fixes)
-- Skill-to-skill benchmarking
-- Non-markdown skill formats (YAML, structured prompts)
-- **Semantic execution divergence (LLM evaluation harness).** Catching cases where gate checks pass but the LLM ignored the spirit of an instruction. Requires building an eval harness — parsing unstructured LLM outputs, grading intermediate reasoning, computing statistical reliability. Out of scope for v1.5.2; revisit for v1.6+ or as a separate tool.
+- **Runner-level checkpointing.** Heartbeat files, explicit resume tokens, structured kill-resume protocol. Ships if Phase 6's prompt-only incremental-write proves insufficient.
+- **Auto-inference of `pattern:` tag.** Let Phase 1 detect whitelist/parity/compensation patterns from code structure rather than requiring reviewer tagging. Refinement for v1.5.3+.
+- **Cross-requirement grid consolidation.** When two requirements share a site set (e.g., feature-bit requirements across transports), produce a consolidated grid rather than separate per-requirement grids. Refinement for v1.5.3+.
+- **AI-skills project-type classification and four-pass derivation.** Renumbered to v1.5.3.
 
 ---
 
@@ -317,38 +207,23 @@ Gate to release: self-audit completes cleanly OR any failures are explicitly dis
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
-| v1.5.0 schema doesn't cleanly extend for skill fields | Medium | Review schemas.md before Phase 2 starts; adjust v1.5.0 design if needed mid-flight |
-| Classification heuristic misfires on edge-case repos | Medium | Council of Three can override; classification rationale logged for review |
-| Section-to-REQ extraction produces too many REQs (explosion) | Medium | Completeness audit sets upper bound; Phase 4 Council prunes redundant REQs |
-| Execution divergence has too few archived runs to be useful | Low for QPB (has bootstrap history); Medium for new projects | Document minimum run threshold; emit confidence caveat with low-N findings |
-| Hybrid projects produce unwieldy REQUIREMENTS.md length | Medium | Functional section grouping (from v1.5.0) handles this; verify during Phase 7 |
-| Cross-model inconsistency on skill derivation | Medium | Test with opus + sonnet + copilot+gpt explicitly in Phase 7; adjust prompts if variance too high |
-| Single-shot Pass A over long skills silently drops coverage under context pressure | High for skills with >500 lines of input; empirically observed in prior summarizer work on comparable-scale inputs | Section-iterative Pass A with per-section cursor and compaction-recovery prompt preamble; throughput ceiling as fail-loud tripwire (see Phase 3 Per-Pass Execution Protocol) |
-| Pass interrupted mid-run requires full restart, wasting cost and inviting inconsistency | Medium | Every pass writes intermediate artifacts and advances a progress cursor atomically; restart resumes from cursor. Gate to Phase 4 requires explicit kill-and-restart verification. |
-| Progress file and on-disk artifact drift out of sync (progress lags writes or leads writes) | Medium; observed in prior summarizer work where batched progress updates lagged per-record writes | Progress cursor updates are atomic and required after every single unit of work, never in batches. Restart logic verifies last JSONL record matches `cursor - 1` and rolls the cursor back to disk state on discrepancy. |
+| Cartesian UC rule over-emits per-site UCs on requirements that aren't actually symmetric | Medium | Path-suffix heuristic is conservative; reviewer can drop the match by removing references or editing the rule's applicability. Phase 7 regression check on chi/cobra catches over-emission. |
+| Compensation grid produces cells the reviewer cannot confidently classify | Medium | BUG-default plus per-cell downgrade rationale means reviewer errs toward BUG; Council-of-Three review catches false positives; Phase 7 spot-check validates bug realism. |
+| `pattern:` tag adoption is low in practice; grid rule rarely fires | Medium | SKILL.md and Phase 1 prompt explicitly list `pattern:` values with worked examples; bootstrap self-audit forces at least one use. |
+| Incremental candidate-stub writes slow down iteration prompts significantly | Low | Writes are append-only, one stub per candidate (typically <20 per iteration). Negligible overhead. |
+| Phase 7 yield check misfires (regression appears due to benchmark variance, not v1.5.2 changes) | Medium | Run each benchmark 3× and use median; ±15% threshold is deliberately wide to absorb natural variance. |
+| README rate-limit paragraph becomes stale as provider limits change | Low | Document observed behavior with dates; treat as snapshot, not contract. |
 
 ---
 
 ## Open Questions to Resolve
 
-These need answers during implementation but don't block planning:
+1. **Does the `pattern:` field live in the REQ record itself, or in a separate `patterns_manifest.json`?** Lean: REQ record — keeps the grid rule co-located with the requirement that triggers it.
 
-1. (Phase 1) What's the exact threshold of "prose vs code" for Skill vs Hybrid? Lean: if SKILL.md word count > 2× code LOC, classify as Skill; otherwise Hybrid. Calibrate against real examples.
-2. (Phase 3) Should section-to-REQ extraction happen in one pass or iteratively (first draft, then refine)? Lean: iterative, with a Council review between passes.
-3. (Phase 4) How strict should "SKILL.md prose claim about code" detection be? Over-eager = false positives. Under-eager = missed bugs. Lean: tune against QPB's own known prose-code drift.
-4. (Phase 5) Should execution divergence consume ALL prior runs or a sliding window? Lean: sliding window of last 5; older runs may reflect older skill versions.
-5. (All phases) Is SKILL.md always the single Tier 1 source for a skill, or can a project designate external Tier 1 docs? Lean: project can designate; if project has a formal spec elsewhere (e.g., a published methodology paper), that's Tier 1 and SKILL.md is Tier 2 implementation. Uncommon but possible.
+2. **How strict is the path-suffix match in Lever 1?** Candidate rules: exact last-segment match, last-segment-regex match, or explicit reviewer-provided grouping. Lean: exact match on a regex supplied by the prompt (e.g., `.*_finalize_features\.c$`), with reviewer override.
 
----
+3. **Should the grid emit explicit "not applicable" cells?** Example: VIRTIO_F_SR_IOV is only meaningful for PCI-based transports; calling it absent in "USB-style virtio" would be noise. Lean: yes — N/A is a third cell value beside YES/NO, and the BUG-default rule applies only to NO cells with a present-in-authoritative-source item.
 
-## Plan Revision Expectations
+4. **How many authoritative sources does the grid need before a cell can be BUG-defaulted?** One (the uapi header) is the minimum. For requirements spanning multiple headers or specs, does every source need to agree? Lean: one authoritative source suffices per cell; conflicts between sources default to QUESTION with explicit reconciliation rationale.
 
-This plan is explicitly provisional. Revisit after v1.5.0 ships with:
-
-- Any schema changes from v1.5.0 implementation that affect Phase 2 extensions
-- Any orchestrator refactors that change where classification logic belongs
-- Any Phase 4 Council changes that affect divergence detection integration
-- Updated Haiku benchmark if the Haiku-generated REQUIREMENTS.md is refined based on v1.5.0 learnings
-- Any new benchmark repos added during v1.5.0 work
-
-The review pass should update this document in place (no separate revision log needed; git history captures changes).
+5. **What's the minimum evidence for a per-cell QUESTION downgrade?** Lean: one-paragraph rationale citing the authoritative source and explaining why the site intentionally does not support the item. A three-word dismissal ("not supported here") is insufficient.

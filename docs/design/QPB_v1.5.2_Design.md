@@ -1,233 +1,135 @@
 # Quality Playbook v1.5.2 — Design Document
 
-*Status: design captured, awaiting v1.5.0 completion before implementation*
+*Status: design captured, implementation follows v1.5.1 ship*
 *Authored: April 2026*
 *Owner: Andrew Stellman*
-*Depends on: `QPB_v1.5.0_Design.md` (divergence model, tier system, citation schema, disposition field)*
+*Depends on: `QPB_v1.5.0_Design.md` (schemas, citation schema), `QPB_v1.5.1_Design.md` (Phase 5 writeup hardening)*
+*Supersedes earlier v1.5.2 scope (AI skills) which is renumbered to v1.5.3.*
 
 ## Purpose of This Document
 
-v1.5.2 addresses a category QPB currently fails on: AI skills. The playbook does a good job finding defects in code projects (virtio, chi, httpx, etc.) but produces incomplete requirements when the thing being audited is itself an AI skill — a prose-structured artifact where instructions ARE the program.
+v1.5.2 addresses a specific recurring failure mode in the playbook: families of bugs that share a common architectural root cause disappear from `BUGS.md` because a single judgment call at the requirement or review layer collapses N mechanical findings into one narrative verdict — often a QUESTION rather than a BUG.
 
-This doc captures the gap, the root cause, and the design for fixing it. A companion file `QPB_v1.5.2_Implementation_Plan.md` covers execution.
+The v1.4.5 virtio run caught a four-bug family around the VIRTIO feature-bit whitelist. The v1.4.6 and v1.5.1 runs identified the exact same architectural asymmetry in Phase 2, worded it almost identically, and then classified it as `QUESTION-001` rather than escalating four distinct bugs. The root cause is not exploration coverage (the code was read), not triage calibration (the finding was considered), not iteration gaps (the baseline had it). The root cause is that Phase 1 produces one umbrella use case for a symmetric problem, Phase 2 produces one prose verdict for that umbrella, and the BUGS.md pipeline populates from BUG verdicts — not QUESTION verdicts or umbrella findings.
+
+v1.5.2 fixes this with two surgical prompt-layer levers and a small set of operational polish items. A companion file `QPB_v1.5.2_Implementation_Plan.md` covers execution.
 
 ---
 
 ## The Gap — Evidence
 
-On 2026-04-19, a test session with Claude Haiku 4.5 demonstrated the problem concretely. Given `~/Documents/QPB/docs_gathered/` (14MB of design history) and the existing `~/Documents/QPB/quality/REQUIREMENTS.md`, Haiku was asked:
+### v1.4.5 run: four bugs from one mechanical table
 
-1. What does this system do?
-2. What are its major features?
-3. How much of the system does REQUIREMENTS.md span?
+The v1.4.5 virtio benchmark produced 17 bugs in the baseline (the highest single-version yield on record for virtio). Four of those bugs — BUG-001, BUG-002, BUG-004, and BUG-016 — share a root cause: the shared `vring_transport_features()` whitelist in `drivers/virtio/virtio_ring.c:3505-3533` default-clears every feature bit not in its closed set; transports with their own `finalize_features` hook (PCI modern, MMIO, vDPA) must compensate for bits they actually support. PCI modern's `vp_transport_features()` at `virtio_pci_modern.c:367-381` does this work. MMIO's `vm_finalize_features()` at `virtio_mmio.c:109-131` does not. vDPA's `virtio_vdpa_finalize_features()` at `virtio_vdpa.c:389-396` does not.
 
-Haiku correctly identified that the existing REQUIREMENTS.md covers only the Python orchestration layer (`bin/run_playbook.py`, `quality_gate.py`, `benchmark_lib.py`) and explicitly names what's missing: "the skill definition itself (SKILL.md — ~1,500 lines, the operational playbook), phase-specific reference files, orchestrator agent prompts."
+The v1.4.5 Phase 2 reviewer caught this by constructing a mechanical compensation table in `code_reviews/2026-04-18-reviewer.md`:
 
-When then asked to produce a comprehensive requirements document covering the entire skill, Haiku produced a 2,129-line file with 95 REQ references organized by phase (REQ-101-130 for Phase 1, REQ-201-250 for Phase 2, etc.), 10 use cases spanning all seven phases plus iteration modes and bootstrap self-audit, explicit coverage of SKILL.md sections, and reference files.
-
-By comparison, QPB's own v1.4.5 self-audit produced 721 lines, 40 REQ references, focused almost entirely on Python infrastructure.
-
-**Conclusion:** a smaller, cheaper model (Haiku 4.5) with two simple prompts produced dramatically better skill requirements than QPB's own six-phase procedure produced when auditing itself. This is a systemic gap, not a model-quality issue.
-
-The Haiku-generated document is preserved at `AI-Driven Development/Haiku QPB requirements analysis/REQUIREMENTS.md` and serves as the benchmark for v1.5.2 success.
-
----
-
-## Root Cause — Why QPB Misses This on Itself
-
-QPB's mental model assumes a clean separation:
-
-- **Specifications** are inputs (documentation, RFCs, design docs)
-- **Code** is the thing being evaluated
-- **Defect** is a divergence between the two
-
-This is correct for virtio (RFC-backed C code) or gson (Google's own spec vs. Java implementation). The v1.5.0 divergence-based defect model applies directly.
-
-It breaks for AI skills because **SKILL.md is simultaneously the specification AND the executable.** There is no compiler. The AI agent reads the prose and behaves accordingly. The prose IS the program.
-
-Concrete consequences of this misalignment in v1.4.x:
-
-1. **Phase 1 exploration misclassifies SKILL.md.** It sees SKILL.md as "documentation" (an input to be consumed) rather than "the thing being specified" (the output under review). Requirements extraction treats the prose as a contract source, not as the artifact whose requirements are being derived.
-
-2. **The tier system doesn't map cleanly.** Tiers 1–5 assume documented intent lives in `formal_docs/` and implementation lives in source files. For an AI skill, documented intent AND implementation both live in SKILL.md. The tier a REQ should carry depends on a project-type question QPB never asks.
-
-3. **The five-phase requirements pipeline doesn't produce skill-shaped output.** Contract extraction → requirement derivation → verification → completeness → narrative works for extracting behavioral contracts from code+docs. It doesn't naturally produce "Phase 1 produces EXPLORATION.md with ≥8 concrete findings" from a section of SKILL.md prose.
-
-Haiku succeeded because the user's explicit instruction — "cover the entire skill, including the skill definition" — bypassed these implicit assumptions. For v1.5.2, the classification must happen mechanically, not depend on a user thinking of it.
-
----
-
-## Design — Project Type Classification
-
-Before Phase 1 begins, QPB performs a lightweight classification of the project under audit. Three categories:
-
-### Category 1: Code Project
-Examples: virtio, chi, cobra, express, httpx, gson.
-
-Signature: source code in conventional language (.c, .go, .js, .py, .java), optional `formal_docs/` with external specs or internal design docs, tests that exercise the source.
-
-Treatment: v1.5.0 divergence model applies directly. Formal docs are Tier 1/2 inputs. Source code is the implementation under review. Requirements are derived from the intersection of documented intent and observed behavior.
-
-### Category 2: Skill Project
-Examples: a pure AI skill — SKILL.md plus reference files, no orchestrator code. (Hypothetical; most skills grow orchestration over time and become hybrid.)
-
-Signature: SKILL.md at repository root, reference files in `references/` or similar, no substantial executable code. The "program" is prose.
-
-Treatment: skill-specific derivation pipeline. SKILL.md sections ARE the requirements. Divergence is measured by running the skill and inspecting produced artifacts against what each section promised.
-
-### Category 3: Hybrid Project
-Examples: QPB itself — SKILL.md plus `bin/` Python orchestration plus `quality_gate.py`.
-
-Signature: SKILL.md at root AND substantial executable code (orchestrators, validators, libraries).
-
-Treatment: both divergence models apply. SKILL.md is a skill under skill rules; `bin/` and `quality_gate.py` are code under code rules. Requirements and use cases must span both. Cross-cutting REQs trace prose claims in SKILL.md to code behavior in the orchestrator.
-
-### Classification Mechanism
-
-Classification is a Phase 0 step. Heuristic:
-
-- `SKILL.md` exists at repo root AND prose word count in SKILL.md exceeds code line count across the repo → Skill project
-- `SKILL.md` exists at repo root AND substantial code exists alongside it → Hybrid project
-- No `SKILL.md` at repo root → Code project
-
-The heuristic is a starting point, not a contract. The Council of Three in Phase 4 re-verifies the classification and can override it with rationale.
-
-The classification result is written to the run manifest and all downstream phases read it to choose derivation strategy.
-
----
-
-## Design — Skill-Specific Derivation Pipeline
-
-When classification is Skill or Hybrid, the requirements pipeline gets a skill-specific variant. The code pipeline still runs for the code portion of a Hybrid project.
-
-### Architecture: Generate-Then-Verify
-
-The skill pipeline uses a four-pass generate-then-verify architecture. The two halves of the problem — coverage breadth and citation precision — are different tasks with different failure modes, so each pass does what it's best at.
-
-**Pass A (Naive Coverage).** A Haiku-style prompt: "Read the skill. Understand what it does. Produce a comprehensive requirements document organized by functional area with testable acceptance criteria." No citation rigor required. Output: draft REQ list with proposed source references ("I think this comes from the Phase 1 section of SKILL.md"). High recall, low precision — tolerates overreach because Pass B will filter.
-
-Pass A is section-iterative for any skill above a small-input threshold (SKILL.md plus reference files exceeding a few hundred lines total). Rather than one prompt over the entire skill, Pass A walks the SKILL.md section tree in order, generating draft REQs for one section at a time, appending to a persistent drafts artifact, and advancing a section cursor. This is a direct response to the failure mode where single-shot generation over long inputs silently drops coverage on later sections under context pressure; the mechanical defense is per-section progress with disk as the ledger. See "Execution Discipline" below.
-
-**Critical constraint:** Pass A can propose source references but CANNOT produce `citation_excerpt` values. Only Pass B is allowed to populate excerpts, and only by mechanical extraction. This prevents hallucinated citations from laundering through.
-
-**Pass B (Citation Extraction).** For each draft REQ from Pass A, mechanically search SKILL.md and reference files for supporting text. Uses grep / structured parsing — not LLM judgment. Populates `citation_excerpt` where found. This is the same mechanical citation extractor v1.5.0 uses for code-project formal docs; no new machinery, repurposed machinery.
-
-**Pass C (Formal REQ Production).** Convert each cited draft into a proper REQ record with tier, ID, full citation schema (per v1.5.0). Drafts with failed citation search either:
-- Get rejected (no supporting text exists anywhere; probably a Pass A overreach)
-- Get demoted to Tier 5 (inferred from behavior, not documented) with a note
-
-**Pass D (Coverage Audit).** Diff Pass A's full draft list against Pass C's verified formal list. Draft REQs without formal equivalents need explicit rejection rationale. This catches the case where mechanical citation extraction missed something that should have been found — either the extractor needs a second try, or the Pass A item was an overreach, but the decision is explicit rather than silent.
-
-This architecture means each pass does one thing well: Pass A brings coverage (the Haiku strength), Pass B brings mechanical citation discipline (the v1.5.0 strength), Pass C brings formal structure, Pass D brings accountability for what the earlier passes missed or dropped.
-
-### Execution Discipline — Disk is the Ledger
-
-A generate-then-verify pipeline is only as reliable as its per-pass persistence. When any pass runs long — Pass A against a multi-thousand-line SKILL.md plus reference files, Pass B mechanically searching every draft REQ, Pass C converting hundreds of cited drafts into formal records — it must survive interruption and LLM auto-compaction without losing coverage. Three invariants follow, and they are correctness constraints, not performance optimizations:
-
-1. **Disk is the source of truth, not the model's working context.** Every pass writes its incremental output to a persistent artifact before advancing its cursor. The artifact — not the conversation history — is what the next pass reads. Intermediate artifacts are structured (JSONL for draft lists, JSON for progress state) so that downstream passes can resume without re-parsing unstructured prose.
-
-2. **Each pass has a cursor and resumes from it.** Pass A iterates sections of SKILL.md and reference files; Pass B iterates Pass A drafts; Pass C iterates cited drafts; Pass D iterates the Pass A list for diff. Each iteration updates a progress file atomically (tmp + rename) *after* the unit of work lands on disk. Killing a pass mid-run and restarting it continues from the last cursor position, not from scratch.
-
-3. **Compaction is routine, not exceptional.** Any LLM-driven pass prompt includes an explicit recovery procedure — re-read the pass instructions, read the progress file, verify continuity against the last-written artifact, resume from the cursor — because the prompt cannot assume its own working memory persists across an auto-compaction event.
-
-The empirical basis for these invariants: prior summarizer work on a comparable-scale input (14MB of chat history, thousands of records per file) showed that unbounded single-shot LLM generation over large inputs degrades into templated stub output or silently-skipped input regions once context pressure rises. The only mechanical defense is per-unit progress with disk as the ledger. Pass A over a 1,500-line SKILL.md plus multiple reference files is structurally the same problem; the pipeline treats it as such from the start rather than discovering it under load.
-
-### Why This Maps to Existing Infrastructure
-
-For code projects, the existing Phase 1 exploration IS the naive coverage pass — it explores the codebase, identifies modules and risks, generates hypotheses. That implicit coverage pass is what the skill-project path was missing: because QPB classifies SKILL.md as "documentation" rather than "the thing being explored," exploration-style coverage never happened for skills.
-
-Pass A is the skill-equivalent of Phase 1 exploration that code projects already have. For Hybrid projects, both explorations happen in parallel — code exploration for the `bin/` and `quality_gate.py`, skill exploration for SKILL.md and reference files.
-
-### Section-to-REQ Example
-
-SKILL.md section "Phase 1: Explore the Codebase" contains "write incremental findings to quality/EXPLORATION.md as each subsystem is explored."
-
-After Pass A: draft REQ "Phase 1 must produce EXPLORATION.md" with proposed source reference "Phase 1 section."
-After Pass B: mechanical extractor finds the exact sentence, populates `citation_excerpt`.
-After Pass C:
 ```
-REQ-101: Phase 1 produces quality/EXPLORATION.md
-  tier: 1 (skill's own SKILL.md is the formal spec)
-  source_type: skill-section
-  skill_section: "Phase 1: Explore the Codebase"
-  citation:
-    document: SKILL.md
-    section: "Phase 1: Explore the Codebase"
-    line: <actual line number>
-    citation_excerpt: "write incremental findings to quality/EXPLORATION.md as each subsystem is explored"
+| Feature bit              | PCI modern | MMIO | vDPA |
+| VIRTIO_F_RING_RESET      | YES        | NO   | NO   |
+| VIRTIO_F_NOTIF_CONFIG_DATA | NO       | NO   | NO   |
+| VIRTIO_F_ADMIN_VQ        | YES        | YES  | NO   |
+| VIRTIO_F_SR_IOV          | YES        | YES  | NO   |
 ```
 
-The tier-1 citation uses the v1.5.0 citation schema unchanged. `SKILL.md` becomes a Tier 1 formal doc when it's the thing being specified (Skill/Hybrid projects), which is a semantic but not structural change.
+Every `NO` cell was escalated to a bug. Four bugs. The table's presence is the mechanical artifact that made escalation automatic rather than discretionary.
 
-### Reference-File Coverage
+### v1.5.1 run: same finding, different verdict
 
-Passes A through D also run over each reference file (`references/exploration_patterns.md`, `references/review_protocols.md`, etc.). Cross-references between SKILL.md and reference files are noted — if SKILL.md says "see exploration_patterns.md for details" and the reference file describes a different pattern than SKILL.md implies, that's an internal divergence (see below).
+The v1.5.1 virtio benchmark correctly identified the same architectural asymmetry. `virtio-1.5.1/quality/code_reviews/2026-04-22-review.md` contains REQ-010 ("Do not silently drop supported transport feature bits"), status `PARTIALLY SATISFIED`, analysis: "Modern PCI compensates after the shared whitelist; MMIO/vDPA do not."
 
-### Use Cases from Execution Modes
+The verdict table row:
 
-UCs come from the skill's documented execution modes, not invented from high-level user stories. For QPB, this produces use cases like:
+```
+| Pass 1 / REQ-010 | QUESTION-001 — MMIO/vDPA transport-feature restoration gap | MEDIUM | QUESTION | N/A |
+```
 
-- UC-01: Interactive user runs Phase 1
-- UC-02: Interactive user continues to Phase 2
-- UC-03: Benchmark operator runs non-interactively
-- UC-04: Bootstrap self-audit
-- UC-05: Iteration mode (gap strategy)
-- (etc.)
+`QUESTION-001` is a question, not a bug. The BUGS.md hydration step reads BUG entries, not QUESTION entries. Four real kernel bugs disappeared from the ledger despite being identified structurally correctly, one review layer up. Same code, same reviewer quality, identical architectural reasoning — but a single prose verdict replaced a per-cell mechanical grid, and the escalation machinery had nothing to latch onto.
 
-Haiku's 10 UCs are a reasonable starting template for QPB's own case. For other skills, the equivalent comes from reading their SKILL.md for mode/trigger/protocol sections. The naive Pass A is also the right generator for UCs — same prompt style, same coverage bias.
-
-### Completeness Audit
-
-Every operational section of SKILL.md must produce at least one REQ after Pass D. Sections that produce zero REQs flag as a completeness gap — either the section is unnecessary prose (candidate for removal) or the derivation missed something.
-
-This is the skill analog of "every code module should have requirements." It's a mechanical check enforceable by the quality gate.
-
-### Narrative
-
-Same as the code pipeline: consolidate into REQUIREMENTS.md with functional sections, use cases, traceability. The structure follows the skill's own organization (phase-by-phase) rather than being invented.
+This is a systemic miss, not a one-off. The v1.4.6 run had the same downgrade pattern. Any symmetric pattern (`whitelist`, `parity`, `compensation`) where Phase 1 produces one umbrella requirement and Phase 2 produces one umbrella verdict will collapse the same way.
 
 ---
 
-## Design — Divergence Verification for Skills
+## Root Cause — Why One Verdict Eats N Bugs
 
-The v1.5.0 defect definition ("divergence between documented intent and code implementation") extends to three skill-specific categories:
+Two structural issues combine to produce the miss:
 
-### Category A: Internal Divergence
+**1. Phase 1 emits one use case per requirement, not one per implementation site.** REQ-010 references three finalize hooks (`virtio_pci_modern.c`, `virtio_mmio.c`, `virtio_vdpa.c`). The requirement is scoped at the architectural level — "supported transport feature bits preserved." Phase 2 receives a single UC and produces a single verdict. A Phase 2 reviewer asked "does MMIO comply with REQ-010?" has to produce a per-site judgment; a reviewer asked "are feature bits preserved across transports?" can and does hedge with "partially — PCI modern compensates; MMIO/vDPA do not," which reads as ambiguous and invites a QUESTION classification.
 
-Within-prose contradictions. SKILL.md section X says "do Y." Reference file Z contradicts X. Or SKILL.md says the gate checks 45 items in one paragraph and 43 items in another.
+**2. Phase 2 has no mechanical-grid obligation for symmetric requirements.** The v1.4.5 reviewer produced the compensation table on initiative. Nothing in `phase2_prompt()` requires it. When the v1.5.1 reviewer encountered the same requirement, they wrote the architectural finding as prose without enumerating cells. Missing cells had no place to go — the BUG-vs-QUESTION decision was made once for the umbrella rather than per cell.
 
-Detectable statically by comparing citations across REQs. If two Tier 1 REQs with citations to the same document disagree, that's a bug with disposition `spec-fix` (one or both sections need to be updated).
+Both failure modes are at the prompt layer. Both are fixable without changing iteration strategies, without Council changes, without schema additions that ripple through the rest of the stack.
 
-### Category B: Prose-to-Code Divergence
+---
 
-SKILL.md prose makes a claim about code behavior. Code doesn't match.
+## Design — Two Levers
 
-Example: SKILL.md says "the quality gate runs 45 mechanical checks." `quality_gate.py` runs 43 checks. Either the prose is stale (`spec-fix`) or the code is incomplete (`code-fix`).
+### Lever 1: Phase 1 cartesian use-case rule
 
-Detectable statically by mapping each prose claim about code to the code artifact that implements it. This is similar to citation verification in v1.5.0 but the "formal doc" and the "implementation" are within the same repo.
+**Rule.** When Phase 1 emits a requirement whose `References` field names ≥2 files that share a path-suffix role (e.g., `virtio_mmio.c`, `virtio_vdpa.c`, `virtio_pci_modern.c` all containing `_finalize_features`), `phase1_prompt()` also emits one use case per site. The parent REQ-N stays as the umbrella; UC-N.a, UC-N.b, UC-N.c (etc.) are the per-site use cases, each with its own Actors, Preconditions, Flow, and Postconditions.
 
-### Category C: Execution Divergence
+**Detection heuristic.** Path-suffix role match is the starting heuristic: group references by last-segment-before-extension or by matching function-name pattern across files. A future refinement is an explicit `pattern:` tag on the requirement (see Open Questions).
 
-SKILL.md says Phase 1 produces artifact X with properties Y. Actual benchmark runs produce X' or fail the gate checks that Y implies.
+**Worked example.** REQ-010 has `References: virtio_pci_modern.c:367-381, virtio_mmio.c:109-131, virtio_vdpa.c:389-396`. All three hooks match the `*_finalize_features` pattern. Phase 1 also emits:
 
-**Scope constraint (explicit, load-bearing):** execution divergence in v1.5.2 is detected by aggregating *existing `quality_gate.py` results across archived runs*, NOT by building a new LLM evaluation harness. The gate already mechanically evaluates each run — when EXPLORATION.md has < 120 lines, when artifact counts don't match, when required sections are missing, the gate already catches it. v1.5.2's job is to recognize patterns across multiple runs.
+- UC-10a: PCI modern feature preservation (actor: PCI modern transport; precondition: whitelist cleared RING_RESET / SR_IOV / ADMIN_VQ; flow: vp_transport_features restores them; postcondition: all three bits present in final features).
+- UC-10b: MMIO feature preservation (same structure; postcondition tests against vm_finalize_features).
+- UC-10c: vDPA feature preservation (same structure; postcondition tests against virtio_vdpa_finalize_features).
 
-Three constraints on the execution divergence implementation:
+Phase 2 now sees three concrete per-transport use cases plus the umbrella requirement, rather than one generic requirement.
 
-1. **Consume, don't produce.** v1.5.2 reads existing gate outputs from archived runs. No new evaluation machinery. The gate already does the mechanical judgment.
-2. **Pattern-match on structured results, not unstructured outputs.** Gate results are structured (check_id, pass/fail, rationale). Aggregating them across runs is a database query, not a parsing problem.
-3. **Accept the semantic blind spot explicitly.** Failures that pass the gate but represent real skill violations (LLM ignored the spirit of an instruction while technically satisfying the line-count check) are out of scope. Catching them would require semantic evaluation, which IS the eval harness work. Explicitly parked for later.
+### Lever 2: Phase 2 mechanical compensation grid
 
-What the check produces: bugs with `divergence_type = execution`, citing the SKILL.md promise, the gate check that implements it, and the set of archived runs where the gate failed. Example:
+**Rule.** For any requirement tagged with a `pattern:` value from the set `{whitelist, parity, compensation}`, `phase2_prompt()` produces a compensation grid of (item × site × present?) and applies this classification rule verbatim:
 
-> BUG-X: SKILL.md Phase 1 promises "≥8 concrete findings" (REQ-109). Archived gate results show check `phase1_finding_count >= 8` failed in 3 of 5 runs (run-2026-03-22, run-2026-04-01, run-2026-04-15). Disposition: candidate `spec-fix` (instruction too vague) or `code-fix` (prose needs sharper guidance). Council decides.
+> If an item is defined in the authoritative source (uapi header, spec section, or equivalent) AND is absent from the shared filter/whitelist AND is absent from the site's compensation hook, the default verdict for that cell is **BUG**. Downgrade to QUESTION requires a written per-cell "not-supported-in-scope" exception citing the authoritative source and explaining why the site intentionally does not support the item.
 
-Disposition for execution divergences:
-- `code-fix` applies to the skill's prose (the agent correctly followed ambiguous prose; tighten the prose)
-- `spec-fix` applies to the claim that was too optimistic
-- `mis-read` applies when the agent misinterpreted clear prose (LLM failure, not skill failure)
+**BUG-default, not QUESTION-default.** This is the central inversion. v1.5.1 defaulted missing cells to QUESTION and required evidence to upgrade to BUG. v1.5.2 defaults missing cells to BUG and requires evidence to downgrade to QUESTION. Four real kernel bugs disappear under the old default; they surface automatically under the new one. Review thoroughness is unchanged — only the direction of the default flips.
 
-Execution divergence is valuable because it catches real misalignment between what the skill promises and what agents deliver — but its reach is bounded by what the gate can mechanically check. The highest-impact improvements to this check come from making the gate more thorough, not from building new evaluation infrastructure.
+**Worked example.** REQ-010 with `pattern: whitelist` produces:
+
+```
+| Missing bit                | PCI modern  | MMIO        | vDPA        |
+| VIRTIO_F_SR_IOV (37)       | YES :372    | NO — BUG-A  | NO — BUG-B  |
+| VIRTIO_F_NOTIF_CONFIG_DATA | NO — BUG-C  | NO — BUG-C  | NO — BUG-C  |
+| VIRTIO_F_RING_RESET (40)   | YES :376    | NO — BUG-D  | NO — BUG-E  |
+| VIRTIO_F_ADMIN_VQ (41)     | YES :379    | NO — BUG-F  | NO — BUG-F  |
+```
+
+Six cells BUG by default. The reviewer can downgrade any cell to QUESTION with a per-cell rationale, but each downgrade stands on its own evidentiary basis — the whole family can no longer collapse into one umbrella QUESTION.
+
+**Out of scope for this lever.** No changes to iteration strategies. No changes to Council. No changes to the Tier taxonomy. No changes to the writeup hydration gate (v1.5.1's work stands). This is a prompt-layer change to Phase 1 and Phase 2 only, with a schema addition for the `pattern:` field.
+
+---
+
+## Design — Operational Polish
+
+Three smaller items ship alongside the bug-family work. Each stands on its own evidence.
+
+### Respect explicit --iterations
+
+**Observed failure.** `bin/run_playbook.py:2241-2244` and `:2306-2309` apply a diminishing-returns early-stop rule when an iteration strategy returns zero new bugs. The rule is correct for the `--full-run` macro (which is semantically "run until returns diminish") but surprising when the operator named strategies explicitly: `--iterations gap,unfiltered,parity,adversarial` can stop after parity returns +0, silently skipping adversarial despite the operator asking for it.
+
+**Rule.** Early-stop applies only when `--iterations` was expanded from `--full-run`. When the operator names strategies as an explicit list, every named strategy runs to completion regardless of preceding results. Operator intent wins over the macro heuristic.
+
+**Implementation scope.** argparse wiring distinguishes explicit-list from full-run-expanded. Two early-stop sites guard on the flag. No other runner changes.
+
+### README CLI documentation
+
+**Observed gap.** The current README explains how to run the playbook but does not document the interaction between `--phase`, `--iterations`, `--full-run`, and `--next-iteration`. A user running `--full-run` on a large repo overnight and hitting a 54-hour rate-limit has no warning in the README that this is a possibility. The documentation exists in CLAUDE.md and in ai_context, but not in the README.
+
+**Content to add.**
+
+1. New subsection "Running the playbook: phases, iterations, and macros" after the existing "Run the playbook" step, explaining the six phases, the four iteration strategies, and the three top-level invocation modes (`--phase all`, `--iterations <list>`, `--full-run`).
+2. New "Rate limits" paragraph in the warnings area, documenting the GPT-5.4 Copilot 54-hour cooldown observed on a 15M-token single prompt during the casbin 1.5.1 run, with recommendations to stagger iterations and use `--pace-seconds`.
+
+### Runner reliability for long iteration prompts
+
+**Observed failure.** During the chi-1.5.1 adversarial iteration, the Copilot prompt consumed ~5 minutes 17 seconds and ~1.6M tokens before terminating. The agent had identified BUG-010 and BUG-011 candidates in its internal plan, but the session terminated between the "plan" and "write" phases with `Changes +0 -0` on disk. Two real findings lost.
+
+**Design direction.** Incremental write during iteration prompts. After the agent identifies a candidate bug, it writes a stub entry to `quality/code_reviews/<iteration>.md` immediately with at minimum a candidate ID and file:line anchor. Full details are filled in subsequently. If the session terminates mid-prompt, at least the candidate IDs survive to disk.
+
+**Scope decision.** v1.5.2 ships this as a **prompt-only** change — add a "write candidate stubs on identification, not at end-of-review" instruction to `iteration_prompt()`. Runner-level checkpointing (heartbeat files, explicit resume tokens) is parked for v1.5.3 pending evidence that the prompt-only fix is insufficient.
 
 ---
 
@@ -235,53 +137,27 @@ Execution divergence is valuable because it catches real misalignment between wh
 
 v1.5.2 is successful if:
 
-1. **QPB's self-audit matches the Haiku benchmark.** Running QPB v1.5.2 against itself produces requirements with coverage comparable to the Haiku-generated REQUIREMENTS.md — at least 10 use cases spanning all operational modes, REQs organized by phase covering each phase's artifacts and gates, explicit requirements for SKILL.md sections and reference files. The target is parity with Haiku's 95 REQ count (±20%), structured phase-by-phase.
+1. **RING_RESET family recovers on virtio.** A fresh `virtio-1.5.2` benchmark run produces BUGS.md entries covering VIRTIO_F_RING_RESET (MMIO), VIRTIO_F_RING_RESET (vDPA), VIRTIO_F_NOTIF_CONFIG_DATA (all transports), VIRTIO_F_ADMIN_VQ (vDPA), and VIRTIO_F_SR_IOV (vDPA). Target: at least four BUG entries traceable to the compensation grid for REQ-010 (or its v1.5.2 equivalent).
 
-   **Coverage diff test:** Pass A's full draft list run against QPB should be within 10% of Haiku's REQ count. Pass D (coverage audit) should produce an explicit rejection rationale for every draft REQ that didn't make it into the formal list — no silent drops. This is the falsifiable check on whether the generate-then-verify architecture actually delivers Haiku-level breadth.
+2. **No yield regression on other benchmarks.** chi-1.5.2, cobra-1.5.2, and bootstrap produce bug counts within ±15% of their v1.5.1 baselines. The compensation-grid rule is purely additive — it surfaces previously-missed bugs without suppressing existing ones.
 
-2. **Project type classification is correct across the benchmark.** virtio, chi, cobra, express, httpx all classify as Code. QPB classifies as Hybrid. A pure-skill test fixture (create one if none exists) classifies as Skill.
+3. **Explicit --iterations is honored.** `python3 bin/run_playbook.py virtio-1.5.2 --iterations gap,unfiltered,parity,adversarial` runs all four strategies even when one returns +0. `python3 bin/run_playbook.py virtio-1.5.2 --full-run` preserves early-stop behavior.
 
-3. **Execution divergence catches at least one real bug in QPB's own bootstrap history.** Across the archived `previous_runs/` directories, at least one "skill promises X, actual run produced X'" divergence exists. v1.5.2 should surface it.
+4. **README documents CLI semantics.** A fresh reader can answer "how do I run just adversarial?", "what happens on `--full-run` overnight?", and "what's the rate-limit risk?" from the README alone.
 
-4. **Cross-model consistency.** Running v1.5.2 against QPB with claude-opus, claude-sonnet, and copilot+gpt produces self-audits with comparable coverage (within 20% REQ count, same use case set).
+5. **Candidate-stub writes survive interruption.** A forced kill of an iteration prompt mid-run leaves at least the candidate IDs and file:line anchors of bugs identified before the kill point on disk in `quality/code_reviews/`. Verified by scripted interrupt test.
 
-5. **No regression on code projects.** The five code-project benchmark runs (virtio, chi, cobra, express, httpx) produce bug yields within ±10% of the v1.5.0 baseline.
-
----
-
-## Provenance
-
-### The Haiku demonstration (2026-04-19)
-
-Andrew ran a session with claude-haiku-4-5-20251001 that exposed the gap. The full chat is preserved at `AI Chat History/Cowork-2026-04-19-Haiku QPB requirements analysis.md`. Key sequence:
-
-1. First prompt asked Haiku to answer three questions about the system given docs_gathered and REQUIREMENTS.md. Haiku correctly identified the coverage gap: "What REQUIREMENTS.md does NOT cover: the skill definition itself (SKILL.md — ~1,500 lines, the operational playbook), phase-specific reference files, the orchestrator agent prompts and interactive execution paths."
-
-2. Second prompt asked Haiku to generate a comprehensive REQUIREMENTS.md covering the entire skill, explicitly instructing it to "use the requirements documentation to understand the rationale and intent behind the features in the skill, and make sure the use cases completely reflect that intent."
-
-3. Haiku produced a 2,129-line document with phase-organized REQs and 10 use cases — substantially more comprehensive than QPB's self-audit despite using a smaller model with a simple two-turn interaction.
-
-### Andrew's reframing
-
-Andrew's message introducing the problem: "The Quality Playbook does a great job with code, but it's still lacking for AI skills. The main problem is that it doesn't capture the actual skill requirements, even when provided the full skill source and a complete AI chat history."
-
-The critical insight: if Haiku can do this with simple prompts, the limitation isn't model capability — it's the skill's own mental model not accommodating the skill-project case.
-
-### Design conversation
-
-The core design move — project type classification at Phase 0 — came from recognizing that the v1.5.0 tier system and divergence model assume spec-and-implementation are distinct artifacts. For AI skills they're not. The classification bifurcates the derivation pipeline so the right model is applied to the right project.
-
-The three-category divergence taxonomy (internal, prose-to-code, execution) emerged from asking "where does a skill's documented intent actually fail?" Internal = prose contradicts itself. Prose-to-code = prose contradicts supporting code. Execution = prose contradicts what agents actually produce. All three are real and each requires different detection machinery.
+6. **Self-audit passes cleanly on v1.5.2.** QPB's bootstrap self-audit with v1.5.2 machinery passes the gate with no new regressions and surfaces any real v1.5.2-introduced prose/code drift for triage.
 
 ---
 
 ## Out of Scope for v1.5.2
 
-- Runtime skill validation (having QPB actually execute another skill and observe behavior in real time). Execution divergence in v1.5.2 uses archived prior runs, not live runs.
-- Automatic skill repair (generating proposed fixes to SKILL.md prose). v1.5.2 detects and reports; repair is future work.
-- Skill benchmarking infrastructure (comparing skills to each other on standardized tasks). Adjacent but separate.
-- Non-markdown skill formats (skills written in YAML, structured prompts, etc.). v1.5.2 assumes markdown SKILL.md.
-- **LLM evaluation harness for semantic divergence.** Detecting cases where the LLM technically satisfies a gate check but ignores the spirit of an instruction (e.g., produces generic reasoning when the prose demands domain-specific reasoning) requires semantic evaluation of LLM outputs. That's a distinct engineering discipline (parsing unstructured outputs, grading intermediate LLM thoughts, statistical reliability frameworks). v1.5.2 does NOT go there. Execution divergence stays bounded by what `quality_gate.py` mechanically checks. Semantic divergence is parked as a potential v1.6+ investigation or as a separate tool.
+- **AI-skill project handling** (project-type classification, skill-specific four-pass derivation, Haiku-parity requirements). Renumbered to v1.5.3 in a separate scope doc.
+- **Runner-level checkpointing** (heartbeat files, resume tokens, structured kill-resume protocol). Parked for v1.5.3 or later pending evidence that the prompt-only incremental-write fix is insufficient.
+- **New iteration strategies.** The four existing strategies (gap, unfiltered, parity, adversarial) stand. Bug-family amplification operates at Phase 1 and Phase 2 regardless of which iteration is running.
+- **Changes to the writeup hydration gate.** v1.5.1's five-sentinel and empty-diff-fence checks stand unchanged.
+- **`pattern:` tag auto-inference from code structure.** v1.5.2 requires `pattern:` to be populated by the Phase 1 reviewer (with guidance from the prompt). Auto-inference from references structure is a possible future refinement but not required for recovery of the RING_RESET family.
 
 ---
 
@@ -289,14 +165,32 @@ The three-category divergence taxonomy (internal, prose-to-code, execution) emer
 
 These don't block v1.5.2 design but need answers during implementation:
 
-1. **How many prior runs are needed for execution divergence to be statistically meaningful?** Lean: 3 minimum, with a confidence note when fewer.
+1. **Does every requirement need a `pattern:` tag, or only a subset?** Lean: optional field, populated when the architecture implies a pattern (whitelist / parity / compensation / none). Default is none, which means no grid is produced. The grid is opt-in via the tag.
 
-2. **Should reference files each be a separate FORMAL_DOC, or consolidated as one under SKILL.md?** Lean: separate, because they have independent edit histories and can contradict each other.
+2. **How does Phase 1's cartesian rule detect "symmetric sites" automatically?** Lean: path-suffix match on the `References` field is the v1.5.2 implementation. If Phase 1 judgment disagrees, the reviewer can override by explicit UC emission or by dropping the suffix match. Auto-detection precision is tunable; missing a symmetric set is safer than generating false per-site UCs.
 
-3. **When SKILL.md is Tier 1 (its own formal spec), what authority resolves SKILL.md-vs-reference-file conflicts?** Lean: SKILL.md wins because it's the primary; reference files are supporting. Explicit precedence rule in `schemas.md`.
+3. **How does the cartesian rule interact with existing REQ numbering?** Lean: REQ-N stays as the umbrella, UC-N.a/b/c are sub-use-cases. `use_cases_manifest.json` already supports free-form IDs. No schema change for numbering.
 
-4. **Can the Hybrid case have mixed tier distributions (some REQs Tier 1 from SKILL.md, others Tier 1 from an external spec)?** Lean: yes. The tier depends on REQ origin, not project.
+4. **What counts as "authoritative source" for the BUG-default rule in Lever 2?** Lean: uapi headers, explicit spec text (RFC sections, API reference docs), or documented constants with a definition citation. Speculative lists assembled by the reviewer do not qualify. The compensation grid's authority floor is the same as the playbook's existing Tier-1/Tier-2 citation discipline.
 
-5. **What is the unit of iteration for Pass A, and how does it handle nested subsections?** Lean: top-level heading (`##` in SKILL.md) is the default iteration unit. Sections exceeding an implementation-defined line threshold (candidate: 300 lines) get split at the next heading level down. Meta sections (Why This Exists, Overview) and near-empty sections are skipped with an explicit skip-rationale line written to the drafts artifact so Pass D can account for every section even when it produced zero REQs.
+5. **Should the runner reliability fix write stubs for ALL candidates, or only confirmed ones?** Lean: all candidates with file:line anchors, marked `status: candidate`. Filtering to confirmed-only defeats the survival purpose — the whole point is to preserve intent before confirmation machinery runs.
 
-6. **What triggers the section-iterative path versus single-shot Pass A?** Lean: any skill where SKILL.md plus reference files together exceed a threshold (candidate: 500 lines total). Smaller skills run Pass A single-shot and skip the cursor machinery. The threshold is tunable and logged in the run manifest.
+---
+
+## Provenance
+
+### The 1.5.1 RING_RESET miss (2026-04-22)
+
+During the v1.5.1 benchmark review, the chi-1.5.1 and virtio-1.5.1 runs were compared against v1.4.5 and v1.4.6 baselines. virtio-1.5.1 produced 8 bugs matching the v1.4.6 baseline, but the v1.4.5 four-bug RING_RESET family was absent. Investigation of `virtio-1.5.1/quality/code_reviews/2026-04-22-review.md` found REQ-010 correctly identifying the MMIO/vDPA compensation gap but classified as `QUESTION-001`. Cross-reference against `benchmark-1.4.5/virtio-1.4.5/quality/code_reviews/2026-04-18-reviewer.md` showed the mechanical compensation table that caught the four bugs in v1.4.5.
+
+### The chi-1.5.1 adversarial data loss (2026-04-22)
+
+During the chi-1.5.1 adversarial iteration on Copilot, a 5m17s / 1.6M-token prompt terminated with `Changes +0 -0`. The agent's transcript contained plans for BUG-010 (ContentCharset quoted charset) and BUG-011 (RouteHeaders uppercase exact-match), but no disk writes. This motivated the runner-reliability scope.
+
+### The casbin-1.5.1 rate-limit hit (same window)
+
+During a parallel casbin-1.5.1 full-run, a single Copilot prompt exceeded 15M tokens and triggered the GPT-5.4 54-hour cooldown. This motivated the README rate-limit paragraph.
+
+### Scope split from AI-skills v1.5.2
+
+The prior v1.5.2 scope (AI skills: project-type classification, four-pass derivation, Haiku benchmark) was renumbered to v1.5.3 on 2026-04-22 so bug-family amplification could ship as a tightly-scoped release without waiting on the larger AI-skills work. See `QPB_v1.5.3_Design.md`.
