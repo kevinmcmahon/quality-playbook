@@ -592,17 +592,75 @@ def phase1_prompt(no_seeds: bool) -> str:
 
 {seed_instruction}
 
-Execute Phase 1: Explore the codebase. The docs_gathered/ directory contains gathered documentation - read it to supplement your exploration.
+Execute Phase 1: Explore the codebase. The reference_docs/ directory contains gathered documentation - read it to supplement your exploration. Top-level files are Tier 4 context (AI chats, design notes, retrospectives). Files under reference_docs/cite/ are citable sources (project specs, RFCs). If reference_docs/ is missing or empty, proceed with Tier 3 evidence (source tree) alone and note this in EXPLORATION.md.
 
 When Phase 1 is complete, write your full exploration findings to quality/EXPLORATION.md. This file must contain:
 - Domain and stack identification
 - Architecture map (key modules, entry points, data flow)
 - Existing test inventory
-- Specification summary (from docs_gathered/ and any inline docs)
+- Specification summary (from reference_docs/ and any inline docs)
 - Quality risks identified
 - Skeleton/dispatch/state-machine analysis (if applicable)
 - Testable requirements derived (REQ-NNN format)
 - Use cases derived (UC-NN format)
+
+### MANDATORY CARTESIAN UC RULE (Lever 1, v1.5.2)
+
+For every requirement with a `References` field naming ≥2 files (or ≥2 file:line ranges in distinct files), apply the **Cartesian eligibility check** before deciding whether to emit a single umbrella UC or per-site UCs:
+
+**Gate 1 — Path-suffix match.** At least two references must share a path-suffix role: the last segment before the extension, or a matching function-name pattern that appears across the files.
+- Example of a match: `virtio_mmio.c`, `virtio_vdpa.c`, `virtio_pci_modern.c` all implement `_finalize_features`. The `_finalize_features` function is the shared role.
+- Example of a non-match: `CONFIG_FOO`, `CONFIG_BAR` flags in the same kconfig file — same kind of thing, but not parallel implementations.
+
+**Gate 2 — Function-level similarity.** Each matching reference must cite a line range of similar size (within 2× of the median) and each range must be inside a function body — not a file-header, a kconfig block, or a macro expansion list.
+
+**Decision:**
+- **Both gates pass →** emit one UC per site, numbered `UC-N.a`, `UC-N.b`, `UC-N.c`, …  Each per-site UC has its own Actors, Preconditions, Flow, Postconditions. The parent REQ-N remains as the umbrella.
+- **Only Gate 1 passes →** keep a single umbrella UC and mark the reference cluster `heterogeneous` in a `<!-- cluster: heterogeneous -->` HTML comment in the UC body. Phase 3 can still override if it finds per-site divergence.
+- **Neither gate passes →** single umbrella UC, no special marking.
+
+### Worked example — REQ-010 / VIRTIO_F_RING_RESET (virtio)
+
+Suppose Phase 1 derives:
+
+    ### REQ-010: Virtio transports must honor VIRTIO_F_RING_RESET negotiation
+    - References: drivers/virtio/virtio_mmio.c, drivers/virtio/virtio_vdpa.c, drivers/virtio/virtio_pci_modern.c
+    - Pattern: whitelist
+
+Applying the Cartesian check:
+- Gate 1: all three files contain `_finalize_features` functions — matches.
+- Gate 2: each cited range is inside a function body of similar size — matches.
+
+Both gates pass → emit per-site UCs:
+
+    ### UC-10.a: VIRTIO_F_RING_RESET on PCI modern transport
+    - Actors: virtio_pci_modern driver, guest kernel
+    - Preconditions: device advertises VIRTIO_F_RING_RESET
+    - Flow: vp_modern_finalize_features propagates bit through config space …
+    - Postconditions: feature_bit reflected in final config
+
+    ### UC-10.b: VIRTIO_F_RING_RESET on MMIO transport
+    - Actors: virtio_mmio driver, guest kernel
+    - Preconditions: device advertises VIRTIO_F_RING_RESET
+    - Flow: vm_finalize_features must mirror PCI modern behavior …
+    - Postconditions: feature_bit survives finalize call
+
+    ### UC-10.c: VIRTIO_F_RING_RESET on vDPA transport
+    - Actors: virtio_vdpa driver, vdpa device backend
+    - Preconditions: device advertises VIRTIO_F_RING_RESET
+    - Flow: virtio_vdpa_finalize_features forwards through set_driver_features …
+    - Postconditions: feature_bit visible to vdpa backend
+
+### CONFIRMATION CHECKLIST (Cartesian UC rule)
+
+Before completing Phase 1, confirm each item explicitly in EXPLORATION.md under a section titled "Cartesian UC rule confirmation":
+
+1. For every REQ with ≥2 References, I ran Gate 1 (path-suffix match).
+2. For every REQ that passed Gate 1, I ran Gate 2 (function-level similarity).
+3. Where both gates passed, I emitted per-site UCs (UC-N.a, UC-N.b, …).
+4. Where only Gate 1 passed, I marked the cluster `<!-- cluster: heterogeneous -->`.
+5. Where neither gate passed, I kept a single umbrella UC without marking.
+6. For each REQ with a pattern match in Gate 1, I added `Pattern: whitelist|parity|compensation` to the REQ block.
 
 Also initialize quality/PROGRESS.md with the run metadata and the phase tracker in the EXACT checkbox format below. This format is a hard contract: the Phase 5 gate checks for the substring `- [x] Phase 4` before allowing reconciliation to start, and it only matches the checkbox form. Do NOT substitute a Markdown table, bulleted prose, or any other layout — table-format runs have aborted mid-pipeline because the gate does not see "Complete" in a table cell as equivalent.
 
