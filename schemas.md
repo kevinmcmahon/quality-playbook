@@ -519,6 +519,14 @@ for that REQ (see §Phase 3 prompt contract). The grid enumerates
 `quality/compensation_grid_downgrades.json`. The Phase 5 cardinality gate
 hard-fails on any uncovered cell.
 
+Grid cell shape: every cell carries `cell_id`, `item`, `site`, and `present`
+(boolean). Cells where `present` is `true` MUST additionally carry an
+`evidence` field: a non-empty string in `<relative-path>:<line>` or
+`<relative-path>:<line-start>-<line-end>` form. Absent/empty/malformed
+`evidence` on a `present:true` cell fails the cardinality gate. This closes
+the C13.6/B2 bypass where a reviewer could claim a cell was present without
+supplying any anchor for the claim.
+
 Valid `pattern` values:
 
 - `whitelist` — authoritative list of items (e.g. feature bits, syscalls)

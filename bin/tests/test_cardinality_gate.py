@@ -254,12 +254,12 @@ class CardinalityGateTests(unittest.TestCase):
                     "REQ-001": {
                         "pattern": "whitelist",
                         "items": ["A"], "sites": ["S"],
-                        "cells": [{"cell_id": "REQ-001/cell-A-S", "item": "A", "site": "S", "present": True}],
+                        "cells": [{"cell_id": "REQ-001/cell-A-S", "item": "A", "site": "S", "present": True, "evidence": "src/a.py:10"}],
                     },
                     "REQ-002": {
                         "pattern": "parity",
                         "items": ["B"], "sites": ["S"],
-                        "cells": [{"cell_id": "REQ-002/cell-B-S", "item": "B", "site": "S", "present": True}],
+                        "cells": [{"cell_id": "REQ-002/cell-B-S", "item": "B", "site": "S", "present": True, "evidence": "src/b.py:20"}],
                     },
                 },
             }
@@ -284,7 +284,7 @@ class CardinalityGateTests(unittest.TestCase):
                     "REQ-001": {
                         "pattern": "whitelist",
                         "items": ["A"], "sites": ["S"],
-                        "cells": [{"cell_id": "REQ-001/cell-A-S", "item": "A", "site": "S", "present": True}],
+                        "cells": [{"cell_id": "REQ-001/cell-A-S", "item": "A", "site": "S", "present": True, "evidence": "src/a.py:10"}],
                     },
                 },
             }
@@ -401,6 +401,84 @@ class CardinalityGateTests(unittest.TestCase):
                 "Expected 'uncovered cells' failure naming REQ-010/cell-Y-MMIO; got: {!r}".format(failures),
             )
     # -----------------------------------------------------------------------
+
+    # ---- present:true evidence requirement (Round 5 Finding B2) ----
+    def _grid_with_cell(self, cell_spec):
+        """Build a compensation_grid.json around one cell spec dict."""
+        return {
+            "schema_version": "1.5.2",
+            "reqs": {
+                "REQ-010": {
+                    "pattern": "whitelist",
+                    "items": ["X"], "sites": ["MMIO"],
+                    "cells": [cell_spec],
+                },
+            },
+        }
+
+    def test_present_true_cell_without_evidence_fails(self):
+        """Bypass case: {present: true} with no evidence field passes the
+        pre-fix gate silently. Post-fix, it must emit the evidence failure."""
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d)
+            q = repo / "quality"
+            cell = {"cell_id": "REQ-010/cell-X-MMIO", "item": "X", "site": "MMIO", "present": True}
+            _write(q / "compensation_grid.json", json.dumps(self._grid_with_cell(cell)))
+            _write(q / "REQUIREMENTS.md", _requirements_md("REQ-010"))
+            _write(q / "BUGS.md", "")
+            failures = quality_gate.validate_cardinality_gate(repo)
+            self.assertTrue(
+                any(
+                    "REQ-010/cell-X-MMIO" in f and "present:true" in f and "evidence" in f
+                    for f in failures
+                ),
+                "Expected 'present:true requires ... evidence ...' diagnostic naming the cell; got: {!r}".format(failures),
+            )
+
+    def test_present_true_cell_with_malformed_evidence_fails(self):
+        """Bypass case: evidence is a non-empty string but not file:line form.
+        Gate must reject it and name the regex expectation."""
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d)
+            q = repo / "quality"
+            cell = {
+                "cell_id": "REQ-010/cell-X-MMIO",
+                "item": "X", "site": "MMIO", "present": True,
+                "evidence": "foo",
+            }
+            _write(q / "compensation_grid.json", json.dumps(self._grid_with_cell(cell)))
+            _write(q / "REQUIREMENTS.md", _requirements_md("REQ-010"))
+            _write(q / "BUGS.md", "")
+            failures = quality_gate.validate_cardinality_gate(repo)
+            self.assertTrue(
+                any(
+                    "REQ-010/cell-X-MMIO" in f and "file:line" in f and "'foo'" in f
+                    for f in failures
+                ),
+                "Expected 'evidence must be file:line' diagnostic quoting 'foo'; got: {!r}".format(failures),
+            )
+
+    def test_present_true_cell_with_valid_evidence_passes(self):
+        """Positive case: evidence matches the file:line regex (both single-
+        line and line-range forms)."""
+        for evidence in ("drivers/virtio/virtio_ring.c:1234", "drivers/virtio/virtio_ring.c:1200-1250"):
+            with tempfile.TemporaryDirectory() as d:
+                repo = Path(d)
+                q = repo / "quality"
+                cell = {
+                    "cell_id": "REQ-010/cell-X-MMIO",
+                    "item": "X", "site": "MMIO", "present": True,
+                    "evidence": evidence,
+                }
+                _write(q / "compensation_grid.json", json.dumps(self._grid_with_cell(cell)))
+                _write(q / "REQUIREMENTS.md", _requirements_md("REQ-010"))
+                _write(q / "BUGS.md", "")
+                failures = quality_gate.validate_cardinality_gate(repo)
+                self.assertEqual(
+                    failures, [],
+                    "Expected clean pass for evidence={!r}; got: {!r}".format(evidence, failures),
+                )
+    # ----------------------------------------------------------------
 
 
 if __name__ == "__main__":

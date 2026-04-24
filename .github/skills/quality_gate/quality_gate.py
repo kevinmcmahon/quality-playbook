@@ -99,6 +99,10 @@ _CONSOLIDATION_RE = re.compile(
 
 _BUG_HEADING_RE = re.compile(r"^###\s+BUG-(\d+):", re.MULTILINE)
 
+# v1.5.2 (C13.6/B2) — evidence locator for present:true grid cells.
+# Relative path + ``:N`` or ``:N-M`` line reference. No absolute paths, no URLs.
+_EVIDENCE_RE = re.compile(r"^[^:]+:\d+(-\d+)?$")
+
 
 def _parse_covers(bug_block):
     m = _COVERS_RE.search(bug_block)
@@ -299,6 +303,27 @@ def validate_cardinality_gate(repo_dir):
             if isinstance(c, dict) and c.get("present") is False
         }
         absent_cells.discard(None)
+
+        # v1.5.2 (C13.6/B2): present:true cells must carry a non-empty
+        # 'evidence' field in file:line form. Without this, a reviewer or LLM
+        # can claim any cell is present, supply nothing, and the gate accepts
+        # it — the bypass Round 5 Council called the highest remaining risk.
+        for c in cells:
+            if not isinstance(c, dict) or c.get("present") is not True:
+                continue
+            cell_id = c.get("cell_id") or "<no cell_id>"
+            evidence = c.get("evidence")
+            if not evidence or not isinstance(evidence, str) or not evidence.strip():
+                failures.append(
+                    "{}: present:true requires non-empty 'evidence' field with file:line citation".format(cell_id)
+                )
+                continue
+            if not _EVIDENCE_RE.match(evidence.strip()):
+                failures.append(
+                    "{}: 'evidence' must be file:line (e.g. 'path/to.c:123' or 'path/to.c:120-140'); got {!r}".format(
+                        cell_id, evidence
+                    )
+                )
 
         covered = covers_by_req.get(req_id, set())
         downgraded = downgrade_cells_by_req.get(req_id, set())
