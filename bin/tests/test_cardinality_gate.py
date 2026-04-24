@@ -231,6 +231,110 @@ class CardinalityGateTests(unittest.TestCase):
             failures = quality_gate.validate_cardinality_gate(repo)
             self.assertTrue(any("Consolidation rationale" in f for f in failures))
 
+    # ---- Grid-omission cross-check (Round 4 Council convergent finding) ----
+    def _two_req_requirements_md(self, reqs):
+        """reqs: list of (req_id, pattern_or_None) tuples."""
+        out = ["# Requirements\n\n"]
+        for req_id, pattern in reqs:
+            out.append("### {}: test requirement\n".format(req_id))
+            out.append("- Summary: test\n")
+            if pattern is not None:
+                out.append("- Pattern: {}\n".format(pattern))
+            out.append("\n")
+        return "".join(out)
+
+    def test_grid_contains_all_pattern_tagged_reqs_passes(self):
+        """Positive case: every pattern-tagged REQ appears in the grid."""
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d)
+            q = repo / "quality"
+            grid = {
+                "schema_version": "1.5.2",
+                "reqs": {
+                    "REQ-001": {
+                        "pattern": "whitelist",
+                        "items": ["A"], "sites": ["S"],
+                        "cells": [{"cell_id": "REQ-001/cell-A-S", "item": "A", "site": "S", "present": True}],
+                    },
+                    "REQ-002": {
+                        "pattern": "parity",
+                        "items": ["B"], "sites": ["S"],
+                        "cells": [{"cell_id": "REQ-002/cell-B-S", "item": "B", "site": "S", "present": True}],
+                    },
+                },
+            }
+            _write(q / "compensation_grid.json", json.dumps(grid))
+            _write(
+                q / "REQUIREMENTS.md",
+                self._two_req_requirements_md([("REQ-001", "whitelist"), ("REQ-002", "parity")]),
+            )
+            _write(q / "BUGS.md", "")
+            self.assertEqual(quality_gate.validate_cardinality_gate(repo), [])
+
+    def test_pattern_tagged_req_missing_from_grid_fails(self):
+        """Grid-omission case: REQ-002 is pattern-tagged in REQUIREMENTS.md
+        but missing from compensation_grid.json. Gate must surface exactly one
+        failure naming REQ-002 and its pattern."""
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d)
+            q = repo / "quality"
+            grid = {
+                "schema_version": "1.5.2",
+                "reqs": {
+                    "REQ-001": {
+                        "pattern": "whitelist",
+                        "items": ["A"], "sites": ["S"],
+                        "cells": [{"cell_id": "REQ-001/cell-A-S", "item": "A", "site": "S", "present": True}],
+                    },
+                },
+            }
+            _write(q / "compensation_grid.json", json.dumps(grid))
+            _write(
+                q / "REQUIREMENTS.md",
+                self._two_req_requirements_md([("REQ-001", "whitelist"), ("REQ-002", "parity")]),
+            )
+            _write(q / "BUGS.md", "")
+            failures = quality_gate.validate_cardinality_gate(repo)
+            matches = [f for f in failures if "REQ-002" in f and "compensation_grid.json" in f]
+            self.assertEqual(
+                len(matches), 1,
+                "Expected exactly one failure naming REQ-002; got failures: {!r}".format(failures),
+            )
+            self.assertIn("parity", matches[0])
+
+    def test_req_without_pattern_not_in_grid_passes(self):
+        """Not-tagged-not-in-grid case: REQ-001 has no Pattern field; no grid
+        entry is required. Gate passes with no failure from the cross-check."""
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d)
+            q = repo / "quality"
+            _write(
+                q / "REQUIREMENTS.md",
+                self._two_req_requirements_md([("REQ-001", None)]),
+            )
+            # No grid file at all — legitimate when no REQ is pattern-tagged.
+            self.assertEqual(quality_gate.validate_cardinality_gate(repo), [])
+
+    def test_invalid_req_pattern_value_fails(self):
+        """Invalid pattern case: REQUIREMENTS.md carries ``- Pattern: bogus``.
+        ValueError from extract_req_pattern() must be surfaced as a
+        REQUIREMENTS.md failure rather than crash the gate."""
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d)
+            q = repo / "quality"
+            _write(q / "compensation_grid.json", json.dumps({"schema_version": "1.5.2", "reqs": {}}))
+            _write(
+                q / "REQUIREMENTS.md",
+                self._two_req_requirements_md([("REQ-001", "bogus")]),
+            )
+            _write(q / "BUGS.md", "")
+            failures = quality_gate.validate_cardinality_gate(repo)
+            self.assertTrue(
+                any("REQUIREMENTS.md:" in f and "bogus" in f for f in failures),
+                "Expected a REQUIREMENTS.md failure naming 'bogus'; got: {!r}".format(failures),
+            )
+    # -----------------------------------------------------------------------
+
 
 if __name__ == "__main__":
     unittest.main()

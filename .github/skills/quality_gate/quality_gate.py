@@ -152,6 +152,30 @@ def _read_text_safe(path):
         return ""
 
 
+_REQ_HEADING_RE = re.compile(r"^###\s+(REQ-\d+):", re.MULTILINE)
+
+
+def _enumerate_pattern_tagged_reqs(req_text):
+    """Return {req_id: pattern} for every ### REQ-NNN: block in REQUIREMENTS.md
+    that carries a ``- Pattern: <value>`` line.
+
+    Raises ValueError if any block's pattern value is not in
+    VALID_PATTERN_VALUES (delegated to extract_req_pattern()). Blocks without a
+    Pattern field are omitted from the result (they're not pattern-tagged).
+    """
+    if not req_text:
+        return {}
+    positions = [(m.start(), m.group(1)) for m in _REQ_HEADING_RE.finditer(req_text)]
+    result = {}
+    for idx, (start, req_id) in enumerate(positions):
+        end = positions[idx + 1][0] if idx + 1 < len(positions) else len(req_text)
+        block = req_text[start:end]
+        pattern = extract_req_pattern(block)
+        if pattern is not None:
+            result[req_id] = pattern
+    return result
+
+
 def validate_cardinality_gate(repo_dir):
     """Run the v1.5.2 cardinality reconciliation gate.
 
@@ -167,11 +191,12 @@ def validate_cardinality_gate(repo_dir):
     failures = []
     q = Path(repo_dir) / "quality"
 
+    req_text = _read_text_safe(q / "REQUIREMENTS.md")
+
     grid_path = q / "compensation_grid.json"
     grid = _load_json_or_none(grid_path)
     if grid is None:
         # No grid file: only a problem if any pattern-tagged REQs exist.
-        req_text = _read_text_safe(q / "REQUIREMENTS.md")
         if _REQ_PATTERN_RE.search(req_text):
             failures.append(
                 "cardinality gate: pattern-tagged REQs exist but "
@@ -183,6 +208,21 @@ def validate_cardinality_gate(repo_dir):
     if not isinstance(reqs, dict):
         failures.append("compensation_grid.json: 'reqs' is not an object")
         return failures
+
+    # Cross-check: every pattern-tagged REQ in REQUIREMENTS.md must appear in
+    # the grid. Omitting a pattern-tagged REQ from the grid was a v1.5.2 escape
+    # hatch (silently skipped by the per-REQ reconcile loop); close it here.
+    try:
+        pattern_tagged = _enumerate_pattern_tagged_reqs(req_text)
+    except ValueError as exc:
+        failures.append("REQUIREMENTS.md: {}".format(exc))
+        pattern_tagged = {}
+    for req_id, req_pattern in pattern_tagged.items():
+        if req_id not in reqs:
+            failures.append(
+                "cardinality gate: {} is pattern-tagged '{}' in REQUIREMENTS.md "
+                "but has no entry in compensation_grid.json".format(req_id, req_pattern)
+            )
 
     # Load BUGS.md and index covers by REQ
     bugs_text = _read_text_safe(q / "BUGS.md")
