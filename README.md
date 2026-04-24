@@ -165,6 +165,36 @@ The full autonomous run takes 60-180 minutes depending on codebase size and mode
 
 After fixing the bugs from BUGS.md, say *"recheck"* to verify your fixes. Recheck mode reads the existing bug report, checks each bug against the current source (reverse-applying patches, inspecting cited lines), and reports which bugs are fixed vs. still open. Takes 2-10 minutes instead of re-running the full pipeline.
 
+## Running the playbook: phases, iterations, and macros
+
+`bin/run_playbook.py` exposes three invocation modes:
+
+**Mode 1 — Single baseline run (default):**
+
+    python3 bin/run_playbook.py ./my-project
+
+Runs Phase 1 through Phase 6 in sequence on one target.
+
+**Mode 2 — Explicit iteration list:**
+
+    python3 bin/run_playbook.py --iterations gap,unfiltered,parity,adversarial ./my-project
+
+Runs baseline + the listed iteration strategies in order. **Early-stop is disabled** when `--iterations` is explicit — every strategy in the list runs regardless of prior yields.
+
+**Mode 3 — `--full-run` macro:**
+
+    python3 bin/run_playbook.py --full-run ./my-project
+
+Equivalent to baseline + all four iteration strategies (`gap`, `unfiltered`, `parity`, `adversarial`) in order, **with early-stop enabled.** If yields drop below the threshold, remaining iterations are skipped.
+
+Use Mode 2 when you want to force all four strategies to run even if early-stop would trigger. Use Mode 3 for unattended runs where you're happy to save budget on clearly-exhausted cycles.
+
+## Rate limits and run budgets
+
+- **GitHub Copilot GPT-5.4:** Copilot enforces a 54-hour cooldown on ~15M-token prompts. Plan benchmark re-runs accordingly — the casbin-1.5.1 incident locked out GPT-5.4 for two days mid-release.
+- **Claude Code plan budget:** a full run of the playbook on a 50K-LOC project typically consumes ~30% of a Sonnet-family monthly budget. Budget surges during Phase 4 (Spec Audit, three parallel auditors) and Phase 5 (TDD red-green verification on many bugs).
+- **Reference-doc scaling:** the playbook reads all of `reference_docs/` into Phase 1 context. Keep it under ~2M tokens to avoid context-budget pressure on downstream phases. For very large specs, curate the excerpts that are actually cited rather than dumping full RFCs.
+
 ### Why phases?
 
 The playbook runs each phase in a separate context window on purpose. A single-session approach runs out of context partway through Phase 3 on most projects, which means shallow analysis and missed bugs. The phase-by-phase design gives each phase the full context budget for deep investigation. The tradeoff is saying "keep going" a few times — or use the autonomous mode above to skip the manual steps entirely.
