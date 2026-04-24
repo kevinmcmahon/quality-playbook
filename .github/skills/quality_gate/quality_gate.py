@@ -1500,30 +1500,35 @@ def _v150_manifest(q, name):
     return None
 
 
-def check_v1_5_0_plaintext_extensions(repo_dir):
-    """§10 invariant #9 — formal_docs/ and informal_docs/ contain only .txt/.md."""
-    for folder_name in ("formal_docs", "informal_docs"):
-        folder = repo_dir / folder_name
-        if not folder.is_dir():
+def check_v1_5_0_cite_extensions(repo_dir):
+    """§10 invariant #9 — reference_docs/cite/ contains only .txt/.md.
+
+    v1.5.2 collapsed the old formal_docs/+informal_docs/ split into a single
+    reference_docs/ tree with reference_docs/cite/ holding citable material.
+    The plaintext-only constraint now applies to that cite folder; the check
+    retains the v1.5.0 invariant ancestry (hence the _v1_5_0_ name prefix).
+    """
+    folder = repo_dir / "reference_docs" / "cite"
+    if not folder.is_dir():
+        return
+    any_file = False
+    for path in sorted(folder.rglob("*")):
+        if not path.is_file():
             continue
-        any_file = False
-        for path in sorted(folder.rglob("*")):
-            if not path.is_file():
-                continue
-            any_file = True
-            if path.name == "README.md":
-                continue
-            if path.name.endswith(".meta.json"):
-                continue
-            ext = path.suffix.lower()
-            if ext not in _V150_SUPPORTED_EXTENSIONS:
-                rel = path.relative_to(repo_dir).as_posix()
-                fail(
-                    f"{rel}: unsupported extension {ext or '(none)'} under {folder_name}/ "
-                    "(schemas.md §2 allows only .txt, .md; §10 invariant #9)"
-                )
-        if any_file:
-            pass_(f"{folder_name}/: all files use supported extensions")
+        any_file = True
+        if path.name == "README.md":
+            continue
+        if path.name.endswith(".meta.json"):
+            continue
+        ext = path.suffix.lower()
+        if ext not in _V150_SUPPORTED_EXTENSIONS:
+            rel = path.relative_to(repo_dir).as_posix()
+            fail(
+                f"{rel}: unsupported extension {ext or '(none)'} under reference_docs/cite/ "
+                "(schemas.md §2 allows only .txt, .md; §10 invariant #9)"
+            )
+    if any_file:
+        pass_("reference_docs/cite/: all files use supported extensions")
 
 
 def check_v1_5_0_manifest_wrappers(q):
@@ -2270,7 +2275,7 @@ def check_v1_5_2_cardinality_gate(repo_dir):
 
 def check_v1_5_0_gate_invariants(repo_dir, q):
     """Dispatcher that runs every Layer-1 mechanical check from schemas.md §10."""
-    check_v1_5_0_plaintext_extensions(repo_dir)
+    check_v1_5_0_cite_extensions(repo_dir)
     check_v1_5_0_manifest_wrappers(q)
     check_v1_5_0_requirements_manifest(repo_dir, q)
     check_v1_5_0_bugs_manifest(q)

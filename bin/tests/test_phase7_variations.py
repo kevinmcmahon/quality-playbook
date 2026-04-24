@@ -137,7 +137,21 @@ class Phase7EmptyInformalDocs(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             repo = _copy_fixture("empty_informal_docs", Path(tmp))
             fails, _, out = _run_check(
-                quality_gate.check_v1_5_0_plaintext_extensions, repo
+                quality_gate.check_v1_5_0_cite_extensions, repo
+            )
+            self.assertEqual(fails, 0, out)
+
+    def test_cite_extensions_accept_readme_in_empty_cite_dir(self):
+        """reference_docs/cite/ with only a README must pass cleanly.
+
+        v1.5.2 moved the plaintext-only invariant from formal_docs/+informal_docs/
+        to reference_docs/cite/. The check must still skip README.md and emit no
+        extension-violation failures when the cite folder is otherwise empty.
+        """
+        with TemporaryDirectory() as tmp:
+            repo = _copy_fixture("empty_cite_dir", Path(tmp))
+            fails, _, out = _run_check(
+                quality_gate.check_v1_5_0_cite_extensions, repo
             )
             self.assertEqual(fails, 0, out)
 

@@ -1368,45 +1368,50 @@ class V150FixtureBase(unittest.TestCase):
 
 
 class TestV150PlaintextExtensions(V150FixtureBase):
-    def test_pdf_in_formal_docs_fails(self):
-        (self.repo / "formal_docs").mkdir()
-        (self.repo / "formal_docs" / "spec.pdf").write_text("%PDF", encoding="utf-8")
+    def _cite(self):
+        folder = self.repo / "reference_docs" / "cite"
+        folder.mkdir(parents=True, exist_ok=True)
+        return folder
+
+    def test_pdf_in_cite_fails(self):
+        cite = self._cite()
+        (cite / "spec.pdf").write_text("%PDF", encoding="utf-8")
         fails, out = _capture_fail_output(
-            quality_gate.check_v1_5_0_plaintext_extensions, self.repo
+            quality_gate.check_v1_5_0_cite_extensions, self.repo
         )
         self.assertGreaterEqual(fails, 1)
         self.assertIn("spec.pdf", out)
         self.assertIn("schemas.md §2", out)
 
-    def test_docx_in_informal_docs_fails(self):
-        (self.repo / "informal_docs").mkdir()
-        (self.repo / "informal_docs" / "notes.docx").write_bytes(b"PK")
+    def test_docx_in_cite_fails(self):
+        cite = self._cite()
+        (cite / "notes.docx").write_bytes(b"PK")
         fails, out = _capture_fail_output(
-            quality_gate.check_v1_5_0_plaintext_extensions, self.repo
+            quality_gate.check_v1_5_0_cite_extensions, self.repo
         )
         self.assertGreaterEqual(fails, 1)
         self.assertIn("notes.docx", out)
 
     def test_readme_skipped(self):
-        (self.repo / "formal_docs").mkdir()
-        (self.repo / "formal_docs" / "README.md").write_text("folder doc")
+        cite = self._cite()
+        (cite / "README.md").write_text("folder doc")
         fails, _ = _capture_fail_output(
-            quality_gate.check_v1_5_0_plaintext_extensions, self.repo
+            quality_gate.check_v1_5_0_cite_extensions, self.repo
         )
         self.assertEqual(fails, 0)
 
     def test_meta_json_sidecar_skipped(self):
-        (self.repo / "formal_docs").mkdir()
-        (self.repo / "formal_docs" / "spec.txt").write_text("body\n")
-        (self.repo / "formal_docs" / "spec.meta.json").write_text('{"tier": 2}')
+        cite = self._cite()
+        (cite / "spec.txt").write_text("body\n")
+        (cite / "spec.meta.json").write_text('{"tier": 2}')
         fails, _ = _capture_fail_output(
-            quality_gate.check_v1_5_0_plaintext_extensions, self.repo
+            quality_gate.check_v1_5_0_cite_extensions, self.repo
         )
         self.assertEqual(fails, 0)
 
     def test_absent_folders_is_noop(self):
         fails, _ = _capture_fail_output(
-            quality_gate.check_v1_5_0_plaintext_extensions, self.repo
+            quality_gate.check_v1_5_0_cite_extensions, self.repo
         )
         self.assertEqual(fails, 0)
 
