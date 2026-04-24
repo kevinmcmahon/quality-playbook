@@ -410,9 +410,27 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _mark_iterations_explicit(argv: Sequence[str]) -> bool:
+    """True only when --iterations (or its alias --strategy) appeared in argv directly.
+
+    --full-run expansion sets this False; explicit lists set it True. When this
+    flag is True, the strategy dispatcher must NOT apply the zero-gain
+    early-stop — the user asked for every strategy in their list to run.
+    """
+    tokens = set(argv)
+    explicit_flags = {"--iterations", "--strategy"}
+    return bool(tokens & explicit_flags) and "--full-run" not in tokens
+
+
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    # v1.5.2 Phase 6: record whether --iterations / --strategy was passed
+    # explicitly on the command line. Downstream strategy dispatch checks
+    # this to decide whether to honor the zero-gain early-stop.
+    effective_argv = list(argv) if argv is not None else sys.argv[1:]
+    args._iterations_explicit = _mark_iterations_explicit(effective_argv)
 
     if not args.kill and not args.targets:
         args.targets = ["."]
@@ -2377,8 +2395,9 @@ def run_one_iterations(
                 f"{_iso_utc_now()} · bugs before: {before} · bugs after: {after} · net-new: {gained}\n",
             )
             # Early-stop-on-zero-gain: unchanged semantics from
-            # execute_strategy_list.
-            if gained == 0:
+            # execute_strategy_list. v1.5.2 Phase 6: an explicit --iterations
+            # list bypasses early-stop — the user asked for every strategy.
+            if gained == 0 and not getattr(args, "_iterations_explicit", False):
                 lib.logboth(log_file, lib.log("  No new bugs found - stopping early (diminishing returns)."))
                 break
             is_last = index == len(iterations) - 1
@@ -2443,7 +2462,7 @@ def execute_strategy_list(
         print(f"\n  Strategy {strategy}: {before} -> {after} bugs (+{gained})")
         if status != 0:
             return status
-        if gained == 0:
+        if gained == 0 and not getattr(args, "_iterations_explicit", False):
             print("  No new bugs found - stopping early (diminishing returns).")
             break
         print("")
