@@ -853,78 +853,48 @@ class RunPlaybookTests(unittest.TestCase):
 
 
 class FormalDocsGuardTests(unittest.TestCase):
-    """v1.5.1 Item 1.3: pre-run formal_docs/ guard + --no-formal-docs."""
+    """v1.5.2: pre-run reference_docs/ guard + --no-formal-docs (flag name preserved)."""
 
     def test_missing_directory_triggers_warning(self) -> None:
         with TemporaryDirectory() as temp_dir:
             banner = run_playbook.formal_docs_guard_banner(Path(temp_dir))
             self.assertIsNotNone(banner)
-            self.assertIn("formal_docs/ is missing", banner)
-            # v1.5.1 Phase 1 rev (Council — gpt-5.4 blocker 3): the
-            # remediation command must be cwd-robust. Assert the absolute
-            # helper path and sys.executable appear; no literal "python3".
-            import sys as _sys
-            self.assertIn("setup_formal_docs.py", banner)
-            self.assertIn(_sys.executable, banner)
-            self.assertIn("setup_repos.sh", banner)
+            self.assertIn("reference_docs/ is missing", banner)
             self.assertIn("--no-formal-docs", banner)
 
     def test_empty_directory_triggers_warning(self) -> None:
         with TemporaryDirectory() as temp_dir:
             repo = Path(temp_dir)
-            (repo / "formal_docs").mkdir()
+            (repo / "reference_docs").mkdir()
             banner = run_playbook.formal_docs_guard_banner(repo)
             self.assertIsNotNone(banner)
-            self.assertIn("formal_docs/ is empty", banner)
-            # v1.5.1 Phase 1 rev (Council — gpt-5.4 blocker 3): absolute
-            # helper path, not cwd-relative.
-            self.assertIn("setup_formal_docs.py", banner)
-            self.assertNotIn(" python3 bin/setup_formal_docs.py", banner)
+            self.assertIn("reference_docs/ is empty", banner)
 
-    def test_orphan_plaintext_triggers_warning_with_names(self) -> None:
+    def test_top_level_file_is_clean(self) -> None:
         with TemporaryDirectory() as temp_dir:
             repo = Path(temp_dir)
-            formal = repo / "formal_docs"
-            formal.mkdir()
-            write(formal / "virtio.txt", "body\n")
-            # Sidecar-less.
-            banner = run_playbook.formal_docs_guard_banner(repo)
-            self.assertIsNotNone(banner)
-            self.assertIn("without .meta.json sidecars", banner)
-            self.assertIn("virtio.txt", banner)
-
-    def test_orphan_list_truncates_at_ten(self) -> None:
-        with TemporaryDirectory() as temp_dir:
-            repo = Path(temp_dir)
-            formal = repo / "formal_docs"
-            formal.mkdir()
-            for i in range(15):
-                write(formal / f"doc{i:02d}.txt", "x")
-            banner = run_playbook.formal_docs_guard_banner(repo)
-            self.assertIsNotNone(banner)
-            self.assertIn("... and 5 more", banner)
-
-    def test_clean_state_returns_none(self) -> None:
-        with TemporaryDirectory() as temp_dir:
-            repo = Path(temp_dir)
-            formal = repo / "formal_docs"
-            formal.mkdir()
-            write(formal / "virtio.txt", "body\n")
-            write(formal / "virtio.meta.json", '{"tier": 1}\n')
+            ref = repo / "reference_docs"
+            ref.mkdir()
+            write(ref / "design-notes.md", "Freeform notes.\n")
             self.assertIsNone(run_playbook.formal_docs_guard_banner(repo))
 
-    def test_readme_and_backups_do_not_trigger_orphan_warning(self) -> None:
+    def test_cite_file_is_clean(self) -> None:
         with TemporaryDirectory() as temp_dir:
             repo = Path(temp_dir)
-            formal = repo / "formal_docs"
-            formal.mkdir()
-            # README.md is allowed without a sidecar (matches ingest policy).
-            write(formal / "README.md", "docs readme\n")
-            # Files under .sidecar_backups/ are ignored.
-            write(formal / ".sidecar_backups" / "20260101T000000Z" / "old.md", "x")
-            write(formal / "virtio.txt", "body\n")
-            write(formal / "virtio.meta.json", '{"tier": 1}\n')
+            cite = repo / "reference_docs" / "cite"
+            cite.mkdir(parents=True)
+            write(cite / "spec.md", "# Spec\n")
             self.assertIsNone(run_playbook.formal_docs_guard_banner(repo))
+
+    def test_readme_only_is_empty(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir)
+            ref = repo / "reference_docs"
+            ref.mkdir()
+            write(ref / "README.md", "folder readme\n")
+            banner = run_playbook.formal_docs_guard_banner(repo)
+            self.assertIsNotNone(banner)
+            self.assertIn("reference_docs/ is empty", banner)
 
     def test_parse_args_accepts_no_formal_docs(self) -> None:
         args = run_playbook.parse_args(["--no-formal-docs", "./somedir"])
@@ -972,50 +942,6 @@ class FormalDocsGuardTests(unittest.TestCase):
         )
         command = run_playbook.build_worker_command(args, "/abs/target")
         self.assertNotIn("--no-formal-docs", command)
-
-
-class GuardRemediationCwdRobustnessTests(unittest.TestCase):
-    """v1.5.1 Phase 1 rev (Council — gpt-5.4 blocker 3): the guard's
-    remediation command must use sys.executable (not the literal
-    "python3") and an absolute path to setup_formal_docs.py so it
-    works from any working directory."""
-
-    def _banner_for_missing_formal_docs(self) -> str:
-        with TemporaryDirectory() as temp_dir:
-            banner = run_playbook.formal_docs_guard_banner(Path(temp_dir))
-            assert banner is not None
-            return banner
-
-    def test_banner_uses_sys_executable_not_literal_python3(self) -> None:
-        import sys as _sys
-        banner = self._banner_for_missing_formal_docs()
-        self.assertIn(_sys.executable, banner)
-        # sys.executable is always absolute.
-        self.assertTrue(Path(_sys.executable).is_absolute())
-        # Reject bare `python3 bin/setup_formal_docs.py` — the prior form
-        # that wasn't cwd-robust.
-        self.assertNotIn(" python3 bin/setup_formal_docs.py", banner)
-        self.assertFalse(
-            banner.startswith("python3 bin/setup_formal_docs.py"),
-            "banner must not open with the cwd-relative form",
-        )
-
-    def test_banner_contains_absolute_path_to_setup_helper(self) -> None:
-        banner = self._banner_for_missing_formal_docs()
-        # Extract every token that ends in setup_formal_docs.py; at least
-        # one must be an absolute filesystem path.
-        tokens = [t for t in banner.split() if t.endswith("bin/setup_formal_docs.py")]
-        self.assertTrue(tokens, f"banner has no setup_formal_docs.py reference:\n{banner}")
-        absolute_tokens = [t for t in tokens if Path(t).is_absolute()]
-        self.assertTrue(
-            absolute_tokens,
-            f"banner has no absolute path to setup_formal_docs.py. Tokens: {tokens}\nBanner:\n{banner}",
-        )
-        # The resolved path must actually point at the repo's helper.
-        real_helper = (
-            Path(run_playbook.__file__).resolve().parent / "setup_formal_docs.py"
-        )
-        self.assertIn(str(real_helper), banner)
 
 
 class InvocationFlagsPersistenceTests(unittest.TestCase):

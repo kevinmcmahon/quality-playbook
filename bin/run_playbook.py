@@ -347,9 +347,10 @@ def build_parser() -> argparse.ArgumentParser:
         dest="no_formal_docs",
         action="store_true",
         help=(
-            "Suppress the pre-run warning when formal_docs/ is missing, empty, "
-            "or contains plaintext without .meta.json sidecars. Use for self-audit "
-            "bootstrap and minimal-repo cases that legitimately have no formal docs."
+            "Suppress the pre-run warning when reference_docs/ is missing or empty. "
+            "Use for self-audit bootstrap and minimal-repo cases that legitimately "
+            "have no reference documentation. (Flag name preserved for backwards "
+            "compatibility with v1.5.1 wrappers.)"
         ),
     )
     parser.add_argument(
@@ -1294,114 +1295,62 @@ def docs_present(repo_dir: Path) -> bool:
     )
 
 
-# v1.5.1 Item 1.3: pre-run formal_docs guard.
-_FORMAL_DOCS_PLAINTEXT_EXTS = frozenset({".txt", ".md"})
-_FORMAL_DOCS_SIDECAR_SUFFIX = ".meta.json"
-_FORMAL_DOCS_SKIPPED = frozenset({"README.md"})
-_FORMAL_DOCS_BACKUP_DIR = ".sidecar_backups"
+# v1.5.2: pre-run reference_docs guard.
+_REFERENCE_DOCS_PLAINTEXT_EXTS = frozenset({".txt", ".md"})
+_REFERENCE_DOCS_SKIPPED = frozenset({"README.md"})
 
 
-def _formal_docs_plaintext(formal_docs_dir: Path) -> List[Path]:
-    """Return plaintext files under formal_docs/ that ingest would consider.
-
-    Mirrors the collect rules in bin/formal_docs_ingest.collect_documents and
-    bin/setup_formal_docs._collect_documents so the guard's notion of
-    'orphan plaintext' matches what the reader will actually see.
-    """
-    if not formal_docs_dir.is_dir():
+def _reference_docs_plaintext(reference_docs_dir: Path) -> List[Path]:
+    """Return plaintext files under reference_docs/ that ingest would consider."""
+    if not reference_docs_dir.is_dir():
         return []
     files: List[Path] = []
-    for path in sorted(formal_docs_dir.rglob("*")):
+    for path in sorted(reference_docs_dir.rglob("*")):
         if not path.is_file():
             continue
-        if path.name in _FORMAL_DOCS_SKIPPED:
+        if path.name in _REFERENCE_DOCS_SKIPPED:
             continue
-        if path.name.endswith(_FORMAL_DOCS_SIDECAR_SUFFIX):
-            continue
-        if _FORMAL_DOCS_BACKUP_DIR in path.parts:
-            continue
-        if path.suffix.lower() in _FORMAL_DOCS_PLAINTEXT_EXTS:
+        if path.suffix.lower() in _REFERENCE_DOCS_PLAINTEXT_EXTS:
             files.append(path)
     return files
 
 
-def _formal_docs_orphans(plaintext: Sequence[Path]) -> List[Path]:
-    """Return plaintext files whose sibling .meta.json is absent."""
-    orphans: List[Path] = []
-    for doc in plaintext:
-        sidecar = doc.with_name(doc.stem + _FORMAL_DOCS_SIDECAR_SUFFIX)
-        if not sidecar.is_file():
-            orphans.append(doc)
-    return orphans
-
-
 def formal_docs_guard_banner(repo_dir: Path) -> Optional[str]:
-    """Return a multi-line warning banner, or None if formal_docs/ is clean.
+    """Return a multi-line warning banner, or None if reference_docs/ is clean.
 
-    Clean = directory exists AND either (a) has no plaintext files (handled
-    elsewhere — an empty formal_docs/ triggers the 'empty' warning) or
-    (b) every plaintext file has a matching sidecar.
+    v1.5.2: Clean = reference_docs/ exists and contains at least one plaintext
+    file (under reference_docs/ or reference_docs/cite/). Missing or empty
+    triggers a non-blocking warning and Phase 1 proceeds with Tier 3 evidence.
 
-    The three trigger conditions are: missing directory, empty directory,
-    orphan plaintext. The warning is non-blocking; the caller prints it
-    and proceeds.
-
-    v1.5.1 Phase 1 rev (Council — gpt-5.4 blocker 3): the remediation
-    command uses sys.executable (an absolute path to the running
-    interpreter) and an absolute path to bin/setup_formal_docs.py derived
-    from this module's __file__. Operators can copy-paste the command
-    from any working directory and have it resolve correctly; the prior
-    ``python3 bin/setup_formal_docs.py <...>`` form only worked when run
-    from the repo root.
+    Function name preserved for backwards compatibility with call sites that
+    reference it by that name.
     """
-    formal_docs_dir = repo_dir / "formal_docs"
-    helper_path = (Path(__file__).resolve().parent / "setup_formal_docs.py")
-    remediation = f"{sys.executable} {helper_path} {formal_docs_dir}"
-    staging_pointer = (
-        "Staging: repos/setup_repos.sh (v1.5.1 Item 1.1) converts "
-        "docs_gathered/ into formal_docs/ and invokes the setup helper."
-    )
+    reference_docs_dir = repo_dir / "reference_docs"
     suppress_hint = (
         "Suppress this warning with --no-formal-docs for self-audit "
-        "bootstrap / minimal-repo cases that legitimately have no formal docs."
+        "bootstrap / minimal-repo cases that legitimately have no reference docs."
     )
 
-    if not formal_docs_dir.is_dir():
-        trigger = f"formal_docs/ is missing at {formal_docs_dir}"
+    if not reference_docs_dir.is_dir():
+        trigger = f"reference_docs/ is missing at {reference_docs_dir}"
     else:
-        plaintext = _formal_docs_plaintext(formal_docs_dir)
+        plaintext = _reference_docs_plaintext(reference_docs_dir)
         if not plaintext:
-            trigger = f"formal_docs/ is empty at {formal_docs_dir}"
+            trigger = f"reference_docs/ is empty at {reference_docs_dir}"
         else:
-            orphans = _formal_docs_orphans(plaintext)
-            if not orphans:
-                return None
-            shown = orphans[:10]
-            remainder = len(orphans) - len(shown)
-            names: List[str] = []
-            for doc in shown:
-                try:
-                    rel = doc.relative_to(formal_docs_dir).as_posix()
-                except ValueError:
-                    rel = doc.name
-                names.append(f"    - {rel}")
-            if remainder > 0:
-                names.append(f"    ... and {remainder} more")
-            trigger_lines = [
-                f"formal_docs/ has plaintext files without .meta.json sidecars ({len(orphans)}):",
-                *names,
-            ]
-            trigger = "\n".join(trigger_lines)
+            return None
 
     banner = [
         "",
         "=" * 72,
-        "WARN: pre-run formal_docs guard triggered",
+        "WARN: pre-run reference_docs guard triggered",
         "",
-        f"  {trigger}" if "\n" not in trigger else trigger,
+        f"  {trigger}",
         "",
-        f"  Remediation: {remediation}",
-        f"  {staging_pointer}",
+        "  The playbook will proceed using only Tier 3 evidence (the source",
+        "  tree itself). For better results, drop plaintext documentation into:",
+        "    reference_docs/            ← AI chats, design notes, retrospectives (Tier 4)",
+        "    reference_docs/cite/       ← project specs, RFCs, API contracts (Tier 1/2)",
         f"  {suppress_hint}",
         "=" * 72,
         "",
@@ -2323,7 +2272,7 @@ def display_run_header(args: argparse.Namespace, repo_dirs: Sequence[Path], disp
         print(f"Model:    {args.model or '(default)'}")
     print(f"No seeds: {args.no_seeds}  (Phase 0/0b skipped when true)")
     if getattr(args, "no_formal_docs", False):
-        print("No formal docs: True  (pre-run formal_docs/ guard suppressed)")
+        print("No formal docs: True  (pre-run reference_docs/ guard suppressed)")
     if getattr(args, "no_stdout_echo", False):
         print("No stdout echo: True  (logboth stdout default disabled)")
     if getattr(args, "verbose", False):

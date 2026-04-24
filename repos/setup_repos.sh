@@ -146,28 +146,11 @@ for short in "${REPOS[@]}"; do
     cp "${QPB_DIR}/LICENSE.txt" "${dst}/.github/skills/LICENSE.txt" 2>/dev/null || true
     cp "${QPB_DIR}/.github/skills/quality_gate/quality_gate.py" "${dst}/.github/skills/quality_gate.py" 2>/dev/null || true
 
-    # v1.5.1 Item 1.1: stage formal_docs/ from docs_gathered/. Closes the
-    # runbook gap that produced silent Spec Gap runs on 2026-04-18 — the
-    # v1.5.0 pipeline expects plaintext + .meta.json sidecars under
-    # formal_docs/, and nothing previously populated it.
-    #
-    # v1.5.1 Phase 1 rev (Council — gpt-5.4 blocker 1): the staging pipeline
-    # must fail loudly, not silently. `set -o pipefail` at the top of this
-    # script combined with `if !` around the `python3 | sed` pipeline makes
-    # the python exit status the one that decides success. On failure we
-    # print a clear error and exit the whole script; ✓ ready only prints
-    # when staging actually succeeded.
-    if [ -d "${dst}/docs_gathered" ] && [ -n "$(ls -A "${dst}/docs_gathered" 2>/dev/null)" ]; then
-        log "  Staging formal_docs/ from docs_gathered/ (v1.5.1)"
-        if ! python3 "${SCRIPT_DIR}/stage_formal_docs.py" \
-                --source "${dst}/docs_gathered" \
-                --destination "${dst}/formal_docs" \
-                --repo-name "${short}" \
-                2>&1 | sed 's/^/    /'; then
-            echo "ERROR: Staging formal_docs failed for ${short}. See output above. Setup aborted." >&2
-            exit 1
-        fi
-    fi
+    # v1.5.2: reference_docs/ scaffold. No automated staging — adopters
+    # drop plaintext into reference_docs/ (Tier 4 context) and
+    # reference_docs/cite/ (citable sources). See README.md "Step 1:
+    # Provide documentation" for the contract.
+    mkdir -p "${dst}/reference_docs/cite"
 
     log "  ✓ ${short}-${VERSION} ready"
     echo ""

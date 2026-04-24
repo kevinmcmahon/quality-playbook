@@ -2,7 +2,7 @@
 
 Pure-function implementation of the deterministic excerpt extraction
 algorithm (§5.4) and section resolution rules (§5.5) from schemas.md.
-Shared between formal_docs_ingest.py (Phase 2) and quality_gate.py (Phase 5).
+Shared between reference_docs_ingest.py (Phase 1) and quality_gate.py (Phase 5).
 
 Design constraint: this module is stdlib-only and side-effect-free except
 where the caller explicitly passes paths. `extract_excerpt` and
