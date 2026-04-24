@@ -833,11 +833,26 @@ Grid (present=T, absent=F):
 
 BUG-default applies to every F cell (8 total). Possible consolidation:
 
-- BUG-001: MMIO ignores VIRTIO_F_RING_RESET. Covers: [REQ-010/cell-RING_RESET-MMIO].
-- BUG-002: vDPA ignores VIRTIO_F_RING_RESET. Covers: [REQ-010/cell-RING_RESET-vDPA].
-- BUG-003: vDPA missing ADMIN_VQ hookup. Covers: [REQ-010/cell-ADMIN_VQ-vDPA].
-- BUG-004: MMIO ignores NOTIF_CONFIG_DATA negotiation (common filter gap). Covers: [REQ-010/cell-NOTIF_CONFIG_DATA-MMIO].
-- BUG-005: MMIO + vDPA both miss SR_IOV propagation. Covers: [REQ-010/cell-SR_IOV-MMIO, REQ-010/cell-SR_IOV-vDPA]. Consolidation rationale: shared fix path in both transports goes through the same feature-bit filter; single patch on the shared helper closes both cells.
+### BUG-001: MMIO ignores VIRTIO_F_RING_RESET
+- Primary requirement: REQ-010
+- Covers: [REQ-010/cell-RING_RESET-MMIO]
+
+### BUG-002: vDPA ignores VIRTIO_F_RING_RESET
+- Primary requirement: REQ-010
+- Covers: [REQ-010/cell-RING_RESET-vDPA]
+
+### BUG-003: vDPA missing ADMIN_VQ hookup
+- Primary requirement: REQ-010
+- Covers: [REQ-010/cell-ADMIN_VQ-vDPA]
+
+### BUG-004: MMIO ignores NOTIF_CONFIG_DATA negotiation (common filter gap)
+- Primary requirement: REQ-010
+- Covers: [REQ-010/cell-NOTIF_CONFIG_DATA-MMIO]
+
+### BUG-005: MMIO + vDPA both miss SR_IOV propagation
+- Primary requirement: REQ-010
+- Covers: [REQ-010/cell-SR_IOV-MMIO, REQ-010/cell-SR_IOV-vDPA]
+- Consolidation rationale: shared fix path in both transports goes through the same feature-bit filter; single patch on the shared helper closes both cells.
 
 If the reviewer concluded MMIO ADMIN_VQ is intentionally out-of-scope because ADMIN_VQ is a PCI-only spec feature, the downgrade record would be:
 
