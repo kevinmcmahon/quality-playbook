@@ -49,6 +49,33 @@ FAIL = 0
 WARN = 0
 
 
+# v1.5.2 — REQ Pattern field (Lever 2)
+VALID_PATTERN_VALUES = frozenset({"whitelist", "parity", "compensation"})
+
+_REQ_PATTERN_RE = re.compile(
+    r"^\s*-\s*Pattern:\s*(\S+)\s*$", re.IGNORECASE | re.MULTILINE
+)
+
+
+def extract_req_pattern(req_block):
+    """Return the REQ's pattern tag from a REQUIREMENTS.md block, or None.
+
+    Raises ValueError when the block carries an invalid pattern value. Valid
+    values are VALID_PATTERN_VALUES. Absent field returns None.
+    """
+    m = _REQ_PATTERN_RE.search(req_block)
+    if not m:
+        return None
+    value = m.group(1).strip()
+    if value not in VALID_PATTERN_VALUES:
+        raise ValueError(
+            "Invalid REQ pattern '{}'. Expected one of: {}".format(
+                value, sorted(VALID_PATTERN_VALUES)
+            )
+        )
+    return value
+
+
 def _reset_counters():
     global FAIL, WARN
     FAIL = 0
@@ -1470,6 +1497,15 @@ def check_v1_5_0_requirements_manifest(repo_dir, q):
             fail(
                 "requirements_manifest.json",
                 f"record_id={req_id}: has invalid tier {tier!r} (expected integer 1–5)",
+            )
+
+        # v1.5.2: validate the optional `pattern` field on the REQ record.
+        pattern = rec.get("pattern")
+        if pattern is not None and pattern not in VALID_PATTERN_VALUES:
+            fail(
+                "requirements_manifest.json",
+                f"record_id={req_id}: has invalid pattern {pattern!r} "
+                f"(expected one of {sorted(VALID_PATTERN_VALUES)})",
             )
 
     pass_("requirements_manifest.json: v1.5.1 Layer-1 REQ checks complete")
