@@ -76,6 +76,202 @@ def extract_req_pattern(req_block):
     return value
 
 
+# v1.5.2 — cardinality gate (Lever 3)
+
+VALID_REASON_CLASSES = frozenset({
+    "out-of-scope",
+    "deprecated",
+    "platform-gated",
+    "handled-upstream",
+    "intentionally-partial",
+})
+
+_CELL_ID_RE = re.compile(r"^REQ-\d+/cell-[A-Za-z0-9_]+-[A-Za-z0-9_]+$")
+
+_COVERS_RE = re.compile(
+    r"^\s*-\s*Covers:\s*\[(.*?)\]\s*$", re.IGNORECASE | re.MULTILINE
+)
+
+_CONSOLIDATION_RE = re.compile(
+    r"^\s*-\s*Consolidation rationale:\s*(.+?)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+_BUG_HEADING_RE = re.compile(r"^###\s+BUG-(\d+):", re.MULTILINE)
+
+
+def _parse_covers(bug_block):
+    m = _COVERS_RE.search(bug_block)
+    if not m:
+        return []
+    raw = m.group(1).strip()
+    if not raw:
+        return []
+    items = [s.strip() for s in raw.split(",")]
+    return [s for s in items if s]
+
+
+def _parse_consolidation_rationale(bug_block):
+    m = _CONSOLIDATION_RE.search(bug_block)
+    if not m:
+        return None
+    text = m.group(1).strip()
+    return text or None
+
+
+def _split_bug_blocks(bugs_md_text):
+    """Return list of (bug_id, body) pairs."""
+    positions = [(m.start(), m.group(1)) for m in _BUG_HEADING_RE.finditer(bugs_md_text)]
+    result = []
+    for idx, (start, bug_id) in enumerate(positions):
+        end = positions[idx + 1][0] if idx + 1 < len(positions) else len(bugs_md_text)
+        result.append(("BUG-{}".format(bug_id), bugs_md_text[start:end]))
+    return result
+
+
+def _bug_primary_requirement(block):
+    m = re.search(
+        r"^\s*-\s*Primary requirement:\s*(REQ-\d+)", block, re.MULTILINE | re.IGNORECASE
+    )
+    return m.group(1) if m else None
+
+
+def _load_json_or_none(path):
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _read_text_safe(path):
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def validate_cardinality_gate(repo_dir):
+    """Run the v1.5.2 cardinality reconciliation gate.
+
+    Returns a list of failure strings. An empty list means the gate passed.
+    Caller decides how to surface failures (print / fail()).
+
+    Inputs expected in repo_dir/quality/:
+      - REQUIREMENTS.md (source of pattern-tagged REQs)
+      - BUGS.md (source of Covers: annotations)
+      - compensation_grid.json (source of cell set per REQ)
+      - compensation_grid_downgrades.json (optional; source of downgrade cells)
+    """
+    failures = []
+    q = Path(repo_dir) / "quality"
+
+    grid_path = q / "compensation_grid.json"
+    grid = _load_json_or_none(grid_path)
+    if grid is None:
+        # No grid file: only a problem if any pattern-tagged REQs exist.
+        req_text = _read_text_safe(q / "REQUIREMENTS.md")
+        if _REQ_PATTERN_RE.search(req_text):
+            failures.append(
+                "cardinality gate: pattern-tagged REQs exist but "
+                "quality/compensation_grid.json is missing"
+            )
+        return failures
+
+    reqs = grid.get("reqs") or {}
+    if not isinstance(reqs, dict):
+        failures.append("compensation_grid.json: 'reqs' is not an object")
+        return failures
+
+    # Load BUGS.md and index covers by REQ
+    bugs_text = _read_text_safe(q / "BUGS.md")
+    covers_by_req = {}
+    for bug_id, block in _split_bug_blocks(bugs_text):
+        covers = _parse_covers(block)
+        if len(covers) >= 2:
+            if not _parse_consolidation_rationale(block):
+                failures.append(
+                    "{}: Covers has {} entries but 'Consolidation rationale:' is missing or empty".format(
+                        bug_id, len(covers)
+                    )
+                )
+        for cell_id in covers:
+            if not _CELL_ID_RE.match(cell_id):
+                failures.append(
+                    "{}: malformed cell ID '{}' (expected REQ-N/cell-<item>-<site>)".format(
+                        bug_id, cell_id
+                    )
+                )
+                continue
+            req_id = cell_id.split("/", 1)[0]
+            covers_by_req.setdefault(req_id, set()).add(cell_id)
+
+    # Load downgrades and validate each record
+    downgrades = _load_json_or_none(q / "compensation_grid_downgrades.json") or {"downgrades": []}
+    downgrade_cells_by_req = {}
+    for rec in downgrades.get("downgrades", []):
+        rid = rec.get("cell_id", "")
+        if not _CELL_ID_RE.match(rid):
+            failures.append("downgrade record: malformed cell_id '{}'".format(rid))
+            continue
+        for field in ("authority_ref", "site_citation", "reason_class", "falsifiable_claim"):
+            value = rec.get(field)
+            if not value or not isinstance(value, str) or not value.strip():
+                failures.append(
+                    "downgrade record {}: missing or empty field '{}'".format(rid, field)
+                )
+        reason = rec.get("reason_class", "")
+        if reason and reason not in VALID_REASON_CLASSES:
+            failures.append(
+                "downgrade record {}: reason_class '{}' not in {}".format(
+                    rid, reason, sorted(VALID_REASON_CLASSES)
+                )
+            )
+        req_id = rid.split("/", 1)[0]
+        downgrade_cells_by_req.setdefault(req_id, set()).add(rid)
+
+    # Reconcile per-REQ
+    for req_id, entry in reqs.items():
+        pattern = entry.get("pattern")
+        if pattern not in {"whitelist", "parity", "compensation"}:
+            failures.append(
+                "compensation_grid.json: {} has invalid or missing pattern '{}'".format(
+                    req_id, pattern
+                )
+            )
+            continue
+        cells = entry.get("cells") or []
+        grid_cell_ids = {c.get("cell_id") for c in cells if isinstance(c, dict)}
+        grid_cell_ids.discard(None)
+        # Only absent cells require coverage
+        absent_cells = {
+            c.get("cell_id") for c in cells
+            if isinstance(c, dict) and c.get("present") is False
+        }
+        absent_cells.discard(None)
+
+        covered = covers_by_req.get(req_id, set())
+        downgraded = downgrade_cells_by_req.get(req_id, set())
+        uncovered = absent_cells - covered - downgraded
+
+        if uncovered:
+            failures.append(
+                "{}: uncovered cells — {}".format(req_id, ", ".join(sorted(uncovered)))
+            )
+
+        # Every covered cell must be in the grid
+        stray = (covered | downgraded) - grid_cell_ids
+        if stray:
+            failures.append(
+                "{}: Covers/downgrade cells not in grid — {}".format(
+                    req_id, ", ".join(sorted(stray))
+                )
+            )
+
+    return failures
+
+
 def _reset_counters():
     global FAIL, WARN
     FAIL = 0
@@ -2019,6 +2215,19 @@ def check_challenge_gate_coverage(q):
         )
 
 
+def check_v1_5_2_cardinality_gate(repo_dir):
+    """v1.5.2 Lever 3: Phase 5 cardinality reconciliation gate.
+
+    Surfaces every failure from validate_cardinality_gate() as a fail() entry.
+    """
+    failures = validate_cardinality_gate(repo_dir)
+    if not failures:
+        pass_("compensation_grid.json: v1.5.2 cardinality gate clean")
+        return
+    for msg in failures:
+        fail("compensation_grid.json", msg)
+
+
 def check_v1_5_0_gate_invariants(repo_dir, q):
     """Dispatcher that runs every Layer-1 mechanical check from schemas.md §10."""
     check_v1_5_0_plaintext_extensions(repo_dir)
@@ -2033,6 +2242,8 @@ def check_v1_5_0_gate_invariants(repo_dir, q):
     # requirements_manifest.json for the "No spec basis" pattern but
     # does not redo schema checks that the prior invariants already cover.
     check_challenge_gate_coverage(q)
+    # v1.5.2 Lever 3: cardinality reconciliation gate.
+    check_v1_5_2_cardinality_gate(repo_dir)
 
 
 def check_repo(repo_dir, version_arg, strictness):

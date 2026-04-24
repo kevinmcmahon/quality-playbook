@@ -1009,6 +1009,22 @@ Execute Phase 5: Reconciliation + TDD + Closure.
 6. If mechanical verification artifacts exist, run quality/mechanical/verify.sh and save receipts.
 7. Run terminal gate verification, write it to PROGRESS.md.
 
+### MANDATORY CARDINALITY GATE (Lever 3, v1.5.2)
+
+Before finalizing this phase, run the cardinality reconciliation gate against the current repo state:
+
+    python3 -c "import sys; sys.path.insert(0, '.github/skills/quality_gate'); import quality_gate; failures = quality_gate.validate_cardinality_gate('.'); sys.exit(1 if failures else 0)"
+
+If the gate reports uncovered cells, malformed cell IDs, missing consolidation rationale on multi-cell Covers, or malformed downgrade records, STOP. Fix the BUGS.md entries or the `compensation_grid_downgrades.json` file. Do NOT proceed to completion until the gate returns clean.
+
+For every pattern-tagged REQ, the Phase 5 contract is:
+- Every grid cell with `"present": false` appears in either a BUG's `Covers:` list or a downgrade record.
+- Every `Covers:` entry uses the canonical cell ID form `REQ-N/cell-<item>-<site>`.
+- Every BUG with ≥2 `Covers:` entries has a non-empty `Consolidation rationale:` line.
+- Every downgrade record has `cell_id`, `authority_ref`, `site_citation`, `reason_class` (in the enum), `falsifiable_claim` (non-empty).
+
+The cardinality gate is blocking. It is intentionally stricter than the Phase 3 advisory self-check; the advisory check is meant to surface problems early, but Phase 5 is where they become fatal.
+
 Mark Phase 5 complete in PROGRESS.md (use the checkbox format `- [x] Phase 5 - Reconciliation` — do NOT switch to a table).
 
 IMPORTANT: quality_gate.py will FAIL Phase 5 if any writeup is missing a non-empty ```diff block or contains any of these sentinel phrases verbatim: \"is a confirmed code bug in ``\", \"The affected implementation lives at ``\", \"Patch path: ``\", \"- Regression test: ``\", \"- Regression patch: ``\". Those two checks are the hard gate. Skipping the BUGS.md hydration step above is not gate-enforced but will produce writeups that read as unpopulated stubs and fail a human review — do not skip it.
