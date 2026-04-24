@@ -335,6 +335,73 @@ class CardinalityGateTests(unittest.TestCase):
             )
     # -----------------------------------------------------------------------
 
+    # ---- Malformed-downgrade reconciliation bypass (Round 5 Finding B1) ----
+    def test_downgrade_with_empty_authority_ref_does_not_cover_cell(self):
+        """A downgrade record with empty authority_ref must emit a diagnostic
+        failure AND leave the cell uncovered — prior to the rec_ok guard, the
+        cell was silently counted as covered despite the diagnostic."""
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d)
+            q = repo / "quality"
+            cells = {"REQ-010/cell-X-MMIO": False}
+            _write(q / "compensation_grid.json", json.dumps(_fixture_grid("REQ-010", cells)))
+            _write(q / "REQUIREMENTS.md", _requirements_md("REQ-010"))
+            _write(q / "BUGS.md", "")
+            _write(q / "compensation_grid_downgrades.json", json.dumps({
+                "schema_version": "1.5.2",
+                "downgrades": [{
+                    "cell_id": "REQ-010/cell-X-MMIO",
+                    "authority_ref": "",
+                    "site_citation": "src/x.py:1",
+                    "reason_class": "out-of-scope",
+                    "falsifiable_claim": "placeholder claim",
+                }],
+            }))
+            failures = quality_gate.validate_cardinality_gate(repo)
+            # (i) The field-validation diagnostic must appear.
+            self.assertTrue(
+                any("authority_ref" in f and "missing or empty" in f for f in failures),
+                "Expected 'missing or empty field authority_ref' diagnostic; got: {!r}".format(failures),
+            )
+            # (ii) The uncovered-cells failure must also appear; prior to the
+            # rec_ok guard, the malformed record silently added the cell to
+            # downgrade_cells_by_req and uncovered ≈ {} — the cell vanished.
+            self.assertTrue(
+                any("uncovered" in f and "REQ-010/cell-X-MMIO" in f for f in failures),
+                "Expected 'uncovered cells' failure naming REQ-010/cell-X-MMIO; got: {!r}".format(failures),
+            )
+
+    def test_downgrade_with_invalid_reason_class_does_not_cover_cell(self):
+        """Same bypass shape, but via reason_class enum violation instead of
+        an empty field."""
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d)
+            q = repo / "quality"
+            cells = {"REQ-010/cell-Y-MMIO": False}
+            _write(q / "compensation_grid.json", json.dumps(_fixture_grid("REQ-010", cells)))
+            _write(q / "REQUIREMENTS.md", _requirements_md("REQ-010"))
+            _write(q / "BUGS.md", "")
+            _write(q / "compensation_grid_downgrades.json", json.dumps({
+                "schema_version": "1.5.2",
+                "downgrades": [{
+                    "cell_id": "REQ-010/cell-Y-MMIO",
+                    "authority_ref": "docs/spec.md:1",
+                    "site_citation": "src/y.py:1",
+                    "reason_class": "made-up-reason",
+                    "falsifiable_claim": "placeholder claim",
+                }],
+            }))
+            failures = quality_gate.validate_cardinality_gate(repo)
+            self.assertTrue(
+                any("reason_class" in f and "made-up-reason" in f for f in failures),
+                "Expected reason_class enum diagnostic; got: {!r}".format(failures),
+            )
+            self.assertTrue(
+                any("uncovered" in f and "REQ-010/cell-Y-MMIO" in f for f in failures),
+                "Expected 'uncovered cells' failure naming REQ-010/cell-Y-MMIO; got: {!r}".format(failures),
+            )
+    # -----------------------------------------------------------------------
+
 
 if __name__ == "__main__":
     unittest.main()

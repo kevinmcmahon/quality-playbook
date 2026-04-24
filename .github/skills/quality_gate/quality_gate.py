@@ -255,12 +255,18 @@ def validate_cardinality_gate(repo_dir):
         if not _CELL_ID_RE.match(rid):
             failures.append("downgrade record: malformed cell_id '{}'".format(rid))
             continue
+        # A downgrade record only counts toward reconciliation once every
+        # validation below passes. A malformed record emits diagnostic
+        # failure strings AND stays out of downgrade_cells_by_req, so the
+        # per-REQ uncovered-cells calculation still flags the cell.
+        rec_ok = True
         for field in ("authority_ref", "site_citation", "reason_class", "falsifiable_claim"):
             value = rec.get(field)
             if not value or not isinstance(value, str) or not value.strip():
                 failures.append(
                     "downgrade record {}: missing or empty field '{}'".format(rid, field)
                 )
+                rec_ok = False
         reason = rec.get("reason_class", "")
         if reason and reason not in VALID_REASON_CLASSES:
             failures.append(
@@ -268,6 +274,9 @@ def validate_cardinality_gate(repo_dir):
                     rid, reason, sorted(VALID_REASON_CLASSES)
                 )
             )
+            rec_ok = False
+        if not rec_ok:
+            continue
         req_id = rid.split("/", 1)[0]
         downgrade_cells_by_req.setdefault(req_id, set()).add(rid)
 
