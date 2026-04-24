@@ -4,6 +4,43 @@
 *Status: revised 2026-04-23 — scope expanded with reference_docs refactor and Council-driven redesign*
 *Depends on: v1.5.1 shipped (Phase 5 writeup hardening, case-insensitive diff fence gate, 171-test gate suite)*
 
+## Pre-release note: benchmark pinned skill copies (Finding A4)
+
+Round 5 Council Finding A4 flagged that two benchmark repos ship pinned copies
+of the v1.5.1-era skill under `.github/skills/` — `repos/virtio-1.5.1/.github/skills/`
+and `repos/chi-1.5.1/.github/skills/`. Both copies are byte-identical to each
+other: `SKILL.md` carries 14 `formal_docs`/`informal_docs` references and
+`quality_gate.py` carries 12. Version metadata in both pinned `SKILL.md` files
+reads `version: 1.5.1`. These are the exact skill artifacts that produced each
+benchmark's original output — kept for reproducibility, not freshness.
+
+Three possible dispositions for release:
+
+1. **Leave as v1.5.1 pinned copies** (status quo). Reproducibility preserved:
+   re-running the benchmark against the pinned skill produces the same output
+   that was captured originally. Downside: future readers seeing `formal_docs/`
+   in these pinned `SKILL.md` files may get confused about whether live QPB
+   still uses that layout.
+2. **Replace with v1.5.2 live skill copy.** The v1.5.2 skill expects
+   `reference_docs/cite/`, which is the post-migration layout now present in
+   those benchmark repos (Phase 1i and C13.6/A3 both moved the tree). But the
+   benchmark's captured output (BUGS.md, REQUIREMENTS.md) was produced by the
+   v1.5.1 skill against the pre-migration layout, so the captured artifacts
+   and the pinned skill would no longer agree on what was ingested. Breaks
+   reproducibility.
+3. **Delete pinned skill copies entirely.** Benchmarks become layout-only
+   snapshots; reproducibility relies on checking out QPB at a historical tag.
+   Least permissive, but simplest.
+
+Recommended: **option 1 (leave as-is) for v1.5.2 ship.** The `formal_docs/`
+references inside a pinned v1.5.1 `SKILL.md` are historically correct for that
+version; a single one-line note at the top of each pinned `SKILL.md` pointing
+readers at the live QPB skill would resolve the confusion without touching
+the reproducibility-critical body. That one-line note is a v1.5.3 cleanup
+task, not a v1.5.2 blocker. Andrew's call.
+
+---
+
 v1.5.2 ships two work streams in one release:
 
 1. **Bug-family amplification** — three levers (Phase 1 cartesian UC rule, Phase 3 compensation grid with BUG-default, cell-identity preservation across Phase 3 and Phase 5) plus operational polish (iteration handling, README CLI docs, candidate-stub writes).
