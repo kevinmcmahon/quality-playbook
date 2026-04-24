@@ -214,7 +214,12 @@ def ingest(target_repo: Path) -> dict:
     records = _collect(target_repo)
     cite_records = [r for r in records if r.is_cite]
 
-    schema_version = benchmark_lib.detect_skill_version(target_repo)
+    # Prefer an installed SKILL.md under .github/skills or .claude/skills; fall
+    # back to a root-level SKILL.md (used by the QPB self-audit bootstrap).
+    schema_version = (
+        benchmark_lib.detect_repo_skill_version(target_repo)
+        or benchmark_lib.detect_skill_version(target_repo)
+    )
     generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     manifest = {
