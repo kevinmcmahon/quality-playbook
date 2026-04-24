@@ -20,8 +20,14 @@ preserves the internal Tier 1 / Tier 2 distinction:
     <!-- qpb-tier: 2 -->
     # qpb-tier: 2
 
-Absent marker → Tier 1 (default for ``cite/``). Invalid marker → ingest fails.
-Top-level (Tier 4) files ignore the marker.
+A tier marker is considered *present* in the file if any line contains the
+substring ``qpb-tier``. If present, the marker must match the expected regex
+and must appear on the first non-blank line — otherwise ingest fails.
+
+Files with no ``qpb-tier`` substring anywhere default to Tier 1. This
+default-Tier-1 behavior for untagged files is intentional and out of scope
+for v1.5.2; the tiering model for untagged content is a deferred design
+question. Top-level (Tier 4) files ignore the marker.
 """
 
 from __future__ import annotations
@@ -100,16 +106,62 @@ def _is_under_cite(path: Path, cite_dir: Path) -> bool:
 
 
 def _parse_tier_marker(text: str) -> int:
-    for line in text.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        m = _TIER_MARKER_RE.match(stripped)
-        if m:
-            return int(m.group(1) or m.group(2))
-        # First non-blank line decides: no marker → default tier.
+    """Resolve the tier for a ``cite/`` file.
+
+    A tier marker is considered *present* in the file if any line contains the
+    substring ``qpb-tier``. If present, the marker must match
+    ``_TIER_MARKER_RE`` and must appear on the first non-blank line —
+    otherwise ``IngestError`` is raised. Files with no ``qpb-tier`` substring
+    anywhere default to Tier 1.
+
+    This default-Tier-1 behavior for untagged files is intentional: the 40
+    existing ``reference_docs/cite/`` files across benchmarks are all
+    authoritative and untagged, and the tiering model for untagged content is
+    out of scope for v1.5.2. The default is a deferred design question, not a
+    C13.6 patch.
+    """
+    lines = text.splitlines()
+
+    # Locate every line that looks like an intended tier marker. Any line
+    # containing 'qpb-tier' is treated as an intended marker and validated;
+    # lines with no 'qpb-tier' substring are classified as absent-marker.
+    marker_line_indexes = [
+        idx for idx, line in enumerate(lines) if "qpb-tier" in line
+    ]
+
+    if not marker_line_indexes:
+        # Absent marker → documented Tier 1 default. See docstring.
         return 1
-    return 1
+
+    # Find the first non-blank line's index so we can verify marker position.
+    first_non_blank_idx = next(
+        (idx for idx, line in enumerate(lines) if line.strip()),
+        None,
+    )
+
+    # Wrong-position: any intended-marker line that isn't the first non-blank
+    # line raises, regardless of whether the marker syntax itself is valid.
+    for idx in marker_line_indexes:
+        if idx != first_non_blank_idx:
+            raise IngestError(
+                "tier marker must appear on the first non-blank line "
+                "(found 'qpb-tier' on line {line_no}, first non-blank line "
+                "is {first_no})".format(
+                    line_no=idx + 1,
+                    first_no=(first_non_blank_idx + 1) if first_non_blank_idx is not None else "n/a",
+                )
+            )
+
+    # Marker is on the first non-blank line; validate syntax.
+    stripped = lines[first_non_blank_idx].strip()
+    m = _TIER_MARKER_RE.match(stripped)
+    if not m:
+        raise IngestError(
+            "malformed tier marker on first non-blank line: {!r} "
+            "(expected '<!-- qpb-tier: 1 -->', '<!-- qpb-tier: 2 -->', "
+            "'# qpb-tier: 1', or '# qpb-tier: 2')".format(stripped)
+        )
+    return int(m.group(1) or m.group(2))
 
 
 def _read_text(path: Path) -> str:

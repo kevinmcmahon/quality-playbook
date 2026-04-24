@@ -125,5 +125,73 @@ class ReferenceDocsIngestTests(unittest.TestCase):
             self.assertEqual(len(manifest["records"]), 1)
 
 
+class ParseTierMarkerTests(unittest.TestCase):
+    """Option 1.5: 'malformed != absent'. A file is considered to carry an
+    intended tier marker only when some line contains 'qpb-tier'. Absent →
+    default Tier 1. Present → must match regex and sit on first non-blank
+    line; else raise."""
+
+    # (a) Missing marker (no qpb-tier substring anywhere) → Tier 1, no error.
+    def test_a_missing_marker_defaults_to_tier_1(self):
+        text = "# Project Spec\n\nBody line.\n"
+        self.assertEqual(rdi._parse_tier_marker(text), 1)
+
+    # (b) Marker at wrong position → raises.
+    def test_b_marker_not_on_first_non_blank_line_raises(self):
+        text = "# Project Spec\n<!-- qpb-tier: 2 -->\nBody.\n"
+        with self.assertRaises(rdi.IngestError) as ctx:
+            rdi._parse_tier_marker(text)
+        msg = str(ctx.exception)
+        self.assertIn("first non-blank line", msg)
+        self.assertIn("qpb-tier", msg)
+
+    def test_b_marker_on_late_line_raises_even_with_blank_leading_lines(self):
+        text = "\n\nprose first\n<!-- qpb-tier: 2 -->\n"
+        with self.assertRaises(rdi.IngestError):
+            rdi._parse_tier_marker(text)
+
+    # (c) Malformed marker syntax on first non-blank line → raises.
+    def test_c_malformed_tier_value_raises(self):
+        text = "<!-- qpb-tier: 3 -->\nBody.\n"
+        with self.assertRaises(rdi.IngestError) as ctx:
+            rdi._parse_tier_marker(text)
+        self.assertIn("malformed tier marker", str(ctx.exception))
+
+    def test_c_malformed_syntax_missing_colon_raises(self):
+        text = "# qpb-tier 2\nBody.\n"
+        with self.assertRaises(rdi.IngestError):
+            rdi._parse_tier_marker(text)
+
+    def test_c_malformed_syntax_non_integer_raises(self):
+        text = "<!-- qpb-tier: bogus -->\nBody.\n"
+        with self.assertRaises(rdi.IngestError):
+            rdi._parse_tier_marker(text)
+
+    # (d) Valid marker at position 1 in a short file and in a long file → parses.
+    def test_d_valid_marker_short_file(self):
+        text = "<!-- qpb-tier: 2 -->\n"
+        self.assertEqual(rdi._parse_tier_marker(text), 2)
+
+    def test_d_valid_marker_long_file(self):
+        body_lines = "\n".join("line {}".format(i) for i in range(200))
+        text = "# qpb-tier: 2\n" + body_lines + "\n"
+        self.assertEqual(rdi._parse_tier_marker(text), 2)
+
+    def test_d_valid_marker_after_blank_leading_lines(self):
+        # Blank lines before the marker are not "prose before marker" —
+        # the marker is still the first non-blank line.
+        text = "\n\n   \n<!-- qpb-tier: 2 -->\nContent.\n"
+        self.assertEqual(rdi._parse_tier_marker(text), 2)
+
+    # (e) Explicit default for entirely untagged files.
+    def test_e_file_with_no_qpb_tier_substring_returns_tier_1(self):
+        text = (
+            "# Linux kernel coding style\n\n"
+            "This is what K&R would have written if they had been forced\n"
+            "to work on a kernel for twenty years.\n"
+        )
+        self.assertEqual(rdi._parse_tier_marker(text), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
