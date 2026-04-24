@@ -13,14 +13,16 @@ repos/
 docs_gathered/
 **/docs_gathered/
 
-# Tier 4 informal documentation — run-specific content (AI chats, design
-# notes, retrospectives), not tracked in the skill's own repo. The README
-# is tracked so operators know what the folder is for on a fresh clone.
-# Ignore folder contents (not the folder itself) so the re-include for the
-# README actually takes effect — a pattern ending in `/` would block git
-# from recursing and silently ignore the !exception.
-informal_docs/*
-!informal_docs/README.md
+# Tier 4 context and citable material — run-specific content (AI chats,
+# design notes, retrospectives, plus adopter-supplied citable specs under
+# cite/). Not tracked in the skill's own repo so QPB's reference_docs/
+# stays a clean scaffold folder. Both .gitkeep sentinels are tracked so
+# the folder exists after a fresh clone.
+reference_docs/*
+!reference_docs/.gitkeep
+!reference_docs/cite/
+reference_docs/cite/*
+!reference_docs/cite/.gitkeep
 
 # Bootstrap self-audit run history — TRACKED as project history:
 #   quality/          self-audit output (proof of work)

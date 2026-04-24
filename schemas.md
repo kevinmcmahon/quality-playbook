@@ -28,8 +28,18 @@ nothing more. If you find yourself describing a process here, move it to
 - Record shapes for `FORMAL_DOC`, `REQ`, `UC`, `BUG`.
 - The embedded `citation` block used by Tier 1/2 requirements.
 - Enums: `tier`, `disposition`, `severity`, `fix_type`, `verdict`.
-- The list of supported plaintext extensions for `formal_docs/` and
-  `informal_docs/`.
+- The list of supported plaintext extensions for `reference_docs/` and
+  `reference_docs/cite/`.
+
+Plaintext inputs live under `reference_docs/` in the target repo. Files at
+the top level are Tier 4 context — loaded into Phase 1 prompts as background
+but not cited with byte-verification. Files under `reference_docs/cite/` are
+citable sources — each produces a `FORMAL_DOC` record with a mechanical
+`citation_excerpt` that `quality_gate.py` byte-verifies against the on-disk
+bytes. Tier 1 is the default for `cite/` contents; files may override to
+Tier 2 with an optional in-file marker on the first non-blank line:
+`<!-- qpb-tier: 2 -->` (Markdown) or `# qpb-tier: 2` (plaintext). The Tier 1 /
+Tier 2 distinction is internal to the playbook's authority hierarchy.
 
 ### 1.2 What `schemas.md` does NOT cover
 
@@ -43,7 +53,8 @@ nothing more. If you find yourself describing a process here, move it to
 The playbook maintains two parallel renderings of the same underlying records:
 
 1. **Machine-readable JSON manifests** — canonical source of truth for the
-   gate. Examples: `quality/formal_docs_manifest.json`,
+   gate. Examples: `quality/formal_docs_manifest.json` (sourced from
+   `reference_docs/cite/`),
    `quality/requirements_manifest.json`, `quality/use_cases_manifest.json`,
    `quality/bugs_manifest.json`. Validated field-by-field by
    `quality_gate.py` using stdlib `json` and explicit checks (no
@@ -123,7 +134,7 @@ Example:
 
 ## 2. Supported Plaintext Extensions
 
-`formal_docs/` and `informal_docs/` accept plaintext files only. This list is
+`reference_docs/` and `reference_docs/cite/` accept plaintext files only. This list is
 authoritative; ingest rejects anything not listed.
 
 | Extension | Notes                                                       |
@@ -143,7 +154,7 @@ Common extensions that are **deliberately excluded** and will fail ingest:
 
 Extending the list: a benchmark project that legitimately needs another
 plaintext format may propose it in a PR that (a) adds the extension here,
-(b) updates `formal_docs_ingest.py` accordingly, and (c) adds a fixture
+(b) updates `reference_docs_ingest.py` accordingly, and (c) adds a fixture
 exercising it. Don't add extensions speculatively.
 
 **Why this matters:** the citation gate reads the raw bytes of the plaintext
@@ -255,15 +266,15 @@ a majority (≥2 of 3) Council members record `overreaches` for the same REQ.
 
 ## 4. `FORMAL_DOC`
 
-One record per plaintext document in `formal_docs/`. Produced by
-`formal_docs_ingest.py` (Phase 2). Stored in
-`quality/formal_docs_manifest.json`.
+One record per plaintext document in `reference_docs/cite/`. Produced by
+`reference_docs_ingest.py` (Phase 1). Stored in
+`quality/formal_docs_manifest.json` (file name preserved for back-compat).
 
 ### 4.1 Fields
 
 | Field             | Type    | Required | Notes                                                                 |
 |-------------------|---------|----------|-----------------------------------------------------------------------|
-| `source_path`     | string  | yes      | Repo-relative path, e.g. `formal_docs/virtio-v1.1.txt`. Natural key.  |
+| `source_path`     | string  | yes      | Repo-relative path, e.g. `reference_docs/cite/virtio-v1.1.txt`. Natural key.  |
 | `document_sha256` | string  | yes      | Lowercase hex SHA-256 of the file's raw bytes. Computed at ingest.     |
 | `tier`            | integer | yes      | `1` or `2` only. `3/4/5` have no `FORMAL_DOC` record by definition.    |
 | `version`         | string  | no       | Human-readable version string, e.g. `"1.1"`, `"RFC 7230 §4"`.          |
@@ -279,7 +290,7 @@ Policy, `source_path` IS the plaintext file.
 
 ```json
 {
-  "source_path": "formal_docs/virtio-v1.1.txt",
+  "source_path": "reference_docs/cite/virtio-v1.1.txt",
   "document_sha256": "a3f4c8e2b7d5f1a9c6b0e3d7f8a2c5b9d4e6f1a3c7b5d8e0f2a4c6b8d0e3f5a7",
   "tier": 1,
   "version": "1.1",
@@ -301,7 +312,7 @@ Policy, `source_path` IS the plaintext file.
   `citation_stale` for each affected citation in
   `quality_gate_report.json` and fails. `citation_stale` is a
   gate-report marker, not a field on the citation record itself.
-  Re-ingest after any edit to a document under `formal_docs/`.
+  Re-ingest after any edit to a document under `reference_docs/cite/`.
 - **Marking a Tier 3/4/5 source as a `FORMAL_DOC`.** Code (Tier 3) and
   informal notes (Tier 4/5) are not formal documents. They do not get
   `FORMAL_DOC` records and cannot be cited in a `citation` block.
@@ -343,7 +354,7 @@ the REQ's validation and the REQ cannot be promoted to Tier 1 or Tier 2.
 
 ```json
 {
-  "document": "formal_docs/virtio-v1.1.txt",
+  "document": "reference_docs/cite/virtio-v1.1.txt",
   "document_sha256": "a3f4c8e2b7d5f1a9c6b0e3d7f8a2c5b9d4e6f1a3c7b5d8e0f2a4c6b8d0e3f5a7",
   "version": "1.1",
   "date": "2019-06-05",
@@ -497,6 +508,25 @@ anchored at a specific tier. Stored in
 | `functional_section`  | string     | yes      | LLM-derived grouping (e.g. `"Authentication"`, `"Bus enumeration"`). Reviewed by Council in Phase 4. |
 | `citation`            | object     | conditional | Required if `tier in {1,2}`; must be absent or `null` if `tier in {3,4,5}`. Shape: §5. |
 | `use_cases`           | array      | no       | List of `UC-NN` IDs this REQ participates in. One-way forward link; `[]` when none. Values MUST be unique (§10 invariant #18). |
+| `pattern`             | string     | no       | If present, one of `whitelist`, `parity`, `compensation`. Marks the REQ as requiring a Phase 3 compensation grid (Lever 2). Missing → no grid required. Invalid value → gate fails. |
+
+### Pattern tags and Phase 3 grids
+
+When a REQ's `pattern` field is set, Phase 3 MUST produce a compensation grid
+for that REQ (see §Phase 3 prompt contract). The grid enumerates
+(authoritative item × site) cells. Each cell becomes either a BUG entry with
+`Covers:` citing the cell ID, or a structured downgrade record in
+`quality/compensation_grid_downgrades.json`. The Phase 5 cardinality gate
+hard-fails on any uncovered cell.
+
+Valid `pattern` values:
+
+- `whitelist` — authoritative list of items (e.g. feature bits, syscalls)
+  that every site must handle.
+- `parity` — symmetric operations that must match (encode↔decode,
+  setup↔teardown).
+- `compensation` — sites that must compensate for a shared gap in a common
+  mechanism (shared filter, shared validator).
 
 REQ records do not carry a `disposition` field. Disposition information is
 authoritative on `BUG` records; aggregate disposition per REQ is computed
@@ -515,7 +545,7 @@ at render time by the phase script from `bugs_manifest.json` and shown in
   "tier": 1,
   "functional_section": "Device initialization",
   "citation": {
-    "document": "formal_docs/virtio-v1.1.txt",
+    "document": "reference_docs/cite/virtio-v1.1.txt",
     "document_sha256": "a3f4c8e2b7d5f1a9c6b0e3d7f8a2c5b9d4e6f1a3c7b5d8e0f2a4c6b8d0e3f5a7",
     "version": "1.1",
     "section": "2.4",
@@ -645,6 +675,23 @@ code behavior. Stored in `quality/bugs_manifest.json`; rendered to
 | `req_id`                 | string  | yes      | The primary REQ that revealed the divergence (`REQ-NNN`). Singular. |
 | `proposed_fix`           | string  | conditional | Required unless `disposition == "mis-read"`. When `disposition == "mis-read"`, the field is optional and — when present — documents the re-read (what the playbook mis-read and how the correct reading was established), not a shipped fix. Authoring guidance (not gate-enforced): patch-shaped when `fix_type` includes `code`, textual redline when `spec`. |
 | `fix_type`               | string  | yes      | Member of `fix_type` enum. Combination with `disposition` constrained by §3.4 / §10 invariant #12. |
+| `covers`                    | array[string] | no | Array of cell IDs this BUG addresses, form `REQ-N/cell-<item>-<site>`. REQUIRED when the BUG's primary requirement has `pattern:` set. |
+| `consolidation_rationale`   | string        | no | REQUIRED when `covers` has ≥2 entries. Explains why cells share a BUG (shared fix path, same function, etc.). Non-empty. |
+
+### Cell-identity invariants
+
+For any BUG whose primary requirement carries `pattern:`, the following
+invariants are gate-enforced:
+
+1. `covers` MUST be present and MUST be non-empty.
+2. Every cell ID in `covers` MUST match the form `REQ-N/cell-<item>-<site>`.
+3. Every cell ID in `covers` MUST appear in the Phase 3 grid for that REQ.
+4. When `covers` has ≥2 entries, `consolidation_rationale` MUST be present
+   with non-empty text.
+5. The union of `covers` across all BUGs for a pattern-tagged REQ, combined
+   with the cell IDs in `quality/compensation_grid_downgrades.json`, MUST
+   equal the cell set from the Phase 3 grid. Uncovered cells fail the Phase
+   5 cardinality gate.
 
 The choice of singular `req_id` (not `req_ids[]`) is deliberate: every bug has
 one primary REQ that frames the divergence. If a bug appears to touch multiple
@@ -836,7 +883,7 @@ Layer 1 (mechanical checks):
 8. **Functional section presence.** Every REQ MUST have a non-empty
    `functional_section` string.
 
-9. **No orphan formal docs.** Every file under `formal_docs/` whose
+9. **No orphan reference docs.** Every file under `reference_docs/cite/` whose
    extension is in the supported list MUST appear as a `FORMAL_DOC` record
    (ingest ran and was complete). Files with unsupported extensions MUST
    cause ingest to fail with a clear error, not be silently skipped.
@@ -887,6 +934,21 @@ Layer 1 (mechanical checks):
 18. **Array value uniqueness.** Values within `REQ.use_cases` MUST be
     unique. Values within `UC.formal_doc_refs` MUST be unique. Duplicate
     entries fail the gate.
+
+19. **Pattern-tagged REQs have complete grid coverage.** For every REQ with
+    a `pattern:` field, every (authoritative item × site) cell from the
+    Phase 3 compensation grid MUST appear either in some BUG's `covers` array
+    or in a structured downgrade record in
+    `quality/compensation_grid_downgrades.json`.
+
+20. **Structured downgrade records are complete.** Every record in
+    `quality/compensation_grid_downgrades.json` MUST have all five fields:
+    `cell_id`, `authority_ref`, `site_citation`, `reason_class`,
+    `falsifiable_claim`. `reason_class` MUST be one of
+    `out-of-scope | deprecated | platform-gated | handled-upstream |
+    intentionally-partial`. `falsifiable_claim` MUST have non-zero length.
+    Missing fields or invalid `reason_class` → cell reverts to BUG at gate
+    time.
 
 ---
 

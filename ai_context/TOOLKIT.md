@@ -26,7 +26,49 @@ The user wants to run the quality playbook on a codebase. Here's what to do:
 
    Create the directories if they don't exist. Copy from wherever the user has the playbook files. The source tree has the gate script inside a package directory with tests (`.github/skills/quality_gate/quality_gate.py` plus a `tests/` subdirectory) — target repos only need the standalone `quality_gate.py` file itself, not the package. `repos/setup_repos.sh` handles this automatically: it copies just the module file into each target's `.github/skills/quality_gate.py`.
 
-2. **Add documentation (strongly recommended).** If the user has specs, API docs, design documents, or community documentation, put them in a `docs_gathered/` directory in the repo. Documentation-enriched runs find significantly more bugs and higher-confidence bugs than code-only runs. The playbook works without docs, but it works much better with them.
+2. **Add documentation (strongly recommended).**
+
+   If the user has specs, API docs, design documents, AI chat logs, retrospectives,
+   or community documentation, place them in a `reference_docs/` directory at the
+   top of the target repo:
+
+   - **Tier 4 context (AI chats, design notes, retrospectives)** → `reference_docs/`
+     at the top level. No special treatment — these are read as background.
+
+   - **Citable material (project specs, RFCs, API contracts)** → `reference_docs/cite/`
+     subfolder. Every file here gets a byte-verified citation record. If a file is
+     the adopter's project-internal spec or an authoritative external standard and
+     you want the playbook to cite it with rigor, put it in `cite/`.
+
+   - **File format** — plaintext only (`.txt` or `.md`). Convert binary/formatted
+     sources first: `pdftotext spec.pdf spec.txt`, `pandoc -t plain spec.docx -o spec.txt`,
+     `lynx -dump https://example.org/spec.html > spec.txt`. The ingest script
+     rejects non-plaintext extensions.
+
+   - **No sidecar needed** — folder placement is the flag. If the user asks how to
+     mark something citable, tell them to move it into `reference_docs/cite/`.
+     Do not create `.meta.json` files; the current schema does not use them.
+
+   - **Optional Tier 2 marker** — a `cite/` file can declare Tier 2 with an
+     in-file first-line marker: `<!-- qpb-tier: 2 -->` (Markdown) or
+     `# qpb-tier: 2` (plaintext). Default when absent is Tier 1. Most adopters
+     do not need this.
+
+   - **If the user has documentation but is unsure what's citable** — default to
+     top-level `reference_docs/` (Tier 4 context). Only move files into `cite/`
+     when the adopter confirms the file is an authoritative source they want
+     the playbook to cite by quote.
+
+   When asked to help an adopter set up the playbook, run:
+
+       mkdir -p reference_docs reference_docs/cite
+
+   and then either move files they identify into the appropriate bucket or ask
+   them to drop files in and classify afterward.
+
+   Documentation-enriched runs find significantly more bugs and higher-confidence
+   bugs than code-only runs. The playbook works without docs, but it works much
+   better with them.
 
 3. **Run the playbook — one phase at a time.** Give the agent this prompt:
    ```
@@ -488,7 +530,7 @@ If the project's test runner isn't available (e.g., a C kernel module on a machi
 
 ## Gathered documentation
 
-The playbook works best when it has access to project documentation — specs, RFCs, API docs, design docs. If you have these, put them in a `docs_gathered/` directory in the repo root before running the playbook. The playbook will use them as the ground truth for what the code should do, which dramatically improves bug-finding accuracy.
+The playbook works best when it has access to project documentation — specs, RFCs, API docs, design docs. If you have these, put them in a `reference_docs/` directory in the repo root before running the playbook (citable specs under `reference_docs/cite/`, everything else at the top level). The playbook will use them as the ground truth for what the code should do, which dramatically improves bug-finding accuracy.
 
 If no docs exist, the playbook derives requirements from the code itself — comments, function signatures, error messages, test expectations. This works but produces weaker spec-basis evidence for each bug.
 

@@ -12,19 +12,51 @@ The playbook closes that gap. It reads your codebase, derives behavioral require
 
 ## How to use the Quality Playbook to find bugs in your code
 
-### Step 1: Gather documentation first
+### Step 1: Provide documentation (strongly recommended)
 
-**This is the most important step.** The playbook finds bugs by checking code against intent — what the code is *supposed* to do. Without documentation, it's limited to structural issues. With documentation, it catches the 35% of defects that structural review alone misses.
+The playbook produces better requirements, fewer false positives, and more specific
+bugs when it has written documentation to work from. Plaintext files only —
+`.txt` and `.md`. Convert other formats first:
 
-Create a `docs_gathered/` directory in your project and fill it with anything that describes what the code should do:
+- `pdftotext spec.pdf spec.txt`
+- `pandoc -t plain spec.docx -o spec.txt`
+- `lynx -dump https://example.org/spec.html > spec.txt`
 
-- **Specs and API docs** — design documents, ADRs, RFCs, OpenAPI definitions, protocol specs, runbooks
-- **Team knowledge** — Slack threads, Teams call transcripts, meeting notes, wiki pages, Confluence, Notion, post-mortems, incident reports
-- **Community sources** — GitHub issues (especially bug reports — they describe expected vs. actual behavior), Stack Overflow threads, Reddit discussions, Discord archives, mailing lists, maintainer blog posts
-- **AI chat history** — conversations where you discussed the codebase with AI tools contain intent that may not exist anywhere else; export with browser extensions like [ChatGPT Exporter](https://github.com/pionxzh/chatgpt-exporter) or just copy-paste
-- **Code-adjacent artifacts** — test comments, bug-fix commit messages, PR descriptions, CHANGELOGs, release notes, migration guides
+**Where to put documentation in your target repo:**
 
-**Tip:** Use an AI tool with web search (Claude Cowork, ChatGPT, Codex) to gather docs for you: *"Search for documentation, API references, known issues, and design discussions for [project name]. Compile everything into a reference document."*
+    reference_docs/
+    ├── claude-chat-2026-03-15.md    ← AI chat logs, design notes (Tier 4 context)
+    ├── design-notes.md              ← exploratory writeups, retrospectives
+    ├── incident-2026-02-retro.md    ← post-mortems, lessons learned
+    └── cite/
+        ├── my-project-spec.md       ← your project's own spec (citable)
+        └── rfc7807.txt              ← external standards you cite (citable)
+
+**Top-level `reference_docs/`** holds Tier 4 context — chat logs, design notes,
+retrospectives, any exploratory material. The playbook reads these into Phase 1
+as background but does not byte-verify quotes from them.
+
+**`reference_docs/cite/`** holds citable material — specs, RFCs, API contracts,
+published standards. Every file here produces a `FORMAL_DOC` record with a
+mechanical citation excerpt that `quality_gate.py` byte-verifies. If you cite
+it in a BUG or REQ, the gate checks the quote matches the bytes on disk.
+
+You do not need a sidecar file, a frontmatter header, or any metadata.
+Placement in `cite/` is the flag that says "this is citable." (Optional: the
+first non-blank line of a `cite/` file may carry `<!-- qpb-tier: 2 -->` or
+`# qpb-tier: 2` to mark it as Tier 2. Absent marker defaults to Tier 1.)
+
+If you have no documentation at all, the playbook still runs. It will operate
+from the source tree alone (Tier 3 evidence) and produce Tier 5 inferred
+requirements. The results are weaker but valid.
+
+**What does not belong in reference_docs:**
+
+- Binary or formatted files (PDF, DOCX, HTML) — convert first, commit plaintext
+- Code excerpts — the source tree is already Tier 3 authority
+- Test fixtures or sample data — these are project artifacts, not documentation
+- Anything private or sensitive that should not be read by an LLM — `reference_docs/`
+  contents are loaded into Phase 1 prompts
 
 ### Step 2: Install the skill
 
@@ -35,12 +67,12 @@ Copy the skill files into your project:
 mkdir -p .claude/skills/quality-playbook/references
 cp SKILL.md .claude/skills/quality-playbook/SKILL.md
 cp references/* .claude/skills/quality-playbook/references/
-# v1.5.1: Tier 1/2 and Tier 4 source folders at the target repo root.
-# formal_docs/README.md and informal_docs/README.md ship with the skill source.
-mkdir -p formal_docs informal_docs
+# v1.5.2: single reference_docs/ tree at the target repo root.
+# No README ships — cite/ contents are adopter-provided plaintext.
+mkdir -p reference_docs reference_docs/cite
 # Optional: append the suggested .gitignore rules for adopters (keeps bulk
-# archived runs + informal_docs content out of version control while tracking
-# the top-level RUN_INDEX.md and the folder READMEs).
+# archived runs + reference_docs content out of version control while tracking
+# the top-level RUN_INDEX.md).
 cat skill-template.gitignore >> .gitignore
 ```
 
@@ -49,7 +81,8 @@ cat skill-template.gitignore >> .gitignore
 mkdir -p .github/skills/references
 cp SKILL.md .github/skills/SKILL.md
 cp references/* .github/skills/references/
-mkdir -p formal_docs informal_docs
+# v1.5.2: single reference_docs/ tree at the target repo root.
+mkdir -p reference_docs reference_docs/cite
 cat skill-template.gitignore >> .gitignore
 ```
 
@@ -58,7 +91,8 @@ cat skill-template.gitignore >> .gitignore
 mkdir -p .github/skills/quality-playbook/references
 cp SKILL.md .github/skills/quality-playbook/SKILL.md
 cp references/* .github/skills/quality-playbook/references/
-mkdir -p formal_docs informal_docs
+# v1.5.2: single reference_docs/ tree at the target repo root.
+mkdir -p reference_docs reference_docs/cite
 cat skill-template.gitignore >> .gitignore
 ```
 

@@ -21,7 +21,7 @@ Before reading any other section of this skill, understand the plan and its depe
 
 **Phase 0 (Prior Run Analysis):** If previous quality runs exist, load their findings as seed data. This is automatic and only applies to re-runs.
 
-**Phase 1 (Explore):** Run the v1.5.1 documentation intake first (`python -m bin.formal_docs_ingest <target>` to produce `quality/formal_docs_manifest.json`; `bin/informal_docs_loader.load_informal_docs(<target>)` for Tier 4 context). Then explore the codebase in three stages: open exploration driven by domain knowledge, domain-knowledge risk analysis, and selected structured exploration patterns. Write all findings to `quality/EXPLORATION.md`. This file is the foundation — Phase 2 reads it as its primary input.
+**Phase 1 (Explore):** Run the v1.5.2 documentation intake first (`python -m bin.reference_docs_ingest <target>` to walk `reference_docs/` — `cite/` files produce `quality/formal_docs_manifest.json` records; top-level files are loaded as Tier 4 context via `reference_docs_ingest.load_tier4_context(<target>)`). Then explore the codebase in three stages: open exploration driven by domain knowledge, domain-knowledge risk analysis, and selected structured exploration patterns. Write all findings to `quality/EXPLORATION.md`. This file is the foundation — Phase 2 reads it as its primary input.
 
 **Phase 2 (Generate):** Read EXPLORATION.md and produce the quality artifacts: requirements, constitution, functional tests, code review protocol, integration tests, spec audit protocol, TDD protocol, AGENTS.md.
 
@@ -91,7 +91,7 @@ The quality gate (`quality_gate.py`) validates these artifacts. If the gate chec
 
 | Artifact | Location | Required? | Created In |
 |----------|----------|-----------|------------|
-| Formal docs manifest (v1.5.1) | `quality/formal_docs_manifest.json` | Yes | Phase 1 (`bin/formal_docs_ingest.py`) |
+| Formal docs manifest (v1.5.2) | `quality/formal_docs_manifest.json` | Yes | Phase 1 (`bin/reference_docs_ingest.py`) |
 | Requirements manifest (v1.5.1) | `quality/requirements_manifest.json` | Yes | Phase 2 |
 | Use cases manifest (v1.5.1) | `quality/use_cases_manifest.json` | Yes | Phase 2 |
 | Bugs manifest (v1.5.1) | `quality/bugs_manifest.json` | If bugs found | Phase 3/4/5 |
@@ -385,14 +385,22 @@ METADATA
 
 Fill in `project`, `model` (exact model string, e.g., `"claude-sonnet-4-6"`), `model_provider` (e.g., `"anthropic"`, `"openai"`, `"cursor"`), `runner` (e.g., `"claude-code"`, `"copilot-cli"`, `"cursor"`), and `start_time` (UTC ISO 8601). Update this file at the end of each phase — append the completed phase to `phases_completed` and update `bug_count`/`bug_severity` as bugs are confirmed. The final update after the terminal gate fills in `end_time`, `duration_minutes`, and `gate_result`.
 
-**Second action: run v1.5.1 document ingest (before exploring any code).** Two stdlib-only modules in `bin/` produce the authoritative documentation record that Phase 1 requirement derivation depends on:
+**Second action: run v1.5.2 document ingest (before exploring any code).** A single stdlib-only module in `bin/` produces the authoritative documentation record that Phase 1 requirement derivation depends on:
 
-1. **`python -m bin.formal_docs_ingest <target>`** — walks `formal_docs/` in the target repo, hashes every plaintext document, and writes `quality/formal_docs_manifest.json` per `schemas.md` §4 and the §1.6 manifest wrapper. If this command fails (unsupported extension, missing sidecar, case-fold collision), stop the run and surface the stderr output to the user verbatim — ingest errors are actionable and must be fixed before exploration continues.
-2. **`bin/informal_docs_loader.load_informal_docs(<target>)`** — returns a sorted list of `(path, text)` tuples from `informal_docs/`. Read the content into your working context for Tier 4 derivation in Step 7. If the folder is absent, the loader returns `[]` — proceed without informal context.
+1. **`python -m bin.reference_docs_ingest <target>`** — walks `reference_docs/` in the target repo once. Files under `reference_docs/cite/` are hashed and written to `quality/formal_docs_manifest.json` per `schemas.md` §4 and the §1.6 manifest wrapper. Files at the top level of `reference_docs/` are not written to the manifest but are available as Tier 4 context via `bin.reference_docs_ingest.load_tier4_context(<target>)`, which returns a sorted list of `(path, text)` tuples. If the ingest command fails (unsupported extension, non-UTF-8 bytes), stop the run and surface the stderr output to the user verbatim — ingest errors are actionable and must be fixed before exploration continues.
 
-**Sidecar convention.** Every plaintext file under `formal_docs/<name>.<ext>` needs a companion `formal_docs/<name>.meta.json` carrying at minimum `"tier": 1` or `"tier": 2` (plus optional `version`, `date`, `url`, `retrieved` — see `schemas.md` §4.1). Without the sidecar, ingest fails with a clear error. `README.md` under `formal_docs/` is skipped (folder-level doc, not a spec). `.meta.json` files are sidecars and are never themselves ingested.
+**No sidecar needed.** Folder placement is the flag: top-level `reference_docs/<name>.<ext>` files are Tier 4 context; files under `reference_docs/cite/<name>.<ext>` are citable sources. Tier 1 is the default for `cite/` contents; a file may override to Tier 2 with an optional in-file marker on the first non-blank line: `<!-- qpb-tier: 2 -->` (Markdown) or `# qpb-tier: 2` (plaintext). `README.md` under either folder is skipped.
 
-**Plaintext only — conversion happens outside the playbook.** Formal and informal docs are `.txt` or `.md` only (schemas.md §2). PDFs, DOCX, HTML, etc. are rejected with an actionable conversion hint (`pdftotext`, `pandoc -t plain`, `lynx -dump`). Do NOT attempt to parse binary or formatted documents inside the skill — run the conversion outside and commit the plaintext.
+**When `reference_docs/` is missing or empty**, Phase 1 MUST print this actionable message and proceed:
+
+> Phase 1 found no documentation in reference_docs/. The playbook will proceed
+> using only Tier 3 evidence (the source tree itself). For better results, drop
+> plaintext documentation into:
+>   reference_docs/            ← AI chats, design notes, retrospectives (Tier 4 context)
+>   reference_docs/cite/       ← project specs, RFCs, API contracts (citable, byte-verified)
+> See README.md "Step 1: Provide documentation" for details.
+
+**Plaintext only — conversion happens outside the playbook.** Reference docs are `.txt` or `.md` only (schemas.md §2). PDFs, DOCX, HTML, etc. are rejected with an actionable conversion hint (`pdftotext`, `pandoc -t plain`, `lynx -dump`). Do NOT attempt to parse binary or formatted documents inside the skill — run the conversion outside and commit the plaintext.
 
 Spend the first phase understanding the project. The quality playbook must be grounded in this specific codebase — not generic advice.
 
@@ -615,7 +623,19 @@ This is the most important step for the code review protocol. Everything found d
 **The five-phase pipeline:**
 
 1. **Phase A — Contract extraction.** Read all source files, list every behavioral contract. Write to `quality/CONTRACTS.md`. This is discovery — list everything, even if it seems obvious.
-2. **Phase B — Requirement derivation.** Read CONTRACTS.md and documentation. Group related contracts, enrich with user intent, write formal requirements. Write REQ records to `quality/requirements_manifest.json` (source of truth) and render to `quality/REQUIREMENTS.md`. For each requirement, record the `tier` (1–5 per schemas.md §3.1) and — when `tier ∈ {1, 2}` — the `citation` block produced by `bin/formal_docs_ingest` invoking `bin/citation_verifier` per schemas.md §5.4 / §5.5. The LLM does not shell out to `citation_verifier` directly; the excerpt is a product of the ingest pipeline and is re-verified by `quality_gate.py` at gate time. For Tier 3 REQs (code-is-the-spec), cite the source `file:line` in the `description`; citations are for FORMAL_DOC references only and must not appear on Tier 3/4/5 REQs. The tier + citation pair creates the forward link in the traceability chain: formal_docs → requirements → bugs → tests. See the tier/citation framing block later in this step for the full field list and the Tier-1-wins-over-Tier-2 rule.
+2. **Phase B — Requirement derivation.** Read CONTRACTS.md and documentation. Group related contracts, enrich with user intent, write formal requirements. Write REQ records to `quality/requirements_manifest.json` (source of truth) and render to `quality/REQUIREMENTS.md`. For each requirement, record the `tier` (1–5 per schemas.md §3.1) and — when `tier ∈ {1, 2}` — the `citation` block produced by `bin/reference_docs_ingest` invoking `bin/citation_verifier` per schemas.md §5.4 / §5.5. The LLM does not shell out to `citation_verifier` directly; the excerpt is a product of the ingest pipeline and is re-verified by `quality_gate.py` at gate time. For Tier 3 REQs (code-is-the-spec), cite the source `file:line` in the `description`; citations are for FORMAL_DOC references only and must not appear on Tier 3/4/5 REQs. The tier + citation pair creates the forward link in the traceability chain: reference_docs/cite → requirements → bugs → tests. See the tier/citation framing block later in this step for the full field list and the Tier-1-wins-over-Tier-2 rule.
+
+   **Optional `Pattern:` field on REQs.** A requirement that needs a Phase 3
+   compensation grid should declare its pattern class:
+
+   - `Pattern: whitelist` — authoritative list of items, every site must handle
+     each one.
+   - `Pattern: parity` — symmetric operations that must match
+     (encode↔decode, setup↔teardown).
+   - `Pattern: compensation` — sites that must compensate for a shared gap.
+
+   Missing the field means no grid. Setting an invalid value fails
+   `quality_gate.py`.
 
    **Primary-source extraction rule for code-presence claims.** When writing a requirement that asserts specific constants, values, or labels are handled by a specific function (e.g., "the whitelist must preserve X, Y, and Z"), the requirement must distinguish between what the **spec says should be there** and what the **code actually contains**. Extract the actual contents from the code (case labels, map keys, if-else branches) and compare to the spec's list. If a constant appears in the spec but NOT in the code, write the requirement as "must handle X — **[NOT IN CODE]**: defined in header.h:NN but absent from function() at file.c:NN-NN." Do not write "must preserve X" without verifying X is actually preserved. This prevents a contamination chain where a requirement asserts code presence, the code review copies the assertion, the spec audit inherits it, and the triage accepts it — all without anyone reading the actual code. This exact chain was observed in v1.3.17 virtio testing: REQUIREMENTS.md asserted RING_RESET was preserved in a switch, the code review copied the list, three spec auditors inherited the claim, and the bug went undetected.
    **Mechanical verification artifact for dispatch functions (mandatory).** When a contract asserts that a function handles, preserves, or dispatches a set of named constants (feature bits, enum values, opcode tables, event types, handler registries), you must generate and execute a shell command or script that mechanically extracts the actual case labels/branches from the function body **before writing the contract line**. Save the raw output to `quality/mechanical/<function>_cases.txt`. The command must be a non-interactive pipeline (e.g., `awk` + `grep`) that cannot hallucinate — it reads file bytes and prints matches. Example:
@@ -703,10 +723,10 @@ Follow the use cases with the individual requirements.
 - **Tier 1** — project's own formal spec (a `FORMAL_DOC` record with `tier=1`; highest authority).
 - **Tier 2** — external formal standard (RFC, W3C, ISO, published API contract — a `FORMAL_DOC` record with `tier=2`).
 - **Tier 3** — source-of-truth code when no formal spec exists; the code IS the spec.
-- **Tier 4** — informal documentation loaded by `bin/informal_docs_loader.py` (AI chats, design notes).
+- **Tier 4** — informal documentation loaded by `bin/reference_docs_ingest.load_tier4_context` from top-level `reference_docs/` (AI chats, design notes, retrospectives).
 - **Tier 5** — inferred from code behavior with no documentation backing.
 
-For `tier ∈ {1, 2}`, the REQ also carries a `citation` block per `schemas.md` §5 with `document`, `document_sha256`, at least one of `section`/`line`, and a mechanically-extracted `citation_excerpt`. Do NOT write the excerpt by hand. The excerpt is produced at ingest time by `bin/formal_docs_ingest` invoking `bin/citation_verifier` per the deterministic algorithm in `schemas.md` §5.4 (with section resolution per §5.5) — the LLM consumes the excerpt from `formal_docs_manifest.json`; it never shells out to the verifier directly. Ingest-time extraction is how Layer 1 of the hallucination gate works. If you cannot cite a document in `quality/formal_docs_manifest.json` (with hash and locator), the REQ is at most Tier 3. `page`-only locators are diagnostic-only and are never sufficient.
+For `tier ∈ {1, 2}`, the REQ also carries a `citation` block per `schemas.md` §5 with `document`, `document_sha256`, at least one of `section`/`line`, and a mechanically-extracted `citation_excerpt`. Do NOT write the excerpt by hand. The excerpt is produced at ingest time by `bin/reference_docs_ingest` invoking `bin/citation_verifier` per the deterministic algorithm in `schemas.md` §5.4 (with section resolution per §5.5) — the LLM consumes the excerpt from `formal_docs_manifest.json`; it never shells out to the verifier directly. Ingest-time extraction is how Layer 1 of the hallucination gate works. If you cannot cite a document in `quality/formal_docs_manifest.json` (with hash and locator), the REQ is at most Tier 3. `page`-only locators are diagnostic-only and are never sufficient.
 
 **Tier-1-wins-over-Tier-2 rule.** When a project's own spec (Tier 1) and an external standard (Tier 2) contradict each other, record the REQ at Tier 1 citing the project's position. A project's documented deviation from an external standard is authoritative intent, not a defect — the `upstream-spec-issue` disposition applies only when the project's spec is silent on the conflict.
 
@@ -722,7 +742,7 @@ For `tier ∈ {1, 2}`, the REQ also carries a `citation` block per `schemas.md` 
 - **Title**: Short, one-line statement.
 - **Tier**: Integer 1–5 per schemas.md §3.1.
 - **Functional section**: Short LLM-derived string (see above).
-- **Citation** (required when `tier ∈ {1, 2}`): produced by `bin/formal_docs_ingest` invoking `bin/citation_verifier`; never hand-authored and never invoked directly by the LLM. Shape per schemas.md §5.1.
+- **Citation** (required when `tier ∈ {1, 2}`): produced by `bin/reference_docs_ingest` invoking `bin/citation_verifier`; never hand-authored and never invoked directly by the LLM. Shape per schemas.md §5.1.
 - **Summary / Description**: State the requirement as a testable assertion: "X must satisfy Y" or "When A, the system must B".
 - **User story**: Frame it from the caller's perspective: "As a [role] doing [action], I expect [behavior] **so that** [outcome]." The "so that" clause is mandatory — it forces you to articulate the intent behind the requirement.
 - **Implementation note**: How the code achieves this requirement — the mechanism, the relevant code paths, the design choice.
@@ -1051,7 +1071,7 @@ Phase 2 writes two parallel renderings of every derived record: a **JSON manifes
 
 Manifests live at:
 
-- `quality/formal_docs_manifest.json` — written by `bin/formal_docs_ingest.py` in Phase 1. Do not rewrite.
+- `quality/formal_docs_manifest.json` — written by `bin/reference_docs_ingest.py` in Phase 1. Do not rewrite.
 - `quality/requirements_manifest.json` — authoritative REQ records per schemas.md §6.
 - `quality/use_cases_manifest.json` — authoritative UC records per schemas.md §7.
 - `quality/bugs_manifest.json` — authoritative BUG records per schemas.md §8. Written after Phase 3/4/5 confirm bugs.
@@ -1696,7 +1716,7 @@ Run the spec audit protocol as described in File 5. The triage report **must** i
 
 ### Layer 2 — Semantic Citation Check (v1.5.1 Council sub-pass)
 
-After the main spec audit triage, each Council member runs a per-REQ verdict against every Tier 1/2 REQ's `citation_excerpt`. This is **Layer 2** of the hallucination gate: Layer 1 is the mechanical byte-equality check — `bin/citation_verifier` is invoked by `bin/formal_docs_ingest` at ingest time and re-invoked by `quality_gate.py` at gate time; the LLM never shells out to it directly. Layer 2 is semantic — the reviewer decides whether the excerpt actually supports the requirement as stated, or whether the requirement overreaches what the excerpt says.
+After the main spec audit triage, each Council member runs a per-REQ verdict against every Tier 1/2 REQ's `citation_excerpt`. This is **Layer 2** of the hallucination gate: Layer 1 is the mechanical byte-equality check — `bin/citation_verifier` is invoked by `bin/reference_docs_ingest` at ingest time and re-invoked by `quality_gate.py` at gate time; the LLM never shells out to it directly. Layer 2 is semantic — the reviewer decides whether the excerpt actually supports the requirement as stated, or whether the requirement overreaches what the excerpt says.
 
 **Protocol.**
 
@@ -1831,7 +1851,7 @@ If the tracker entry count does not equal M + L, stop and reconcile — a BUG wa
 - `quality/PROGRESS.md` exists (obviously — you're writing to it)
 - `quality/COVERAGE_MATRIX.md` exists
 - `quality/COMPLETENESS_REPORT.md` exists
-- `quality/formal_docs_manifest.json` exists (v1.5.1 — written by `bin/formal_docs_ingest.py` in Phase 1; empty `records[]` is valid when no formal docs present)
+- `quality/formal_docs_manifest.json` exists (v1.5.2 — written by `bin/reference_docs_ingest.py` in Phase 1; empty `records[]` is valid when no formal docs present)
 - `quality/requirements_manifest.json` exists (v1.5.1 — authoritative REQ records, rendered to REQUIREMENTS.md)
 - `quality/use_cases_manifest.json` exists (v1.5.1 — authoritative UC records, rendered to USE_CASES.md / the REQUIREMENTS.md narrative)
 - `quality/citation_semantic_check.json` exists (v1.5.1 — Phase 4 Layer-2 output; empty `reviews[]` is valid for Spec Gap runs)
