@@ -2079,6 +2079,7 @@ class IterationProgressHeartbeatTests(unittest.TestCase):
 
             with mock.patch.object(run_playbook, "run_prompt", fake_run_prompt), \
                  mock.patch.object(run_playbook.lib, "cleanup_repo", lambda d: None), \
+                 mock.patch.object(run_playbook, "_finalize_iteration", return_value="pass"), \
                  mock.patch.object(run_playbook.lib, "count_bug_writeups",
                                    side_effect=[0, 1, 1, 1]):
                 exit_code = run_playbook.run_one_iterations(
@@ -2118,6 +2119,7 @@ class IterationProgressHeartbeatTests(unittest.TestCase):
             args = self._args(iterations=["gap"])
             with mock.patch.object(run_playbook, "run_prompt", fake_run_prompt), \
                  mock.patch.object(run_playbook.lib, "cleanup_repo", lambda d: None), \
+                 mock.patch.object(run_playbook, "_finalize_iteration", return_value="pass"), \
                  mock.patch.object(run_playbook.lib, "count_bug_writeups",
                                    side_effect=[0, 0]):
                 run_playbook.run_one_iterations(

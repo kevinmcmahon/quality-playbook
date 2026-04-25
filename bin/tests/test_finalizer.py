@@ -211,5 +211,88 @@ class FinalizerUnitTests(unittest.TestCase):
                              "PROGRESS.md must not mirror gate output (rev-1 regression guard).")
 
 
+class _Args:
+    """Lightweight argparse.Namespace stand-in for integration tests."""
+    def __init__(self, **kwargs):
+        defaults = {
+            "runner": "claude",
+            "model": None,
+            "no_stdout_echo": True,  # silence orchestrator banner output
+            "no_formal_docs": True,
+            "verbose": False,
+            "quiet": True,
+            "progress_interval": 60,
+            "pace_seconds": 0,
+            "next_iteration": False,
+            "strategy": None,
+            "_iterations_explicit": False,
+            "no_seeds": False,
+        }
+        defaults.update(kwargs)
+        for k, v in defaults.items():
+            setattr(self, k, v)
+
+
+def _make_iteration_repo(tmp: Path) -> Path:
+    """Build a repo with quality/EXPLORATION.md so run_one_iterations
+    doesn't bail early."""
+    repo = _make_repo(tmp, with_gate=True, with_progress="# Progress\n")
+    (repo / "quality" / "EXPLORATION.md").write_text("# Exploration\n", encoding="utf-8")
+    return repo
+
+
+class FinalizerCallSiteIntegrationTests(unittest.TestCase):
+    """Integration tests for the four call sites the finalizer is wired into.
+
+    Mock run_prompt so no real LLM is invoked; mock subprocess.run so no real
+    gate is invoked. Assert _finalize_iteration is called with the right
+    label/aborted parameters at each site.
+    """
+
+    # ---- Test 12: run_one_iterations success path (site 1) ----
+    def test_run_one_iterations_calls_finalizer_after_each_iteration(self):
+        from bin import run_playbook
+        with tempfile.TemporaryDirectory() as d:
+            repo = _make_iteration_repo(Path(d))
+            # _iterations_explicit=True bypasses the diminishing-returns
+            # early-stop so both strategies actually run under the mock
+            # (which produces 0 bugs both before and after).
+            args = _Args(_iterations_explicit=True)
+            with mock.patch.object(run_playbook, "run_prompt", return_value=0), \
+                 mock.patch.object(run_playbook, "_finalize_iteration", return_value="pass") as mock_fin, \
+                 mock.patch.object(run_playbook, "configure_logging", return_value=repo / "run.log"), \
+                 mock.patch.object(run_playbook, "print_startup_banner"), \
+                 mock.patch.object(run_playbook, "docs_present", return_value=True):
+                exit_code = run_playbook.run_one_iterations(
+                    repo, ["gap", "unfiltered"], args, "20260425-120000",
+                )
+            self.assertEqual(exit_code, 0)
+            labels = [call.kwargs.get("label") for call in mock_fin.call_args_list]
+            self.assertEqual(labels, ["post-gap", "post-unfiltered"])
+            for call in mock_fin.call_args_list:
+                self.assertFalse(call.kwargs.get("aborted", False))
+
+    # ---- Test 13: run_one_iterations abort path (site 2) ----
+    def test_run_one_iterations_calls_finalizer_on_abort(self):
+        from bin import run_playbook
+        with tempfile.TemporaryDirectory() as d:
+            repo = _make_iteration_repo(Path(d))
+            args = _Args()
+            with mock.patch.object(run_playbook, "run_prompt", return_value=2), \
+                 mock.patch.object(run_playbook, "_finalize_iteration", return_value="aborted") as mock_fin, \
+                 mock.patch.object(run_playbook, "configure_logging", return_value=repo / "run.log"), \
+                 mock.patch.object(run_playbook, "print_startup_banner"), \
+                 mock.patch.object(run_playbook, "docs_present", return_value=True):
+                exit_code = run_playbook.run_one_iterations(
+                    repo, ["adversarial"], args, "20260425-120000",
+                )
+            self.assertEqual(exit_code, 2)
+            self.assertEqual(mock_fin.call_count, 1)
+            call = mock_fin.call_args_list[0]
+            self.assertEqual(call.kwargs.get("label"), "abort-during-adversarial")
+            self.assertTrue(call.kwargs.get("aborted"))
+            self.assertEqual(call.kwargs.get("abort_reason"), "runner exited 2")
+
+
 if __name__ == "__main__":
     unittest.main()

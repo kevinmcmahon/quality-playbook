@@ -2563,6 +2563,16 @@ def run_one_iterations(
             )
             if exit_code:
                 lib.logboth(log_file, lib.log(f"  ABORT iteration {strategy}: child runner exited {exit_code}"))
+                # v1.5.2 (C13.9, site 2): orchestrator-authoritative
+                # finalization on abort. Captures state-at-abort even when
+                # the LLM session ended before its Phase 5 step 7.
+                _finalize_iteration(
+                    repo_dir,
+                    label=f"abort-during-{strategy}",
+                    log_file=log_file,
+                    aborted=True,
+                    abort_reason=f"runner exited {exit_code}",
+                )
                 return exit_code
 
             after = lib.count_bug_writeups(repo_dir)
@@ -2573,6 +2583,15 @@ def run_one_iterations(
                 progress_path,
                 f"\n## Iteration: {strategy} complete\n\n"
                 f"{_iso_utc_now()} · bugs before: {before} · bugs after: {after} · net-new: {gained}\n",
+            )
+            # v1.5.2 (C13.9, site 1): orchestrator-authoritative finalization
+            # after each successful iteration. Re-runs the gate so
+            # quality-gate.log reflects the post-iteration state, not the
+            # last LLM-written receipt.
+            _finalize_iteration(
+                repo_dir,
+                label=f"post-{strategy}",
+                log_file=log_file,
             )
             # Early-stop-on-zero-gain: unchanged semantics from
             # execute_strategy_list. v1.5.2 Phase 6: an explicit --iterations
