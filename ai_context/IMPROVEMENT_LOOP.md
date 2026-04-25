@@ -166,6 +166,21 @@ Build `bin/regression_replay.py` that takes a benchmark repository, a bug ID, an
 
 If v1.5.3 ends up too crowded, this slips to v1.6.0 and the lever-under-test loop continues to run informally.
 
+### Benchmark replicate harness
+
+A 24/7-capable batch driver at `repos/replicate/` runs each (qpb_version, pinned_benchmark) cell N times with disciplined operational definitions, producing the variance data that "moving toward statistical control" needs. The harness is benchmark material under `repos/`, not QPB source; plan files at `repos/replicate/plans/*.json` declare which (version, target, N) tuples to run; per-replicate run dirs carry a `quality/replicate_intent.json` marker so future analysis can distinguish deliberate replicates from fix-and-rerun pollution.
+
+Initial plans:
+
+- `v1.5.2_pinned_variance.json` — N=5 per pinned benchmark at v1.5.2. Primary deliverable: defensible σ for chi-1.5.1, virtio-1.5.1, express-1.5.1, casbin-1.5.1.
+- `v1.5.1_pinned_backfill.json` — N=3 at v1.5.1 to compare against v1.5.2 σ.
+- `v1.3_regression_spotcheck.json` — N=3 against the three historical cells (chi-1.3.46, virtio-1.3.50, httpx-1.3.46) where the trend table showed surprising drops; tells us whether each drop was real signal or N=1 noise.
+- `v1.5.3_expanded_roster.json` — single baseline run per new benchmark target (gorilla-mux, fastapi, clap, opa, rack). After vetting, targets are promoted into the pinned-benchmark plans for full replicate batches.
+
+The harness is recoverable across machine reboots — state lives in `state/runs.jsonl` (append-only), and resumption is "count completed events per (plan, target) and continue from the next pending replicate." Pacing between runs is configurable per plan to avoid LLM rate limits.
+
+The harness produces the empirical floor that the "Measurement and statistical control" section's σ claims need. Once `v1.5.2_pinned_variance` completes, the σ estimates land in that section as the data backing the "within-version variance is large" public-facing language.
+
 ## Measurement and statistical control
 
 The playbook is currently **instrumented and trend-aware**, not yet **under statistical control** in the formal SPC / CMMI level 4 sense.
@@ -183,7 +198,8 @@ What this does NOT mean today:
 The trajectory:
 
 - **v1.5.x–v1.6.x:** Add `metrics/` directory; emit per-run JSON records with operational definitions of each metric; build a trend dashboard. Regression-replay records (above) plug into this.
-- **v1.6.x–v1.7.x:** Run each benchmark 3 times per version-bump to build within-version variance estimates.
+- **v1.5.3:** Within-version variance estimation begins via the benchmark replicate harness (`repos/replicate/`). Initial target is N=5 per (v1.5.2, pinned-benchmark) cell. When operator compute is plentiful, this happens earlier than the original v1.6.x–v1.7.x plan; when compute is constrained, it slips back. Either way, the trajectory is "variance estimates land before control charts."
+- **v1.6.x–v1.7.x:** Build control charts on top of the v1.5.3 variance estimates as additional data accumulates. Evaluate whether any metric has sufficient statistical power to be declared in control.
 - **v1.7+:** Once 6-12 months of consistent data have accumulated, evaluate whether control charts on key metrics (bugs per benchmark per strategy, gate pass rate, false-positive rate, recall against ground truth) have sufficient statistical power to be meaningful.
 
 The discipline is inspired by Watts Humphrey's PSP/TSP work at SEI and the CMMI level 4 ("quantitatively managed") definition. That discipline took years for SEI to instrument and is rare even at large software organizations that explicitly target it. The honest framing for QPB today is "moving toward statistical control" with a multi-year horizon. Overclaiming today undermines the credibility of the eventual claim.
