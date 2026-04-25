@@ -2324,6 +2324,169 @@ def _iso_utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# v1.5.2 (C13.9) — orchestrator-side post-iteration finalization.
+# The four canonical install locations TOOLKIT.md documents for the gate
+# script. Order matters: repo-root checkout is fastest to find for a
+# source-tree run; the others mirror Claude Code / GitHub Copilot installs.
+_GATE_INSTALL_LOCATIONS = (
+    "quality_gate.py",
+    ".claude/skills/quality-playbook/quality_gate.py",
+    ".github/skills/quality_gate.py",
+    ".github/skills/quality-playbook/quality_gate.py",
+)
+
+
+def _resolve_gate_script(repo_dir: Path) -> Optional[Path]:
+    """Return the first existing quality_gate.py on TOOLKIT.md's install path
+    list, or None when the gate script cannot be located. Pure path lookup —
+    no I/O beyond ``Path.is_file()``."""
+    for rel in _GATE_INSTALL_LOCATIONS:
+        candidate = repo_dir / rel
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _finalize_iteration(
+    repo_dir: Path,
+    label: str,
+    log_file: Path,
+    *,
+    aborted: bool = False,
+    abort_reason: str = "",
+) -> str:
+    """Orchestrator-authoritative post-iteration finalizer.
+
+    Subprocesses ``quality_gate.py`` against ``repo_dir``, captures its full
+    output (stdout+stderr) to ``quality/results/quality-gate.log`` (preserving
+    the existing artifact contract — the receipt is exactly what the gate
+    produces, no synthetic wrapping), and appends a structured
+    ``## Run finalization`` block to ``quality/PROGRESS.md``.
+
+    ``label`` distinguishes finalization runs in PROGRESS.md (e.g.
+    "post-phase-6", "post-gap", "post-adversarial",
+    "abort-during-adversarial").
+
+    Returns one of: ``"pass"`` | ``"fail"`` | ``"aborted"``. Callers that pass
+    the return value into ``write_live_index_final``'s ``gate_verdict``
+    parameter must map ``"aborted"`` to ``"partial"`` (the existing INDEX
+    schema only accepts pass/fail/partial).
+
+    All errors are caught and logged via ``lib.logboth``; a finalizer failure
+    must not propagate and crash the run, but it must leave a visible
+    diagnostic in PROGRESS.md and the run log. See C13.9 brief edge cases 1–9
+    for the full contract.
+    """
+    quality_dir = repo_dir / "quality"
+    if not quality_dir.is_dir():
+        # Edge case 4: legitimate state for a run that aborted before Phase 1
+        # wrote anything. Nothing to finalize.
+        try:
+            lib.logboth(log_file, lib.log(f"[finalizer:{label}] skipped: no quality/ directory"))
+        except Exception:  # noqa: BLE001 — finalizer must not crash run
+            pass
+        return "pass"
+
+    results_dir = quality_dir / "results"
+    progress_path = quality_dir / "PROGRESS.md"
+    gate_log_path = results_dir / "quality-gate.log"
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    gate_script = _resolve_gate_script(repo_dir)
+    gate_status: str  # "pass" | "fail"
+    receipt_note: str
+
+    if gate_script is None:
+        # Edge case 1.
+        gate_status = "fail"
+        receipt_note = "<not produced — gate script not found>"
+        try:
+            gate_log_path.write_text(
+                "=== finalizer: quality_gate.py not found in any of "
+                f"{_GATE_INSTALL_LOCATIONS} ===\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+    else:
+        try:
+            completed = subprocess.run(
+                ["python3", str(gate_script), str(repo_dir)],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            combined = (completed.stdout or "") + (completed.stderr or "")
+            try:
+                gate_log_path.write_text(combined, encoding="utf-8")
+            except OSError:
+                pass
+            gate_status = "pass" if completed.returncode == 0 else "fail"
+        except subprocess.TimeoutExpired as exc:  # Edge case 3.
+            partial = ""
+            if exc.stdout:
+                partial += exc.stdout if isinstance(exc.stdout, str) else exc.stdout.decode("utf-8", "replace")
+            if exc.stderr:
+                partial += exc.stderr if isinstance(exc.stderr, str) else exc.stderr.decode("utf-8", "replace")
+            partial += "\n=== finalizer: gate timed out after 120s ===\n"
+            try:
+                gate_log_path.write_text(partial, encoding="utf-8")
+            except OSError:
+                pass
+            gate_status = "fail"
+        except Exception as exc:  # noqa: BLE001 — Edge case 2.
+            try:
+                gate_log_path.write_text(
+                    f"=== finalizer: gate subprocess raised {type(exc).__name__}: {exc} ===\n",
+                    encoding="utf-8",
+                )
+            except OSError:
+                pass
+            gate_status = "fail"
+        receipt_note = "quality/results/quality-gate.log"
+
+    final_status = "aborted" if aborted else gate_status
+
+    # Edge case 6: BUGS.md may not exist; count_bug_writeups handles that.
+    try:
+        bug_count = lib.count_bug_writeups(repo_dir)
+    except Exception:  # noqa: BLE001
+        bug_count = 0
+
+    block_lines = [
+        "",
+        f"## Run finalization ({label})",
+        "",
+        f"- Timestamp: {_iso_utc_now()}",
+        f"- Bug count: {bug_count}",
+        f"- Gate status: {final_status.upper()}",
+        f"- Receipt: {receipt_note}",
+    ]
+    if aborted:
+        block_lines.append(f"- Abort reason: {abort_reason}")
+    block_lines.append("")
+    block = "\n".join(block_lines)
+
+    # Edge case 5: PROGRESS.md may not exist (iteration aborted before any
+    # heartbeat-write). Append-or-create.
+    try:
+        progress_path.parent.mkdir(parents=True, exist_ok=True)
+        with progress_path.open("a", encoding="utf-8") as handle:
+            handle.write(block)
+    except OSError:
+        pass
+
+    try:
+        lib.logboth(
+            log_file,
+            lib.log(f"[finalizer:{label}] bugs={bug_count} status={final_status}"),
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+    return final_status
+
+
 def run_one_iterations(
     repo_dir: Path,
     iterations: Sequence[str],
