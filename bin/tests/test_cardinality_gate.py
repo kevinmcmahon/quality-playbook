@@ -480,6 +480,117 @@ class CardinalityGateTests(unittest.TestCase):
                 )
     # ----------------------------------------------------------------
 
+    # ---- Per-site UCs imply Pattern (Round 5 Finding C, Fix 2) ----
+    def _req_block(self, req_id, uc_refs, pattern=None):
+        """Build a REQ block with UC references listed, optional Pattern."""
+        lines = [
+            "### {}: test requirement".format(req_id),
+            "- Summary: test",
+            "- Use cases: {}".format(", ".join(uc_refs)),
+        ]
+        if pattern is not None:
+            lines.append("- Pattern: {}".format(pattern))
+        return "\n".join(lines) + "\n"
+
+    def test_per_site_ucs_without_pattern_fails(self):
+        """REQ-001 cites UC-1.a and UC-1.b but has no Pattern field. The gate
+        must emit a failure naming REQ-001 and both UC ids, and the message
+        must cross-reference Phase 1 confirmation checklist item 6."""
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d)
+            q = repo / "quality"
+            reqs_md = (
+                "# Requirements\n\n"
+                + self._req_block("REQ-001", ["UC-1.a", "UC-1.b"], pattern=None)
+            )
+            _write(q / "REQUIREMENTS.md", reqs_md)
+            # Grid file absent is legitimate (no pattern-tagged REQs to check
+            # against), but per-site UC cross-check runs anyway.
+            failures = quality_gate.validate_cardinality_gate(repo)
+            matching = [
+                f for f in failures
+                if "REQ-001" in f and "per-site UCs" in f and "Pattern field" in f
+            ]
+            self.assertEqual(
+                len(matching), 1,
+                "Expected exactly one per-site-UC/missing-Pattern failure for REQ-001; got: {!r}".format(failures),
+            )
+            self.assertIn("UC-1.a", matching[0])
+            self.assertIn("UC-1.b", matching[0])
+            self.assertIn("phase1_prompt", matching[0])
+
+    def test_per_site_ucs_with_pattern_passes_the_cross_check(self):
+        """Same fixture plus Pattern: whitelist on REQ-001, plus a valid grid
+        entry. The per-site-UC/missing-Pattern failure must not fire."""
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d)
+            q = repo / "quality"
+            reqs_md = (
+                "# Requirements\n\n"
+                + self._req_block("REQ-001", ["UC-1.a", "UC-1.b"], pattern="whitelist")
+            )
+            _write(q / "REQUIREMENTS.md", reqs_md)
+            grid = {
+                "schema_version": "1.5.2",
+                "reqs": {
+                    "REQ-001": {
+                        "pattern": "whitelist",
+                        "items": ["A"], "sites": ["S"],
+                        "cells": [{"cell_id": "REQ-001/cell-A-S", "item": "A", "site": "S", "present": True, "evidence": "src/a.py:10"}],
+                    },
+                },
+            }
+            _write(q / "compensation_grid.json", json.dumps(grid))
+            _write(q / "BUGS.md", "")
+            failures = quality_gate.validate_cardinality_gate(repo)
+            offending = [
+                f for f in failures
+                if "per-site UCs" in f and "missing the Pattern field" in f
+            ]
+            self.assertEqual(
+                offending, [],
+                "Per-site-UC/missing-Pattern check must not fire when Pattern is present; got: {!r}".format(offending),
+            )
+
+    def test_single_umbrella_uc_without_pattern_is_unaffected(self):
+        """REQ-002 cites UC-2 (no .a suffix) and has no Pattern field. The
+        per-site-UC/missing-Pattern check must NOT fire — single-UC REQs are
+        legitimately Pattern-optional."""
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d)
+            q = repo / "quality"
+            reqs_md = (
+                "# Requirements\n\n"
+                + self._req_block("REQ-002", ["UC-2"], pattern=None)
+            )
+            _write(q / "REQUIREMENTS.md", reqs_md)
+            failures = quality_gate.validate_cardinality_gate(repo)
+            offending = [
+                f for f in failures
+                if "REQ-002" in f and "per-site UCs" in f
+            ]
+            self.assertEqual(
+                offending, [],
+                "Single-UC REQ must not trigger per-site-UC check; got: {!r}".format(offending),
+            )
+
+    def test_per_site_uc_regex_does_not_mismatch_near_neighbors(self):
+        """Regex sanity: _enumerate_per_site_uc_reqs must recognize UC-1.a
+        but ignore UC-1 (no suffix) and UC-1.a.bad (over-suffixed)."""
+        import quality_gate as qg  # re-import via the test's existing sys.path insertion
+        req_text = (
+            "### REQ-100: mixed references\n"
+            "- Summary: test\n"
+            "- Use cases: UC-100, UC-100.a, UC-100.a.bad, UC-100.bb\n"
+        )
+        result = qg._enumerate_per_site_uc_reqs(req_text)
+        # Only UC-100.a (single lowercase letter) is a per-site UC; the others
+        # must be filtered out by the regex: UC-100 (no suffix), UC-100.a.bad
+        # (over-suffixed), UC-100.bb (multi-letter suffix).
+        self.assertIn("REQ-100", result)
+        self.assertEqual(result["REQ-100"], ["UC-100.a"])
+    # --------------------------------------------------------------
+
 
 if __name__ == "__main__":
     unittest.main()

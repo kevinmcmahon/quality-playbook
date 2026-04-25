@@ -180,6 +180,36 @@ def _enumerate_pattern_tagged_reqs(req_text):
     return result
 
 
+# v1.5.2 (C13.7/Fix 2) — per-site UC detection.
+# Phase 1's Cartesian UC rule emits UC-N.a / UC-N.b / ... for REQs where both
+# eligibility gates match. Any REQ block in REQUIREMENTS.md that cites such
+# per-site UCs MUST carry a Pattern field — otherwise Phase 2 silently dropped
+# it. The regex is deliberately narrow: one lowercase letter suffix only, word
+# boundaries on both sides, so bare UC-N and over-suffixed UC-N.a.bad are not
+# mistaken for per-site references.
+_PER_SITE_UC_RE = re.compile(r"\bUC-\d+\.[a-z]\b")
+
+
+def _enumerate_per_site_uc_reqs(req_text):
+    """Return {req_id: sorted_list_of_uc_ids} for every ### REQ-NNN: block
+    that cites at least one per-site UC reference (UC-N.a / UC-N.b / ...).
+
+    REQ blocks without per-site UC references are omitted from the result.
+    Each returned UC list is deduplicated and lexically sorted.
+    """
+    if not req_text:
+        return {}
+    positions = [(m.start(), m.group(1)) for m in _REQ_HEADING_RE.finditer(req_text)]
+    result = {}
+    for idx, (start, req_id) in enumerate(positions):
+        end = positions[idx + 1][0] if idx + 1 < len(positions) else len(req_text)
+        block = req_text[start:end]
+        ucs = sorted(set(_PER_SITE_UC_RE.findall(block)))
+        if ucs:
+            result[req_id] = ucs
+    return result
+
+
 def validate_cardinality_gate(repo_dir):
     """Run the v1.5.2 cardinality reconciliation gate.
 
@@ -196,6 +226,40 @@ def validate_cardinality_gate(repo_dir):
     q = Path(repo_dir) / "quality"
 
     req_text = _read_text_safe(q / "REQUIREMENTS.md")
+
+    # Enumerate pattern-tagged and per-site-UC REQs up front so the
+    # downstream cross-checks can run regardless of whether a grid file
+    # exists. A REQ that cites per-site UCs but lacks Pattern is a failure
+    # independent of grid presence (in fact, if Pattern is missing there is
+    # no grid precisely because Pattern is the trigger for producing one).
+    try:
+        pattern_tagged = _enumerate_pattern_tagged_reqs(req_text)
+    except ValueError as exc:
+        failures.append("REQUIREMENTS.md: {}".format(exc))
+        pattern_tagged = {}
+    try:
+        per_site = _enumerate_per_site_uc_reqs(req_text)
+    except ValueError as exc:
+        failures.append("REQUIREMENTS.md: {}".format(exc))
+        per_site = {}
+
+    # Cross-check (C13.7/Fix 2): every REQ that cites per-site UCs (UC-N.a,
+    # UC-N.b, ...) in REQUIREMENTS.md MUST carry a Pattern field. Per-site UCs
+    # are the structural signal emitted by Phase 1's Cartesian UC rule; if the
+    # signal is there but Pattern is missing, Phase 2 silently dropped it and
+    # the v1.4.5 regression vector is live again. Runs regardless of grid
+    # presence because missing Pattern is exactly what would cause the grid
+    # to be absent in the first place.
+    for req_id, uc_ids in per_site.items():
+        if req_id not in pattern_tagged:
+            failures.append(
+                "cardinality gate: {} has per-site UCs ({}) in REQUIREMENTS.md "
+                "but is missing the Pattern field — Phase 1 Cartesian UC rule "
+                "requires Pattern tagging for cross-site REQs (see "
+                "phase1_prompt confirmation checklist item 6)".format(
+                    req_id, ", ".join(uc_ids)
+                )
+            )
 
     grid_path = q / "compensation_grid.json"
     grid = _load_json_or_none(grid_path)
@@ -216,11 +280,6 @@ def validate_cardinality_gate(repo_dir):
     # Cross-check: every pattern-tagged REQ in REQUIREMENTS.md must appear in
     # the grid. Omitting a pattern-tagged REQ from the grid was a v1.5.2 escape
     # hatch (silently skipped by the per-REQ reconcile loop); close it here.
-    try:
-        pattern_tagged = _enumerate_pattern_tagged_reqs(req_text)
-    except ValueError as exc:
-        failures.append("REQUIREMENTS.md: {}".format(exc))
-        pattern_tagged = {}
     for req_id, req_pattern in pattern_tagged.items():
         if req_id not in reqs:
             failures.append(
