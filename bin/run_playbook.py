@@ -417,9 +417,13 @@ def _mark_iterations_explicit(argv: Sequence[str]) -> bool:
     flag is True, the strategy dispatcher must NOT apply the zero-gain
     early-stop — the user asked for every strategy in their list to run.
     """
-    tokens = set(argv)
-    explicit_flags = {"--iterations", "--strategy"}
-    return bool(tokens & explicit_flags) and "--full-run" not in tokens
+    explicit_prefixes = ("--iterations", "--strategy")
+    has_explicit = any(
+        t == prefix or t.startswith(prefix + "=")
+        for t in argv
+        for prefix in explicit_prefixes
+    )
+    return has_explicit and "--full-run" not in argv
 
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
