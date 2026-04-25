@@ -272,6 +272,45 @@ class FinalizerCallSiteIntegrationTests(unittest.TestCase):
             for call in mock_fin.call_args_list:
                 self.assertFalse(call.kwargs.get("aborted", False))
 
+    # ---- Test 15: Phase 6 finalizer status maps to INDEX verdict (site 5) ----
+    def test_phase6_finalizer_status_maps_to_index_verdict(self):
+        """The C13.9 brief mapping: finalizer 'pass' → 'pass',
+        'fail' → 'fail', 'aborted' → 'partial' (INDEX schema accepts
+        only pass/fail/partial). Verified by intercepting
+        write_live_index_final and checking gate_verdict."""
+        from bin import run_playbook
+
+        def _run_phase6(finalizer_status, gate_log_text):
+            with tempfile.TemporaryDirectory() as d:
+                repo = Path(d) / "repo"
+                repo.mkdir()
+                (repo / "quality").mkdir()
+                (repo / "quality" / "results").mkdir()
+                (repo / "quality" / "results" / "quality-gate.log").write_text(
+                    gate_log_text, encoding="utf-8"
+                )
+                args = _Args()
+                with mock.patch.object(run_playbook, "_finalize_iteration",
+                                       return_value=finalizer_status), \
+                     mock.patch.object(run_playbook, "write_live_index_final") as mock_index, \
+                     mock.patch.object(run_playbook, "archive_lib"):
+                    run_playbook._log_phase_completion(
+                        repo, "6", repo / "run.log", args, "20260425-120000",
+                    )
+                if mock_index.call_args is None:
+                    return None
+                return mock_index.call_args.kwargs.get("gate_verdict")
+
+        # finalizer pass + clean log → pass
+        self.assertEqual(_run_phase6("pass", "RESULT: GATE PASSED\n"), "pass")
+        # finalizer fail + failure log → fail
+        self.assertEqual(_run_phase6("fail", "RESULT: GATE FAILED — 3 check(s) must be fixed\n"), "fail")
+        # finalizer aborted (regardless of gate log content) → partial
+        self.assertEqual(_run_phase6("aborted", "RESULT: GATE PASSED\n"), "partial")
+        # finalizer pass but log doesn't pass _gate_pass — falls to fail/partial
+        # branch; warn → partial (preserves historical fallback)
+        self.assertEqual(_run_phase6("pass", "RESULT: 0 FAIL, 5 WARN\n"), "partial")
+
     # ---- Test 14a: run_one_singlepass iteration branch success (site 3) ----
     def test_run_one_singlepass_iteration_branch_calls_finalizer_on_success(self):
         """The rev-1-missed call site. --next-iteration --strategy adversarial

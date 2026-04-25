@@ -2114,6 +2114,16 @@ def _log_phase_completion(
         red_logs = sum(1 for path in results_dir.glob("BUG-*.red.log") if path.is_file()) if results_dir.is_dir() else 0
         lib.logboth(log_file, lib.log(f"  Phase 5 complete: {writeups} writeups, {red_logs} TDD red-phase logs"))
     elif phase == "6":
+        # v1.5.2 (C13.9, site 5): re-run the gate via _finalize_iteration
+        # before reading quality-gate.log. The previous flow read whatever
+        # the LLM session had last written, which could be stale by an
+        # iteration. The finalizer overwrites the receipt with the
+        # orchestrator-authoritative current state, then we read it.
+        finalizer_status = _finalize_iteration(
+            repo_dir,
+            label="post-phase-6",
+            log_file=log_file,
+        )
         gate_log = quality_dir / "results" / "quality-gate.log"
         gate_result = "unknown"
         if gate_log.is_file():
@@ -2122,7 +2132,21 @@ def _log_phase_completion(
                 gate_result = lines[-1]
         lib.logboth(log_file, lib.log(f"  Phase 6 complete: {gate_result}"))
         gate_passed = _gate_pass(gate_result, quality_dir)
-        verdict = "pass" if gate_passed else ("partial" if "warn" in gate_result.lower() else "fail")
+        # v1.5.2 (C13.9): map the finalizer's status into INDEX's
+        # pass|fail|partial schema. 'aborted' has no INDEX equivalent
+        # and maps to 'partial' (incomplete-run code). For non-aborted
+        # runs the finalizer's pass/fail aligns with the gate verdict
+        # we just read; preserve the historical 'warn → partial' fallback
+        # for the read-from-log path so behavior matches when the
+        # finalizer agrees.
+        if finalizer_status == "aborted":
+            verdict = "partial"
+        elif finalizer_status == "pass" and gate_passed:
+            verdict = "pass"
+        elif "warn" in gate_result.lower():
+            verdict = "partial"
+        else:
+            verdict = "fail"
         try:
             write_live_index_final(
                 repo_dir,
