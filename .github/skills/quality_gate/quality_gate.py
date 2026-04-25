@@ -99,9 +99,11 @@ _CONSOLIDATION_RE = re.compile(
 
 _BUG_HEADING_RE = re.compile(r"^###\s+BUG-(\d+):", re.MULTILINE)
 
-# v1.5.2 (C13.6/B2) — evidence locator for present:true grid cells.
-# Relative path + ``:N`` or ``:N-M`` line reference. No absolute paths, no URLs.
-_EVIDENCE_RE = re.compile(r"^[^:]+:\d+(-\d+)?$")
+# v1.5.2 (C13.8/Fix 1) — evidence locator for present:true grid cells.
+# Relative path (no leading '/'), single colon, line number (>=1) or
+# range ``N-M`` with both endpoints >=1. Rejects: absolute paths,
+# multi-slash roots, URLs, line zero, zero-endpoint ranges.
+_EVIDENCE_RE = re.compile(r"^(?!/)[^:]+:[1-9]\d*(-[1-9]\d*)?$")
 
 
 def _parse_covers(bug_block):

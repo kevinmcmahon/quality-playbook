@@ -480,6 +480,83 @@ class CardinalityGateTests(unittest.TestCase):
                 )
     # ----------------------------------------------------------------
 
+    # ---- _EVIDENCE_RE contract (Round 6 Finding 1, C13.8/Fix 1) ----
+    def _evidence_fixture(self, evidence_value):
+        """Return (repo_path_factory, cell_dict) for the helper to write into."""
+        return {
+            "cell_id": "REQ-010/cell-X-MMIO",
+            "item": "X", "site": "MMIO", "present": True,
+            "evidence": evidence_value,
+        }
+
+    def _run_gate_with_evidence(self, evidence_value):
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d)
+            q = repo / "quality"
+            cell = self._evidence_fixture(evidence_value)
+            _write(q / "compensation_grid.json", json.dumps(self._grid_with_cell(cell)))
+            _write(q / "REQUIREMENTS.md", _requirements_md("REQ-010"))
+            _write(q / "BUGS.md", "")
+            return quality_gate.validate_cardinality_gate(repo)
+
+    def test_evidence_rejects_absolute_unix_path(self):
+        """/etc/passwd:10 violates the comment's 'No absolute paths' contract."""
+        failures = self._run_gate_with_evidence("/etc/passwd:10")
+        self.assertTrue(
+            any("file:line" in f and "/etc/passwd:10" in f for f in failures),
+            "Expected file:line diagnostic for absolute path; got: {!r}".format(failures),
+        )
+
+    def test_evidence_rejects_root_only_path(self):
+        """/:1 has no path segment — root + line is not a real citation."""
+        failures = self._run_gate_with_evidence("/:1")
+        self.assertTrue(
+            any("file:line" in f and "/:1" in f for f in failures),
+            "Expected file:line diagnostic for root-only path; got: {!r}".format(failures),
+        )
+
+    def test_evidence_rejects_multi_slash_path(self):
+        """///x:1 leads with the absolute-path rejection regardless of subsequent
+        segments."""
+        failures = self._run_gate_with_evidence("///x:1")
+        self.assertTrue(
+            any("file:line" in f and "///x:1" in f for f in failures),
+            "Expected file:line diagnostic for multi-slash path; got: {!r}".format(failures),
+        )
+
+    def test_evidence_rejects_line_zero(self):
+        """Line 0 is not a valid 1-indexed citation."""
+        failures = self._run_gate_with_evidence("src/file.c:0")
+        self.assertTrue(
+            any("file:line" in f and "src/file.c:0" in f for f in failures),
+            "Expected file:line diagnostic for line zero; got: {!r}".format(failures),
+        )
+
+    def test_evidence_rejects_zero_range_end(self):
+        """A range whose end-line is 0 is structurally invalid."""
+        failures = self._run_gate_with_evidence("src/file.c:10-0")
+        self.assertTrue(
+            any("file:line" in f and "src/file.c:10-0" in f for f in failures),
+            "Expected file:line diagnostic for zero range endpoint; got: {!r}".format(failures),
+        )
+
+    def test_evidence_accepts_relative_with_subdir(self):
+        """Positive control: a real relative file:line still passes."""
+        failures = self._run_gate_with_evidence("drivers/virtio/virtio.c:123")
+        self.assertEqual(
+            failures, [],
+            "Tightened regex must still accept legitimate relative file:line; got: {!r}".format(failures),
+        )
+
+    def test_evidence_accepts_range(self):
+        """Positive control: a relative file:line-line range still passes."""
+        failures = self._run_gate_with_evidence("drivers/virtio/virtio.c:120-140")
+        self.assertEqual(
+            failures, [],
+            "Tightened regex must still accept legitimate file:line-line ranges; got: {!r}".format(failures),
+        )
+    # ----------------------------------------------------------------
+
     # ---- Per-site UCs imply Pattern (Round 5 Finding C, Fix 2) ----
     def _req_block(self, req_id, uc_refs, pattern=None):
         """Build a REQ block with UC references listed, optional Pattern."""
