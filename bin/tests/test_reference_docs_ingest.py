@@ -124,6 +124,25 @@ class ReferenceDocsIngestTests(unittest.TestCase):
             manifest = json.loads(out.read_text(encoding="utf-8"))
             self.assertEqual(len(manifest["records"]), 1)
 
+    def test_manifest_record_uses_document_sha256_field_name(self):
+        """Producer↔consumer schema contract: schemas.md §1.6 names the field
+        ``document_sha256``; quality_gate.py reads ``document_sha256`` for the
+        §10 invariant #3 (citation_stale) check. A stray ``sha256`` key would
+        silently disable that check (Round 7 Finding D)."""
+        with tempfile.TemporaryDirectory() as d:
+            root = _scaffold(Path(d))
+            cite = root / "reference_docs" / "cite"
+            cite.mkdir(parents=True)
+            (cite / "spec.md").write_text("# Spec\n\nBody.\n", encoding="utf-8")
+            rdi.ingest(root)
+            manifest = json.loads(
+                (root / "quality" / "formal_docs_manifest.json").read_text(encoding="utf-8")
+            )
+            rec = manifest["records"][0]
+            self.assertIn("document_sha256", rec)
+            self.assertNotIn("sha256", rec)
+            self.assertRegex(rec["document_sha256"], r"^[0-9a-f]{64}$")
+
 
 class ParseTierMarkerTests(unittest.TestCase):
     """Option 1.5: 'malformed != absent'. A file is considered to carry an

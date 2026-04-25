@@ -240,7 +240,7 @@ def _build_record(rec: _FileRecord, schema_version: str, generated_at: str) -> d
         "byte_count": len(rec.text.encode("utf-8")),
         "line_count": len(rec.text.splitlines()),
         "citation_excerpt": _citation_excerpt(rec.text),
-        "sha256": digest,
+        "document_sha256": digest,
         "ingested_at": generated_at,
         "schema_version": schema_version,
     }
