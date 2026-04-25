@@ -6,29 +6,108 @@
 
 The Quality Playbook is a quality engineering tool, and it is itself engineered through the same discipline it advocates. Each release goes through a Plan-Do-Check-Act loop with **benchmark recovery against pinned ground truth** as the Check step.
 
-1. **Plan.** A defect or improvement candidate is identified — from a Council-of-Three review, from an empirical regression observed in benchmark output, or from an adopter report. A hypothesis is formed: which lever (regex, prompt, gate, schema, finalization step, iteration strategy) is wrong, and what change should improve which axis (process compliance, outcome recall, or both).
+1. **Plan.** A defect or improvement candidate is identified — from a Council-of-Three review, from an empirical regression observed in benchmark output, from an adopter report, or from a regression-replay run (see below). A hypothesis is formed: which **improvement lever** is wrong, and what change should improve which **verification dimension** (process compliance, outcome recall, or both).
 
 2. **Do.** The change is implemented. Source edits go through Claude Code with a written brief. Docs-only edits to orientation files (TOOLKIT.md, IMPROVEMENT_LOOP.md, TOOLKIT_TEST_PROTOCOL.md, README.md, DEVELOPMENT_CONTEXT.md) may be applied directly per the workspace AGENTS.md carve-out. Every code-bearing change is reviewed by a Council-of-Three nested panel before merge; every docs change is reviewed by the Toolkit Test Protocol before release.
 
-3. **Check.** The new release is run against the pinned benchmark repositories with known v1.4.5 ground-truth bug counts. Both axes are evaluated:
-   - **Process compliance.** `quality_gate.py` passes against each benchmark output. Artifacts have the right shape; no template sentinels; TDD logs present (or `NOT_RUN` with reason); requirements pipeline produced citations; finalization summary present in PROGRESS.md.
-   - **Outcome recall.** Bug counts on each benchmark repo, broken out by iteration strategy, compared to the prior release. Recall against ground truth is preserved or improved.
+3. **Check.** The new release is run against the pinned benchmark repositories with known v1.4.5 ground-truth bug counts. Both **verification dimensions** (next section) are evaluated.
 
-4. **Act.** If both axes pass, ship. If either regresses, the change is reverted or further iterated before the release lands.
+4. **Act.** If both dimensions pass, ship. If either regresses, the change is reverted or further iterated before the release lands.
 
-## The two axes
+The two pieces of vocabulary that hold this loop together are **verification dimensions** (what we measure to decide whether a release shipped successfully) and **improvement levers** (what we change to make a release better). They are different things; conflating them is the most common vocabulary mistake when describing this methodology, and the rest of this document keeps them strictly separated.
 
-The playbook is verified along two axes that must both succeed:
+## Verification dimensions
+
+The dimensions we *measure* on every release. There are two, and a release must pass both to ship.
 
 **Process compliance** — Does the run produce artifacts that conform to the expected shape? This is what `quality_gate.py` measures: BUGS.md heading format, regression-test patches, TDD logs, requirements pipeline output, mechanical extraction integrity, finalization summary in PROGRESS.md, writeup hydration completeness.
 
 **Outcome recall** — Does the run actually find the bugs we know are there? This is what benchmark recovery measures: number of confirmed bugs against pinned repos with known ground-truth bug counts, by iteration strategy.
 
-Both axes can fail independently. The most pernicious failure mode is **pass-process / fail-recall** — the run produces all the right artifacts and gates green while finding zero real bugs. This was historically observed when an under-powered code-generation model was used (see TOOLKIT.md "Cursor" entry). It cannot be detected by the gate alone; only benchmark recovery exposes it.
+Both dimensions can fail independently. The most pernicious failure mode is **pass-process / fail-recall** — the run produces all the right artifacts and gates green while finding zero real bugs. This was historically observed when an under-powered code-generation model was used (see TOOLKIT.md "Cursor" entry). It cannot be detected by the gate alone; only benchmark recovery exposes it.
 
 The opposite mode — **fail-process / pass-recall** — is rare but possible (the run finds real bugs but produces malformed artifacts that fail the gate). When it happens, the bugs are still useful but the release is not shippable until the artifacts are corrected.
 
-The two-axes framing is the canonical vocabulary for QPB improvement. It is *not* the same as external syntheses of the playbook's design space (e.g., "structured coverage ↔ freeform discovery" + "recall ↔ evidentiary rigor") — those describe the playbook's internal mechanisms, not the methodology used to improve them.
+These dimensions describe how we *verify* a release; they are not the handles we turn to make the release better. The handles are the **improvement levers** described next.
+
+## Improvement levers
+
+The decoupled surfaces you change to make a release better. Each lever has a known home in the codebase, can be tuned without affecting the others, and is what you reach for when a regression-replay run (below) shows the playbook missing a known bug.
+
+The criterion for "is this a real lever?" — pulling it should produce a change in measured outcome recall (or process compliance) on benchmark replay without simultaneously requiring edits to the homes of other levers. A handle that requires touching three files in three different conceptual surfaces is not yet a clean lever; it's a candidate for refactoring into one.
+
+### Lever 1 — Exploration breadth/depth
+
+**Home:** `references/exploration_patterns.md`, `references/iteration.md`. The four-strategy taxonomy (gap, unfiltered, parity, adversarial) lives there.
+
+**What it controls:** How the playbook explores the codebase — pattern coverage, iteration strategies, depth-of-trace expectations, and what the agent is told to skip vs. dig into.
+
+**Decoupled?** Yes — pure prompts/markdown, no code touch needed when the lever stays prompt-side.
+
+**Exercised in:** v1.5.2 — when the playbook missed a known bug in benchmark replay, tightening the exploration prompts in `iteration.md` recovered it without touching gate internals or requirements logic.
+
+### Lever 2 — Code-derived vs domain-derived requirements
+
+**Home:** `references/requirements_pipeline.md`, `references/requirements_review.md`, `references/requirements_refinement.md` (the prompts that decide how requirements are sourced and refined); `bin/citation_verifier.py` (the code-side enforcement that prevents code-derived requirements from being laundered into citable spec).
+
+**What it controls:** Whether requirements anchor to an external authoritative source (domain-derived, citable, Tier 1/2) or are extracted from the code itself (Tier 3, prone to laundering existing behavior into the spec).
+
+**Decoupled?** Mostly yes — three reference files for the prompts plus one code module for the citation check.
+
+**Exercised in:** v1.5.2 C13.6 (citation verifier with `reference_docs/cite/` extension check, tier marker semantics, downgrade-record skip, and `present:true` evidence).
+
+### Lever 3 — Gate strictness
+
+**Home:** `quality_gate.py` (single file, package at `.github/skills/quality_gate/`).
+
+**What it controls:** What the mechanical gate accepts vs. rejects — regex shape, schema, completeness, evidence presence, writeup hydration, mechanical-extraction integrity, BUGS.md format, TDD log presence.
+
+**Decoupled?** Yes from the other levers; not internally separated by lever (the file is organized by check, not by lever). Pulling this lever is a code edit at a known location.
+
+**Exercised in:** v1.5.1 writeup hydration checks; v1.5.2 C13.8 (evidence regex tightening, strict bool validation on `present`, tier-marker body-mention exemption).
+
+### Lever 4 — Finalization robustness
+
+**Home:** `bin/run_playbook.py` (`_finalize_iteration` helper, introduced v1.5.2 C13.9).
+
+**What it controls:** Orchestrator-side post-iteration finalization — running the gate as a subprocess, capturing stdout/stderr to `quality/results/quality-gate.log`, appending a structured block to `PROGRESS.md`, and mapping ABORTED status into the INDEX `gate_verdict` field.
+
+**Decoupled?** Yes — orchestrator code, distinct from gate internals (the helper subprocesses the gate rather than reimplementing it).
+
+**Exercised in:** v1.5.2 C13.9. Root cause of the issue addressed: the orchestrator's success path was taking the LLM's word for finalization rather than running the gate itself, producing stale `quality-gate.log` files (chi: 13 vs actual 15 bugs after parity) and silent half-state PROGRESS.md (express: started without a matching complete line).
+
+### Lever 5 — Mechanical extraction surface
+
+**Home:** Today, split across `SKILL.md` (which tells the agent what to extract mechanically) and `bin/run_playbook.py` / `quality_gate.py` (which validate the extraction shape and enforce the integrity check).
+
+**What it controls:** What the playbook extracts mechanically (case labels, exception handlers, defensive patterns) versus what it relies on the model to summarize, plus the integrity-check guarantee that no one rewrote the extraction file by hand.
+
+**Decoupled?** **Not cleanly today.** This is the worst-decoupled lever in the inventory. Pulling it means editing both sides in lockstep — change a mechanical-extraction rule in `SKILL.md` and you usually need to update the validator in code, or vice versa.
+
+**Status:** **Cleanup is a v1.5.3 work item** (see "v1.5.3 work items" below). The cleanup pulls extraction rules into a single `references/mechanical_extraction.md` and consolidates validation into a single choke-point in code.
+
+### Lever 6 — Categorization tier policy
+
+**Home:** Not yet built. Planned for v1.5.3 — `references/categorization.md` for the prompt-side rules, plus a tagging step at the end of synthesis.
+
+**What it will control:** The standout/confirmed/probable/candidate evidentiary tiers — what a finding has to demonstrate to earn each, including the `standout_justification` field for promotions to the standout tier.
+
+**Decoupled?** Will be, by design — single reference file plus single tagging step. Designing the lever decoupled from the start avoids the lockstep-edit problem that Lever 5 has today.
+
+### Adding new levers
+
+Discovered through regression replay (next section). When a missed-bug investigation cannot be cleanly attributed to one of the existing levers, that's a candidate new lever — name it, find its home in the codebase, document it here, and update the inventory.
+
+## Regression replay (lever calibration runs)
+
+The methodology that makes improvement levers concrete. To validate that a lever change actually helps, take a pinned benchmark repository, roll back to a commit just before a known QPB-* bug was fixed, and run the playbook against that commit. Two outcomes:
+
+- **The playbook finds the bug.** Positive control. The levers in their current state are sufficient for this class. No change needed.
+- **The playbook misses the bug.** Diagnose which lever, if pulled, would have caught it. Pull that lever. Re-run. Verify (a) the bug is now found, and (b) recall on the rest of the same benchmark is preserved (no regression on bugs the prior version was finding).
+
+This gives a clean, decoupled improvement signal. It isolates a specific class of bug behind a specific lever, separates "pulling a lever" from "side effects on unrelated levers," and produces an empirical record of which lever solved which class of miss. The output of a regression replay is a one-line entry in the lever's "Exercised in" list above.
+
+Used informally during v1.5.x development. Not yet automated. Future work in v1.6.0 may add `bin/regression_replay.py` taking a benchmark + bug ID + lever-under-test and running the playbook against the pre-fix commit, recording the before/after recall delta to a structured log under `metrics/`.
 
 ## Pinned benchmarks
 
@@ -44,39 +123,48 @@ When a new pinned benchmark version is created (e.g., `chi-1.6.0`), the v1.4.5 g
 
 The benchmark repos cover three ecosystems with substantively different failure modes — Go HTTP routing, kernel-C transport variants, JavaScript parser laxity — so a regression that only manifests in one ecosystem is still observable.
 
-## Levers
-
-The tunable parameters that improvement work changes:
-
-- **Prompts** — `SKILL.md`, `references/*.md`, agent-facing prompts in `bin/run_playbook.py`
-- **Gates** — `quality_gate.py` checks (regex, schema, completeness, evidence)
-- **Schemas** — `schemas.md`, JSON shapes, INDEX verdicts
-- **Iteration strategies** — gap, unfiltered, parity, adversarial mechanism definitions
-- **Finalization** — orchestrator-side post-run / post-iteration finalization (introduced v1.5.2)
-- **Mechanical extraction** — what the playbook extracts mechanically vs. relies on the model for
-- **Synthesis docs** — `TOOLKIT.md`, BUGS.md formatting, writeup hydration
-- **Categorization** — confidence/material tagging on confirmed bugs (planned v1.5.3)
-
-Each release's release notes name which levers it touched.
-
-## Council-of-Three review
+## Council-of-Three review and the Toolkit Test Protocol
 
 Every code-bearing change to QPB source goes through a Council-of-Three nested panel review (3 outer × 3 inner = 9 perspectives) before merge. The protocol is documented in the workspace `AGENTS.md` (Council-of-Three Invocation section), including the CLI form, working-directory discipline, and acceptance checks against fabrication.
 
-Docs-only changes to orientation files use the Toolkit Test Protocol (`TOOLKIT_TEST_PROTOCOL.md`) instead, which is purpose-built for documentation review through reader personas.
+Docs-only changes to orientation files use the **Toolkit Test Protocol** (`TOOLKIT_TEST_PROTOCOL.md`) instead, which is purpose-built for documentation review through reader personas. This is the docs analogue of benchmark-driven calibration: the Check step is whether the doc supports correct answers across reader personas, where Council's Check step is whether the code passes the gate and recall holds.
 
-## Bug categorization (planned for v1.5.3)
+## v1.5.3 work items
 
-A future addition to BUGS.md will tag each confirmed bug along a confidence/material dimension. The categorization is a tagging pass at the end of synthesis, not a new gate. Adopters can prioritize which findings to triage first based on the tag.
+Three changes planned for v1.5.3:
+
+### Bug categorization tagging
+
+A new tagging pass at the end of synthesis annotates each confirmed bug along a confidence/material dimension. The tagging is not a new gate — it does not gate-fail a run that has zero standouts, and it does not block a release if the distribution is unusual. Adopters use the tags to prioritize which findings to triage first.
 
 The four tiers, in descending evidentiary strength:
 
-- **standout** — bugs an experienced engineer would describe as "huh, didn't see that." Earned, not required in every run. Most valuable for open-source upstream submissions and showcase findings. A run can ship with zero standouts; a run cannot promote a finding to standout without explicit justification in the bug record.
-- **confirmed** — solid evidence, normal severity, the run's reliable findings. These are the default tier for bugs that pass the standard evidentiary bar.
+- **standout** — bugs an experienced engineer would describe as "huh, didn't see that." Earned, not required in every run. Most valuable for open-source upstream submissions and showcase findings. A run can ship with zero standouts; a run cannot promote a finding to standout without explicit justification in the bug record (the `standout_justification` field, required for any standout-tagged bug). The test: what would a senior maintainer of this project say if shown this finding? Surprise plus actionable specificity is the bar.
+- **confirmed** — solid evidence, normal severity, the run's reliable findings. The default tier for bugs that pass the standard evidentiary bar.
 - **probable** — code-path trace supports the finding but evidence is partial; an experienced reviewer would likely accept after a closer look. Worth surfacing but not load-bearing.
 - **candidate** — adversarial-iteration findings with the lower evidentiary bar; flagged as worth review but not promoted. Often correct, but the "is this actually wrong or is it a design choice?" question is genuinely open.
 
-The standout tier is the most consequential change for adopters who plan to submit upstream PRs. A standout bug should answer "what would a senior maintainer of this project say if shown this finding?" — surprise plus actionable specificity is the test.
+The standout tier is the most consequential change for adopters who plan to submit upstream PRs. The new lever (Lever 6 above) sits behind this work item.
+
+### Mechanical extraction lever cleanup
+
+Pull Lever 5 (mechanical extraction surface) into a cleanly decoupled state. Today the lever is split across `SKILL.md` and the validator code in `bin/run_playbook.py` / `quality_gate.py`, so changing how mechanical extraction works requires lockstep edits across multiple surfaces. The cleanup:
+
+1. **New `references/mechanical_extraction.md`.** Single home for the prompt-side rules: what gets mechanically extracted (case labels, exception handlers, defensive patterns), what shape the extraction artifact must take, what the agent is forbidden from writing by hand, how the integrity check is described to the agent. Today this content is scattered through SKILL.md alongside operational instructions; pulling it out makes it editable as a single lever.
+
+2. **Single validation choke-point.** Consolidate the integrity check into a single function (likely `quality_gate.py::check_mechanical_extraction` or a dedicated module). Today the integrity check is invoked from multiple places with subtly different framing; one choke-point means one place to edit when the rule changes, and one place for unit tests to cover.
+
+3. **Backward compatibility.** The existing `quality/mechanical/` artifact contract (the saved extraction files plus `verify.sh`) is preserved. Only the source-side rules and the validation module are restructured; downstream artifact consumers do not change.
+
+Outcome: a future change to mechanical extraction (e.g., adding a new extraction class for switch-on-string dispatch, or tightening the integrity check to detect more sophisticated tampering) becomes a one-file edit on the prompt side and a one-function edit on the validation side, rather than a distributed change across `SKILL.md`, `bin/run_playbook.py`, and `quality_gate.py`.
+
+The cleanup is scoped as a refactor — no new behavior, no new gate, no recall-relevant changes. The verification dimensions check that nothing regressed: process compliance is unchanged on benchmark replay, outcome recall is unchanged on benchmark replay.
+
+### Regression replay automation (optional, may slip to v1.6.0)
+
+Build `bin/regression_replay.py` that takes a benchmark repository, a bug ID, and an optional `--lever-under-test` flag, then runs the playbook against the commit immediately before the bug's fix landed. Output is a structured record under `metrics/regression_replay/<timestamp>/` with the recall delta and the diagnosed lever (if the bug was missed). Promotes regression replay from "thing the maintainer does informally" to a tracked metric.
+
+If v1.5.3 ends up too crowded, this slips to v1.6.0 and the lever-under-test loop continues to run informally.
 
 ## Measurement and statistical control
 
@@ -94,7 +182,7 @@ What this does NOT mean today:
 
 The trajectory:
 
-- **v1.5.x–v1.6.x:** Add `metrics/` directory; emit per-run JSON records with operational definitions of each metric; build a trend dashboard.
+- **v1.5.x–v1.6.x:** Add `metrics/` directory; emit per-run JSON records with operational definitions of each metric; build a trend dashboard. Regression-replay records (above) plug into this.
 - **v1.6.x–v1.7.x:** Run each benchmark 3 times per version-bump to build within-version variance estimates.
 - **v1.7+:** Once 6-12 months of consistent data have accumulated, evaluate whether control charts on key metrics (bugs per benchmark per strategy, gate pass rate, false-positive rate, recall against ground truth) have sufficient statistical power to be meaningful.
 
@@ -110,5 +198,6 @@ For metrics to be meaningful across releases, they need stable operational defin
 - **Recall against ground truth** — fraction of v1.4.5-confirmed bugs in the pinned benchmark that are recovered by the current release. Computed automatically by ID matching against the v1.4.5 BUGS.md.
 - **Run cost** — total token usage across all phases, plus wall-clock time. Captured per phase in PROGRESS.md.
 - **Within-version variance** — standard deviation of bug count across N re-runs of the same release on the same pinned benchmark. Requires ≥3 re-runs per version; not yet collected systematically.
+- **Lever calibration delta (regression replay)** — change in benchmark recall on a pre-fix commit before vs. after a lever change. Captured per regression-replay run when the automation lands.
 
 These definitions will be formalized in `metrics/SCHEMA.md` when the metrics pipeline is built.
