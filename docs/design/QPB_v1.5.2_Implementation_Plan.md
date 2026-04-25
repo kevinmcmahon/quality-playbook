@@ -4,6 +4,31 @@
 *Status: revised 2026-04-23 — scope expanded with reference_docs refactor and Council-driven redesign*
 *Depends on: v1.5.1 shipped (Phase 5 writeup hardening, case-insensitive diff fence gate, 171-test gate suite)*
 
+## Pre-release note: C13.9 added orchestrator-side post-iteration finalization
+
+C13.9 closes a finalization-robustness bug surfaced during v1.5.2 benchmark
+testing on chi-1.5.1, virtio-1.5.1, and express-1.5.1. v1.5.1 delegates
+terminal cardinality-gate execution and PROGRESS.md finalization to the LLM
+session running each iteration prompt; when an LLM session ends before
+completing those steps (context exhaustion, network drop, runner timeout,
+model refusal), the orchestrator does not detect the gap and `quality-gate.log`
+can be stale by an iteration (chi case: log written after parity at 13 bugs,
+shipped state 15 bugs after adversarial) or PROGRESS.md can show an
+"iteration started" line with no matching "complete" (express case:
+adversarial 2026-04-25T08:49:13Z, no completion). Add `_finalize_iteration`,
+an orchestrator-side helper that subprocesses `quality_gate.py` against the
+target repo, captures stdout+stderr verbatim to `quality-gate.log`
+(preserving the existing artifact contract — the receipt remains exactly
+what the gate produces), and appends a structured `## Run finalization` block
+to PROGRESS.md. Wire into five call sites: post-iteration success/abort in
+`run_one_iterations` (Phase 15b), post-singlepass success/abort in
+`run_one_singlepass` for both the baseline and `--next-iteration` branches
+(Phase 15c — the latter is the express case in production), and pre-INDEX
+in `run_one_phase_group` Phase 6 (Phase 15d) with `aborted → partial` mapping
+because the existing INDEX schema accepts only `pass | fail | partial`. Test
+count 597 → 614 (+17 across the four code phases). No SKILL.md or prompt
+changes — orchestrator code only.
+
 ## Pre-release note: C13.8 closed three Round 6 findings
 
 Round 6 Council came back 5 BLOCK / 4 Merge-with-fixes / 0 Ship across 9 panelists.
