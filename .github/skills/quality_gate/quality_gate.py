@@ -356,12 +356,34 @@ def validate_cardinality_gate(repo_dir):
             )
             continue
         cells = entry.get("cells") or []
-        grid_cell_ids = {c.get("cell_id") for c in cells if isinstance(c, dict)}
+        # v1.5.2 (C13.8/Fix 2): pre-validate each cell's 'present' field is a
+        # strict bool. Non-bool values (string "true", int 1, None, missing key)
+        # would otherwise fall between the 'is False' absent-cell branch and
+        # the 'is not True' present-cell evidence branch, escaping both checks.
+        # Same silent-bypass family as B1 — diagnose AND skip the cell, do not
+        # let it count toward coverage accounting.
+        valid_cells = []
+        for c in cells:
+            if not isinstance(c, dict):
+                continue
+            present = c.get("present")
+            if not isinstance(present, bool):
+                cell_id = c.get("cell_id") or "<no cell_id>"
+                failures.append(
+                    "{}: cell {} 'present' must be boolean true or false; got {!r}".format(
+                        req_id, cell_id, present
+                    )
+                )
+                continue
+            valid_cells.append(c)
+
+        grid_cell_ids = {c.get("cell_id") for c in valid_cells}
         grid_cell_ids.discard(None)
-        # Only absent cells require coverage
+        # Only absent cells require coverage. Identity check is safe now —
+        # every element of valid_cells has 'present' as a strict bool.
         absent_cells = {
-            c.get("cell_id") for c in cells
-            if isinstance(c, dict) and c.get("present") is False
+            c.get("cell_id") for c in valid_cells
+            if c.get("present") is False
         }
         absent_cells.discard(None)
 
@@ -369,8 +391,8 @@ def validate_cardinality_gate(repo_dir):
         # 'evidence' field in file:line form. Without this, a reviewer or LLM
         # can claim any cell is present, supply nothing, and the gate accepts
         # it — the bypass Round 5 Council called the highest remaining risk.
-        for c in cells:
-            if not isinstance(c, dict) or c.get("present") is not True:
+        for c in valid_cells:
+            if c.get("present") is not True:
                 continue
             cell_id = c.get("cell_id") or "<no cell_id>"
             evidence = c.get("evidence")

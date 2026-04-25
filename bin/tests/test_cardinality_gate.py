@@ -20,6 +20,8 @@ sys.path.insert(0, str(GATE_DIR))
 
 import quality_gate  # type: ignore
 
+_MISSING = object()  # sentinel for "key absent" in fixture builders
+
 
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -554,6 +556,96 @@ class CardinalityGateTests(unittest.TestCase):
         self.assertEqual(
             failures, [],
             "Tightened regex must still accept legitimate file:line-line ranges; got: {!r}".format(failures),
+        )
+    # ----------------------------------------------------------------
+
+    # ---- Strict bool 'present' (Round 6 Finding 2, C13.8/Fix 2) ----
+    def _run_gate_with_present(self, present_value, include_evidence=False):
+        """Build a one-cell grid with the specified 'present' value and run
+        the gate. include_evidence=True attaches a valid evidence string so
+        bool=True positive controls don't trip Fix 1's evidence requirement."""
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d)
+            q = repo / "quality"
+            cell = {"cell_id": "REQ-010/cell-X-MMIO", "item": "X", "site": "MMIO"}
+            # Special sentinel: omit the key entirely.
+            if present_value is not _MISSING:
+                cell["present"] = present_value
+            if include_evidence:
+                cell["evidence"] = "src/file.c:10"
+            _write(q / "compensation_grid.json", json.dumps(self._grid_with_cell(cell)))
+            _write(q / "REQUIREMENTS.md", _requirements_md("REQ-010"))
+            _write(q / "BUGS.md", "")
+            return quality_gate.validate_cardinality_gate(repo)
+
+    def test_present_string_true_fails_with_diagnostic(self):
+        """'present': 'true' (string) — bool-only contract violation. Must
+        emit the new diagnostic and not slip through evidence/absent checks."""
+        failures = self._run_gate_with_present("true")
+        self.assertTrue(
+            any("'present' must be boolean" in f and "'true'" in f for f in failures),
+            "Expected 'present must be boolean' diagnostic naming 'true'; got: {!r}".format(failures),
+        )
+        # The cell must NOT have leaked into the evidence-check path (no
+        # evidence diagnostic) or into absent_cells (no uncovered failure).
+        self.assertFalse(
+            any("evidence" in f and "REQ-010/cell-X-MMIO" in f for f in failures),
+            "String 'true' must not trigger evidence check; got: {!r}".format(failures),
+        )
+        self.assertFalse(
+            any("uncovered" in f for f in failures),
+            "String 'true' must not be counted as absent; got: {!r}".format(failures),
+        )
+
+    def test_present_int_one_fails_with_diagnostic(self):
+        """'present': 1 (int) — bool-only contract violation."""
+        failures = self._run_gate_with_present(1)
+        self.assertTrue(
+            any("'present' must be boolean" in f for f in failures),
+            "Expected 'present must be boolean' diagnostic for int 1; got: {!r}".format(failures),
+        )
+
+    def test_present_null_fails_with_diagnostic(self):
+        """'present': None — non-bool, must be rejected explicitly."""
+        failures = self._run_gate_with_present(None)
+        self.assertTrue(
+            any("'present' must be boolean" in f and "None" in f for f in failures),
+            "Expected 'present must be boolean' diagnostic for None; got: {!r}".format(failures),
+        )
+
+    def test_present_missing_fails_with_diagnostic(self):
+        """No 'present' key at all — same rejection path."""
+        failures = self._run_gate_with_present(_MISSING)
+        self.assertTrue(
+            any("'present' must be boolean" in f for f in failures),
+            "Expected 'present must be boolean' diagnostic for missing key; got: {!r}".format(failures),
+        )
+
+    def test_present_strict_true_still_requires_evidence(self):
+        """Positive control: bool True with NO evidence still triggers Fix 1's
+        evidence requirement — proves Fix 2 didn't break Fix 1's path."""
+        failures = self._run_gate_with_present(True, include_evidence=False)
+        self.assertTrue(
+            any("present:true requires non-empty 'evidence'" in f for f in failures),
+            "Expected B2's 'requires non-empty evidence' diagnostic for True with no evidence; got: {!r}".format(failures),
+        )
+        # Must NOT also raise the new bool-check diagnostic.
+        self.assertFalse(
+            any("'present' must be boolean" in f for f in failures),
+            "True is a valid bool — must not trigger bool-check diagnostic; got: {!r}".format(failures),
+        )
+
+    def test_present_strict_false_still_counts_as_absent(self):
+        """Positive control: bool False is still gathered into absent_cells
+        and surfaces as uncovered when no Covers/downgrade exists."""
+        failures = self._run_gate_with_present(False, include_evidence=False)
+        self.assertTrue(
+            any("uncovered" in f and "REQ-010/cell-X-MMIO" in f for f in failures),
+            "False must still produce uncovered-cells failure; got: {!r}".format(failures),
+        )
+        self.assertFalse(
+            any("'present' must be boolean" in f for f in failures),
+            "False is a valid bool — must not trigger bool-check diagnostic; got: {!r}".format(failures),
         )
     # ----------------------------------------------------------------
 
