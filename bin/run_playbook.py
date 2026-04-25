@@ -2147,7 +2147,7 @@ def _log_phase_completion(
             verdict = "partial"
         elif finalizer_status == "pass" and gate_passed:
             verdict = "pass"
-        elif "warn" in gate_result.lower():
+        elif finalizer_status == "pass" and "warn" in gate_result.lower():
             verdict = "partial"
         else:
             verdict = "fail"

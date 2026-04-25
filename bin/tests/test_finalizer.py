@@ -49,6 +49,33 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8") if path.is_file() else ""
 
 
+def _run_phase6(finalizer_status, gate_log_text):
+    """Drive _log_phase_completion for phase 6 and return the gate_verdict
+    that would be written to INDEX. Used by Test 15 and the Round 7 Finding B
+    regression test."""
+    from bin import run_playbook
+
+    with tempfile.TemporaryDirectory() as d:
+        repo = Path(d) / "repo"
+        repo.mkdir()
+        (repo / "quality").mkdir()
+        (repo / "quality" / "results").mkdir()
+        (repo / "quality" / "results" / "quality-gate.log").write_text(
+            gate_log_text, encoding="utf-8"
+        )
+        args = _Args()
+        with mock.patch.object(run_playbook, "_finalize_iteration",
+                               return_value=finalizer_status), \
+             mock.patch.object(run_playbook, "write_live_index_final") as mock_index, \
+             mock.patch.object(run_playbook, "archive_lib"):
+            run_playbook._log_phase_completion(
+                repo, "6", repo / "run.log", args, "20260425-120000",
+            )
+        if mock_index.call_args is None:
+            return None
+        return mock_index.call_args.kwargs.get("gate_verdict")
+
+
 class FinalizerUnitTests(unittest.TestCase):
 
     # ---- Test 1 ----
@@ -278,29 +305,6 @@ class FinalizerCallSiteIntegrationTests(unittest.TestCase):
         'fail' → 'fail', 'aborted' → 'partial' (INDEX schema accepts
         only pass/fail/partial). Verified by intercepting
         write_live_index_final and checking gate_verdict."""
-        from bin import run_playbook
-
-        def _run_phase6(finalizer_status, gate_log_text):
-            with tempfile.TemporaryDirectory() as d:
-                repo = Path(d) / "repo"
-                repo.mkdir()
-                (repo / "quality").mkdir()
-                (repo / "quality" / "results").mkdir()
-                (repo / "quality" / "results" / "quality-gate.log").write_text(
-                    gate_log_text, encoding="utf-8"
-                )
-                args = _Args()
-                with mock.patch.object(run_playbook, "_finalize_iteration",
-                                       return_value=finalizer_status), \
-                     mock.patch.object(run_playbook, "write_live_index_final") as mock_index, \
-                     mock.patch.object(run_playbook, "archive_lib"):
-                    run_playbook._log_phase_completion(
-                        repo, "6", repo / "run.log", args, "20260425-120000",
-                    )
-                if mock_index.call_args is None:
-                    return None
-                return mock_index.call_args.kwargs.get("gate_verdict")
-
         # finalizer pass + clean log → pass
         self.assertEqual(_run_phase6("pass", "RESULT: GATE PASSED\n"), "pass")
         # finalizer fail + failure log → fail
@@ -310,6 +314,19 @@ class FinalizerCallSiteIntegrationTests(unittest.TestCase):
         # finalizer pass but log doesn't pass _gate_pass — falls to fail/partial
         # branch; warn → partial (preserves historical fallback)
         self.assertEqual(_run_phase6("pass", "RESULT: 0 FAIL, 5 WARN\n"), "partial")
+
+    # ---- Round 7 Finding B: fail must not be demoted to partial on warn substring ----
+    def test_phase6_fail_with_warn_in_log_maps_to_fail_not_partial(self):
+        """A definite gate failure must not be demoted to 'partial' just
+        because the gate log's last line contains the substring 'warn'."""
+        self.assertEqual(
+            _run_phase6("fail", "Total: 5 FAIL, 3 WARN\n"),
+            "fail",
+        )
+        self.assertEqual(
+            _run_phase6("fail", "WARN: quality/REQUIREMENTS.md: missing section\n"),
+            "fail",
+        )
 
     # ---- Test 14a: run_one_singlepass iteration branch success (site 3) ----
     def test_run_one_singlepass_iteration_branch_calls_finalizer_on_success(self):
