@@ -2135,5 +2135,20 @@ class IterationProgressHeartbeatTests(unittest.TestCase):
             self.assertIn("## Iteration: gap complete", text)
 
 
+class SkillVersionStampTests(unittest.TestCase):
+    """Pin the SKILL.md version stamp to the current release.
+
+    `lib.detect_skill_version()` reads the repo's root SKILL.md and is the
+    source the playbook uses to stamp every generated artifact. If a release
+    bump misses an inline 1.5.x occurrence in SKILL.md, this test fails the
+    release prep itself instead of letting the drift ship.
+    """
+
+    def test_skill_version_matches_release_constant(self) -> None:
+        from bin import benchmark_lib as lib
+        detected = lib.detect_skill_version()
+        self.assertEqual(detected, "1.5.2")  # update this constant per release
+
+
 if __name__ == "__main__":
     unittest.main()
