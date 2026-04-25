@@ -192,6 +192,42 @@ class ParseTierMarkerTests(unittest.TestCase):
         )
         self.assertEqual(rdi._parse_tier_marker(text), 1)
 
+    # ---- Body-mention exemption (Round 6 Finding 3, C13.8/Fix 3) ----
+    # C13.6/A2's Option 1.5 over-tightened: any line containing the substring
+    # 'qpb-tier' (including prose) was treated as an intended marker attempt.
+    # Three claude-sonnet-4.6 panels flagged this. The refined contract: only
+    # body lines that match _TIER_MARKER_RE are misplaced markers; prose
+    # mentions are allowed.
+
+    def test_body_mention_of_qpb_tier_does_not_raise_when_valid_marker_present(self):
+        """Valid first-line marker plus body prose mentioning 'qpb-tier'
+        without full marker syntax must parse cleanly."""
+        text = "<!-- qpb-tier: 2 -->\nThis doc uses qpb-tier markers for classification.\n"
+        self.assertEqual(rdi._parse_tier_marker(text), 2)
+
+    def test_body_mention_of_qpb_tier_does_not_raise_when_no_first_line_marker(self):
+        """No first-line marker, body prose mentioning 'qpb-tier' without
+        full marker syntax → default Tier 1, no exception."""
+        text = "# Title\nThis doc uses qpb-tier markers.\n"
+        self.assertEqual(rdi._parse_tier_marker(text), 1)
+
+    def test_misplaced_full_marker_still_raises(self):
+        """Positive control: a body line that matches _TIER_MARKER_RE is a
+        real misplaced marker and must still raise. Protects against the
+        Option 1.5 bypass being re-opened by an over-loosened fix."""
+        text = "# Title\n<!-- qpb-tier: 2 -->\n"
+        with self.assertRaises(rdi.IngestError) as ctx:
+            rdi._parse_tier_marker(text)
+        self.assertIn("first non-blank line", str(ctx.exception))
+
+    def test_misplaced_marker_with_first_line_marker_present_still_raises(self):
+        """Positive control: two valid markers — second is misplaced — must
+        still raise. The body-marker scan runs regardless of whether the
+        first non-blank line is itself a valid marker."""
+        text = "<!-- qpb-tier: 2 -->\n<!-- qpb-tier: 1 -->\n"
+        with self.assertRaises(rdi.IngestError):
+            rdi._parse_tier_marker(text)
+
 
 if __name__ == "__main__":
     unittest.main()
