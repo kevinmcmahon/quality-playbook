@@ -4,6 +4,23 @@
 *Status: revised 2026-04-23 — scope expanded with reference_docs refactor and Council-driven redesign*
 *Depends on: v1.5.1 shipped (Phase 5 writeup hardening, case-insensitive diff fence gate, 171-test gate suite)*
 
+## Pre-release note: C13.8 closed three Round 6 findings
+
+Round 6 Council came back 5 BLOCK / 4 Merge-with-fixes / 0 Ship across 9 panelists.
+C13.8 closed the three convergent findings: (1) `_EVIDENCE_RE` was rewritten as
+`^(?!/)[^:]+:[1-9]\d*(-[1-9]\d*)?$` so it actually rejects absolute paths and
+line zero per its own comment (Phase 14a, six of nine verdicts converged on
+this); (2) `validate_cardinality_gate` now strict-bool-validates each cell's
+`present` field before downstream identity checks, closing a non-boolean
+bypass (`"present": "true"`, `1`, `null`, missing key) where cells slipped
+through both `is False` and `is not True` (Phase 14b); (3) `_parse_tier_marker`
+exempts body-prose mentions of `qpb-tier` and only raises on body lines that
+themselves match the full marker regex (Phase 14c). Net test count 580 → 597.
+Two adjacent Round 6 panel concerns — `UC-1.alpha` partial-match in the per-site
+UC regex and downgrade-authority not validated against the filesystem — were
+out of C13.8 scope and remain on the v1.5.3+ list. Run Council Round 7 over
+the combined surface (`1172651`..`af5ae6a`) before tagging v1.5.2.
+
 ## Pre-release note: benchmark pinned skill copies (Finding A4)
 
 Round 5 Council Finding A4 flagged that two benchmark repos ship pinned copies
