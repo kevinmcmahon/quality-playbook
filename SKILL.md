@@ -637,6 +637,17 @@ This is the most important step for the code review protocol. Everything found d
    Missing the field means no grid. Setting an invalid value fails
    `quality_gate.py`.
 
+   **Preservation rule (Phase 2).** While `Pattern:` is optional in the design
+   sense (some REQs are single-site and need no grid), it is REQUIRED to
+   preserve when the Phase-1 hypothesis already carried it. Phase 2 must
+   transcribe `Pattern:` from EXPLORATION.md to `quality/REQUIREMENTS.md` and
+   `quality/requirements_manifest.json` whenever present. Silent omission is a
+   documented v1.4.5-regression vector — the Phase 5 cardinality gate cannot
+   enforce coverage on a REQ it doesn't know is pattern-tagged. The gate's
+   structural backstop (C13.7/Fix 2) cross-checks REQs that carry per-site UC
+   references (`UC-N.a`/`UC-N.b` form emitted by Phase 1's Cartesian UC rule)
+   and fails the gate if Pattern is missing on such a REQ.
+
    **Primary-source extraction rule for code-presence claims.** When writing a requirement that asserts specific constants, values, or labels are handled by a specific function (e.g., "the whitelist must preserve X, Y, and Z"), the requirement must distinguish between what the **spec says should be there** and what the **code actually contains**. Extract the actual contents from the code (case labels, map keys, if-else branches) and compare to the spec's list. If a constant appears in the spec but NOT in the code, write the requirement as "must handle X — **[NOT IN CODE]**: defined in header.h:NN but absent from function() at file.c:NN-NN." Do not write "must preserve X" without verifying X is actually preserved. This prevents a contamination chain where a requirement asserts code presence, the code review copies the assertion, the spec audit inherits it, and the triage accepts it — all without anyone reading the actual code. This exact chain was observed in v1.3.17 virtio testing: REQUIREMENTS.md asserted RING_RESET was preserved in a switch, the code review copied the list, three spec auditors inherited the claim, and the bug went undetected.
    **Mechanical verification artifact for dispatch functions (mandatory).** When a contract asserts that a function handles, preserves, or dispatches a set of named constants (feature bits, enum values, opcode tables, event types, handler registries), you must generate and execute a shell command or script that mechanically extracts the actual case labels/branches from the function body **before writing the contract line**. Save the raw output to `quality/mechanical/<function>_cases.txt`. The command must be a non-interactive pipeline (e.g., `awk` + `grep`) that cannot hallucinate — it reads file bytes and prints matches. Example:
 
