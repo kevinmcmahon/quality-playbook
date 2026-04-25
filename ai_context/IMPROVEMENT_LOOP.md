@@ -181,6 +181,19 @@ The harness is recoverable across machine reboots — state lives in `state/runs
 
 The harness produces the empirical floor that the "Measurement and statistical control" section's σ claims need. Once `v1.5.2_pinned_variance` completes, the σ estimates land in that section as the data backing the "within-version variance is large" public-facing language.
 
+### C13.11 cleanup pass — Round 8 non-blocking hardening
+
+The Round 8 Council review (`Quality Playbook/Reviews/QPB_v1.5.2_Council_Round8_Synthesis.md`) cleared v1.5.2 to ship (8 of 9 panelists Ship/Merge, 1 Block on a structural test-discipline issue). It also surfaced six small hardening items that didn't block the tag but cluster naturally into a single C13.11 cleanup commit during v1.5.3 release-prep:
+
+1. **Centralize release version constant.** Add `RELEASE_VERSION = "1.5.3"` (or wherever the next bump lands) to `bin/benchmark_lib.py`. Change `SkillVersionStampTests.test_skill_version_matches_release_constant` to assert `lib.detect_skill_version() == lib.RELEASE_VERSION` instead of an inline literal. Eliminates the lockstep-update-two-places risk that 5 of 9 Round 8 panelists flagged. The codex/Panel-3 Block verdict in Round 8 was specifically on this item.
+2. **`detect_repo_skill_version()` coverage.** The new release-stamp guard at `bin/tests/test_run_playbook.py:2147-2150` exercises only `detect_skill_version()` against the root `SKILL.md`. Extend to also exercise `detect_repo_skill_version()` (the installed-copy reader path at `bin/benchmark_lib.py:137-143`) so a future divergence between root and installed-copy version stamps is caught in CI.
+3. **`_mark_iterations_explicit` audit comment.** Add an inline comment at `bin/run_playbook.py:420` documenting that the `explicit_prefixes` tuple is hardcoded to `("--iterations", "--strategy")` and must be re-audited if new CLI flags with similar prefixes are added — preventing a future maintainer from generalizing the prefix check in a way that reintroduces false positives.
+4. **Mutation-integration test for `test_citation_stale.py`.** The current round-trip test injects a deliberately stale hash; add a complementary scenario that mutates the source file post-ingest and verifies the gate detects the staleness through the actual mutation→hash-divergence path. Stronger end-to-end coverage of invariant #3.
+5. **`sys.path` cleanup in `test_citation_stale.py:36-39`.** Replace the `sys.path` manipulation with a proper test import mechanism (relative import or test-package conftest). Code hygiene; not behavior-changing.
+6. **Phase 6 verdict matrix completion.** The Finding B regression test covers the critical `(fail, *, warn)` cell. Add a complementary `(pass, gate_passed=False, no warn)` → `"fail"` test to `bin/tests/test_finalizer.py` to round out the truth-table coverage. The cell is correctly implemented; only the test is missing.
+
+These are intentionally batched as one cleanup commit rather than scattered fixes. None affects shipped behavior; all improve maintainability or test discipline. Land before the categorization-tagging or mechanical-extraction work begins so the C13.11 cleanup goes in against the simplest baseline.
+
 ## Measurement and statistical control
 
 The playbook is currently **instrumented and trend-aware**, not yet **under statistical control** in the formal SPC / CMMI level 4 sense.
