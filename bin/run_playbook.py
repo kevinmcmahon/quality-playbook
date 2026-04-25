@@ -2280,8 +2280,29 @@ def run_one_singlepass(repo_dir: Path, args: argparse.Namespace, timestamp: str)
     control_prompts.mkdir(parents=True, exist_ok=True)
     output_file = control_prompts / "playbook_run.output.txt"
     exit_code = run_prompt(repo_dir, prompt, pass_label, output_file, log_file, args.runner, args.model)
+
+    # v1.5.2 (C13.9): label distinguishes the iteration branch (which goes
+    # through this function via --next-iteration --strategy X) from the
+    # baseline single-pass branch.
+    finalize_label_base = (
+        f"{args.strategy[0]}" if args.next_iteration else "singlepass"
+    )
+
     if exit_code:
         lib.logboth(log_file, lib.log(f"ABORT: child runner exited {exit_code}"))
+        # v1.5.2 (C13.9, site 4): orchestrator-authoritative finalization
+        # on abort. Captures state-at-abort even when the LLM session ended
+        # before its Phase 5 step 7. This is the express-1.5.1 case in
+        # production — the runner exits mid-iteration and the orchestrator
+        # would otherwise leave PROGRESS.md and the receipt in silent
+        # half-state.
+        _finalize_iteration(
+            repo_dir,
+            label=f"abort-during-{finalize_label_base}",
+            log_file=log_file,
+            aborted=True,
+            abort_reason=f"runner exited {exit_code}",
+        )
         return exit_code
     lib.logboth(log_file, lib.log(f"Playbook complete: {repo_dir.name}"))
 
@@ -2290,6 +2311,13 @@ def run_one_singlepass(repo_dir: Path, args: argparse.Namespace, timestamp: str)
         lib.logboth(log_file, lib.log(f"WARNING: Missing: {' '.join(missing)}"))
     else:
         lib.logboth(log_file, lib.log("All artifacts present"))
+    # v1.5.2 (C13.9, site 3): orchestrator-authoritative finalization after
+    # a successful single-pass or single-strategy iteration run.
+    _finalize_iteration(
+        repo_dir,
+        label=f"post-{finalize_label_base}",
+        log_file=log_file,
+    )
     lib.cleanup_repo(repo_dir)
     return 0
 

@@ -272,6 +272,71 @@ class FinalizerCallSiteIntegrationTests(unittest.TestCase):
             for call in mock_fin.call_args_list:
                 self.assertFalse(call.kwargs.get("aborted", False))
 
+    # ---- Test 14a: run_one_singlepass iteration branch success (site 3) ----
+    def test_run_one_singlepass_iteration_branch_calls_finalizer_on_success(self):
+        """The rev-1-missed call site. --next-iteration --strategy adversarial
+        goes through run_one_singlepass (not run_one_iterations) and must also
+        finalize."""
+        from bin import run_playbook
+        with tempfile.TemporaryDirectory() as d:
+            repo = _make_iteration_repo(Path(d))
+            args = _Args(next_iteration=True, strategy=["adversarial"])
+            with mock.patch.object(run_playbook, "run_prompt", return_value=0), \
+                 mock.patch.object(run_playbook, "_finalize_iteration", return_value="pass") as mock_fin, \
+                 mock.patch.object(run_playbook, "configure_logging", return_value=repo / "run.log"), \
+                 mock.patch.object(run_playbook, "print_startup_banner"), \
+                 mock.patch.object(run_playbook, "docs_present", return_value=True), \
+                 mock.patch.object(run_playbook.lib, "cleanup_repo", lambda d: None), \
+                 mock.patch.object(run_playbook, "final_artifact_gaps", return_value=[]):
+                exit_code = run_playbook.run_one_singlepass(repo, args, "20260425-120000")
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(mock_fin.call_count, 1)
+            call = mock_fin.call_args_list[0]
+            self.assertEqual(call.kwargs.get("label"), "post-adversarial")
+            self.assertFalse(call.kwargs.get("aborted", False))
+
+    # ---- Test 14b: run_one_singlepass iteration branch abort (site 4) ----
+    def test_run_one_singlepass_iteration_branch_calls_finalizer_on_abort(self):
+        from bin import run_playbook
+        with tempfile.TemporaryDirectory() as d:
+            repo = _make_iteration_repo(Path(d))
+            args = _Args(next_iteration=True, strategy=["adversarial"])
+            with mock.patch.object(run_playbook, "run_prompt", return_value=2), \
+                 mock.patch.object(run_playbook, "_finalize_iteration", return_value="aborted") as mock_fin, \
+                 mock.patch.object(run_playbook, "configure_logging", return_value=repo / "run.log"), \
+                 mock.patch.object(run_playbook, "print_startup_banner"), \
+                 mock.patch.object(run_playbook, "docs_present", return_value=True):
+                exit_code = run_playbook.run_one_singlepass(repo, args, "20260425-120000")
+            self.assertEqual(exit_code, 2)
+            self.assertEqual(mock_fin.call_count, 1)
+            call = mock_fin.call_args_list[0]
+            self.assertEqual(call.kwargs.get("label"), "abort-during-adversarial")
+            self.assertTrue(call.kwargs.get("aborted"))
+            self.assertEqual(call.kwargs.get("abort_reason"), "runner exited 2")
+
+    # ---- Test 14c: run_one_singlepass baseline branch (no --next-iteration) ----
+    def test_run_one_singlepass_baseline_branch_calls_finalizer_with_singlepass_label(self):
+        """--phase all goes through this function with next_iteration=False;
+        finalizer label must be 'post-singlepass', not strategy-specific."""
+        from bin import run_playbook
+        with tempfile.TemporaryDirectory() as d:
+            repo = _make_iteration_repo(Path(d))
+            args = _Args(next_iteration=False, strategy=None)
+            with mock.patch.object(run_playbook, "run_prompt", return_value=0), \
+                 mock.patch.object(run_playbook, "_finalize_iteration", return_value="pass") as mock_fin, \
+                 mock.patch.object(run_playbook, "configure_logging", return_value=repo / "run.log"), \
+                 mock.patch.object(run_playbook, "print_startup_banner"), \
+                 mock.patch.object(run_playbook, "docs_present", return_value=True), \
+                 mock.patch.object(run_playbook, "archive_previous_run"), \
+                 mock.patch.object(run_playbook, "write_live_index_stub"), \
+                 mock.patch.object(run_playbook.lib, "cleanup_repo", lambda d: None), \
+                 mock.patch.object(run_playbook, "final_artifact_gaps", return_value=[]):
+                exit_code = run_playbook.run_one_singlepass(repo, args, "20260425-120000")
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(mock_fin.call_count, 1)
+            call = mock_fin.call_args_list[0]
+            self.assertEqual(call.kwargs.get("label"), "post-singlepass")
+
     # ---- Test 13: run_one_iterations abort path (site 2) ----
     def test_run_one_iterations_calls_finalizer_on_abort(self):
         from bin import run_playbook
