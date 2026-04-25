@@ -104,6 +104,20 @@ Tests: categorization-tier vocabulary correctness; standout-as-earned framing.
 
 (Activate Persona 13 after v1.5.3 ships the categorization tagging.)
 
+### Persona 14 — The PR-submitter walkthrough
+
+> I just finished a Quality Playbook run and got a `quality/BUGS.md` with 15 bugs. I want to submit some of them as upstream PRs. Walk me through the workflow: which bugs should I submit first, what evidence do I package with each PR, what do I do with the regression-test patches that QPB already generated, and what's an honest framing of "QPB found this" that a maintainer won't push back on?
+
+Tests: PR-pipeline workflow guidance; standout-tier-as-submission-criterion clarity; honest-attribution framing for AI-assisted findings; regression-test patch portability awareness; how to talk about the playbook to upstream maintainers without overclaiming.
+
+### Persona 17 — The defect-class consolidation reader
+
+> Our Quality Playbook run produced nine BUGS.md entries that all describe the same defect pattern (in our case, "cached wrapper Z doesn't invalidate when mutation X happens"). Should I file nine PRs, or one consolidated PR? Does QPB have a notion of grouping or rolling up bugs that share a root cause?
+
+Tests: recognition of root-cause vs. symptom; whether the doc distinguishes BUGS.md as "individual reports" vs. "a list of distinct defects"; awareness that maintainers prefer one consolidated PR for a defect family over nine individual ones; whether the iteration-strategy taxonomy (gap, unfiltered, parity, adversarial) admits the possibility that multiple iterations re-find the same underlying defect.
+
+(Personas 14 and 17 added at the v1.5.2 release-gate, sourced from the 2026-04-25 cross-repo analysis. Personas 15, 16, and 18 from the same source are queued for later release-gates: P15 for v1.5.3 once within-version variance language lands; P16 and P18 for v1.6.x once replicate data accumulates and a HIGH-severity operational definition exists.)
+
 ## Rubric
 
 For each persona response, evaluate on three dimensions:

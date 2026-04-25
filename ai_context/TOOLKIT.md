@@ -483,6 +483,28 @@ If it reports FAIL results, the most common causes:
 
 ---
 
+## Submitting findings upstream
+
+After a run produces BUGS.md, what to do with it depends on which bugs you want to submit and whether they cluster into a single defect class.
+
+### Submitting individual bugs as PRs
+
+A 15-bug BUGS.md typically mixes standout-tier candidates (surprising, specific findings a senior maintainer would describe as "huh, didn't see that"), confirmed-tier candidates (solid bugs that pass the playbook's evidentiary standard but aren't surprising), and probable / candidate findings (flagged for review but not load-bearing). The categorization tagging planned for v1.5.3 will surface these tiers explicitly; until then, the operator picks standouts by reading the writeups and asking "would a senior maintainer of this project find this surprising?" Submit standouts upstream first; batch confirmed-tier with other fixes or save for a quiet release window; don't submit probable or candidate findings without further triage.
+
+For each bug you submit, `quality/writeups/BUG-NNN.md` is designed to be the PR body — bug description, spec basis, code location, regression test, fix patch with inline diff, TDD verification results. The regression-test patch at `quality/patches/BUG-NNN-regression-test.patch` is structurally correct but uses the playbook's generic test infrastructure; most upstream projects expect tests in their existing test directory and harness, so port the test logic to match the project's conventions and verify it still fails on unpatched code and passes after the fix.
+
+Use honest attribution framing: "Found this with the help of an AI-assisted code-review tool. The bug analysis, regression test, and fix patch are in this PR; happy to walk through any of it." That phrasing avoids both overclaiming ("Claude found this bug" — Claude is a model, not a methodology) and underclaiming ("I found this" — the maintainer may ask how, and it's better to be upfront). Title the PR by the bug, not by the methodology; reserve the methodology mention for the PR description. Maintainers care about the defect, not how it was found.
+
+### Defect-class consolidation
+
+If a run produces several BUGS.md entries describing the same underlying defect pattern at different entry points (e.g., six bugs that are all "cached wrapper doesn't invalidate on mutation method X"), file ONE consolidated PR rather than several individual ones. Maintainers prefer to review a defect class as a unit; submitting nine separate PRs for nine instances of the same issue feels mechanical and burns goodwill.
+
+A consolidated PR has one title describing the defect class, one description that frames the class in a paragraph and enumerates the affected entry points (a table works well — one row per individual bug, so maintainers can spot any they think don't apply), one test that exercises all affected entry points in the project's test style, and one fix that addresses the root cause across all entry points. Include a traceability footer listing the QPB BUG-NNN identifiers from the originating run so each entry point can be traced back to the source finding.
+
+The iteration-strategy taxonomy (gap, unfiltered, parity, adversarial) does not currently group bugs by root cause — each strategy finds whatever it finds independently. If two strategies hit the same defect at different sites, BUGS.md gets two separate `### BUG-NNN` entries; consolidating them is the operator's decision at submission time. A defect-class tagging pass is planned post-v1.5.3 (Lever 6 in IMPROVEMENT_LOOP.md); until then, treat each `### BUG-NNN` as one observation and consolidate when you recognize a pattern.
+
+---
+
 ## Key techniques explained
 
 This section provides detailed explanations of specific playbook techniques. Use this to answer "how does X work?" and "why does it do Y?" questions.
