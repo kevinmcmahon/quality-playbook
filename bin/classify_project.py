@@ -32,6 +32,17 @@ bypass the heuristic. v1.5.3 Phase 4's Council uses this hook to re-verify
 classifications and override them with rationale; the heuristic's evidence
 is preserved in the output even when an override applies.
 
+Note on the empty-SKILL.md edge case: an empty SKILL.md (zero words) at
+the repo root classifies as Hybrid with low confidence, NOT Code. This
+is intentional -- the file's presence is treated as a signal of
+skill-shaped intent, distinct from a target where SKILL.md is genuinely
+absent -- but a maintainer who creates an empty SKILL.md as a template
+stub may be surprised. To classify as Code, ensure SKILL.md is absent
+(not just empty); to keep the Hybrid classification, populate SKILL.md
+with prose. The `confidence_reason` field on the JSON output reports
+`"empty-skill-md"` for this case so downstream consumers can detect and
+flag the stub state explicitly.
+
 Public API:
     classify_project(target_dir, *, override=None, override_rationale=None)
         -> classification record dict
