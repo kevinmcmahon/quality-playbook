@@ -1605,6 +1605,59 @@ _V150_REQUIRED_INDEX_FIELDS = (
 _V150_REQUIRED_SUMMARY_KEYS = ("requirements", "bugs", "gate_verdict")
 
 
+# ---------------------------------------------------------------------------
+# v1.5.3 — schema extensions (schemas.md §3.6–§3.10, §4.1, §6.1, §8.1, §10
+# invariants #21–#23). Field-presence detection (§3.10) toggles the
+# v1.5.3 invariants on per-manifest, NOT a schema_version comparison.
+# ---------------------------------------------------------------------------
+
+_V153_VALID_SOURCE_TYPES = (
+    "code-derived",
+    "skill-section",
+    "reference-file",
+    "execution-observation",
+)
+_V153_VALID_DIVERGENCE_TYPES = (
+    "code-spec",
+    "internal-prose",
+    "prose-to-code",
+    "execution",
+)
+_V153_VALID_FORMAL_DOC_ROLES = (
+    "external-spec",
+    "project-spec",
+    "skill-self-spec",
+    "skill-reference",
+)
+
+
+def _is_v1_5_3_shaped(manifest):
+    """Return True iff any record in *manifest* carries a v1.5.3 field.
+
+    Walks the records (or `reviews`) once. Presence of `source_type`,
+    `divergence_type`, or `role` on any record toggles strict-mode
+    validation per schemas.md §3.10. Empty / unparseable manifests
+    return False so legacy fixtures stay on the soft-warn path.
+    """
+    if not isinstance(manifest, dict):
+        return False
+    records = manifest.get("records")
+    if not isinstance(records, list):
+        records = manifest.get("reviews") if isinstance(
+            manifest.get("reviews"), list
+        ) else []
+    for rec in records:
+        if not isinstance(rec, dict):
+            continue
+        if (
+            "source_type" in rec
+            or "divergence_type" in rec
+            or "role" in rec
+        ):
+            return True
+    return False
+
+
 def _v150_manifest(q, name):
     """Return the parsed top-level JSON object or None if absent/invalid."""
     path = q / name
@@ -2377,6 +2430,168 @@ def check_challenge_gate_coverage(q):
         )
 
 
+def check_v1_5_3_formal_doc_role_validation(q):
+    """schemas.md §10 invariant #23 — FORMAL_DOC.role on v1.5.3-shaped manifests.
+
+    Legacy manifest (no v1.5.3 fields anywhere): one WARN, then skip.
+    v1.5.3-shaped: every record MUST have role populated with a member of
+    formal_doc_role (§3.6).
+    """
+    data = _v150_manifest(q, "formal_docs_manifest.json")
+    if data is None:
+        return
+    records = data.get("records")
+    if not isinstance(records, list):
+        return  # wrapper check already reported
+    if not _is_v1_5_3_shaped(data):
+        warn(
+            "formal_docs_manifest.json: legacy manifest detected; treating absent "
+            "FORMAL_DOC.role as 'external-spec' per schemas.md §3.10 backward-compat rule"
+        )
+        return
+    any_fail = False
+    for idx, rec in enumerate(records):
+        if not isinstance(rec, dict):
+            continue
+        rec_id = rec.get("source_path", f"<#{idx}>")
+        role = rec.get("role")
+        if role not in _V153_VALID_FORMAL_DOC_ROLES:
+            fail(
+                "formal_docs_manifest.json",
+                f"record_id={rec_id}: missing or invalid role {role!r} on "
+                f"v1.5.3-shaped manifest (schemas.md §10 invariant #23, valid: "
+                f"{', '.join(_V153_VALID_FORMAL_DOC_ROLES)})",
+            )
+            any_fail = True
+    if not any_fail:
+        pass_("formal_docs_manifest.json: v1.5.3 role validation complete")
+
+
+def check_v1_5_3_source_type_validation(q):
+    """schemas.md §10 invariants #21 (first part) — REQ.source_type presence.
+
+    Legacy manifest: one WARN, then skip.
+    v1.5.3-shaped: every REQ MUST have source_type populated with a member
+    of req_source_type (§3.7).
+    """
+    data = _v150_manifest(q, "requirements_manifest.json")
+    if data is None:
+        return
+    records = data.get("records")
+    if not isinstance(records, list):
+        return
+    if not _is_v1_5_3_shaped(data):
+        warn(
+            "requirements_manifest.json: legacy manifest detected; treating absent "
+            "REQ.source_type as 'code-derived' per schemas.md §3.10 backward-compat rule"
+        )
+        return
+    any_fail = False
+    for idx, rec in enumerate(records):
+        if not isinstance(rec, dict):
+            continue
+        req_id = rec.get("id", f"<#{idx}>")
+        source_type = rec.get("source_type")
+        if source_type not in _V153_VALID_SOURCE_TYPES:
+            fail(
+                "requirements_manifest.json",
+                f"record_id={req_id}: missing or invalid source_type "
+                f"{source_type!r} on v1.5.3-shaped manifest "
+                f"(schemas.md §10 invariant #21, valid: "
+                f"{', '.join(_V153_VALID_SOURCE_TYPES)})",
+            )
+            any_fail = True
+    if not any_fail:
+        pass_("requirements_manifest.json: v1.5.3 source_type validation complete")
+
+
+def check_v1_5_3_skill_section_consistency(q):
+    """schemas.md §10 invariant #21 (second part) — skill_section consistency.
+
+    On a v1.5.3-shaped requirements manifest, REQs with
+    source_type == 'skill-section' MUST have non-empty skill_section;
+    REQs with any other source_type value MUST have skill_section absent
+    or null (per §1.5: optional fields may be omitted or present as null).
+    Populated skill_section paired with non-skill-section source_type FAILs.
+
+    Legacy manifests are skipped silently here -- the source_type check
+    already emitted the single WARN for the manifest.
+    """
+    data = _v150_manifest(q, "requirements_manifest.json")
+    if data is None:
+        return
+    records = data.get("records")
+    if not isinstance(records, list):
+        return
+    if not _is_v1_5_3_shaped(data):
+        return  # source_type check handled the soft warn for this manifest
+    any_fail = False
+    for idx, rec in enumerate(records):
+        if not isinstance(rec, dict):
+            continue
+        req_id = rec.get("id", f"<#{idx}>")
+        source_type = rec.get("source_type")
+        skill_section = rec.get("skill_section")
+        if source_type == "skill-section":
+            if not isinstance(skill_section, str) or not skill_section.strip():
+                fail(
+                    "requirements_manifest.json",
+                    f"record_id={req_id}: source_type='skill-section' but "
+                    f"skill_section is empty or missing "
+                    "(schemas.md §10 invariant #21)",
+                )
+                any_fail = True
+        else:
+            if skill_section is not None and skill_section != "":
+                fail(
+                    "requirements_manifest.json",
+                    f"record_id={req_id}: skill_section={skill_section!r} "
+                    f"populated but source_type={source_type!r} is not "
+                    "'skill-section' (schemas.md §10 invariant #21)",
+                )
+                any_fail = True
+    if not any_fail:
+        pass_("requirements_manifest.json: v1.5.3 skill_section consistency complete")
+
+
+def check_v1_5_3_divergence_type_validation(q):
+    """schemas.md §10 invariant #22 — BUG.divergence_type on v1.5.3-shaped manifests.
+
+    Legacy manifest: one WARN, then skip.
+    v1.5.3-shaped: every BUG MUST have divergence_type populated with a
+    member of bug_divergence_type (§3.8).
+    """
+    data = _v150_manifest(q, "bugs_manifest.json")
+    if data is None:
+        return
+    records = data.get("records")
+    if not isinstance(records, list):
+        return
+    if not _is_v1_5_3_shaped(data):
+        warn(
+            "bugs_manifest.json: legacy manifest detected; treating absent "
+            "BUG.divergence_type as 'code-spec' per schemas.md §3.10 backward-compat rule"
+        )
+        return
+    any_fail = False
+    for idx, rec in enumerate(records):
+        if not isinstance(rec, dict):
+            continue
+        bug_id = rec.get("id", f"<#{idx}>")
+        divergence_type = rec.get("divergence_type")
+        if divergence_type not in _V153_VALID_DIVERGENCE_TYPES:
+            fail(
+                "bugs_manifest.json",
+                f"record_id={bug_id}: missing or invalid divergence_type "
+                f"{divergence_type!r} on v1.5.3-shaped manifest "
+                f"(schemas.md §10 invariant #22, valid: "
+                f"{', '.join(_V153_VALID_DIVERGENCE_TYPES)})",
+            )
+            any_fail = True
+    if not any_fail:
+        pass_("bugs_manifest.json: v1.5.3 divergence_type validation complete")
+
+
 def check_v1_5_2_cardinality_gate(repo_dir):
     """v1.5.2 Lever 3: Phase 5 cardinality reconciliation gate.
 
@@ -2406,6 +2621,13 @@ def check_v1_5_0_gate_invariants(repo_dir, q):
     check_challenge_gate_coverage(q)
     # v1.5.2 Lever 3: cardinality reconciliation gate.
     check_v1_5_2_cardinality_gate(repo_dir)
+    # v1.5.3 Phase 2: schema extensions for skill-aware projects (Code projects
+    # with legacy manifests hit the soft-warn path; v1.5.3-shaped manifests
+    # validate strictly per schemas.md §10 invariants #21–#23).
+    check_v1_5_3_formal_doc_role_validation(q)
+    check_v1_5_3_source_type_validation(q)
+    check_v1_5_3_skill_section_consistency(q)
+    check_v1_5_3_divergence_type_validation(q)
 
 
 def check_repo(repo_dir, version_arg, strictness):

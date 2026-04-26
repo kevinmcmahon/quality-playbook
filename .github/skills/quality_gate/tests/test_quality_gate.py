@@ -2150,5 +2150,338 @@ class TestChallengeGateCoverage(unittest.TestCase):
             self.assertIn("vacuous", out)
 
 
+# ---------------------------------------------------------------------------
+# v1.5.3 Phase 2 — schema-extension validation
+# ---------------------------------------------------------------------------
+
+
+class TestV153FormalDocRoleValidation(V150FixtureBase):
+    """schemas.md §10 invariant #23 — FORMAL_DOC.role on v1.5.3-shaped manifests."""
+
+    def test_v153_shaped_with_valid_role_passes(self):
+        self.write_manifest(
+            "formal_docs_manifest.json",
+            "records",
+            [
+                {
+                    "source_path": "formal_docs/virtio-excerpt.txt",
+                    "document_sha256": V150_VIRTIO_SHA,
+                    "tier": 1,
+                    "role": "external-spec",
+                }
+            ],
+        )
+        fails, warns, out = _capture_all_output(
+            quality_gate.check_v1_5_3_formal_doc_role_validation, self.q
+        )
+        self.assertEqual(fails, 0, out)
+        self.assertEqual(warns, 0, out)
+        self.assertIn("v1.5.3 role validation complete", out)
+
+    def test_v153_shaped_with_invalid_role_fails(self):
+        self.write_manifest(
+            "formal_docs_manifest.json",
+            "records",
+            [
+                {
+                    "source_path": "formal_docs/virtio-excerpt.txt",
+                    "document_sha256": V150_VIRTIO_SHA,
+                    "tier": 1,
+                    "role": "not-a-real-role",
+                }
+            ],
+        )
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_3_formal_doc_role_validation, self.q
+        )
+        self.assertGreaterEqual(fails, 1, out)
+        self.assertIn("invariant #23", out)
+        self.assertIn("not-a-real-role", out)
+
+    def test_legacy_manifest_emits_one_warn_and_skips(self):
+        # No record carries source_type/divergence_type/role -> legacy.
+        self.write_manifest(
+            "formal_docs_manifest.json",
+            "records",
+            [
+                {
+                    "source_path": "formal_docs/virtio-excerpt.txt",
+                    "document_sha256": V150_VIRTIO_SHA,
+                    "tier": 1,
+                }
+            ],
+        )
+        fails, warns, out = _capture_all_output(
+            quality_gate.check_v1_5_3_formal_doc_role_validation, self.q
+        )
+        self.assertEqual(fails, 0, out)
+        self.assertEqual(warns, 1, out)
+        self.assertIn("legacy manifest detected", out)
+
+
+class TestV153SourceTypeValidation(V150FixtureBase):
+    """schemas.md §10 invariant #21 (first part) — REQ.source_type on v1.5.3-shaped."""
+
+    def test_v153_shaped_with_valid_source_type_passes(self):
+        self.write_manifest(
+            "requirements_manifest.json",
+            "records",
+            [
+                {
+                    "id": "REQ-001",
+                    "tier": 3,
+                    "functional_section": "Foo",
+                    "source_type": "code-derived",
+                }
+            ],
+        )
+        fails, warns, out = _capture_all_output(
+            quality_gate.check_v1_5_3_source_type_validation, self.q
+        )
+        self.assertEqual(fails, 0, out)
+        self.assertEqual(warns, 0, out)
+        self.assertIn("v1.5.3 source_type validation complete", out)
+
+    def test_v153_shaped_with_invalid_source_type_fails(self):
+        # Triggers v1.5.3-shaped detection via the divergence_type field on
+        # the *bugs* manifest -- not directly on this REQ -- to exercise
+        # the per-manifest detection. Simpler: put an invalid source_type
+        # directly so detection AND validation both fire on this manifest.
+        self.write_manifest(
+            "requirements_manifest.json",
+            "records",
+            [
+                {
+                    "id": "REQ-001",
+                    "tier": 3,
+                    "functional_section": "Foo",
+                    "source_type": "invented-source",
+                }
+            ],
+        )
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_3_source_type_validation, self.q
+        )
+        self.assertGreaterEqual(fails, 1, out)
+        self.assertIn("invariant #21", out)
+        self.assertIn("invented-source", out)
+
+    def test_legacy_manifest_emits_one_warn_and_skips(self):
+        self.write_manifest(
+            "requirements_manifest.json",
+            "records",
+            [
+                {
+                    "id": "REQ-001",
+                    "tier": 3,
+                    "functional_section": "Foo",
+                }
+            ],
+        )
+        fails, warns, out = _capture_all_output(
+            quality_gate.check_v1_5_3_source_type_validation, self.q
+        )
+        self.assertEqual(fails, 0, out)
+        self.assertEqual(warns, 1, out)
+        self.assertIn("legacy manifest detected", out)
+
+
+class TestV153SkillSectionConsistency(V150FixtureBase):
+    """schemas.md §10 invariant #21 (second part) — skill_section consistency."""
+
+    def test_skill_section_with_skill_section_source_type_passes(self):
+        self.write_manifest(
+            "requirements_manifest.json",
+            "records",
+            [
+                {
+                    "id": "REQ-001",
+                    "tier": 1,
+                    "functional_section": "Foo",
+                    "source_type": "skill-section",
+                    "skill_section": "Phase 1: Explore the Codebase",
+                }
+            ],
+        )
+        fails, warns, out = _capture_all_output(
+            quality_gate.check_v1_5_3_skill_section_consistency, self.q
+        )
+        self.assertEqual(fails, 0, out)
+        self.assertEqual(warns, 0, out)
+
+    def test_empty_skill_section_with_skill_section_source_type_fails(self):
+        self.write_manifest(
+            "requirements_manifest.json",
+            "records",
+            [
+                {
+                    "id": "REQ-001",
+                    "tier": 1,
+                    "functional_section": "Foo",
+                    "source_type": "skill-section",
+                    "skill_section": "",
+                }
+            ],
+        )
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_3_skill_section_consistency, self.q
+        )
+        self.assertGreaterEqual(fails, 1, out)
+        self.assertIn("invariant #21", out)
+        self.assertIn("REQ-001", out)
+
+    def test_populated_skill_section_with_other_source_type_fails(self):
+        self.write_manifest(
+            "requirements_manifest.json",
+            "records",
+            [
+                {
+                    "id": "REQ-001",
+                    "tier": 3,
+                    "functional_section": "Foo",
+                    "source_type": "code-derived",
+                    "skill_section": "Should not be set",
+                }
+            ],
+        )
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_3_skill_section_consistency, self.q
+        )
+        self.assertGreaterEqual(fails, 1, out)
+        self.assertIn("invariant #21", out)
+
+    def test_skill_section_null_with_other_source_type_passes(self):
+        self.write_manifest(
+            "requirements_manifest.json",
+            "records",
+            [
+                {
+                    "id": "REQ-001",
+                    "tier": 3,
+                    "functional_section": "Foo",
+                    "source_type": "code-derived",
+                    "skill_section": None,
+                }
+            ],
+        )
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_3_skill_section_consistency, self.q
+        )
+        self.assertEqual(fails, 0, out)
+
+
+class TestV153DivergenceTypeValidation(V150FixtureBase):
+    """schemas.md §10 invariant #22 — BUG.divergence_type on v1.5.3-shaped."""
+
+    def test_v153_shaped_with_valid_divergence_type_passes(self):
+        self.write_manifest(
+            "bugs_manifest.json",
+            "records",
+            [
+                {
+                    "id": "BUG-001",
+                    "title": "x",
+                    "severity": "LOW",
+                    "disposition": "code-fix",
+                    "fix_type": "code",
+                    "disposition_rationale": "x",
+                    "req_id": "REQ-001",
+                    "divergence_type": "code-spec",
+                }
+            ],
+        )
+        fails, warns, out = _capture_all_output(
+            quality_gate.check_v1_5_3_divergence_type_validation, self.q
+        )
+        self.assertEqual(fails, 0, out)
+        self.assertEqual(warns, 0, out)
+        self.assertIn("v1.5.3 divergence_type validation complete", out)
+
+    def test_v153_shaped_with_invalid_divergence_type_fails(self):
+        self.write_manifest(
+            "bugs_manifest.json",
+            "records",
+            [
+                {
+                    "id": "BUG-001",
+                    "title": "x",
+                    "severity": "LOW",
+                    "disposition": "code-fix",
+                    "fix_type": "code",
+                    "disposition_rationale": "x",
+                    "req_id": "REQ-001",
+                    "divergence_type": "fabricated-kind",
+                }
+            ],
+        )
+        fails, _, out = _capture_all_output(
+            quality_gate.check_v1_5_3_divergence_type_validation, self.q
+        )
+        self.assertGreaterEqual(fails, 1, out)
+        self.assertIn("invariant #22", out)
+        self.assertIn("fabricated-kind", out)
+
+    def test_legacy_manifest_emits_one_warn_and_skips(self):
+        self.write_manifest(
+            "bugs_manifest.json",
+            "records",
+            [
+                {
+                    "id": "BUG-001",
+                    "title": "x",
+                    "severity": "LOW",
+                    "disposition": "code-fix",
+                    "fix_type": "code",
+                    "disposition_rationale": "x",
+                    "req_id": "REQ-001",
+                }
+            ],
+        )
+        fails, warns, out = _capture_all_output(
+            quality_gate.check_v1_5_3_divergence_type_validation, self.q
+        )
+        self.assertEqual(fails, 0, out)
+        self.assertEqual(warns, 1, out)
+        self.assertIn("legacy manifest detected", out)
+
+
+class TestV153IsShapedHelper(unittest.TestCase):
+    """Direct tests of the _is_v1_5_3_shaped detection helper (§3.10)."""
+
+    def test_legacy_manifest_returns_false(self):
+        self.assertFalse(
+            quality_gate._is_v1_5_3_shaped(
+                {"records": [{"id": "REQ-001", "tier": 3}]}
+            )
+        )
+
+    def test_source_type_present_returns_true(self):
+        self.assertTrue(
+            quality_gate._is_v1_5_3_shaped(
+                {"records": [{"id": "REQ-001", "source_type": "code-derived"}]}
+            )
+        )
+
+    def test_divergence_type_present_returns_true(self):
+        self.assertTrue(
+            quality_gate._is_v1_5_3_shaped(
+                {"records": [{"id": "BUG-001", "divergence_type": "code-spec"}]}
+            )
+        )
+
+    def test_role_present_returns_true(self):
+        self.assertTrue(
+            quality_gate._is_v1_5_3_shaped(
+                {"records": [{"source_path": "x", "role": "external-spec"}]}
+            )
+        )
+
+    def test_empty_records_returns_false(self):
+        self.assertFalse(quality_gate._is_v1_5_3_shaped({"records": []}))
+
+    def test_non_dict_returns_false(self):
+        self.assertFalse(quality_gate._is_v1_5_3_shaped(None))
+
+
 if __name__ == "__main__":
     unittest.main()
