@@ -374,3 +374,165 @@ def _apply_heuristic(
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# ---------------------------------------------------------------------------
+# CLI / benchmark verification entry point
+# ---------------------------------------------------------------------------
+#
+# Usage:
+#   python3 -m bin.classify_project --target <path> [--write]
+#   python3 -m bin.classify_project --benchmark
+#
+# --benchmark classifies the v1.5.3 Phase 1 acceptance set: the five code
+# benchmark repos plus QPB itself, and writes results to each target's
+# quality/project_type.json (skipping QPB's own write so the classifier
+# does not introduce a tracked file under quality/ on the QPB repo).
+
+
+# The acceptance set is fixed; the brief calls these out by name. Paths
+# are resolved relative to the QPB repo root (this file's grandparent).
+_QPB_ROOT = Path(__file__).resolve().parents[1]
+
+_BENCHMARK_TARGETS: list[tuple[str, Path, str, bool]] = [
+    # (label, path-relative-to-QPB-root, expected_classification, write_to_disk)
+    ("chi-1.5.1", Path("repos/chi-1.5.1"), "Code", True),
+    ("virtio-1.5.1", Path("repos/virtio-1.5.1"), "Code", True),
+    ("express-1.5.1", Path("repos/express-1.5.1"), "Code", True),
+    ("cobra-latest", Path("repos/cobra-1.3.46"), "Code", True),
+    ("casbin-latest", Path("repos/archive/casbin-1.5.1"), "Code", True),
+    # QPB itself: classify but do NOT write -- QPB's quality/ subtree is
+    # tracked, and the v1.5.3 Phase 1 brief explicitly forbids modifying
+    # files outside the Phase 1 surface. The verification log captures the
+    # JSON content for the audit trail.
+    ("QPB-self", Path("."), "Hybrid", False),
+]
+
+
+def _run_benchmark_verification(
+    qpb_root: Path,
+    log_path: Optional[Path],
+) -> int:
+    """Run the classifier against the v1.5.3 Phase 1 acceptance set.
+
+    Returns 0 if every target produced its expected classification, 1 if any
+    classification mismatched. Writes a verification log if log_path is set.
+    """
+    lines: list[str] = []
+    lines.append("# QPB v1.5.3 Phase 1 -- Project type classifier verification")
+    lines.append("")
+    lines.append(f"Classifier version: {CLASSIFIER_VERSION}")
+    lines.append(f"Schema version:     {SCHEMA_VERSION}")
+    lines.append(f"Run timestamp:      {_utc_now_iso()}")
+    lines.append("")
+    lines.append("## Per-target results")
+    lines.append("")
+
+    overall_ok = True
+    for label, rel_path, expected, write_to_disk in _BENCHMARK_TARGETS:
+        target = (qpb_root / rel_path).resolve()
+        lines.append(f"### {label}")
+        lines.append("")
+        lines.append(f"- target: `{target}`")
+        if not target.exists():
+            lines.append("- result: SKIPPED (target path does not exist)")
+            lines.append("")
+            overall_ok = False
+            continue
+
+        record = classify_project(target)
+        actual = record["classification"]
+        match = "OK" if actual == expected else "FAIL"
+        if actual != expected:
+            overall_ok = False
+
+        lines.append(f"- expected: `{expected}`")
+        lines.append(f"- actual:   `{actual}`  ({record['confidence']})")
+        lines.append(f"- result:   {match}")
+        lines.append(f"- evidence: {json.dumps(record['evidence'], sort_keys=True)}")
+
+        if write_to_disk:
+            out_path = write_classification(target, record)
+            lines.append(f"- wrote:    `{out_path}`")
+        else:
+            lines.append("- wrote:    (skipped; capturing JSON in log)")
+
+        lines.append("")
+        lines.append("```json")
+        lines.append(json.dumps(record, indent=2))
+        lines.append("```")
+        lines.append("")
+
+    summary = "PASS" if overall_ok else "FAIL"
+    lines.append(f"## Overall: {summary}")
+    lines.append("")
+
+    rendered = "\n".join(lines)
+    print(rendered)
+
+    if log_path is not None:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text(rendered, encoding="utf-8")
+
+    return 0 if overall_ok else 1
+
+
+def _parse_args(argv: Optional[list[str]] = None) -> "argparse.Namespace":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="classify_project",
+        description=(
+            "v1.5.3 Phase 1 project-type classifier. "
+            "Classifies a target as Code, Skill, or Hybrid."
+        ),
+    )
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument(
+        "--target",
+        type=Path,
+        help="classify a single target directory",
+    )
+    mode.add_argument(
+        "--benchmark",
+        action="store_true",
+        help=(
+            "run the v1.5.3 Phase 1 acceptance set (5 code benchmarks + QPB) "
+            "and emit a verification log"
+        ),
+    )
+    parser.add_argument(
+        "--write",
+        action="store_true",
+        help=(
+            "with --target: also write <target>/quality/project_type.json "
+            "(default: print only)"
+        ),
+    )
+    parser.add_argument(
+        "--log",
+        type=Path,
+        default=None,
+        help="with --benchmark: path to write the verification log",
+    )
+    return parser.parse_args(argv)
+
+
+def _main(argv: Optional[list[str]] = None) -> int:
+    args = _parse_args(argv)
+
+    if args.benchmark:
+        return _run_benchmark_verification(_QPB_ROOT, args.log)
+
+    record = classify_project(args.target)
+    print(json.dumps(record, indent=2))
+    if args.write:
+        out_path = write_classification(args.target, record)
+        print(f"\nwrote: {out_path}")
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(_main())
