@@ -1630,14 +1630,32 @@ _V153_VALID_FORMAL_DOC_ROLES = (
     "skill-reference",
 )
 
+# DQ-3 (v1.5.3 Phase 3 / Round 2 Council): the v1.5.3 field-presence
+# detection key set is module-level so a regression test can pin it
+# against schemas.md's enum-bearing field list. A future schema
+# addition (e.g., a fifth v1.5.3-only field) that updates ONLY this
+# constant without updating the test's literal will fail the regression
+# test, forcing lockstep maintenance and surfacing the change for
+# explicit review.
+_V153_FIELD_KEYS = frozenset({"source_type", "divergence_type", "role"})
+
 
 def _is_v1_5_3_shaped(manifest):
     """Return True iff any record in *manifest* carries a v1.5.3 field.
 
-    Walks the records (or `reviews`) once. Presence of `source_type`,
-    `divergence_type`, or `role` on any record toggles strict-mode
-    validation per schemas.md §3.10. Empty / unparseable manifests
-    return False so legacy fixtures stay on the soft-warn path.
+    Walks the records (or `reviews`) once. Presence of any key in
+    _V153_FIELD_KEYS on any record toggles strict-mode validation per
+    schemas.md §3.10. Empty / unparseable manifests return False so
+    legacy fixtures stay on the soft-warn path.
+
+    DQ-3 design note: the checked-key set is sourced from
+    _V153_FIELD_KEYS (a module-level frozenset) rather than hardcoded
+    in this function's body. A regression test in
+    test_quality_gate.py::TestV153FieldKeysContract pins
+    _V153_FIELD_KEYS against the literal `{"source_type",
+    "divergence_type", "role"}` so a future maintainer adding a
+    v1.5.3-only field to the schema cannot silently miss updating the
+    detection helper.
     """
     if not isinstance(manifest, dict):
         return False
@@ -1649,11 +1667,7 @@ def _is_v1_5_3_shaped(manifest):
     for rec in records:
         if not isinstance(rec, dict):
             continue
-        if (
-            "source_type" in rec
-            or "divergence_type" in rec
-            or "role" in rec
-        ):
+        if not _V153_FIELD_KEYS.isdisjoint(rec.keys()):
             return True
     return False
 

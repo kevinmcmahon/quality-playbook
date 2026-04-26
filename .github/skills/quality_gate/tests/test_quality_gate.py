@@ -2477,6 +2477,44 @@ class TestV153DivergenceTypeValidation(V150FixtureBase):
         self.assertIn("legacy manifest detected", out)
 
 
+class TestV153FieldKeysContract(unittest.TestCase):
+    """DQ-3 regression test (v1.5.3 Phase 3 / Round 2 Council).
+
+    Pins quality_gate._V153_FIELD_KEYS against a literal so a future
+    schema extension that adds a fifth v1.5.3-only field to the helper
+    without updating the schema's enum-bearing field list (or vice
+    versa) fails this test. The lockstep enforcement is structural:
+    refactoring _is_v1_5_3_shaped's body cannot silently change which
+    keys trigger v1.5.3-shaped detection because the body now reads
+    from _V153_FIELD_KEYS directly.
+
+    If a future schema addition expands the v1.5.3 field set (e.g.,
+    REQ.record_provenance), updating _V153_FIELD_KEYS without updating
+    this test fails the test. The maintainer must update both the
+    constant and the test literal in the same commit, AND surface the
+    change for explicit review (the test's update is the visible audit
+    trail).
+
+    The schema enum-bearing field list lives across schemas.md §3.6
+    (formal_doc_role -> FORMAL_DOC.role), §3.7 (req_source_type ->
+    REQ.source_type), §3.8 (bug_divergence_type -> BUG.divergence_type)
+    -- three field names total, matching the three keys here. Any
+    fourth would require a §3.11+ entry in schemas.md and an update
+    to this literal.
+    """
+
+    def test_field_keys_match_schema_v1_5_3_field_set(self):
+        self.assertEqual(
+            quality_gate._V153_FIELD_KEYS,
+            frozenset({"source_type", "divergence_type", "role"}),
+            "If you added a v1.5.3-only field to the schema, update "
+            "_V153_FIELD_KEYS in lockstep with this test's literal AND "
+            "with the relevant schemas.md §3.x enum subsection. The "
+            "DQ-3 contract requires structural lockstep so a future "
+            "field addition cannot silently ship validation-free.",
+        )
+
+
 class TestV153IsShapedHelper(unittest.TestCase):
     """Direct tests of the _is_v1_5_3_shaped detection helper (§3.10)."""
 
