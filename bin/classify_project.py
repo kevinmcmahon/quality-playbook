@@ -52,7 +52,30 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 CLASSIFIER_VERSION = "1.0"
-SCHEMA_VERSION = "1.0"
+# Bumped from "1.0" to "1.1" in v1.5.3 Phase 2 to signal the additive
+# `evidence.confidence_reason` field (C.5 polish). Purely additive change;
+# no existing field's shape or semantics is altered. The classifier's
+# JSON schema is internal to bin/classify_project.py and is not consumed
+# by quality_gate.py / schemas.md, so this bump is independent of the
+# per-manifest `schema_version`-MUST-equal-`metadata.version` invariant.
+SCHEMA_VERSION = "1.1"
+
+# C.5 polish (v1.5.3 Phase 2): allowed values for the `confidence_reason`
+# field on the JSON evidence block. Decision-tree order is enforced in
+# _apply_heuristic; the first match wins.
+VALID_CONFIDENCE_REASONS = (
+    "empty-skill-md",
+    "empty-target",
+    "small-project",
+    "near-band-edge",
+    "unambiguous",
+)
+
+# Proportional band around each ratio threshold within which the
+# heuristic reports `near-band-edge`. 10% on each side: ratio in
+# [1.8, 2.2] flags the 2.0x boundary; ratio in [4.5, 5.5] flags the
+# 5.0x boundary.
+_NEAR_BAND_EDGE_PROPORTION = 0.10
 
 VALID_CLASSIFICATIONS = ("Code", "Skill", "Hybrid")
 VALID_CONFIDENCES = ("high", "medium", "low")
@@ -157,7 +180,12 @@ def classify_project(
 
     total_code_loc, code_languages = _count_code_loc(target_dir)
 
-    heuristic_class, heuristic_rationale, heuristic_confidence = _apply_heuristic(
+    (
+        heuristic_class,
+        heuristic_rationale,
+        heuristic_confidence,
+        confidence_reason,
+    ) = _apply_heuristic(
         skill_md_present=skill_md_present,
         skill_md_word_count=skill_md_word_count,
         total_code_loc=total_code_loc,
@@ -193,6 +221,10 @@ def classify_project(
             "skill_md_word_count": skill_md_word_count,
             "total_code_loc": total_code_loc,
             "code_languages": sorted(code_languages),
+            # C.5 polish (v1.5.3 Phase 2): which decision-tree branch fired
+            # in _apply_heuristic. Internal to bin/classify_project.py;
+            # not validated by quality_gate.py.
+            "confidence_reason": confidence_reason,
         },
         "classified_at": _utc_now_iso(),
         "classifier_version": CLASSIFIER_VERSION,
@@ -308,46 +340,69 @@ def _apply_heuristic(
     skill_md_present: bool,
     skill_md_word_count: Optional[int],
     total_code_loc: int,
-) -> "tuple[str, str, str]":
+) -> "tuple[str, str, str, str]":
     """Apply the classification heuristic.
 
-    Returns (classification, rationale, confidence). See module header for
-    the heuristic statement; ratio thresholds are module-level constants.
-    """
-    if not skill_md_present:
-        if total_code_loc == 0:
-            return (
-                "Code",
-                "No SKILL.md at repo root; no code lines observed (empty or "
-                "near-empty target).",
-                "low",
-            )
-        if total_code_loc < SMALL_PROJECT_LOC_THRESHOLD:
-            return (
-                "Code",
-                f"No SKILL.md at repo root; only {total_code_loc} non-blank "
-                f"code lines observed (small project below the "
-                f"{SMALL_PROJECT_LOC_THRESHOLD}-line confidence threshold).",
-                "medium",
-            )
-        return (
-            "Code",
-            f"No SKILL.md at repo root; {total_code_loc} non-blank code lines "
-            f"observed across the repo.",
-            "high",
-        )
+    Returns (classification, rationale, confidence, confidence_reason). See
+    module header for the heuristic statement; ratio thresholds are
+    module-level constants. The `confidence_reason` value enumerates which
+    branch of the decision tree fired -- C.5 polish to make the
+    classifier's confidence calibration auditable.
 
+    Decision-tree precedence (top-down, first match wins):
+      1. empty-skill-md  -- SKILL.md present but 0 words
+      2. empty-target    -- no SKILL.md and no code
+      3. small-project   -- no SKILL.md, code below SMALL_PROJECT_LOC_THRESHOLD
+      4. near-band-edge  -- ratio within 10% of 2.0x or 5.0x
+      5. unambiguous     -- everything else (default catch-all)
+    """
     word_count = skill_md_word_count or 0
 
-    # Empty SKILL.md: it exists but contributes no prose. Treat as Hybrid
-    # with low confidence -- the file's presence signals skill-shaped
-    # intent, but there's no prose to be the program.
-    if word_count == 0:
+    # Branch 1: empty-skill-md (SKILL.md exists but contributes no prose).
+    # The file's presence signals skill-shaped intent but there's no prose
+    # to be the program; classify as Hybrid/low so a maintainer notices.
+    if skill_md_present and word_count == 0:
         return (
             "Hybrid",
             f"SKILL.md exists at repo root but is empty (0 words); "
             f"{total_code_loc} non-blank code lines observed.",
             "low",
+            "empty-skill-md",
+        )
+
+    # Branch 2: empty-target (no SKILL.md AND no code -- empty repo).
+    if not skill_md_present and total_code_loc == 0:
+        return (
+            "Code",
+            "No SKILL.md at repo root; no code lines observed (empty or "
+            "near-empty target).",
+            "low",
+            "empty-target",
+        )
+
+    # Branch 3: small-project (no SKILL.md, code below confidence floor).
+    if not skill_md_present and total_code_loc < SMALL_PROJECT_LOC_THRESHOLD:
+        return (
+            "Code",
+            f"No SKILL.md at repo root; only {total_code_loc} non-blank "
+            f"code lines observed (small project below the "
+            f"{SMALL_PROJECT_LOC_THRESHOLD}-line confidence threshold).",
+            "medium",
+            "small-project",
+        )
+
+    # Beyond branches 1-3 we always have *some* code OR a populated SKILL.md.
+    # Compute the classification + confidence first, then disambiguate
+    # near-band-edge vs unambiguous from the ratio (branches 4 / 5).
+
+    if not skill_md_present:
+        # Confident Code branch (substantial code, no SKILL.md).
+        return (
+            "Code",
+            f"No SKILL.md at repo root; {total_code_loc} non-blank code lines "
+            f"observed across the repo.",
+            "high",
+            "unambiguous",
         )
 
     # SKILL.md with prose but no code at all: unambiguously Skill.
@@ -357,9 +412,11 @@ def _apply_heuristic(
             f"SKILL.md exists at repo root with {word_count} prose words and "
             f"no code lines observed.",
             "high",
+            "unambiguous",
         )
 
     ratio_words_to_code = word_count / total_code_loc
+    confidence_reason = _confidence_reason_from_ratio(ratio_words_to_code)
 
     if ratio_words_to_code > SKILL_HIGH_CONFIDENCE_RATIO:
         return (
@@ -368,6 +425,7 @@ def _apply_heuristic(
             f"code line count ({total_code_loc}); "
             f"ratio {ratio_words_to_code:.1f}x.",
             "high",
+            confidence_reason,
         )
     if ratio_words_to_code > SKILL_DOMINANCE_RATIO:
         return (
@@ -376,6 +434,7 @@ def _apply_heuristic(
             f"count ({total_code_loc}) by more than {SKILL_DOMINANCE_RATIO:g}x "
             f"(actual {ratio_words_to_code:.1f}x).",
             "medium",
+            confidence_reason,
         )
 
     ratio_code_to_words = total_code_loc / word_count
@@ -386,6 +445,7 @@ def _apply_heuristic(
             f"code dominates ({total_code_loc} non-blank lines; "
             f"ratio {ratio_code_to_words:.1f}x).",
             "high",
+            confidence_reason,
         )
     return (
         "Hybrid",
@@ -395,7 +455,33 @@ def _apply_heuristic(
         f"band [1/{HYBRID_HIGH_CONFIDENCE_RATIO:g}x, "
         f"{SKILL_DOMINANCE_RATIO:g}x].",
         "medium",
+        confidence_reason,
     )
+
+
+def _confidence_reason_from_ratio(ratio: float) -> str:
+    """Pick `near-band-edge` vs `unambiguous` from a words/LOC ratio.
+
+    Returns `near-band-edge` when the ratio sits within
+    _NEAR_BAND_EDGE_PROPORTION (10%) of either SKILL_DOMINANCE_RATIO or
+    SKILL_HIGH_CONFIDENCE_RATIO; otherwise returns `unambiguous`. Used
+    only for inputs that have both prose and code (branches 4/5 of the
+    decision tree).
+    """
+    delta = _NEAR_BAND_EDGE_PROPORTION
+    near_dominance = (
+        SKILL_DOMINANCE_RATIO * (1.0 - delta)
+        <= ratio
+        <= SKILL_DOMINANCE_RATIO * (1.0 + delta)
+    )
+    near_high = (
+        SKILL_HIGH_CONFIDENCE_RATIO * (1.0 - delta)
+        <= ratio
+        <= SKILL_HIGH_CONFIDENCE_RATIO * (1.0 + delta)
+    )
+    if near_dominance or near_high:
+        return "near-band-edge"
+    return "unambiguous"
 
 
 def _utc_now_iso() -> str:
