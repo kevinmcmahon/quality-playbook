@@ -352,6 +352,47 @@ class HeuristicTests(unittest.TestCase):
         self.assertEqual(cls, "Skill")
         self.assertEqual(conf, "medium")
 
+    # ----- C.4 boundary tests -----------------------------------------
+    # Pin both the threshold values AND the strict-vs-loose comparison
+    # operators against future drift. The heuristic uses strict ">", so
+    # at exactly the threshold the lower-side branch fires.
+
+    def test_boundary_skill_dominance_exact_is_hybrid_medium(self) -> None:
+        # Ratio exactly 2.000x: word_count > code_loc * 2.0 is False, so
+        # the heuristic falls through to the Hybrid medium branch.
+        cls, _, conf = cp._apply_heuristic(
+            skill_md_present=True, skill_md_word_count=2000, total_code_loc=1000
+        )
+        self.assertEqual(cls, "Hybrid")
+        self.assertEqual(conf, "medium")
+
+    def test_boundary_skill_dominance_just_above_is_skill_medium(self) -> None:
+        # Ratio 2.001x: just over SKILL_DOMINANCE_RATIO, lands in the
+        # medium-confidence Skill band.
+        cls, _, conf = cp._apply_heuristic(
+            skill_md_present=True, skill_md_word_count=2001, total_code_loc=1000
+        )
+        self.assertEqual(cls, "Skill")
+        self.assertEqual(conf, "medium")
+
+    def test_boundary_skill_high_confidence_exact_is_skill_medium(self) -> None:
+        # Ratio exactly 5.000x: word_count > code_loc * 5.0 is False,
+        # the heuristic stays in the medium-confidence Skill band.
+        cls, _, conf = cp._apply_heuristic(
+            skill_md_present=True, skill_md_word_count=5000, total_code_loc=1000
+        )
+        self.assertEqual(cls, "Skill")
+        self.assertEqual(conf, "medium")
+
+    def test_boundary_skill_high_confidence_just_above_is_skill_high(self) -> None:
+        # Ratio 5.001x: just over SKILL_HIGH_CONFIDENCE_RATIO, lands in
+        # the high-confidence Skill band.
+        cls, _, conf = cp._apply_heuristic(
+            skill_md_present=True, skill_md_word_count=5001, total_code_loc=1000
+        )
+        self.assertEqual(cls, "Skill")
+        self.assertEqual(conf, "high")
+
     def test_skill_md_dominant_code_is_hybrid_high(self) -> None:
         cls, _, conf = cp._apply_heuristic(
             skill_md_present=True, skill_md_word_count=200, total_code_loc=10000
