@@ -342,6 +342,16 @@ class HeuristicTests(unittest.TestCase):
         self.assertEqual(cls, "Skill")
         self.assertEqual(conf, "high")
 
+    def test_skill_md_moderate_dominant_prose_is_skill_medium(self) -> None:
+        # C.3 polish: ratio between SKILL_DOMINANCE_RATIO (2.0) and
+        # SKILL_HIGH_CONFIDENCE_RATIO (5.0) lands in the medium-confidence
+        # Skill band. 3000 / 1000 = 3.0x, well inside the band.
+        cls, _, conf = cp._apply_heuristic(
+            skill_md_present=True, skill_md_word_count=3000, total_code_loc=1000
+        )
+        self.assertEqual(cls, "Skill")
+        self.assertEqual(conf, "medium")
+
     def test_skill_md_dominant_code_is_hybrid_high(self) -> None:
         cls, _, conf = cp._apply_heuristic(
             skill_md_present=True, skill_md_word_count=200, total_code_loc=10000
