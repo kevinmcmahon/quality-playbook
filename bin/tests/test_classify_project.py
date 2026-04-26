@@ -477,5 +477,37 @@ class HeuristicTests(unittest.TestCase):
         self.assertGreater(record["evidence"]["total_code_loc"], 0)
 
 
+class BenchmarkTargetsTests(unittest.TestCase):
+    """C.7 polish: pin the QPB-self entry of _BENCHMARK_TARGETS so a future
+    maintainer cannot silently flip its write_to_disk flag and start
+    persisting classifier output into QPB's tracked quality/ tree."""
+
+    def test_qpb_self_is_last_entry_with_write_disabled(self) -> None:
+        last = cp._BENCHMARK_TARGETS[-1]
+        # Tuple shape: (label, path-relative-to-QPB-root, expected, write_to_disk)
+        self.assertEqual(last[0], "QPB-self")
+        self.assertEqual(last[1], Path("."))
+        self.assertEqual(last[2], "Hybrid")
+        self.assertFalse(
+            last[3],
+            "QPB-self entry must keep write_to_disk=False; flipping it "
+            "would persist classifier output into QPB's tracked quality/ "
+            "tree, violating the Phase 1 brief's file-modification "
+            "constraint and creating a tracked file outside the Phase 1 "
+            "surface.",
+        )
+
+    def test_benchmark_targets_tuple_shape(self) -> None:
+        # Lock the tuple shape so an additive change (e.g., a fifth field)
+        # has to update this test deliberately.
+        for entry in cp._BENCHMARK_TARGETS:
+            self.assertEqual(len(entry), 4)
+            label, path, expected, write_to_disk = entry
+            self.assertIsInstance(label, str)
+            self.assertIsInstance(path, Path)
+            self.assertIn(expected, cp.VALID_CLASSIFICATIONS)
+            self.assertIsInstance(write_to_disk, bool)
+
+
 if __name__ == "__main__":
     unittest.main()
