@@ -1,0 +1,310 @@
+"""pass_a.py — Pass A driver (naive coverage, section-iterative).
+
+Reads pass_a_sections.json (produced by sections.enumerate_sections),
+walks the section tree, fires the LLM runner once per non-skipped
+section, parses the JSONL response, and appends to
+pass_a_drafts.jsonl. Cursor + progress per the per-pass execution
+protocol.
+
+Skipped sections (meta-allowlist or screaming) emit a single
+`{section_idx, skipped: true, skip_reason}` record directly without
+firing the LLM.
+
+Throughput tripwire: per-section elapsed time recorded in each
+record's _metadata.elapsed_ms. If more than 5 sections complete per
+minute (i.e., any section completes in under 12 seconds), the driver
+halts with a diagnostic. Sub-12-second LLM responses on substantive
+sections indicate stub generation under context pressure (the
+"plausible junk" failure mode).
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Iterator, List, Optional
+
+from bin.skill_derivation import protocol, sections
+from bin.skill_derivation.runners import LLMRunner, RunnerResult
+
+
+# Throughput tripwire threshold. Sub-this elapsed time on a
+# substantive section indicates stub generation under context pressure.
+MIN_PLAUSIBLE_ELAPSED_MS = 12_000
+
+
+# Default tail-context budget (preceding + following section snippets,
+# in lines, capped). Tail context helps the LLM disambiguate where the
+# section sits in the document; too much context inflates token usage.
+DEFAULT_TAIL_CONTEXT_LINES = 30
+
+
+@dataclass
+class PassAConfig:
+    drafts_path: Path
+    progress_path: Path
+    sections_path: Path
+    pass_spec_path: Path  # for the recovery preamble
+    document_root: Path  # repo root; documents are read by joining their relative paths
+    starting_draft_idx: int = 0
+    tail_context_lines: int = DEFAULT_TAIL_CONTEXT_LINES
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _read_section_text(
+    document_root: Path, section: dict, *, tail_context_lines: int
+) -> tuple[str, str]:
+    """Return (section_body, tail_context) for a section dict.
+
+    section_body is the lines from line_start..line_end (inclusive).
+    tail_context is the preceding + following N lines clipped at
+    document boundaries -- used to give the LLM a sense of where the
+    section sits relative to neighbors.
+    """
+    doc_path = document_root / section["document"]
+    text = doc_path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    line_start = section["line_start"]  # 1-based
+    line_end = section["line_end"]      # exclusive (per enumerate_sections)
+    body_lines = lines[line_start - 1 : line_end]
+
+    pre_start = max(0, (line_start - 1) - tail_context_lines)
+    pre = lines[pre_start : line_start - 1]
+    post_end = min(len(lines), line_end + tail_context_lines)
+    post = lines[line_end:post_end]
+
+    body = "\n".join(body_lines)
+    tail_context = (
+        "[preceding context]\n"
+        + "\n".join(pre[-tail_context_lines:])
+        + "\n\n[following context]\n"
+        + "\n".join(post[:tail_context_lines])
+    )
+    return body, tail_context
+
+
+def _render_prompt(
+    template_path: Path,
+    *,
+    section: dict,
+    section_text: str,
+    tail_context: str,
+    starting_draft_idx: int,
+    config: PassAConfig,
+) -> str:
+    template = template_path.read_text(encoding="utf-8")
+    recovery = protocol.render_recovery_preamble(
+        pass_spec_path=config.pass_spec_path,
+        progress_file_path=config.progress_path,
+    )
+    return template.format(
+        recovery_preamble=recovery,
+        document=section["document"],
+        section_heading=section["heading"],
+        heading_level=section["heading_level"],
+        section_idx=section["section_idx"],
+        line_start=section["line_start"],
+        line_end=section["line_end"],
+        section_text=section_text,
+        tail_context=tail_context,
+        starting_draft_idx=starting_draft_idx,
+    )
+
+
+def _parse_jsonl_response(stdout: str, *, expected_section_idx: int) -> list[dict]:
+    """Parse the LLM's JSONL output into a list of dicts.
+
+    Tolerant: skips blank lines, skips non-JSON lines (logs them),
+    accepts both `no_reqs` markers and full draft REQ records.
+    """
+    out: list[dict] = []
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        # Strip surrounding code fences if the model wrapped output
+        # despite the prompt instruction.
+        if line.startswith("```"):
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(rec, dict):
+            continue
+        # Tag the record with the expected section_idx if missing,
+        # but trust the model when it set one.
+        rec.setdefault("section_idx", expected_section_idx)
+        out.append(rec)
+    return out
+
+
+class TripwireFired(RuntimeError):
+    """Raised when per-section throughput exceeds the plausible ceiling."""
+
+
+def _check_tripwire(elapsed_ms: int, *, section: dict) -> None:
+    if section.get("skip_reason"):
+        return  # skipped sections don't run the LLM
+    if elapsed_ms < MIN_PLAUSIBLE_ELAPSED_MS:
+        raise TripwireFired(
+            f"Pass A throughput tripwire: section_idx={section['section_idx']} "
+            f"({section['heading']!r}) completed in {elapsed_ms}ms, below the "
+            f"{MIN_PLAUSIBLE_ELAPSED_MS}ms plausibility floor. Sub-12s LLM "
+            f"responses on substantive sections indicate stub generation "
+            f"under context pressure. Halt and inspect drafts for templated "
+            f"output before resuming."
+        )
+
+
+def run_pass_a(
+    config: PassAConfig,
+    runner: LLMRunner,
+    template_path: Path,
+    *,
+    resume: bool = True,
+) -> int:
+    """Drive Pass A end-to-end.
+
+    Returns the number of sections processed in this invocation
+    (including skipped sections, which are emitted as records but do
+    not fire the LLM).
+    """
+    sections_data = json.loads(config.sections_path.read_text(encoding="utf-8"))
+    section_list = sections_data["sections"]
+    total = len(section_list)
+
+    # Resume: figure out the starting cursor from disk.
+    cursor = (
+        protocol.verify_and_resume(
+            config.drafts_path, config.progress_path, idx_field="section_idx"
+        )
+        if resume
+        else 0
+    )
+
+    # Initialize / refresh progress at the starting cursor so the
+    # caller can observe progress.json from the start.
+    state = protocol.ProgressState(
+        pass_="A",
+        unit="section",
+        cursor=cursor,
+        total=total,
+        status="running",
+        last_updated=_utc_now_iso(),
+    )
+    protocol.write_progress_atomic(config.progress_path, state)
+
+    # Recompute next draft_idx from disk: count of all draft records
+    # currently in pass_a_drafts.jsonl that have a draft_idx field.
+    next_draft_idx = config.starting_draft_idx + _count_existing_draft_idxs(
+        config.drafts_path
+    )
+
+    processed = 0
+    for section in section_list:
+        if section["section_idx"] < cursor:
+            continue  # already done in a prior run
+
+        if section.get("skip_reason"):
+            # Emit the skip marker without firing the LLM.
+            protocol.append_jsonl(
+                config.drafts_path,
+                {
+                    "section_idx": section["section_idx"],
+                    "skipped": True,
+                    "skip_reason": section["skip_reason"],
+                    "_metadata": {"elapsed_ms": 0},
+                },
+            )
+        else:
+            section_text, tail_context = _read_section_text(
+                config.document_root,
+                section,
+                tail_context_lines=config.tail_context_lines,
+            )
+            prompt = _render_prompt(
+                template_path,
+                section=section,
+                section_text=section_text,
+                tail_context=tail_context,
+                starting_draft_idx=next_draft_idx,
+                config=config,
+            )
+            result = runner.run(prompt)
+            _check_tripwire(result.elapsed_ms, section=section)
+            records = _parse_jsonl_response(
+                result.stdout, expected_section_idx=section["section_idx"]
+            )
+            if not records:
+                # Model produced no parseable output. Emit a no_reqs
+                # marker so Pass D sees the section was visited.
+                protocol.append_jsonl(
+                    config.drafts_path,
+                    {
+                        "section_idx": section["section_idx"],
+                        "no_reqs": True,
+                        "rationale": "LLM produced no parseable JSONL output",
+                        "_metadata": {
+                            "elapsed_ms": result.elapsed_ms,
+                            "returncode": result.returncode,
+                        },
+                    },
+                )
+            else:
+                for rec in records:
+                    rec.setdefault("_metadata", {})
+                    rec["_metadata"]["elapsed_ms"] = result.elapsed_ms
+                    if "draft_idx" in rec and isinstance(rec["draft_idx"], int):
+                        next_draft_idx = max(next_draft_idx, rec["draft_idx"] + 1)
+                    protocol.append_jsonl(config.drafts_path, rec)
+
+        # Advance cursor AFTER the per-section record(s) are flushed.
+        cursor = section["section_idx"] + 1
+        state = protocol.ProgressState(
+            pass_="A",
+            unit="section",
+            cursor=cursor,
+            total=total,
+            status="running",
+            last_updated=_utc_now_iso(),
+        )
+        protocol.write_progress_atomic(config.progress_path, state)
+        processed += 1
+
+    # Mark complete.
+    state = protocol.ProgressState(
+        pass_="A",
+        unit="section",
+        cursor=total,
+        total=total,
+        status="complete",
+        last_updated=_utc_now_iso(),
+    )
+    protocol.write_progress_atomic(config.progress_path, state)
+    return processed
+
+
+def _count_existing_draft_idxs(drafts_path: Path) -> int:
+    """Count records on disk that carry a draft_idx (i.e., real REQs,
+    not skip/no_reqs markers). Used to compute the next draft_idx
+    after a resume.
+    """
+    if not drafts_path.is_file():
+        return 0
+    count = 0
+    for line in drafts_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(rec, dict) and "draft_idx" in rec:
+            count += 1
+    return count
