@@ -44,11 +44,62 @@ and the optional `git ls-files` subprocess invocation used to respect
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Optional
 
 CLASSIFIER_VERSION = "1.0"
 SCHEMA_VERSION = "1.0"
+
+VALID_CLASSIFICATIONS = ("Code", "Skill", "Hybrid")
+VALID_CONFIDENCES = ("high", "medium", "low")
+
+# Words-to-LOC ratio thresholds. Calibrated so QPB itself (SKILL.md prose
+# comparable to but not dominant over bin/ code) classifies as Hybrid; per
+# QPB_v1.5.3_Implementation_Plan.md Open Question 1.
+SKILL_DOMINANCE_RATIO = 2.0   # word_count > code_loc * 2 => Skill
+SKILL_HIGH_CONFIDENCE_RATIO = 5.0  # word_count > code_loc * 5 => high-confidence Skill
+HYBRID_HIGH_CONFIDENCE_RATIO = 2.0  # code_loc > word_count * 2 => high-confidence Hybrid
+
+# Threshold below which a no-SKILL project is "Code with low confidence"
+# rather than "Code with high confidence" -- a near-empty directory is not
+# a confident Code classification.
+SMALL_PROJECT_LOC_THRESHOLD = 50
+
+EXTENSION_LANGUAGE = {
+    ".py": "Python",
+    ".go": "Go",
+    ".js": "JavaScript", ".mjs": "JavaScript", ".cjs": "JavaScript",
+    ".jsx": "JavaScript",
+    ".ts": "TypeScript", ".tsx": "TypeScript",
+    ".java": "Java",
+    ".kt": "Kotlin", ".kts": "Kotlin",
+    ".scala": "Scala",
+    ".c": "C", ".h": "C",
+    ".cpp": "C++", ".hpp": "C++", ".cc": "C++", ".cxx": "C++", ".hxx": "C++",
+    ".rs": "Rust",
+    ".rb": "Ruby",
+    ".php": "PHP",
+    ".swift": "Swift",
+    ".m": "Objective-C", ".mm": "Objective-C",
+    ".sh": "Shell", ".bash": "Shell", ".zsh": "Shell",
+    ".cs": "C#",
+    ".fs": "F#",
+    ".vb": "Visual Basic",
+}
+CODE_EXTENSIONS = frozenset(EXTENSION_LANGUAGE.keys())
+
+# Conventional ignore directories for filesystem walk (used when target_dir
+# is not a git repo). git ls-files takes precedence when available because
+# it already respects .gitignore.
+DEFAULT_IGNORE_DIRS = frozenset({
+    ".git", "node_modules", "__pycache__", ".venv", "venv", "env",
+    "target", "build", "dist", ".idea", ".vscode", ".pytest_cache",
+    ".mypy_cache", ".tox", ".eggs", "vendor",
+})
 
 
 def classify_project(
@@ -70,7 +121,58 @@ def classify_project(
     header. Does not write to disk; callers pass the dict to
     write_classification() to persist.
     """
-    raise NotImplementedError
+    if override is not None:
+        if override not in VALID_CLASSIFICATIONS:
+            raise ValueError(
+                f"override must be one of {VALID_CLASSIFICATIONS}; got {override!r}"
+            )
+        if not override_rationale:
+            raise ValueError("override_rationale is required when override is set")
+
+    target_dir = Path(target_dir).resolve()
+    skill_md_path = target_dir / "SKILL.md"
+    skill_md_present = skill_md_path.is_file()
+    skill_md_word_count = _count_words(skill_md_path) if skill_md_present else None
+
+    total_code_loc, code_languages = _count_code_loc(target_dir)
+
+    heuristic_class, heuristic_rationale, heuristic_confidence = _apply_heuristic(
+        skill_md_present=skill_md_present,
+        skill_md_word_count=skill_md_word_count,
+        total_code_loc=total_code_loc,
+    )
+
+    if override is not None:
+        final_classification = override
+        final_rationale = (
+            f"Override applied: {override_rationale} "
+            f"(heuristic suggested {heuristic_class}: {heuristic_rationale})"
+        )
+        # Explicit override is treated as authoritative; confidence reflects
+        # the human/Council judgment, not the underlying signal.
+        final_confidence = "high"
+    else:
+        final_classification = heuristic_class
+        final_rationale = heuristic_rationale
+        final_confidence = heuristic_confidence
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "classification": final_classification,
+        "rationale": final_rationale,
+        "confidence": final_confidence,
+        "evidence": {
+            "skill_md_present": skill_md_present,
+            "skill_md_path": str(skill_md_path) if skill_md_present else None,
+            "skill_md_word_count": skill_md_word_count,
+            "total_code_loc": total_code_loc,
+            "code_languages": sorted(code_languages),
+        },
+        "classified_at": _utc_now_iso(),
+        "classifier_version": CLASSIFIER_VERSION,
+        "override_applied": override is not None,
+        "override_rationale": override_rationale if override is not None else None,
+    }
 
 
 def write_classification(target_dir: Path, record: dict) -> Path:
@@ -80,7 +182,16 @@ def write_classification(target_dir: Path, record: dict) -> Path:
     (tmp + rename) so a crash mid-write doesn't leave a half-written JSON
     file on disk. Returns the path written.
     """
-    raise NotImplementedError
+    target_dir = Path(target_dir).resolve()
+    quality_dir = target_dir / "quality"
+    quality_dir.mkdir(parents=True, exist_ok=True)
+    out_path = quality_dir / "project_type.json"
+
+    payload = json.dumps(record, indent=2, sort_keys=False) + "\n"
+    tmp_path = out_path.with_name(out_path.name + ".tmp")
+    tmp_path.write_text(payload, encoding="utf-8")
+    os.replace(tmp_path, out_path)
+    return out_path
 
 
 # ---------------------------------------------------------------------------
@@ -89,19 +200,81 @@ def write_classification(target_dir: Path, record: dict) -> Path:
 
 
 def _count_words(path: Path) -> int:
-    raise NotImplementedError
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return 0
+    return len(text.split())
 
 
 def _count_code_loc(target_dir: Path) -> "tuple[int, set[str]]":
-    raise NotImplementedError
+    """Count non-blank lines in code files; identify languages present.
+
+    Defers file enumeration to _iter_code_files (which prefers `git ls-files`
+    over a filesystem walk so .gitignore is respected). Counts only
+    non-blank lines so generated whitespace doesn't dominate the comparison
+    against SKILL.md word count.
+    """
+    languages: set[str] = set()
+    total_loc = 0
+    for f in _iter_code_files(target_dir):
+        ext = f.suffix.lower()
+        lang = EXTENSION_LANGUAGE.get(ext)
+        if lang is not None:
+            languages.add(lang)
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            if line.strip():
+                total_loc += 1
+    return total_loc, languages
 
 
 def _iter_code_files(target_dir: Path) -> Iterable[Path]:
-    raise NotImplementedError
+    """Yield code file paths under target_dir.
+
+    Uses `git ls-files` when target_dir is a git repo so .gitignore is
+    respected (this matters for projects like QPB where vendored benchmark
+    targets live under repos/ but are gitignored). Falls back to an
+    os.walk that prunes DEFAULT_IGNORE_DIRS.
+    """
+    git_files = _git_tracked_files(target_dir)
+    if git_files is not None:
+        for rel in git_files:
+            p = target_dir / rel
+            if p.suffix.lower() in CODE_EXTENSIONS and p.is_file():
+                yield p
+        return
+
+    for root, dirs, names in os.walk(target_dir):
+        dirs[:] = [d for d in dirs if d not in DEFAULT_IGNORE_DIRS]
+        for name in names:
+            p = Path(root) / name
+            if p.suffix.lower() in CODE_EXTENSIONS:
+                yield p
 
 
 def _git_tracked_files(target_dir: Path) -> "Optional[list[str]]":
-    raise NotImplementedError
+    """Return tracked relative paths via `git ls-files`, or None if not a repo."""
+    git_dir = target_dir / ".git"
+    if not git_dir.exists():
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "ls-files"],
+            cwd=str(target_dir),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return [line for line in result.stdout.splitlines() if line]
 
 
 def _apply_heuristic(
@@ -112,10 +285,92 @@ def _apply_heuristic(
 ) -> "tuple[str, str, str]":
     """Apply the classification heuristic.
 
-    Returns (classification, rationale, confidence).
+    Returns (classification, rationale, confidence). See module header for
+    the heuristic statement; ratio thresholds are module-level constants.
     """
-    raise NotImplementedError
+    if not skill_md_present:
+        if total_code_loc == 0:
+            return (
+                "Code",
+                "No SKILL.md at repo root; no code lines observed (empty or "
+                "near-empty target).",
+                "low",
+            )
+        if total_code_loc < SMALL_PROJECT_LOC_THRESHOLD:
+            return (
+                "Code",
+                f"No SKILL.md at repo root; only {total_code_loc} non-blank "
+                f"code lines observed (small project below the "
+                f"{SMALL_PROJECT_LOC_THRESHOLD}-line confidence threshold).",
+                "medium",
+            )
+        return (
+            "Code",
+            f"No SKILL.md at repo root; {total_code_loc} non-blank code lines "
+            f"observed across the repo.",
+            "high",
+        )
+
+    word_count = skill_md_word_count or 0
+
+    # Empty SKILL.md: it exists but contributes no prose. Treat as Hybrid
+    # with low confidence -- the file's presence signals skill-shaped
+    # intent, but there's no prose to be the program.
+    if word_count == 0:
+        return (
+            "Hybrid",
+            f"SKILL.md exists at repo root but is empty (0 words); "
+            f"{total_code_loc} non-blank code lines observed.",
+            "low",
+        )
+
+    # SKILL.md with prose but no code at all: unambiguously Skill.
+    if total_code_loc == 0:
+        return (
+            "Skill",
+            f"SKILL.md exists at repo root with {word_count} prose words and "
+            f"no code lines observed.",
+            "high",
+        )
+
+    ratio_words_to_code = word_count / total_code_loc
+
+    if ratio_words_to_code > SKILL_HIGH_CONFIDENCE_RATIO:
+        return (
+            "Skill",
+            f"SKILL.md prose word count ({word_count}) substantially exceeds "
+            f"code line count ({total_code_loc}); "
+            f"ratio {ratio_words_to_code:.1f}x.",
+            "high",
+        )
+    if ratio_words_to_code > SKILL_DOMINANCE_RATIO:
+        return (
+            "Skill",
+            f"SKILL.md prose word count ({word_count}) exceeds code line "
+            f"count ({total_code_loc}) by more than {SKILL_DOMINANCE_RATIO:g}x "
+            f"(actual {ratio_words_to_code:.1f}x).",
+            "medium",
+        )
+
+    ratio_code_to_words = total_code_loc / word_count
+    if ratio_code_to_words > HYBRID_HIGH_CONFIDENCE_RATIO:
+        return (
+            "Hybrid",
+            f"SKILL.md exists at repo root ({word_count} prose words) but "
+            f"code dominates ({total_code_loc} non-blank lines; "
+            f"ratio {ratio_code_to_words:.1f}x).",
+            "high",
+        )
+    return (
+        "Hybrid",
+        f"SKILL.md exists at repo root ({word_count} prose words) alongside "
+        f"substantial code ({total_code_loc} non-blank lines); "
+        f"ratio {ratio_words_to_code:.2f} words/LOC sits within the Hybrid "
+        f"band [1/{HYBRID_HIGH_CONFIDENCE_RATIO:g}x, "
+        f"{SKILL_DOMINANCE_RATIO:g}x].",
+        "medium",
+    )
 
 
 def _utc_now_iso() -> str:
-    raise NotImplementedError
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
