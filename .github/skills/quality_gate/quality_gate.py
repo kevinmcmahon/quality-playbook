@@ -2516,6 +2516,16 @@ def check_v1_5_3_skill_section_consistency(q):
 
     Legacy manifests are skipped silently here -- the source_type check
     already emitted the single WARN for the manifest.
+
+    Deliberate piggyback (Round 2 Council, item 1): this is the one
+    documented exception to the "exactly one WARN per check function"
+    convention used by the other three v1.5.3 invariants. Both
+    check_v1_5_3_source_type_validation and this check share
+    requirements_manifest.json, so emitting a second WARN here would
+    double-warn for the same legacy file. The piggyback is locked in
+    by test_legacy_manifest_silently_skips in
+    TestV153SkillSectionConsistency -- a future maintainer reading the
+    brief and adding a WARN for consistency would break that test.
     """
     data = _v150_manifest(q, "requirements_manifest.json")
     if data is None:

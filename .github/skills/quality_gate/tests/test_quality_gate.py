@@ -2350,6 +2350,38 @@ class TestV153SkillSectionConsistency(V150FixtureBase):
         self.assertGreaterEqual(fails, 1, out)
         self.assertIn("invariant #21", out)
 
+    def test_legacy_manifest_silently_skips(self):
+        # Round 2 Council, item 1: pin the deliberate piggyback. Unlike
+        # the other three v1.5.3 invariants, this check emits ZERO WARNs
+        # on a legacy manifest -- the soft warn for the same
+        # requirements_manifest.json is already emitted by
+        # check_v1_5_3_source_type_validation. A future maintainer
+        # adding a WARN here for "consistency with the brief" would
+        # double-warn for the same file; this test guards that intent.
+        self.write_manifest(
+            "requirements_manifest.json",
+            "records",
+            [
+                {
+                    "id": "REQ-001",
+                    "tier": 3,
+                    "functional_section": "Foo",
+                }
+            ],
+        )
+        fails, warns, out = _capture_all_output(
+            quality_gate.check_v1_5_3_skill_section_consistency, self.q
+        )
+        self.assertEqual(fails, 0, out)
+        self.assertEqual(
+            warns,
+            0,
+            "skill_section_consistency must NOT emit its own WARN on legacy "
+            "manifests; the source_type check piggybacks the single WARN "
+            "for the shared requirements_manifest.json. See the docstring "
+            "comment on check_v1_5_3_skill_section_consistency.",
+        )
+
     def test_skill_section_null_with_other_source_type_passes(self):
         self.write_manifest(
             "requirements_manifest.json",
