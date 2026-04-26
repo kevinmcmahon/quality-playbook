@@ -262,6 +262,104 @@ Illegal combinations, with rationale:
 Used only in `quality/citation_semantic_check.json` (Phase 6). Gate fails if
 a majority (≥2 of 3) Council members record `overreaches` for the same REQ.
 
+### 3.6 `formal_doc_role` — origin of a `FORMAL_DOC` record (v1.5.3+)
+
+Constrains `FORMAL_DOC.role` (see §4.1). Distinguishes external authoritative
+specs from project-internal specs from the SKILL.md-as-its-own-formal-spec
+case introduced for Skill and Hybrid projects in v1.5.3.
+
+| Value             | Meaning                                                                                       |
+|-------------------|-----------------------------------------------------------------------------------------------|
+| `external-spec`   | RFC, IEEE standard, third-party authoritative spec. Tier 1 in code projects.                  |
+| `project-spec`    | Internal design document or architecture spec authored by the project. Tier 1/2 in code projects. |
+| `skill-self-spec` | `SKILL.md` itself, when the target is a Skill or Hybrid project. The skill is its own formal documentation. Tier 1. |
+| `skill-reference` | A reference file (`references/*.md`) for a Skill or Hybrid project. Tier 2. Supporting material; SKILL.md wins on conflict — see §3.9. |
+
+The `skill-self-spec` vs `skill-reference` distinction is what enables the
+precedence rule in §3.9.
+
+### 3.7 `req_source_type` — origin of a REQ record (v1.5.3+)
+
+Constrains `REQ.source_type` (see §6.1). Indicates which class of input
+produced the REQ.
+
+| Value                  | Meaning                                                                                              |
+|------------------------|------------------------------------------------------------------------------------------------------|
+| `code-derived`         | REQ extracted from observable code behavior; the historical default for Code projects.               |
+| `skill-section`        | REQ derived from a section of SKILL.md prose. Populates `REQ.skill_section`.                          |
+| `reference-file`       | REQ derived from a reference file (e.g., `references/exploration_patterns.md`).                       |
+| `execution-observation`| REQ inferred from observed run-time behavior captured in archived runs (Phase 5; reserved for forward-compat). |
+
+### 3.8 `bug_divergence_type` — kind of divergence a BUG records (v1.5.3+)
+
+Constrains `BUG.divergence_type` (see §8.1). Distinguishes the
+v1.5.0-baseline code-vs-spec divergence from the three skill-specific
+categories introduced by v1.5.3.
+
+| Value             | Meaning                                                                                                  |
+|-------------------|----------------------------------------------------------------------------------------------------------|
+| `code-spec`       | Divergence between formal documentation (Tier 1/2 spec) and implementation. The historical default for Code projects. |
+| `internal-prose`  | Within-prose contradiction in a skill (e.g., SKILL.md section X says "do Y," reference file Z contradicts X). |
+| `prose-to-code`   | SKILL.md prose makes a claim about code behavior the code does not match (e.g., "the gate runs 45 checks" but `quality_gate.py` runs 43). |
+| `execution`       | SKILL.md promise vs. observed behavior across archived runs (Phase 5; reserved for forward-compat).      |
+
+### 3.9 SKILL.md vs reference-file precedence (v1.5.3+)
+
+When a `FORMAL_DOC` with `role == "skill-self-spec"` (i.e., SKILL.md itself
+on a Skill or Hybrid project) and a `FORMAL_DOC` with `role == "skill-reference"`
+(a file under `references/`) make conflicting claims about the same
+behavior, **SKILL.md wins.** Reference files are supporting material;
+SKILL.md is the primary contract for the skill.
+
+This rule resolves Open Question #3 in `QPB_v1.5.3_Design.md` (line 343-344);
+v1.5.2 expressed it as a "lean," v1.5.3 settles it as the binding rule.
+
+**Disposition consequence.** Phase 4's internal-divergence detection
+(`BUG.divergence_type == "internal-prose"`) surfaces conflicts between
+SKILL.md and a reference file. The precedence rule decides which side
+gets which `disposition`:
+
+- The reference-file claim is the side that diverges → its containing
+  document gets `disposition: spec-fix`.
+- The SKILL.md claim is authoritative → SKILL.md is not edited as part of
+  resolving the conflict; the fix lands in the reference file.
+
+**Worked example.** SKILL.md §"Phase 1" says "the explorer must produce
+≥8 concrete findings." `references/exploration_patterns.md` says
+"the explorer must produce ≥6 concrete findings." Phase 4 surfaces the
+contradiction as a `BUG` with `divergence_type: internal-prose`. The
+precedence rule pins `references/exploration_patterns.md` as the side to
+fix (`disposition: spec-fix`, `fix_type: spec`); SKILL.md's "≥8" stands
+unmodified. If the operator believes SKILL.md is wrong instead, the
+explicit move is to edit SKILL.md first (a separate action), then re-derive
+requirements; the precedence rule does NOT block such an edit, it just
+constrains the default disposition the gate suggests when the conflict is
+first surfaced.
+
+This is additive prose — no existing field's type or required/optional
+status changes — but it introduces precedence semantics for `disposition`
+resolution on `internal-prose` BUGs.
+
+### 3.10 v1.5.3 field-presence detection (v1.5.3+ shape signal)
+
+Phase 2's new fields (`REQ.source_type`, `REQ.skill_section`,
+`BUG.divergence_type`, `FORMAL_DOC.role`) become required when a manifest
+is detected as **v1.5.3-shaped**. The trigger is **field presence**, not a
+`schema_version` value comparison: if any record in a manifest has
+`source_type`, `divergence_type`, or `role` populated, the validator
+treats the entire manifest as v1.5.3-shaped and enforces every v1.5.3
+invariant; otherwise the manifest is treated as legacy and the validator
+emits a single soft warning per check function before skipping the
+v1.5.3 invariants for that manifest.
+
+This decouples the new-field requirement from §1.6's rule that
+`schema_version` MUST equal SKILL.md `metadata.version` — `schema_version`
+keeps mirroring the SKILL.md version unchanged, and adopters can begin
+populating v1.5.3 fields against a v1.5.2-stamped skill without touching
+the version coupling. Once a manifest carries any v1.5.3 field, all of
+them are required on that manifest's record type — no half-populated
+v1.5.3 manifests.
+
 ---
 
 ## 4. `FORMAL_DOC`
@@ -282,6 +380,7 @@ One record per plaintext document in `reference_docs/cite/`. Produced by
 | `url`             | string  | no       | Canonical URL where the document was retrieved from.                   |
 | `retrieved`       | string  | no       | Date the plaintext was captured, ISO 8601 `YYYY-MM-DD`. Important for specs that change under the same version label. |
 | `bytes`           | integer | no       | File size in bytes at ingest. Diagnostic only; recomputed on each run. |
+| `role`            | string  | conditional | v1.5.3+. Member of the `formal_doc_role` enum (§3.6). REQUIRED on every record in a v1.5.3-shaped manifest (any record carrying a v1.5.3 field — see §3.10); absent on legacy manifests, where the validator emits one WARN per check function and treats it as `external-spec` for back-compat. |
 
 There is intentionally no `plaintext_path` field — per the Document Format
 Policy, `source_path` IS the plaintext file.
@@ -509,6 +608,8 @@ anchored at a specific tier. Stored in
 | `citation`            | object     | conditional | Required if `tier in {1,2}`; must be absent or `null` if `tier in {3,4,5}`. Shape: §5. |
 | `use_cases`           | array      | no       | List of `UC-NN` IDs this REQ participates in. One-way forward link; `[]` when none. Values MUST be unique (§10 invariant #18). |
 | `pattern`             | string     | no       | If present, one of `whitelist`, `parity`, `compensation`. Marks the REQ as requiring a Phase 3 compensation grid (Lever 2). Missing → no grid required. Invalid value → gate fails. |
+| `source_type`         | string     | conditional | v1.5.3+. Member of the `req_source_type` enum (§3.7). REQUIRED on every REQ in a v1.5.3-shaped manifest (any record carrying a v1.5.3 field — see §3.10); absent on legacy manifests, where the validator emits one WARN per check function and treats it as `code-derived` for back-compat. |
+| `skill_section`       | string     | conditional | v1.5.3+. Heading text from SKILL.md (e.g. `"Phase 1: Explore the Codebase"`); a reader should be able to grep SKILL.md for the heading and find it. REQUIRED non-empty when `source_type == "skill-section"`. MUST be absent or `null` when `source_type` is any other value (§10 invariant #21). |
 
 ### Pattern tags and Phase 3 grids
 
@@ -685,6 +786,7 @@ code behavior. Stored in `quality/bugs_manifest.json`; rendered to
 | `fix_type`               | string  | yes      | Member of `fix_type` enum. Combination with `disposition` constrained by §3.4 / §10 invariant #12. |
 | `covers`                    | array[string] | no | Array of cell IDs this BUG addresses, form `REQ-N/cell-<item>-<site>`. REQUIRED when the BUG's primary requirement has `pattern:` set. |
 | `consolidation_rationale`   | string        | no | REQUIRED when `covers` has ≥2 entries. Explains why cells share a BUG (shared fix path, same function, etc.). Non-empty. |
+| `divergence_type`           | string        | conditional | v1.5.3+. Member of the `bug_divergence_type` enum (§3.8). REQUIRED on every BUG in a v1.5.3-shaped manifest (any record carrying a v1.5.3 field — see §3.10); absent on legacy manifests, where the validator emits one WARN per check function and treats it as `code-spec` for back-compat. |
 
 ### Cell-identity invariants
 
@@ -943,6 +1045,26 @@ Layer 1 (mechanical checks):
     unique. Values within `UC.formal_doc_refs` MUST be unique. Duplicate
     entries fail the gate.
 
+21. **v1.5.3 source_type / skill_section consistency.** On a v1.5.3-shaped
+    requirements manifest (per §3.10), every REQ MUST have `source_type`
+    populated with a member of `req_source_type` (§3.7); every REQ with
+    `source_type == "skill-section"` MUST have a non-empty `skill_section`
+    string; and every REQ with any other `source_type` value MUST have
+    `skill_section` either absent OR explicitly `null` (per §1.5's rule
+    that optional fields may be omitted or present as null). Populated
+    `skill_section` paired with a non-`skill-section` `source_type` fails
+    the gate.
+
+22. **v1.5.3 divergence_type presence.** On a v1.5.3-shaped bugs manifest
+    (per §3.10), every BUG MUST have `divergence_type` populated with a
+    member of `bug_divergence_type` (§3.8). Missing or invalid value
+    fails the gate.
+
+23. **v1.5.3 formal_doc role presence.** On a v1.5.3-shaped formal_docs
+    manifest (per §3.10), every record MUST have `role` populated with a
+    member of `formal_doc_role` (§3.6). Missing or invalid value fails
+    the gate.
+
 19. **Pattern-tagged REQs have complete grid coverage.** For every REQ with
     a `pattern:` field, every (authoritative item × site) cell from the
     Phase 3 compensation grid MUST appear either in some BUG's `covers` array
@@ -1006,6 +1128,17 @@ version bump at minimum. Additive changes (new optional fields, new enum
 values consumed only when written by new code) may ship in a patch release
 but must be reflected here before any code depends on them.
 
+**Schema additions and the per-manifest `schema_version` field.** Schema
+*additions* in a new release (e.g., v1.5.3's `REQ.source_type`,
+`BUG.divergence_type`, and `FORMAL_DOC.role`) do NOT require a manifest's
+`schema_version` to bump — the additions become required by field-presence
+detection in the validator (see §3.10), not by the version string. The
+`schema_version`-MUST-equal-`metadata.version` invariant in §1.6 is
+preserved: `schema_version` keeps mirroring SKILL.md's `metadata.version`
+unchanged across additive releases, and adopters can begin populating the
+new fields against an unchanged version stamp. Bumping `metadata.version`
+remains the trigger for breaking schema changes.
+
 If a field is being deprecated, leave it in `schemas.md` with a "deprecated
 in v1.X.Y" note for at least one minor version before removing it — this is
 the only signal a re-running operator has that their manifests need to be
@@ -1019,3 +1152,4 @@ regenerated.
 |-------------|------------------------------------------------------------------------|
 | 1.5.1       | Initial version. `FORMAL_DOC`, `REQ`, `UC`, `BUG`, `citation`, enums.  |
 | 1.5.1-rc1   | Council-of-Three Phase 1 revisions: added byte-equality extraction algorithm (§5.4) and section resolution (§5.5); removed `REQ.disposition` (resolves enum contradiction); locked `fix_type × disposition` legal-combination matrix; schematized manifest wrapper (§1.6) and `citation_semantic_check.json` (§9); inlined per-run `INDEX.md` fields (§11); tightened locator rule to `section`/`line` only; bound `REQ.tier` to cited `FORMAL_DOC.tier`; added ID uniqueness, redundant-metadata match, and array-uniqueness invariants; reframed `citation_stale` as gate-report marker (not record field); wrapped authoring-guidance field descriptions with explicit "not gate-enforced" prefix. |
+| 1.5.3 (Phase 2) | Introduced `REQ.source_type` (§6.1, enum §3.7), `REQ.skill_section` (§6.1), `BUG.divergence_type` (§8.1, enum §3.8), and `FORMAL_DOC.role` (§4.1, enum §3.6). Added the SKILL.md-vs-reference-file precedence rule for `internal-prose` BUG dispositions (§3.9). Added field-presence detection rule (§3.10): the new fields are required when any v1.5.3 field is populated anywhere in a manifest; absent on legacy manifests, the validator emits one WARN per check function and skips v1.5.3 invariants for that manifest. Added invariants #21–#23 covering the new fields. Amended §12 to clarify that schema additions do NOT require a per-manifest `schema_version` bump — the `schema_version`-MUST-equal-`metadata.version` invariant is preserved. The schemas.md banner version is unchanged; the per-manifest `schema_version` keeps mirroring `SKILL.md` `metadata.version`. Additive at the field level; introduces precedence semantics for SKILL.md vs reference-file conflicts. |
