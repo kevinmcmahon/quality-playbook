@@ -58,6 +58,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Optional
@@ -74,6 +75,14 @@ SCHEMA_VERSION = "1.1"
 # C.5 polish (v1.5.3 Phase 2): allowed values for the `confidence_reason`
 # field on the JSON evidence block. Decision-tree order is enforced in
 # _apply_heuristic; the first match wins.
+#
+# DQ-2 (v1.5.3 Phase 3 / Round 2 Council): side-aware variants
+# (`near-band-edge-skill-side` / `near-band-edge-hybrid-side`) are a
+# future-extension candidate if downstream consumers need to apply
+# different derivation strategies for "almost Hybrid" Skill projects vs
+# "deep Skill" projects. Phase 3's four-pass pipeline branches on
+# classification (Skill vs Hybrid vs Code) only, so the bare
+# `near-band-edge` value is sufficient today.
 VALID_CONFIDENCE_REASONS = (
     "empty-skill-md",
     "empty-target",
@@ -81,6 +90,23 @@ VALID_CONFIDENCE_REASONS = (
     "near-band-edge",
     "unambiguous",
 )
+
+
+@dataclass(frozen=True)
+class ProjectClassification:
+    """Structured result of the heuristic decision tree (DQ-1).
+
+    Replaces the prior 4-tuple `(classification, rationale, confidence,
+    confidence_reason)` so that Phase 3 callers (and any future
+    consumer) can reference fields by name rather than positional index.
+    Frozen so the value is hashable and immutable -- consistent with
+    _apply_heuristic's pure-function contract.
+    """
+
+    classification: str
+    rationale: str
+    confidence: str
+    confidence_reason: str
 
 # Proportional band around each ratio threshold within which the
 # heuristic reports `near-band-edge`. 10% on each side: ratio in
@@ -191,16 +217,15 @@ def classify_project(
 
     total_code_loc, code_languages = _count_code_loc(target_dir)
 
-    (
-        heuristic_class,
-        heuristic_rationale,
-        heuristic_confidence,
-        confidence_reason,
-    ) = _apply_heuristic(
+    heuristic = _apply_heuristic(
         skill_md_present=skill_md_present,
         skill_md_word_count=skill_md_word_count,
         total_code_loc=total_code_loc,
     )
+    heuristic_class = heuristic.classification
+    heuristic_rationale = heuristic.rationale
+    heuristic_confidence = heuristic.confidence
+    confidence_reason = heuristic.confidence_reason
 
     if override is not None:
         final_classification = override
@@ -351,14 +376,15 @@ def _apply_heuristic(
     skill_md_present: bool,
     skill_md_word_count: Optional[int],
     total_code_loc: int,
-) -> "tuple[str, str, str, str]":
+) -> ProjectClassification:
     """Apply the classification heuristic.
 
-    Returns (classification, rationale, confidence, confidence_reason). See
-    module header for the heuristic statement; ratio thresholds are
-    module-level constants. The `confidence_reason` value enumerates which
-    branch of the decision tree fired -- C.5 polish to make the
-    classifier's confidence calibration auditable.
+    Returns a ProjectClassification with `.classification`, `.rationale`,
+    `.confidence`, `.confidence_reason` fields. See module header for the
+    heuristic statement; ratio thresholds are module-level constants. The
+    `confidence_reason` field enumerates which branch of the decision
+    tree fired -- C.5 polish to make the classifier's confidence
+    calibration auditable.
 
     Decision-tree precedence (top-down, first match wins):
       1. empty-skill-md  -- SKILL.md present but 0 words
@@ -366,6 +392,11 @@ def _apply_heuristic(
       3. small-project   -- no SKILL.md, code below SMALL_PROJECT_LOC_THRESHOLD
       4. near-band-edge  -- ratio within 10% of 2.0x or 5.0x
       5. unambiguous     -- everything else (default catch-all)
+
+    Return-type history: pre-Phase-3 this returned a 4-tuple; DQ-1
+    promoted the tuple to a frozen dataclass so Phase 3 callers and
+    future consumers can use named accessors instead of positional
+    unpacking.
     """
     word_count = skill_md_word_count or 0
 
@@ -373,33 +404,39 @@ def _apply_heuristic(
     # The file's presence signals skill-shaped intent but there's no prose
     # to be the program; classify as Hybrid/low so a maintainer notices.
     if skill_md_present and word_count == 0:
-        return (
-            "Hybrid",
-            f"SKILL.md exists at repo root but is empty (0 words); "
-            f"{total_code_loc} non-blank code lines observed.",
-            "low",
-            "empty-skill-md",
+        return ProjectClassification(
+            classification="Hybrid",
+            rationale=(
+                f"SKILL.md exists at repo root but is empty (0 words); "
+                f"{total_code_loc} non-blank code lines observed."
+            ),
+            confidence="low",
+            confidence_reason="empty-skill-md",
         )
 
     # Branch 2: empty-target (no SKILL.md AND no code -- empty repo).
     if not skill_md_present and total_code_loc == 0:
-        return (
-            "Code",
-            "No SKILL.md at repo root; no code lines observed (empty or "
-            "near-empty target).",
-            "low",
-            "empty-target",
+        return ProjectClassification(
+            classification="Code",
+            rationale=(
+                "No SKILL.md at repo root; no code lines observed (empty or "
+                "near-empty target)."
+            ),
+            confidence="low",
+            confidence_reason="empty-target",
         )
 
     # Branch 3: small-project (no SKILL.md, code below confidence floor).
     if not skill_md_present and total_code_loc < SMALL_PROJECT_LOC_THRESHOLD:
-        return (
-            "Code",
-            f"No SKILL.md at repo root; only {total_code_loc} non-blank "
-            f"code lines observed (small project below the "
-            f"{SMALL_PROJECT_LOC_THRESHOLD}-line confidence threshold).",
-            "medium",
-            "small-project",
+        return ProjectClassification(
+            classification="Code",
+            rationale=(
+                f"No SKILL.md at repo root; only {total_code_loc} non-blank "
+                f"code lines observed (small project below the "
+                f"{SMALL_PROJECT_LOC_THRESHOLD}-line confidence threshold)."
+            ),
+            confidence="medium",
+            confidence_reason="small-project",
         )
 
     # Beyond branches 1-3 we always have *some* code OR a populated SKILL.md.
@@ -408,65 +445,77 @@ def _apply_heuristic(
 
     if not skill_md_present:
         # Confident Code branch (substantial code, no SKILL.md).
-        return (
-            "Code",
-            f"No SKILL.md at repo root; {total_code_loc} non-blank code lines "
-            f"observed across the repo.",
-            "high",
-            "unambiguous",
+        return ProjectClassification(
+            classification="Code",
+            rationale=(
+                f"No SKILL.md at repo root; {total_code_loc} non-blank code "
+                f"lines observed across the repo."
+            ),
+            confidence="high",
+            confidence_reason="unambiguous",
         )
 
     # SKILL.md with prose but no code at all: unambiguously Skill.
     if total_code_loc == 0:
-        return (
-            "Skill",
-            f"SKILL.md exists at repo root with {word_count} prose words and "
-            f"no code lines observed.",
-            "high",
-            "unambiguous",
+        return ProjectClassification(
+            classification="Skill",
+            rationale=(
+                f"SKILL.md exists at repo root with {word_count} prose words "
+                f"and no code lines observed."
+            ),
+            confidence="high",
+            confidence_reason="unambiguous",
         )
 
     ratio_words_to_code = word_count / total_code_loc
     confidence_reason = _confidence_reason_from_ratio(ratio_words_to_code)
 
     if ratio_words_to_code > SKILL_HIGH_CONFIDENCE_RATIO:
-        return (
-            "Skill",
-            f"SKILL.md prose word count ({word_count}) substantially exceeds "
-            f"code line count ({total_code_loc}); "
-            f"ratio {ratio_words_to_code:.1f}x.",
-            "high",
-            confidence_reason,
+        return ProjectClassification(
+            classification="Skill",
+            rationale=(
+                f"SKILL.md prose word count ({word_count}) substantially "
+                f"exceeds code line count ({total_code_loc}); "
+                f"ratio {ratio_words_to_code:.1f}x."
+            ),
+            confidence="high",
+            confidence_reason=confidence_reason,
         )
     if ratio_words_to_code > SKILL_DOMINANCE_RATIO:
-        return (
-            "Skill",
-            f"SKILL.md prose word count ({word_count}) exceeds code line "
-            f"count ({total_code_loc}) by more than {SKILL_DOMINANCE_RATIO:g}x "
-            f"(actual {ratio_words_to_code:.1f}x).",
-            "medium",
-            confidence_reason,
+        return ProjectClassification(
+            classification="Skill",
+            rationale=(
+                f"SKILL.md prose word count ({word_count}) exceeds code line "
+                f"count ({total_code_loc}) by more than "
+                f"{SKILL_DOMINANCE_RATIO:g}x (actual {ratio_words_to_code:.1f}x)."
+            ),
+            confidence="medium",
+            confidence_reason=confidence_reason,
         )
 
     ratio_code_to_words = total_code_loc / word_count
     if ratio_code_to_words > HYBRID_HIGH_CONFIDENCE_RATIO:
-        return (
-            "Hybrid",
-            f"SKILL.md exists at repo root ({word_count} prose words) but "
-            f"code dominates ({total_code_loc} non-blank lines; "
-            f"ratio {ratio_code_to_words:.1f}x).",
-            "high",
-            confidence_reason,
+        return ProjectClassification(
+            classification="Hybrid",
+            rationale=(
+                f"SKILL.md exists at repo root ({word_count} prose words) but "
+                f"code dominates ({total_code_loc} non-blank lines; "
+                f"ratio {ratio_code_to_words:.1f}x)."
+            ),
+            confidence="high",
+            confidence_reason=confidence_reason,
         )
-    return (
-        "Hybrid",
-        f"SKILL.md exists at repo root ({word_count} prose words) alongside "
-        f"substantial code ({total_code_loc} non-blank lines); "
-        f"ratio {ratio_words_to_code:.2f} words/LOC sits within the Hybrid "
-        f"band [1/{HYBRID_HIGH_CONFIDENCE_RATIO:g}x, "
-        f"{SKILL_DOMINANCE_RATIO:g}x].",
-        "medium",
-        confidence_reason,
+    return ProjectClassification(
+        classification="Hybrid",
+        rationale=(
+            f"SKILL.md exists at repo root ({word_count} prose words) "
+            f"alongside substantial code ({total_code_loc} non-blank lines); "
+            f"ratio {ratio_words_to_code:.2f} words/LOC sits within the "
+            f"Hybrid band [1/{HYBRID_HIGH_CONFIDENCE_RATIO:g}x, "
+            f"{SKILL_DOMINANCE_RATIO:g}x]."
+        ),
+        confidence="medium",
+        confidence_reason=confidence_reason,
     )
 
 

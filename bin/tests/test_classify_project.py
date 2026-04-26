@@ -322,42 +322,42 @@ class WriterTests(unittest.TestCase):
 
 class HeuristicTests(unittest.TestCase):
     def test_no_skill_md_with_substantial_code_is_code_high(self) -> None:
-        cls, _, conf, _reason = cp._apply_heuristic(
+        result = cp._apply_heuristic(
             skill_md_present=False, skill_md_word_count=None, total_code_loc=5000
         )
-        self.assertEqual(cls, "Code")
-        self.assertEqual(conf, "high")
+        self.assertEqual(result.classification, "Code")
+        self.assertEqual(result.confidence, "high")
 
     def test_no_skill_md_with_tiny_code_is_code_medium(self) -> None:
-        cls, _, conf, _reason = cp._apply_heuristic(
+        result = cp._apply_heuristic(
             skill_md_present=False, skill_md_word_count=None, total_code_loc=10
         )
-        self.assertEqual(cls, "Code")
-        self.assertEqual(conf, "medium")
+        self.assertEqual(result.classification, "Code")
+        self.assertEqual(result.confidence, "medium")
 
     def test_no_skill_md_no_code_is_code_low(self) -> None:
-        cls, _, conf, _reason = cp._apply_heuristic(
+        result = cp._apply_heuristic(
             skill_md_present=False, skill_md_word_count=None, total_code_loc=0
         )
-        self.assertEqual(cls, "Code")
-        self.assertEqual(conf, "low")
+        self.assertEqual(result.classification, "Code")
+        self.assertEqual(result.confidence, "low")
 
     def test_skill_md_dominant_prose_is_skill_high(self) -> None:
-        cls, _, conf, _reason = cp._apply_heuristic(
+        result = cp._apply_heuristic(
             skill_md_present=True, skill_md_word_count=10000, total_code_loc=100
         )
-        self.assertEqual(cls, "Skill")
-        self.assertEqual(conf, "high")
+        self.assertEqual(result.classification, "Skill")
+        self.assertEqual(result.confidence, "high")
 
     def test_skill_md_moderate_dominant_prose_is_skill_medium(self) -> None:
         # C.3 polish: ratio between SKILL_DOMINANCE_RATIO (2.0) and
         # SKILL_HIGH_CONFIDENCE_RATIO (5.0) lands in the medium-confidence
         # Skill band. 3000 / 1000 = 3.0x, well inside the band.
-        cls, _, conf, _reason = cp._apply_heuristic(
+        result = cp._apply_heuristic(
             skill_md_present=True, skill_md_word_count=3000, total_code_loc=1000
         )
-        self.assertEqual(cls, "Skill")
-        self.assertEqual(conf, "medium")
+        self.assertEqual(result.classification, "Skill")
+        self.assertEqual(result.confidence, "medium")
 
     # ----- C.4 boundary tests -----------------------------------------
     # Pin both the threshold values AND the strict-vs-loose comparison
@@ -367,80 +367,80 @@ class HeuristicTests(unittest.TestCase):
     def test_boundary_skill_dominance_exact_is_hybrid_medium(self) -> None:
         # Ratio exactly 2.000x: word_count > code_loc * 2.0 is False, so
         # the heuristic falls through to the Hybrid medium branch.
-        cls, _, conf, _reason = cp._apply_heuristic(
+        result = cp._apply_heuristic(
             skill_md_present=True, skill_md_word_count=2000, total_code_loc=1000
         )
-        self.assertEqual(cls, "Hybrid")
-        self.assertEqual(conf, "medium")
+        self.assertEqual(result.classification, "Hybrid")
+        self.assertEqual(result.confidence, "medium")
 
     def test_boundary_skill_dominance_just_above_is_skill_medium(self) -> None:
         # Ratio 2.001x: just over SKILL_DOMINANCE_RATIO, lands in the
         # medium-confidence Skill band.
-        cls, _, conf, _reason = cp._apply_heuristic(
+        result = cp._apply_heuristic(
             skill_md_present=True, skill_md_word_count=2001, total_code_loc=1000
         )
-        self.assertEqual(cls, "Skill")
-        self.assertEqual(conf, "medium")
+        self.assertEqual(result.classification, "Skill")
+        self.assertEqual(result.confidence, "medium")
 
     def test_boundary_skill_high_confidence_exact_is_skill_medium(self) -> None:
         # Ratio exactly 5.000x: word_count > code_loc * 5.0 is False,
         # the heuristic stays in the medium-confidence Skill band.
-        cls, _, conf, _reason = cp._apply_heuristic(
+        result = cp._apply_heuristic(
             skill_md_present=True, skill_md_word_count=5000, total_code_loc=1000
         )
-        self.assertEqual(cls, "Skill")
-        self.assertEqual(conf, "medium")
+        self.assertEqual(result.classification, "Skill")
+        self.assertEqual(result.confidence, "medium")
 
     def test_boundary_skill_high_confidence_just_above_is_skill_high(self) -> None:
         # Ratio 5.001x: just over SKILL_HIGH_CONFIDENCE_RATIO, lands in
         # the high-confidence Skill band.
-        cls, _, conf, _reason = cp._apply_heuristic(
+        result = cp._apply_heuristic(
             skill_md_present=True, skill_md_word_count=5001, total_code_loc=1000
         )
-        self.assertEqual(cls, "Skill")
-        self.assertEqual(conf, "high")
+        self.assertEqual(result.classification, "Skill")
+        self.assertEqual(result.confidence, "high")
 
     def test_skill_md_dominant_code_is_hybrid_high(self) -> None:
-        cls, _, conf, _reason = cp._apply_heuristic(
+        result = cp._apply_heuristic(
             skill_md_present=True, skill_md_word_count=200, total_code_loc=10000
         )
-        self.assertEqual(cls, "Hybrid")
-        self.assertEqual(conf, "high")
+        self.assertEqual(result.classification, "Hybrid")
+        self.assertEqual(result.confidence, "high")
 
     def test_skill_md_balanced_is_hybrid_medium(self) -> None:
-        cls, _, conf, _reason = cp._apply_heuristic(
+        result = cp._apply_heuristic(
             skill_md_present=True, skill_md_word_count=1000, total_code_loc=800
         )
-        self.assertEqual(cls, "Hybrid")
-        self.assertEqual(conf, "medium")
+        self.assertEqual(result.classification, "Hybrid")
+        self.assertEqual(result.confidence, "medium")
 
     # ----- C.5 confidence_reason decision-tree tests -------------------
     # One test per enum value, exercising the decision-tree precedence
     # in _apply_heuristic.
 
     def test_confidence_reason_empty_skill_md(self) -> None:
-        cls, _, conf, reason = cp._apply_heuristic(
+        result = cp._apply_heuristic(
             skill_md_present=True, skill_md_word_count=0, total_code_loc=200
         )
-        self.assertEqual(cls, "Hybrid")
-        self.assertEqual(conf, "low")
-        self.assertEqual(reason, "empty-skill-md")
+        self.assertEqual(result.classification, "Hybrid")
+        self.assertEqual(result.confidence, "low")
+        self.assertEqual(result.confidence_reason, "empty-skill-md")
 
     def test_confidence_reason_empty_target(self) -> None:
-        cls, _, conf, reason = cp._apply_heuristic(
+        result = cp._apply_heuristic(
             skill_md_present=False, skill_md_word_count=None, total_code_loc=0
         )
-        self.assertEqual(cls, "Code")
-        self.assertEqual(conf, "low")
-        self.assertEqual(reason, "empty-target")
+        self.assertEqual(result.classification, "Code")
+        self.assertEqual(result.confidence, "low")
+        self.assertEqual(result.confidence_reason, "empty-target")
 
     def test_confidence_reason_small_project(self) -> None:
-        cls, _, conf, reason = cp._apply_heuristic(
+        result = cp._apply_heuristic(
             skill_md_present=False, skill_md_word_count=None, total_code_loc=20
         )
-        self.assertEqual(cls, "Code")
-        self.assertEqual(conf, "medium")
-        self.assertEqual(reason, "small-project")
+        self.assertEqual(result.classification, "Code")
+        self.assertEqual(result.confidence, "medium")
+        self.assertEqual(result.confidence_reason, "small-project")
 
     def test_confidence_reason_near_band_edge(self) -> None:
         # Ratio 2.05x: within ±10% of SKILL_DOMINANCE_RATIO (2.0).
@@ -449,22 +449,33 @@ class HeuristicTests(unittest.TestCase):
         # Skill medium); the confidence_reason should still flag
         # near-band-edge regardless of which side of the strict
         # comparison we land on.
-        cls, _, conf, reason = cp._apply_heuristic(
+        result = cp._apply_heuristic(
             skill_md_present=True, skill_md_word_count=2050, total_code_loc=1000
         )
-        self.assertIn(cls, ("Skill", "Hybrid"))  # near the 2.0x boundary
-        self.assertEqual(reason, "near-band-edge")
+        self.assertIn(result.classification, ("Skill", "Hybrid"))
+        self.assertEqual(result.confidence_reason, "near-band-edge")
 
     def test_confidence_reason_unambiguous(self) -> None:
         # Ratio 3.0x: comfortably between 2.0 (boundary) and 5.0
         # (high-confidence cutoff), well outside both 10% bands
         # ([1.8, 2.2] and [4.5, 5.5]).
-        cls, _, conf, reason = cp._apply_heuristic(
+        result = cp._apply_heuristic(
             skill_md_present=True, skill_md_word_count=3000, total_code_loc=1000
         )
-        self.assertEqual(cls, "Skill")
-        self.assertEqual(conf, "medium")
-        self.assertEqual(reason, "unambiguous")
+        self.assertEqual(result.classification, "Skill")
+        self.assertEqual(result.confidence, "medium")
+        self.assertEqual(result.confidence_reason, "unambiguous")
+
+    # ----- DQ-1: ProjectClassification dataclass shape ------------------
+    def test_apply_heuristic_returns_project_classification(self) -> None:
+        result = cp._apply_heuristic(
+            skill_md_present=True, skill_md_word_count=10000, total_code_loc=100
+        )
+        self.assertIsInstance(result, cp.ProjectClassification)
+        # Frozen dataclass: hashable and immutable.
+        self.assertEqual(hash(result), hash(result))
+        with self.assertRaises(Exception):
+            result.classification = "Code"  # type: ignore[misc]
 
     def test_qpb_self_classifies_as_hybrid(self) -> None:
         # Acceptance-gate item: QPB itself classifies as Hybrid. This guards
