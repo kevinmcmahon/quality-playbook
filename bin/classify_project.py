@@ -60,9 +60,30 @@ VALID_CONFIDENCES = ("high", "medium", "low")
 # Words-to-LOC ratio thresholds. Calibrated so QPB itself (SKILL.md prose
 # comparable to but not dominant over bin/ code) classifies as Hybrid; per
 # QPB_v1.5.3_Implementation_Plan.md Open Question 1.
-SKILL_DOMINANCE_RATIO = 2.0   # word_count > code_loc * 2 => Skill
-SKILL_HIGH_CONFIDENCE_RATIO = 5.0  # word_count > code_loc * 5 => high-confidence Skill
-HYBRID_HIGH_CONFIDENCE_RATIO = 2.0  # code_loc > word_count * 2 => high-confidence Hybrid
+#
+# Why these specific values: prose words and code lines are not directly
+# comparable units, so the boundaries are picked empirically against real
+# targets, not derived from first principles. QPB itself sits at ~1.7
+# words-per-LOC, so the SKILL_DOMINANCE_RATIO (Skill vs Hybrid boundary)
+# at 2.0 leaves QPB comfortably on the Hybrid side -- a 1× boundary would
+# misclassify QPB as Skill, a 5× boundary would miss obvious skill-shaped
+# targets that still carry some helper code.
+SKILL_DOMINANCE_RATIO = 2.0
+# Anything 5× or more is unambiguously skill-dominant regardless of
+# absolute code size: even a real engineering codebase tucked under
+# extensive skill prose still falls below 5× when its code carries weight,
+# so a project crossing this threshold is reliably Skill, not Hybrid. The
+# 5× choice (vs 3× or 10×) keeps the medium-confidence Skill band wide
+# enough to catch borderline projects and gives QPB at 1.67× a comfortable
+# margin from any transition.
+SKILL_HIGH_CONFIDENCE_RATIO = 5.0
+# Symmetric to SKILL_DOMINANCE_RATIO but on the code-dominant side: a
+# project where code outsizes SKILL.md prose by 2× or more is reliably
+# Hybrid with high confidence. Picked at 2.0 (not e.g. 3.0) so that the
+# medium-confidence Hybrid band stays narrow -- a code-dominant project
+# should surface as high-confidence Hybrid quickly, leaving the medium
+# band for genuinely balanced cases like QPB.
+HYBRID_HIGH_CONFIDENCE_RATIO = 2.0
 
 # Threshold below which a no-SKILL project is "Code with low confidence"
 # rather than "Code with high confidence" -- a near-empty directory is not
