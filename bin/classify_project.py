@@ -184,7 +184,12 @@ def classify_project(
         "confidence": final_confidence,
         "evidence": {
             "skill_md_present": skill_md_present,
-            "skill_md_path": str(skill_md_path) if skill_md_present else None,
+            # Repo-relative POSIX-style path -- never absolute -- so the
+            # JSON record stays portable across machines and CI environments
+            # (C.2 polish). The classifier only ever looks for SKILL.md at
+            # target_dir / "SKILL.md", so the relative path is fixed when
+            # SKILL.md is present.
+            "skill_md_path": "SKILL.md" if skill_md_present else None,
             "skill_md_word_count": skill_md_word_count,
             "total_code_loc": total_code_loc,
             "code_languages": sorted(code_languages),

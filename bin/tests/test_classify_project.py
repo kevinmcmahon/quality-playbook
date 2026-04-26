@@ -59,6 +59,12 @@ def _assert_record_matches_schema(test_case: unittest.TestCase, record: dict) ->
     test_case.assertIsInstance(evidence["skill_md_present"], bool)
     if evidence["skill_md_present"]:
         test_case.assertIsInstance(evidence["skill_md_path"], str)
+        # C.2 invariant: skill_md_path is repo-relative (POSIX-style),
+        # never absolute, so the JSON record is portable across machines.
+        test_case.assertFalse(
+            Path(evidence["skill_md_path"]).is_absolute(),
+            f"skill_md_path must be repo-relative; got {evidence['skill_md_path']!r}",
+        )
         test_case.assertIsInstance(evidence["skill_md_word_count"], int)
         test_case.assertGreaterEqual(evidence["skill_md_word_count"], 0)
     else:
