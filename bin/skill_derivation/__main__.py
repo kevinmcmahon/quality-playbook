@@ -90,9 +90,13 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--runner",
-        choices=("claude", "copilot"),
+        choices=("claude", "copilot", "codex"),
         default="claude",
-        help="LLM runner for Pass A (default: claude).",
+        help=(
+            "LLM runner for Pass A. claude (default) wraps "
+            "`claude --print`; copilot wraps `gh copilot --prompt`; "
+            "codex wraps `codex exec --full-auto`."
+        ),
     )
     parser.add_argument(
         "--pace-seconds",
@@ -140,7 +144,10 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help=(
             "Override the runner's default model. For --runner claude: "
             "'sonnet' (default), 'opus'. For --runner copilot: "
-            "'claude-sonnet-4.6' (default), 'claude-opus-4.6'."
+            "'claude-sonnet-4.6' (default), 'claude-opus-4.6'. For "
+            "--runner codex: any model in ~/.codex/config.toml's catalog "
+            "(e.g., 'gpt-5-codex'); empty default lets codex pick from "
+            "its own config."
         ),
     )
     return parser.parse_args(argv)

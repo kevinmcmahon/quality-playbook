@@ -65,6 +65,19 @@ class TestSkillDerivationMainArgs(unittest.TestCase):
         args = _parse_args(["/tmp/example", "--runner", "copilot"])
         self.assertEqual(args.runner, "copilot")
 
+    def test_runner_codex(self) -> None:
+        from bin.skill_derivation.__main__ import _parse_args
+        args = _parse_args(["/tmp/example", "--runner", "codex"])
+        self.assertEqual(args.runner, "codex")
+
+    def test_runner_codex_with_model(self) -> None:
+        from bin.skill_derivation.__main__ import _parse_args
+        args = _parse_args([
+            "/tmp/example", "--runner", "codex", "--model", "gpt-5-codex",
+        ])
+        self.assertEqual(args.runner, "codex")
+        self.assertEqual(args.model, "gpt-5-codex")
+
     def test_pace_seconds_int(self) -> None:
         from bin.skill_derivation.__main__ import _parse_args
         args = _parse_args(["/tmp/example", "--pace-seconds", "30"])
@@ -129,6 +142,61 @@ class MakeRunnerModelOverrideTests(unittest.TestCase):
         r = make_runner("copilot", model="claude-opus-4.6")
         self.assertIsInstance(r, CopilotRunner)
         self.assertEqual(r.model, "claude-opus-4.6")
+
+    def test_make_runner_codex_default_model_is_empty(self) -> None:
+        """Codex's default model is empty — codex picks from
+        ~/.codex/config.toml when no -m flag is passed."""
+        from bin.skill_derivation.runners import make_runner, CodexRunner
+        r = make_runner("codex")
+        self.assertIsInstance(r, CodexRunner)
+        self.assertEqual(r.model, "")
+
+    def test_make_runner_codex_override_model(self) -> None:
+        from bin.skill_derivation.runners import make_runner, CodexRunner
+        r = make_runner("codex", model="gpt-5-codex")
+        self.assertIsInstance(r, CodexRunner)
+        self.assertEqual(r.model, "gpt-5-codex")
+
+    def test_make_runner_unknown_lists_codex_in_error(self) -> None:
+        from bin.skill_derivation.runners import make_runner
+        with self.assertRaises(ValueError) as cm:
+            make_runner("nonsense")
+        self.assertIn("codex", str(cm.exception))
+
+
+class CodexRunnerArgvTests(unittest.TestCase):
+    """Verify CodexRunner builds the correct argv and passes the
+    prompt on stdin (codex-cli 0.125+ reads stdin when no positional
+    prompt is given)."""
+
+    def test_argv_with_default_empty_model_omits_dash_m(self) -> None:
+        from bin.skill_derivation.runners import CodexRunner
+        from unittest import mock
+        runner = CodexRunner()
+        with mock.patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock.Mock(
+                stdout="HELLO", stderr="", returncode=0,
+            )
+            runner.run("Say HELLO")
+            argv = mock_run.call_args.args[0]
+            kwargs = mock_run.call_args.kwargs
+            self.assertEqual(argv, ["codex", "exec", "--full-auto"])
+            self.assertEqual(kwargs.get("input"), "Say HELLO")
+
+    def test_argv_with_explicit_model_includes_dash_m(self) -> None:
+        from bin.skill_derivation.runners import CodexRunner
+        from unittest import mock
+        runner = CodexRunner(model="gpt-5-codex")
+        with mock.patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock.Mock(
+                stdout="ok", stderr="", returncode=0,
+            )
+            runner.run("test")
+            argv = mock_run.call_args.args[0]
+            self.assertEqual(
+                argv,
+                ["codex", "exec", "--full-auto", "-m", "gpt-5-codex"],
+            )
 
 
 class Phase4DispatcherSmokeTests(unittest.TestCase):

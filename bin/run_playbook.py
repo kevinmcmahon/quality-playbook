@@ -271,6 +271,7 @@ def build_parser() -> argparse.ArgumentParser:
     runner_group = parser.add_mutually_exclusive_group()
     runner_group.add_argument("--claude", dest="runner", action="store_const", const="claude", default="copilot", help="Use claude -p instead of gh copilot.")
     runner_group.add_argument("--copilot", dest="runner", action="store_const", const="copilot", help="Use gh copilot (default).")
+    runner_group.add_argument("--codex", dest="runner", action="store_const", const="codex", help="Use codex exec --full-auto instead of gh copilot.")
 
     seed_group = parser.add_mutually_exclusive_group()
     seed_group.add_argument("--no-seeds", dest="no_seeds", action="store_true", default=True, help="Skip Phase 0/0b seed injection (default).")
@@ -341,7 +342,7 @@ def build_parser() -> argparse.ArgumentParser:
             "default 0). Use to throttle against per-minute rate limits."
         ),
     )
-    parser.add_argument("--model", help="Runner model override (copilot: gpt-5.4, claude: sonnet/opus/etc).")
+    parser.add_argument("--model", help="Runner model override (copilot: gpt-5.4, claude: sonnet/opus/etc, codex: gpt-5-codex/etc).")
     parser.add_argument(
         "--no-formal-docs",
         dest="no_formal_docs",
@@ -1213,6 +1214,18 @@ def command_for_runner(runner: str, prompt: str, model: Optional[str]) -> List[s
             command.extend(["--model", model])
         command.extend(["-p", prompt, "--dangerously-skip-permissions"])
         return command
+    if runner == "codex":
+        # `codex exec --full-auto` reads instructions from stdin when
+        # no positional prompt is given (codex-cli 0.125+). Putting
+        # the prompt on argv would hit shell command-line length
+        # limits on long phase prompts; the caller must pipe the
+        # prompt on stdin instead. The "-" sentinel below makes the
+        # intent explicit.
+        command = ["codex", "exec", "--full-auto"]
+        if model:
+            command.extend(["-m", model])
+        command.append("-")
+        return command
     copilot_model = model or lib.DEFAULT_MODEL
     return ["gh", "copilot", "-p", prompt, "--model", copilot_model, "--yolo"]
 
@@ -1502,14 +1515,22 @@ def run_prompt(repo_dir: Path, prompt: str, pass_name: str, output_file: Path, l
 
     with output_file.open("w", encoding="utf-8") as out_handle:
         try:
-            result = subprocess.run(
-                command,
+            # Codex CLI takes the prompt on stdin (its argv carries
+            # the `-` sentinel from command_for_runner). Claude and
+            # Copilot take the prompt on argv. Detect the codex case
+            # by the trailing `-` token.
+            run_kwargs = dict(
                 cwd=str(repo_dir),
                 stdout=out_handle,
                 stderr=subprocess.STDOUT,
                 text=True,
                 check=False,
             )
+            if runner == "codex":
+                run_kwargs["input"] = prompt
+            else:
+                run_kwargs["stdin"] = subprocess.DEVNULL
+            result = subprocess.run(command, **run_kwargs)
         except FileNotFoundError:
             out_handle.write(f"ERROR: command not found: {command[0]}\n")
             result = subprocess.CompletedProcess(command, returncode=127)
@@ -1523,6 +1544,8 @@ def run_prompt(repo_dir: Path, prompt: str, pass_name: str, output_file: Path, l
 def ensure_runner_available(runner: str) -> bool:
     if runner == "copilot":
         return lib.require_copilot()
+    if runner == "codex":
+        return shutil.which("codex") is not None
     return shutil.which("claude") is not None
 
 
@@ -2744,6 +2767,8 @@ def display_run_header(args: argparse.Namespace, repo_dirs: Sequence[Path], disp
     print(f"Runner:   {args.runner}")
     if args.runner == "copilot":
         print(f"Model:    {args.model or lib.DEFAULT_MODEL}")
+    elif args.runner == "codex":
+        print(f"Model:    {args.model or '(codex config default)'}")
     else:
         print(f"Model:    {args.model or '(default)'}")
     print(f"No seeds: {args.no_seeds}  (Phase 0/0b skipped when true)")
@@ -2868,7 +2893,10 @@ def kill_recorded_processes() -> int:
 
 def build_worker_command(args: argparse.Namespace, target_path: str) -> List[str]:
     command = [sys.executable, str(Path(__file__).resolve()), "--worker", "--sequential"]
-    command.append("--claude" if args.runner == "claude" else "--copilot")
+    runner_flag = {"claude": "--claude", "codex": "--codex"}.get(
+        args.runner, "--copilot"
+    )
+    command.append(runner_flag)
     command.append("--no-seeds" if args.no_seeds else "--with-seeds")
     # v1.5.1 Item 3.1: prefer --phase-groups when the operator passed it
     # explicitly OR when sugar (--phase all / --full-run) produced groups.
@@ -3000,7 +3028,9 @@ def print_suggested_next_command(args: argparse.Namespace, failures_occurred: bo
     if failures_occurred:
         print("  Run finished with errors — inspect quality/control_prompts/ and re-run with --phase <N>")
         return
-    runner_flag = " --claude" if args.runner == "claude" else ""
+    runner_flag = {"claude": " --claude", "codex": " --codex"}.get(
+        args.runner, ""
+    )
     model_flag = f" --model {shlex.quote(args.model)}" if getattr(args, "model", None) else ""
     interpreter = os.path.basename(sys.executable) if sys.executable else "python"
     script_path = sys.argv[0] if sys.argv and sys.argv[0] else "bin/run_playbook.py"
@@ -3052,6 +3082,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if not ensure_runner_available(args.runner):
         if args.runner == "copilot":
             print("ERROR: 'gh copilot' not available. Install with: gh extension install github/gh-copilot", file=sys.stderr)
+        elif args.runner == "codex":
+            print("ERROR: 'codex' CLI not found. Install from https://github.com/openai/codex", file=sys.stderr)
         else:
             print("ERROR: 'claude' CLI not found. Install from https://docs.anthropic.com/claude-code", file=sys.stderr)
         return 1
