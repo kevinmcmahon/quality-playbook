@@ -1,10 +1,19 @@
 # QPB v1.5.3 Phase 3b — Foundations Partial-Ship Summary
 
-*Status: **Phase 3b foundations only.** Brief commits 1-7 and brief commit 9 (= execution-order commits 1-8) landed cleanly. Brief commits 10, 8, 11 (the live QPB SKILL.md self-audit run and its derived artifacts/reports) were NOT performed in this session — they require 4-7 hours of live `claude --print` invocations totaling 100-160 sequential LLM calls plus 4 mid-pass kills, which cannot honestly happen inside a single agent turn. The brief explicitly authorizes this partial-ship pattern at line 16 ("If actual wall-clock exceeds 8 hours, halt and ship as Phase 3b foundations + Phase 3c live run") and line 36 ("the natural break is between Pass C/D code commits ... and the live self-audit run").*
+*Status: **Phase 3b foundations + Phase 3c live run COMPLETE.**
+Phase 3b foundations landed via brief commits 1-7 + brief commit 9
+(= execution-order commits 1-8). Phase 3c (this update) landed via
+4 additional commits: ND-1/ND-2 pre-flight fixes, end-to-end self-
+audit run on QPB SKILL.md, META_SECTION_ALLOWLIST tuning, and
+final reports. Items 3, 4, 5 below are now populated with live-run
+data; the 4-kill RESUMABILITY_REPORT and HAIKU_COMPARISON sit at
+`quality/phase3/RESUMABILITY_REPORT.md` /
+`quality/phase3/HAIKU_COMPARISON.md`.*
 
 *Date: 2026-04-27*
 *Pre-Phase-3b HEAD: `fef2952`*
 *Phase 3b foundations HEAD: `c1062f6`*
+*Phase 3c HEAD: this commit (4/4 of Phase 3c)*
 
 ## 1. Commit-SHA → deliverable mapping table
 
@@ -18,62 +27,140 @@
 | 6 | 6 | `6b33648` | Pass D driver (audit + section coverage + council inbox per DQ-5) |
 | 7 | 7 | `e16baad` | Pass D tests + completeness-gap logic refinement (zero-drafts vs zero-promoted distinction) |
 | 9 | 8 | `c1062f6` | `__main__.py` CLI + council-inbox gate validator (DQ-5 structural + BLOCK-4 cross-reference) |
-| **10** | **9** | **NOT LANDED** | **End-to-end self-audit on QPB SKILL.md (4-7 hours live LLM time)** |
-| **8** | **10** | **NOT LANDED** | **META_SECTION_ALLOWLIST tuning (depends on Commit 10's flagged-gap evidence)** |
-| **11** | **11** | **NOT LANDED** | **HAIKU_COMPARISON.md + RESUMABILITY_REPORT.md + SUMMARY.md (depends on Commit 10's artifacts)** |
+| **10** | **9** | **`ca75a93` (Phase 3c commit 2/4)** | **End-to-end self-audit on QPB SKILL.md (~3h 15min live)** |
+| **8** | **10** | **`6a0b074` (Phase 3c commit 3/4)** | **META_SECTION_ALLOWLIST tuning (3 additions: Purpose, Template, Generated file template)** |
+| **11** | **11** | **(Phase 3c commit 4/4)** | **HAIKU_COMPARISON.md + RESUMABILITY_REPORT.md + SUMMARY.md** |
+| **(pre-flight)** | **0** | **`97592ef` (Phase 3c commit 1/4)** | **ND-1 (`bin/tests/test_skill_derivation_main.py`) + ND-2 (Pass C `skill_section` guard)** |
 
 ## 2. Final test counts
 
-| Suite | Pre-Phase-3b baseline | Post-Phase-3b foundations | Delta |
-|---|---|---|---|
-| `bin/tests/` | 542 | **586** | +44 |
-| `.github/skills/quality_gate/tests/test_quality_gate.py` | 192 | **204** | +12 |
-| **Total** | 734 | **790** | **+56** |
+| Suite | Pre-Phase-3b baseline | Post-Phase-3b foundations | Post-Phase-3c | Delta |
+|---|---|---|---|---|
+| `bin/tests/` | 542 | 586 | **596** | +54 |
+| `.github/skills/quality_gate/tests/test_quality_gate.py` | 192 | 204 | **198** | +6 (Phase 3c moved 6 to bin) |
+| `.github/skills/quality_gate/tests/test_req_pattern.py` | 6 | 6 | **6** | 0 |
+| **Total** | 740 | 796 | **800** | **+60** |
 
-The bin/tests/ count (586) is below the brief's estimated post-Phase-3b range of 575-610 because the live-run commits (10/8/11) don't add unit tests; their work surfaces in artifacts and reports rather than tests. The +44 covers UC handling (13), reference-file iteration (4), cross-reference detection (8), Pass C disposition table (12), and Pass D audit/coverage/inbox (7). The gate suite +12 covers council-inbox structural+cross-reference validation (6) and `__main__.py` argument parsing (6).
+Phase 3c added 10 to bin/tests/ (test_skill_derivation_main.py: 9
+including 3 PassAll integration tests + 6 moved CLI arg tests;
+SkillSectionGuardTests: 1 unit test for ND-2 guard) and removed 6
+from the gate suite (TestSkillDerivationMainArgs moved to bin/
+where it structurally belongs).
 
-All 790 tests green at HEAD `c1062f6`.
+All 800 tests green at Phase 3c HEAD.
 
 ## 3. End-to-end self-audit results
 
-**NOT AVAILABLE — Commit 10 was not performed in this session.**
+**LANDED in Phase 3c (commit 2/4 = `ca75a93`, commit 3/4 = `6a0b074`).**
 
-The expected artifacts for the eventual Phase 3c live run:
+Live-run results from `python3 -m bin.skill_derivation
+~/Documents/QPB --pass all --runner claude --pace-seconds 0`:
 
-- `quality/phase3/pass_a_drafts.jsonl` — target 86-105 records (Haiku 95 ± 10%)
-- `quality/phase3/pass_a_use_case_drafts.jsonl` — target 8-12 UC drafts
-- `quality/phase3/pass_b_citations.jsonl` — one record per Pass A draft
-- `quality/phase3/pass_c_formal.jsonl` — target ≥48 formal REQs (≥50% of Haiku 95)
-- `quality/phase3/pass_c_formal_use_cases.jsonl` — target 10 formal UCs
-- `quality/phase3/pass_d_audit.json`, `pass_d_section_coverage.json`, `pass_d_council_inbox.json`
-- `quality/phase3/SUMMARY.md`
+- `pass_a_drafts.jsonl` — **1392 raw drafts produced; truncated
+  to 200** for Pass B tractability (full 1392 deferred to Phase 3d).
+  The brief's 86–105 target was calibrated against Haiku's
+  filtered output, not naive Pass A coverage; QPB's high-recall
+  Pass A produced ~12 drafts/section across 117 LLM-fired
+  sections.
+- `pass_a_use_case_drafts.jsonl` — **15 UC drafts** (target 8–12;
+  slightly over because some execution-mode sections produced
+  multiple sub-scenario UCs).
+- `pass_b_citations.jsonl` — **200 records** matching the
+  truncated Pass A. Pass B's O(n×m) SequenceMatcher fuzzy search
+  projected ~7 hours wall-clock on the full 1392 set; the
+  truncation kept session within the 8-hour budget.
+- `pass_c_formal.jsonl` — **198 formal REQs** (target ≥48; 4×
+  over). Disposition: 77 accepted, 121 needs-council-review, 0
+  demoted-tier-5. Source-type: 179 skill-section, 19 reference-
+  file. Zero `execution-observation` records, zero invariant #21
+  violations, zero ND-2 guard hits.
+- `pass_c_formal_use_cases.jsonl` — **15 formal UCs**
+  (UC-PHASE3-01..UC-PHASE3-15) mapping to 8/10 Haiku UCs +
+  5 sub-scenario UCs. Two Haiku UCs (Benchmark Operator,
+  Bootstrap Self-Audit) did not surface as standalone — flagged
+  for Phase 3d EXECUTION_MODE_KEYWORDS expansion.
+- `pass_d_audit.json` — promoted=77, rejected=121, demoted=0,
+  rejection_rate=61.1%, phase4_council_flag=true.
+- `pass_d_section_coverage.json` — 89 completeness gaps
+  post-tuning (down from 94 pre-tuning, -5 from META_SECTION_
+  ALLOWLIST additions in commit 3/4). Most of the 89 gaps are
+  truncation artifacts (sections 17–124 produced no drafts in
+  the truncated input); few-to-zero are genuine coverage gaps.
+- `pass_d_council_inbox.json` — **225 items**: 121 rejected-
+  draft, 89 zero-req-section (truncation-driven), 15
+  weak-rationale (UCs).
+- `SUMMARY.md`, `HAIKU_COMPARISON.md`, `RESUMABILITY_REPORT.md`
+  produced in commit 4/4.
+- All four `pass_*_progress.json` show `status: "complete"`.
 
-Wall-clock estimate (per the brief): 4-7 hours. With 125 enumerated sections (38 SKILL.md + 87 references) on QPB and `--pace-seconds 1` Anthropic-default pacing, the math is ~125 × 30-60s/call = 1-2 hours for Pass A alone, plus mechanical-only Pass B and Pass D, plus another 30-60 minutes for Pass C's LLM-driven council-review provisional dispositions on the unverified subset, plus 4 mid-pass kills × 5-10 min restart overhead = 25-40 min. Total realistic envelope 2-4 hours for the run + 1-2 hours for resumability = 3-6 hours.
+**Wall-clock:** ~3 hours 15 minutes total (Pass A ~117 min across
+4 starts due to Kill 1 + 2 tripwire halts; Pass B ~55 min before
+truncation; Pass C ~12 sec mechanical; Pass D ~1 sec atomic; misc
+overhead). Within the brief's 8-hour budget.
 
 ## 4. Haiku benchmark comparison
 
-**NOT AVAILABLE — depends on Commit 10/11 output.**
+**LANDED in Phase 3c (commit 4/4) — full report at
+`quality/phase3/HAIKU_COMPARISON.md`.**
 
-The comparison table will populate at `quality/phase3/HAIKU_COMPARISON.md` once Commit 10 lands. Acceptance criteria from the brief:
+Headline counts (vs Haiku's 78-REQ / 10-UC published benchmark):
 
-- Pass A draft count: 86-105 (Haiku 95 ± 10%)
-- Pass C formal REQ count: ≥48 (≥50% of Haiku 95)
-- 10 use cases mapped to Haiku's 10 by description
-- Pass D rejection rate documented per draft
+| Metric | Haiku | Phase 3c | Brief target | Status |
+|---|---:|---:|---|---|
+| Pass A drafts | (n/a) | 1392 raw / 200 truncated | 86–105 | over by 14× pre-truncation; brief target calibrated against Haiku-style filtered output |
+| Pass A UC drafts | (n/a) | 15 | 8–12 | slightly over |
+| Pass C formal REQs | 78 | 198 | ≥48 | exceeds target by 4× |
+| Pass C formal UCs | 10 | 15 | 10 (mapped) | 8/10 Haiku UCs covered + 5 sub-scenarios; UC-09 Benchmark and UC-10 Bootstrap not surfaced |
+| Council inbox items | (n/a) | 225 | (informational) | — |
+| Rejection rate | (n/a) | 61.1% | (Phase 4 flag if >30%) | phase4_council_flag fired |
+
+Structural parity (per the HAIKU_COMPARISON.md phase-organized
+table):
+- Phase 0 (Continuation): better than Haiku (3 sub-UCs vs 1)
+- Phases 1–2 (Exploration, Artifacts): parity within truncated
+  cursor 0–16 coverage
+- Phases 3–7: deferred to Phase 3d (covered by untruncated Pass A
+  output for cursors 17–124)
+- Iteration: parity (4 strategies + sub-loop)
+- Benchmark / Bootstrap: gap; Phase 3d should expand
+  EXECUTION_MODE_KEYWORDS
 
 ## 5. Resumability test results
 
-**NOT AVAILABLE — depends on Commit 10 (4-pass live run with mid-pass kills).**
+**LANDED in Phase 3c (commit 4/4) — full report at
+`quality/phase3/RESUMABILITY_REPORT.md`.**
 
-The eventual `RESUMABILITY_REPORT.md` will document one mid-pass kill per pass (4 kills total: A, B, C, D) on QPB SKILL.md from a clean Phase 3b start, each with kill-point cursor state pre/post + resumed run's eventual artifact + diff vs. uninterrupted run.
+Live mid-pass kills exercised on QPB SKILL.md:
 
-**Foundation-side resumability evidence (already in unit tests):**
-- `test_skill_derivation_protocol.py::VerifyAndResumeTests` (5 tests) cover the cursor-rollback semantics on agreement, ahead, behind, empty, no-progress-file cases.
-- `test_skill_derivation_pass_a.py::CursorAdvancementTests::test_kill_mid_pass_resume_continues_from_cursor` exercises a mid-Pass-A kill with `MockRunner` raising `RuntimeError`; the resumed run completes the remaining sections and the final artifact equals an uninterrupted run.
-- `test_skill_derivation_pass_b.py::PassBDriverTests::test_resumability_kill_mid_pass` exercises a mid-Pass-B partial-state setup + resume-to-completion.
-- B4 upstream-status gate enforced for Pass B (Phase 3a-completion), Pass C (Commit 4 here), Pass D (Commit 6 here). Three regression tests pin the gate behavior; deliberately removing an upstream `status: "complete"` causes the next pass to refuse with `UpstreamIncompleteError`.
+| Kill | Pass | Cursor at kill | On-disk records pre-kill | Resume action | Final state | Result |
+|---|---|---|---|---|---|---|
+| 1 | A | 12/125 | 133 (5 UC + 128 REQ) | resume from cursor=12 (no roll-back; agreement) | cursor=125 complete after 4 starts (1 kill + 2 tripwire halts) | ✓ logically equivalent |
+| 2 | B | 19/1392 | 20 citations (idx 0–19) | verify-and-roll-forward 19→20 per disk state | cursor=200 complete (truncated for budget) | ✓ no duplicates |
+| 3 | C | 29/215 | 30 formal REQs (idx 0–29) | verify-and-roll-forward 29→30 | cursor=215 complete (200 citations + 15 UCs processed) | ✓ logically equivalent |
+| 4 | D | n/a | n/a | n/a (Pass D atomic by design) | cursor=198 complete | ⚠ kill semantics degenerate; documented as architectural finding |
 
-The unit-test layer covers the mechanics; the live QPB SKILL.md kills are the missing acceptance-gate evidence.
+**Downstream-refuses verification:** mirrored QPB output to a temp
+directory, set `pass_a_progress.json` `status: "running"`, ran
+Pass B. Got `UpstreamIncompleteError: "Pass B refused to start:
+upstream progress at .../pass_a_progress.json reports
+status='running'..."` with the full diagnostic naming the
+downstream pass, the upstream path, the upstream's reported
+status, and the recovery instruction. The B4 gate enforces
+exactly as designed.
+
+The protocol-level guarantees (atomic JSONL append + atomic
+progress write + verify-and-roll-back on resume) hold on real
+QPB data. The truncation of Pass B at idx=200 (commit 2/4) is
+independent of the resume mechanics — under a longer wall-clock
+budget the resume would have continued to cursor=1392.
+
+**Foundation-side resumability evidence (still applies; covers
+the mechanics):**
+- `test_skill_derivation_protocol.py::VerifyAndResumeTests` (5 tests)
+- `test_skill_derivation_pass_a.py::CursorAdvancementTests::test_kill_mid_pass_resume_continues_from_cursor`
+- `test_skill_derivation_pass_b.py::PassBDriverTests::test_resumability_kill_mid_pass`
+- `test_skill_derivation_main.py::PassAllIntegrationTests::test_pass_b_refuses_when_pass_a_incomplete` (commit 1/4)
+- `test_skill_derivation_main.py::PassAllIntegrationTests::test_pass_c_refuses_when_pass_b_incomplete` (commit 1/4)
 
 ## 6. DQ-5 outcome
 
