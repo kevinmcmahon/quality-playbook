@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "generated_at": "2026-04-27T08:20:04Z",
+  "generated_at": "2026-04-27T15:25:14Z",
   "sections": [
     {
       "section_idx": 0,
@@ -9,8 +9,8 @@
       "section_kind": "operational",
       "skip_reason": null,
       "drafts_total": 32,
-      "drafts_promoted": 17,
-      "drafts_pending_council": 15,
+      "drafts_promoted": 21,
+      "drafts_pending_council": 11,
       "marker": null
     },
     {
@@ -56,8 +56,8 @@
       "section_kind": "execution-mode",
       "skip_reason": null,
       "drafts_total": 5,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 5,
+      "drafts_promoted": 3,
+      "drafts_pending_council": 2,
       "marker": null
     },
     {
@@ -67,8 +67,8 @@
       "section_kind": "execution-mode",
       "skip_reason": null,
       "drafts_total": 16,
-      "drafts_promoted": 4,
-      "drafts_pending_council": 12,
+      "drafts_promoted": 10,
+      "drafts_pending_council": 6,
       "marker": null
     },
     {
@@ -78,8 +78,8 @@
       "section_kind": "operational",
       "skip_reason": null,
       "drafts_total": 15,
-      "drafts_promoted": 7,
-      "drafts_pending_council": 8,
+      "drafts_promoted": 10,
+      "drafts_pending_council": 5,
       "marker": null
     },
     {
@@ -100,8 +100,8 @@
       "section_kind": "operational",
       "skip_reason": null,
       "drafts_total": 15,
-      "drafts_promoted": 9,
-      "drafts_pending_council": 6,
+      "drafts_promoted": 12,
+      "drafts_pending_council": 3,
       "marker": null
     },
     {
@@ -111,8 +111,8 @@
       "section_kind": "operational",
       "skip_reason": null,
       "drafts_total": 7,
-      "drafts_promoted": 3,
-      "drafts_pending_council": 4,
+      "drafts_promoted": 5,
+      "drafts_pending_council": 2,
       "marker": null
     },
     {
@@ -122,8 +122,8 @@
       "section_kind": "operational",
       "skip_reason": null,
       "drafts_total": 10,
-      "drafts_promoted": 4,
-      "drafts_pending_council": 6,
+      "drafts_promoted": 10,
+      "drafts_pending_council": 0,
       "marker": null
     },
     {
@@ -133,8 +133,8 @@
       "section_kind": "operational",
       "skip_reason": null,
       "drafts_total": 6,
-      "drafts_promoted": 4,
-      "drafts_pending_council": 2,
+      "drafts_promoted": 6,
+      "drafts_pending_council": 0,
       "marker": null
     },
     {
@@ -144,8 +144,8 @@
       "section_kind": "operational",
       "skip_reason": null,
       "drafts_total": 11,
-      "drafts_promoted": 4,
-      "drafts_pending_council": 7,
+      "drafts_promoted": 8,
+      "drafts_pending_council": 3,
       "marker": null
     },
     {
@@ -166,8 +166,8 @@
       "section_kind": "operational",
       "skip_reason": null,
       "drafts_total": 13,
-      "drafts_promoted": 4,
-      "drafts_pending_council": 9,
+      "drafts_promoted": 10,
+      "drafts_pending_council": 3,
       "marker": null
     },
     {
@@ -188,8 +188,8 @@
       "section_kind": "operational",
       "skip_reason": null,
       "drafts_total": 12,
-      "drafts_promoted": 4,
-      "drafts_pending_council": 8,
+      "drafts_promoted": 9,
+      "drafts_pending_council": 3,
       "marker": null
     },
     {
@@ -198,9 +198,9 @@
       "heading": "Step 7: Derive Testable Requirements",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 34,
-      "drafts_promoted": 1,
-      "drafts_pending_council": 33,
+      "drafts_total": 74,
+      "drafts_promoted": 16,
+      "drafts_pending_council": 58,
       "marker": null
     },
     {
@@ -209,9 +209,9 @@
       "heading": "Checkpoint: Initialize PROGRESS.md",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 18,
+      "drafts_promoted": 14,
+      "drafts_pending_council": 4,
       "marker": null
     },
     {
@@ -220,9 +220,9 @@
       "heading": "Write exploration findings to disk",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 48,
+      "drafts_promoted": 44,
+      "drafts_pending_council": 4,
       "marker": null
     },
     {
@@ -231,9 +231,9 @@
       "heading": "v1.5.2 JSON manifest discipline (read before writing any artifact)",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 18,
+      "drafts_promoted": 12,
+      "drafts_pending_council": 6,
       "marker": null
     },
     {
@@ -242,9 +242,9 @@
       "heading": "File 1: `quality/QUALITY.md` \u2014 Quality Constitution",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 13,
+      "drafts_promoted": 10,
+      "drafts_pending_council": 3,
       "marker": null
     },
     {
@@ -253,8 +253,8 @@
       "heading": "File 2: Functional Tests",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 12,
+      "drafts_promoted": 12,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -264,9 +264,9 @@
       "heading": "File 3: `quality/RUN_CODE_REVIEW.md`",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 74,
+      "drafts_promoted": 56,
+      "drafts_pending_council": 18,
       "marker": null
     },
     {
@@ -275,9 +275,9 @@
       "heading": "File 4: `quality/RUN_INTEGRATION_TESTS.md`",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 73,
+      "drafts_promoted": 52,
+      "drafts_pending_council": 21,
       "marker": null
     },
     {
@@ -286,9 +286,9 @@
       "heading": "File 5: `quality/RUN_SPEC_AUDIT.md` \u2014 Council of Three",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 22,
+      "drafts_promoted": 15,
+      "drafts_pending_council": 7,
       "marker": null
     },
     {
@@ -297,9 +297,9 @@
       "heading": "File 6: `AGENTS.md`",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 9,
+      "drafts_promoted": 4,
+      "drafts_pending_council": 5,
       "marker": null
     },
     {
@@ -308,9 +308,9 @@
       "heading": "File 7: `quality/RUN_TDD_TESTS.md` \u2014 TDD Verification Protocol",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 50,
+      "drafts_promoted": 37,
+      "drafts_pending_council": 13,
       "marker": null
     },
     {
@@ -319,8 +319,8 @@
       "heading": "Checkpoint: Update PROGRESS.md after artifact generation",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 9,
+      "drafts_promoted": 9,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -330,9 +330,9 @@
       "heading": "Phase 3: Code Review and Regression Tests",
       "section_kind": "execution-mode",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 8,
+      "drafts_promoted": 7,
+      "drafts_pending_council": 1,
       "marker": null
     },
     {
@@ -341,9 +341,9 @@
       "heading": "Phase 4: Spec Audit and Triage",
       "section_kind": "execution-mode",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 11,
+      "drafts_promoted": 7,
+      "drafts_pending_council": 4,
       "marker": null
     },
     {
@@ -352,9 +352,9 @@
       "heading": "Phase 5: Post-Review Reconciliation and Closure Verification",
       "section_kind": "execution-mode",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 42,
+      "drafts_promoted": 24,
+      "drafts_pending_council": 18,
       "marker": null
     },
     {
@@ -363,9 +363,9 @@
       "heading": "Phase 6: Verify",
       "section_kind": "execution-mode",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 8,
+      "drafts_promoted": 3,
+      "drafts_pending_council": 5,
       "marker": null
     },
     {
@@ -374,9 +374,9 @@
       "heading": "Recheck Mode \u2014 Verify Bug Fixes",
       "section_kind": "execution-mode",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 7,
+      "drafts_promoted": 3,
+      "drafts_pending_council": 4,
       "marker": null
     },
     {
@@ -385,9 +385,9 @@
       "heading": "Phase 7: Present, Explore, Improve (Interactive)",
       "section_kind": "execution-mode",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 5,
+      "drafts_promoted": 2,
+      "drafts_pending_council": 3,
       "marker": null
     },
     {
@@ -396,9 +396,9 @@
       "heading": "Fixture Strategy",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 14,
+      "drafts_promoted": 12,
+      "drafts_pending_council": 2,
       "marker": null
     },
     {
@@ -410,7 +410,14 @@
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
-      "marker": null
+      "marker": {
+        "section_idx": 35,
+        "skipped": true,
+        "skip_reason": "meta-allowlist",
+        "_metadata": {
+          "elapsed_ms": 0
+        }
+      }
     },
     {
       "section_idx": 36,
@@ -421,7 +428,14 @@
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
-      "marker": null
+      "marker": {
+        "section_idx": 36,
+        "skipped": true,
+        "skip_reason": "meta-allowlist",
+        "_metadata": {
+          "elapsed_ms": 0
+        }
+      }
     },
     {
       "section_idx": 37,
@@ -432,7 +446,14 @@
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
-      "marker": null
+      "marker": {
+        "section_idx": 37,
+        "skipped": true,
+        "skip_reason": "meta-allowlist",
+        "_metadata": {
+          "elapsed_ms": 0
+        }
+      }
     },
     {
       "section_idx": 38,
@@ -440,8 +461,8 @@
       "heading": "Purpose",
       "section_kind": "meta",
       "skip_reason": "meta-allowlist",
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 4,
+      "drafts_promoted": 4,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -451,8 +472,8 @@
       "heading": "The two-round challenge",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 2,
+      "drafts_promoted": 2,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -462,9 +483,9 @@
       "heading": "Auto-trigger patterns",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 9,
+      "drafts_promoted": 6,
+      "drafts_pending_council": 3,
       "marker": null
     },
     {
@@ -473,8 +494,8 @@
       "heading": "Standalone invocation",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 5,
+      "drafts_promoted": 5,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -484,9 +505,9 @@
       "heading": "Token budget",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 3,
+      "drafts_promoted": 2,
+      "drafts_pending_council": 1,
       "marker": null
     },
     {
@@ -495,8 +516,8 @@
       "heading": "Template",
       "section_kind": "meta",
       "skip_reason": "meta-allowlist",
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 14,
+      "drafts_promoted": 14,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -509,7 +530,14 @@
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
-      "marker": null
+      "marker": {
+        "section_idx": 44,
+        "no_reqs": true,
+        "rationale": "The section body (lines 91\u201394) is a single introductory sentence naming two scenario sources and asserting they combine well \u2014 it makes no measurable, system-behavior claim that could be verified by a test or query.",
+        "_metadata": {
+          "elapsed_ms": 12014
+        }
+      }
     },
     {
       "section_idx": 45,
@@ -517,9 +545,9 @@
       "heading": "Calibrating Scenario Count",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
+      "drafts_total": 5,
       "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_pending_council": 5,
       "marker": null
     },
     {
@@ -528,8 +556,8 @@
       "heading": "Self-Critique Before Finishing",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 4,
+      "drafts_promoted": 4,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -539,9 +567,9 @@
       "heading": "Critical Rule",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 3,
+      "drafts_promoted": 2,
+      "drafts_pending_council": 1,
       "marker": null
     },
     {
@@ -550,8 +578,8 @@
       "heading": "Systematic Search",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 18,
+      "drafts_promoted": 18,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -561,9 +589,9 @@
       "heading": "What to Look For Beyond Grep",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 12,
+      "drafts_promoted": 11,
+      "drafts_pending_council": 1,
       "marker": null
     },
     {
@@ -572,8 +600,8 @@
       "heading": "Converting Findings to Scenarios",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 4,
+      "drafts_promoted": 4,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -583,9 +611,9 @@
       "heading": "Converting Findings to Boundary Tests",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 10,
+      "drafts_promoted": 9,
+      "drafts_pending_council": 1,
       "marker": null
     },
     {
@@ -594,9 +622,9 @@
       "heading": "State Machine Patterns",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 6,
+      "drafts_promoted": 5,
+      "drafts_pending_council": 1,
       "marker": null
     },
     {
@@ -605,9 +633,9 @@
       "heading": "Enumeration and Whitelist Completeness",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 19,
+      "drafts_promoted": 16,
+      "drafts_pending_council": 3,
       "marker": null
     },
     {
@@ -616,9 +644,9 @@
       "heading": "Missing Safeguard Patterns",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 4,
+      "drafts_promoted": 3,
+      "drafts_pending_council": 1,
       "marker": null
     },
     {
@@ -627,9 +655,9 @@
       "heading": "Minimum Bar",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 5,
+      "drafts_promoted": 2,
+      "drafts_pending_council": 3,
       "marker": null
     },
     {
@@ -638,9 +666,9 @@
       "heading": "Pattern 1: Fallback and Degradation Path Parity",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 25,
+      "drafts_promoted": 16,
+      "drafts_pending_council": 9,
       "marker": null
     },
     {
@@ -649,9 +677,9 @@
       "heading": "Pattern 2: Dispatcher Return-Value Correctness",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 18,
+      "drafts_promoted": 8,
+      "drafts_pending_council": 10,
       "marker": null
     },
     {
@@ -660,9 +688,9 @@
       "heading": "Pattern 3: Cross-Implementation Contract Consistency",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 11,
+      "drafts_promoted": 5,
+      "drafts_pending_council": 6,
       "marker": null
     },
     {
@@ -671,9 +699,9 @@
       "heading": "Pattern 4: Enumeration and Representation Completeness",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 14,
+      "drafts_promoted": 5,
+      "drafts_pending_council": 9,
       "marker": null
     },
     {
@@ -682,9 +710,9 @@
       "heading": "Pattern 5: API Surface Consistency",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 15,
+      "drafts_promoted": 6,
+      "drafts_pending_council": 9,
       "marker": null
     },
     {
@@ -693,9 +721,9 @@
       "heading": "Pattern 6: Spec-Structured Parsing Fidelity",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 17,
+      "drafts_promoted": 6,
+      "drafts_pending_council": 11,
       "marker": null
     },
     {
@@ -704,8 +732,8 @@
       "heading": "Extending This List",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 5,
+      "drafts_promoted": 5,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -715,8 +743,8 @@
       "heading": "Structure: Three Test Groups",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 7,
+      "drafts_promoted": 7,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -726,8 +754,8 @@
       "heading": "Test Count Heuristic",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 3,
+      "drafts_promoted": 3,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -737,9 +765,9 @@
       "heading": "Import Pattern: Match the Existing Tests",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 16,
+      "drafts_promoted": 14,
+      "drafts_pending_council": 2,
       "marker": null
     },
     {
@@ -748,9 +776,9 @@
       "heading": "Create Test Setup BEFORE Writing Tests",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 7,
+      "drafts_promoted": 6,
+      "drafts_pending_council": 1,
       "marker": null
     },
     {
@@ -759,9 +787,9 @@
       "heading": "No Placeholder Tests",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 5,
+      "drafts_promoted": 2,
+      "drafts_pending_council": 3,
       "marker": null
     },
     {
@@ -770,8 +798,8 @@
       "heading": "Read Before You Write: The Function Call Map",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 7,
+      "drafts_promoted": 7,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -781,8 +809,8 @@
       "heading": "Writing Spec-Derived Tests",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 4,
+      "drafts_promoted": 4,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -792,8 +820,8 @@
       "heading": "What Makes a Good Functional Test",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 5,
+      "drafts_promoted": 5,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -803,9 +831,9 @@
       "heading": "Cross-Variant Testing Strategy",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 6,
+      "drafts_promoted": 5,
+      "drafts_pending_council": 1,
       "marker": null
     },
     {
@@ -814,8 +842,8 @@
       "heading": "Anti-Patterns to Avoid",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 6,
+      "drafts_promoted": 6,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -825,8 +853,8 @@
       "heading": "Testing at the Right Layer",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 2,
+      "drafts_promoted": 2,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -836,8 +864,8 @@
       "heading": "Fitness-to-Purpose Scenario Tests",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 3,
+      "drafts_promoted": 3,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -847,8 +875,8 @@
       "heading": "Boundary and Negative Tests",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 10,
+      "drafts_promoted": 10,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -858,9 +886,9 @@
       "heading": "Iteration cycle",
       "section_kind": "execution-mode",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 5,
+      "drafts_promoted": 3,
+      "drafts_pending_council": 2,
       "marker": null
     },
     {
@@ -869,9 +897,9 @@
       "heading": "Shared rules for all strategies",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 33,
+      "drafts_promoted": 26,
+      "drafts_pending_council": 7,
       "marker": null
     },
     {
@@ -880,9 +908,9 @@
       "heading": "Meta-strategy: `all` \u2014 run every strategy in sequence",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 7,
+      "drafts_promoted": 5,
+      "drafts_pending_council": 2,
       "marker": null
     },
     {
@@ -891,9 +919,9 @@
       "heading": "Strategy: `gap` (default) \u2014 find what the previous run missed",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 19,
+      "drafts_promoted": 15,
+      "drafts_pending_council": 4,
       "marker": null
     },
     {
@@ -902,8 +930,8 @@
       "heading": "Strategy: `unfiltered` \u2014 pure domain-driven exploration without structural constraints",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 12,
+      "drafts_promoted": 12,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -913,9 +941,9 @@
       "heading": "Strategy: `parity` \u2014 cross-path comparison and diffing",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 24,
+      "drafts_promoted": 23,
+      "drafts_pending_council": 1,
       "marker": null
     },
     {
@@ -924,9 +952,9 @@
       "heading": "Strategy: `adversarial` \u2014 challenge the previous run's conclusions",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 23,
+      "drafts_promoted": 21,
+      "drafts_pending_council": 2,
       "marker": null
     },
     {
@@ -935,9 +963,9 @@
       "heading": "Role Definition",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
+      "drafts_total": 8,
       "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_pending_council": 8,
       "marker": null
     },
     {
@@ -946,9 +974,9 @@
       "heading": "File-Writing Override",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
+      "drafts_total": 4,
       "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_pending_council": 4,
       "marker": null
     },
     {
@@ -957,9 +985,9 @@
       "heading": "Rationalization Patterns",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 6,
+      "drafts_promoted": 4,
+      "drafts_pending_council": 2,
       "marker": null
     },
     {
@@ -968,8 +996,8 @@
       "heading": "Grounding",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 1,
+      "drafts_promoted": 1,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -979,9 +1007,9 @@
       "heading": "Post-Phase Verification Gate (Mandatory)",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 7,
+      "drafts_promoted": 1,
+      "drafts_pending_council": 6,
       "marker": null
     },
     {
@@ -990,8 +1018,8 @@
       "heading": "Error Recovery",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 5,
+      "drafts_promoted": 5,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -1004,7 +1032,14 @@
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
-      "marker": null
+      "marker": {
+        "section_idx": 89,
+        "skipped": true,
+        "skip_reason": "meta-allowlist",
+        "_metadata": {
+          "elapsed_ms": 0
+        }
+      }
     },
     {
       "section_idx": 90,
@@ -1012,8 +1047,8 @@
       "heading": "Files produced",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 7,
+      "drafts_promoted": 7,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -1023,8 +1058,8 @@
       "heading": "Phase A: Extract behavioral contracts",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 2,
+      "drafts_promoted": 2,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -1034,9 +1069,9 @@
       "heading": "Phase B: Derive requirements from contracts",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 4,
+      "drafts_promoted": 3,
+      "drafts_pending_council": 1,
       "marker": null
     },
     {
@@ -1045,9 +1080,9 @@
       "heading": "Phase C: Verify coverage (loop, max 3 iterations)",
       "section_kind": "execution-mode",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 9,
+      "drafts_promoted": 7,
+      "drafts_pending_council": 2,
       "marker": null
     },
     {
@@ -1056,8 +1091,8 @@
       "heading": "Phase D: Completeness check",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 5,
+      "drafts_promoted": 5,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -1067,8 +1102,8 @@
       "heading": "Phase E: Narrative pass",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 4,
+      "drafts_promoted": 4,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -1081,7 +1116,14 @@
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
-      "marker": null
+      "marker": {
+        "section_idx": 96,
+        "no_reqs": true,
+        "rationale": "The section at lines 349\u2013350 contains only the level-2 heading 'Versioning protocol' followed by a blank line; all testable claims (version scheme, VERSION_HISTORY.md format, backup protocol) appear in subsequent subsections outside this source range.",
+        "_metadata": {
+          "elapsed_ms": 24285
+        }
+      }
     },
     {
       "section_idx": 97,
@@ -1089,9 +1131,9 @@
       "heading": "After the pipeline: review and refinement",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
+      "drafts_total": 1,
       "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_pending_council": 1,
       "marker": null
     },
     {
@@ -1103,7 +1145,14 @@
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
-      "marker": null
+      "marker": {
+        "section_idx": 98,
+        "skipped": true,
+        "skip_reason": "meta-allowlist",
+        "_metadata": {
+          "elapsed_ms": 0
+        }
+      }
     },
     {
       "section_idx": 99,
@@ -1114,7 +1163,15 @@
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
-      "marker": null
+      "marker": {
+        "section_idx": 99,
+        "no_reqs": true,
+        "rationale": "LLM produced no parseable JSONL output",
+        "_metadata": {
+          "elapsed_ms": 600027,
+          "returncode": 124
+        }
+      }
     },
     {
       "section_idx": 100,
@@ -1125,7 +1182,14 @@
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
-      "marker": null
+      "marker": {
+        "section_idx": 100,
+        "no_reqs": true,
+        "rationale": "The section contains only a template header with placeholder fields (date, model name) and no behavioral contracts, measurable outcomes, or testable claims.",
+        "_metadata": {
+          "elapsed_ms": 13195
+        }
+      }
     },
     {
       "section_idx": 101,
@@ -1136,7 +1200,14 @@
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
-      "marker": null
+      "marker": {
+        "section_idx": 101,
+        "skipped": true,
+        "skip_reason": "meta-allowlist",
+        "_metadata": {
+          "elapsed_ms": 0
+        }
+      }
     },
     {
       "section_idx": 102,
@@ -1144,9 +1215,9 @@
       "heading": "Generated file template",
       "section_kind": "meta",
       "skip_reason": "meta-allowlist",
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 35,
+      "drafts_promoted": 33,
+      "drafts_pending_council": 2,
       "marker": null
     },
     {
@@ -1158,7 +1229,14 @@
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
-      "marker": null
+      "marker": {
+        "section_idx": 103,
+        "no_reqs": true,
+        "rationale": "The section contains only a heading and two placeholder template fields (Date, Model) with no testable behavioral claims.",
+        "_metadata": {
+          "elapsed_ms": 8098
+        }
+      }
     },
     {
       "section_idx": 104,
@@ -1166,9 +1244,9 @@
       "heading": "Review Progress",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 5,
+      "drafts_promoted": 4,
+      "drafts_pending_council": 1,
       "marker": null
     },
     {
@@ -1180,7 +1258,14 @@
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
-      "marker": null
+      "marker": {
+        "section_idx": 105,
+        "no_reqs": true,
+        "rationale": "Every item in this section is an unchecked placeholder marked 'not yet reviewed'; the section records topics pending coverage analysis but makes no testable behavioral claims about threading, null contracts, error handling, backward compatibility, or configuration composition.",
+        "_metadata": {
+          "elapsed_ms": 9572
+        }
+      }
     },
     {
       "section_idx": 106,
@@ -1191,7 +1276,14 @@
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
-      "marker": null
+      "marker": {
+        "section_idx": 106,
+        "no_reqs": true,
+        "rationale": "The section contains only a heading with no body text \u2014 there are no testable claims to extract.",
+        "_metadata": {
+          "elapsed_ms": 3071
+        }
+      }
     },
     {
       "section_idx": 107,
@@ -1202,7 +1294,14 @@
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
-      "marker": null
+      "marker": {
+        "section_idx": 107,
+        "no_reqs": true,
+        "rationale": "The section contains only a structural description of a freeform feedback area with no testable claims \u2014 it describes the purpose of the section (tracking review progress and accumulating feedback) but mandates no specific behaviors, formats, or measurable outcomes.",
+        "_metadata": {
+          "elapsed_ms": 3825
+        }
+      }
     },
     {
       "section_idx": 108,
@@ -1213,7 +1312,14 @@
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
-      "marker": null
+      "marker": {
+        "section_idx": 108,
+        "no_reqs": true,
+        "rationale": "The section (lines 3\u20134) contains only a level-2 heading with no body text; all substantive content appears in subsequent subsections and no testable claims are made here.",
+        "_metadata": {
+          "elapsed_ms": 8666
+        }
+      }
     },
     {
       "section_idx": 109,
@@ -1224,7 +1330,14 @@
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
-      "marker": null
+      "marker": {
+        "section_idx": 109,
+        "no_reqs": true,
+        "rationale": "Section contains only a level-2 heading with no body text; the source line range (283\u2013284) is the heading line plus a blank line, and all substantive content belongs to subsections.",
+        "_metadata": {
+          "elapsed_ms": 11259
+        }
+      }
     },
     {
       "section_idx": 110,
@@ -1232,9 +1345,9 @@
       "heading": "Integration Test Plan",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 16,
+      "drafts_promoted": 11,
+      "drafts_pending_council": 5,
       "marker": null
     },
     {
@@ -1243,8 +1356,8 @@
       "heading": "Results",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 7,
+      "drafts_promoted": 7,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -1254,8 +1367,8 @@
       "heading": "Why This Matters",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 10,
+      "drafts_promoted": 10,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -1265,8 +1378,8 @@
       "heading": "How to Build the Map",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 10,
+      "drafts_promoted": 10,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -1276,8 +1389,8 @@
       "heading": "Rules for Choosing Mutation Values",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 7,
+      "drafts_promoted": 7,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -1287,9 +1400,9 @@
       "heading": "When to Skip This Step",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 2,
+      "drafts_promoted": 1,
+      "drafts_pending_council": 1,
       "marker": null
     },
     {
@@ -1301,7 +1414,14 @@
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
-      "marker": null
+      "marker": {
+        "section_idx": 116,
+        "no_reqs": true,
+        "rationale": "The section consists entirely of rationale explaining why three independent models are used (different blind spots, cross-referencing catches more defects); it states no testable system behaviors, measurable outcomes, or procedural requirements.",
+        "_metadata": {
+          "elapsed_ms": 8365
+        }
+      }
     },
     {
       "section_idx": 117,
@@ -1309,9 +1429,9 @@
       "heading": "Template",
       "section_kind": "meta",
       "skip_reason": "meta-allowlist",
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 40,
+      "drafts_promoted": 31,
+      "drafts_pending_council": 9,
       "marker": null
     },
     {
@@ -1323,7 +1443,15 @@
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
-      "marker": null
+      "marker": {
+        "section_idx": 118,
+        "no_reqs": true,
+        "rationale": "LLM produced no parseable JSONL output",
+        "_metadata": {
+          "elapsed_ms": 600018,
+          "returncode": 124
+        }
+      }
     },
     {
       "section_idx": 119,
@@ -1331,8 +1459,8 @@
       "heading": "The Four Guardrails (Critical for All Auditors)",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 5,
+      "drafts_promoted": 5,
       "drafts_pending_council": 0,
       "marker": null
     },
@@ -1342,9 +1470,9 @@
       "heading": "Model Selection Notes",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
-      "drafts_pending_council": 0,
+      "drafts_total": 4,
+      "drafts_promoted": 3,
+      "drafts_pending_council": 1,
       "marker": null
     },
     {
@@ -1356,18 +1484,33 @@
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
-      "marker": null
+      "marker": {
+        "section_idx": 121,
+        "no_reqs": true,
+        "rationale": "LLM produced no parseable JSONL output",
+        "_metadata": {
+          "elapsed_ms": 275513,
+          "returncode": 0
+        }
+      }
     },
     {
       "section_idx": 122,
       "document": "references/verification.md",
       "heading": "Self-Check Benchmarks",
-      "section_kind": "operational",
+      "section_kind": "execution-mode",
       "skip_reason": null,
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
-      "marker": null
+      "marker": {
+        "section_idx": 122,
+        "no_reqs": true,
+        "rationale": "The section contains only the heading 'Self-Check Benchmarks' with no body text; all testable claims appear in numbered subsections (\u00a71\u2013\u00a76) that are separate sections in the document.",
+        "_metadata": {
+          "elapsed_ms": 7317
+        }
+      }
     },
     {
       "section_idx": 123,
@@ -1378,7 +1521,14 @@
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
-      "marker": null
+      "marker": {
+        "section_idx": 123,
+        "no_reqs": true,
+        "rationale": "The section body is entirely empty \u2014 lines 69\u201370 contain only the heading '## Documentation Verification' with no subsequent text, prose, or testable claims before the next section begins.",
+        "_metadata": {
+          "elapsed_ms": 7686
+        }
+      }
     },
     {
       "section_idx": 124,
@@ -1386,457 +1536,11 @@
       "heading": "Quick Checklist Format",
       "section_kind": "operational",
       "skip_reason": null,
-      "drafts_total": 0,
-      "drafts_promoted": 0,
+      "drafts_total": 50,
+      "drafts_promoted": 50,
       "drafts_pending_council": 0,
       "marker": null
     }
   ],
-  "completeness_gaps": [
-    {
-      "section_idx": 17,
-      "document": "SKILL.md",
-      "heading": "Checkpoint: Initialize PROGRESS.md"
-    },
-    {
-      "section_idx": 18,
-      "document": "SKILL.md",
-      "heading": "Write exploration findings to disk"
-    },
-    {
-      "section_idx": 19,
-      "document": "SKILL.md",
-      "heading": "v1.5.2 JSON manifest discipline (read before writing any artifact)"
-    },
-    {
-      "section_idx": 20,
-      "document": "SKILL.md",
-      "heading": "File 1: `quality/QUALITY.md` \u2014 Quality Constitution"
-    },
-    {
-      "section_idx": 21,
-      "document": "SKILL.md",
-      "heading": "File 2: Functional Tests"
-    },
-    {
-      "section_idx": 22,
-      "document": "SKILL.md",
-      "heading": "File 3: `quality/RUN_CODE_REVIEW.md`"
-    },
-    {
-      "section_idx": 23,
-      "document": "SKILL.md",
-      "heading": "File 4: `quality/RUN_INTEGRATION_TESTS.md`"
-    },
-    {
-      "section_idx": 24,
-      "document": "SKILL.md",
-      "heading": "File 5: `quality/RUN_SPEC_AUDIT.md` \u2014 Council of Three"
-    },
-    {
-      "section_idx": 25,
-      "document": "SKILL.md",
-      "heading": "File 6: `AGENTS.md`"
-    },
-    {
-      "section_idx": 26,
-      "document": "SKILL.md",
-      "heading": "File 7: `quality/RUN_TDD_TESTS.md` \u2014 TDD Verification Protocol"
-    },
-    {
-      "section_idx": 27,
-      "document": "SKILL.md",
-      "heading": "Checkpoint: Update PROGRESS.md after artifact generation"
-    },
-    {
-      "section_idx": 34,
-      "document": "SKILL.md",
-      "heading": "Fixture Strategy"
-    },
-    {
-      "section_idx": 39,
-      "document": "references/challenge_gate.md",
-      "heading": "The two-round challenge"
-    },
-    {
-      "section_idx": 40,
-      "document": "references/challenge_gate.md",
-      "heading": "Auto-trigger patterns"
-    },
-    {
-      "section_idx": 41,
-      "document": "references/challenge_gate.md",
-      "heading": "Standalone invocation"
-    },
-    {
-      "section_idx": 42,
-      "document": "references/challenge_gate.md",
-      "heading": "Token budget"
-    },
-    {
-      "section_idx": 44,
-      "document": "references/constitution.md",
-      "heading": "Where Scenarios Come From"
-    },
-    {
-      "section_idx": 45,
-      "document": "references/constitution.md",
-      "heading": "Calibrating Scenario Count"
-    },
-    {
-      "section_idx": 46,
-      "document": "references/constitution.md",
-      "heading": "Self-Critique Before Finishing"
-    },
-    {
-      "section_idx": 47,
-      "document": "references/constitution.md",
-      "heading": "Critical Rule"
-    },
-    {
-      "section_idx": 48,
-      "document": "references/defensive_patterns.md",
-      "heading": "Systematic Search"
-    },
-    {
-      "section_idx": 49,
-      "document": "references/defensive_patterns.md",
-      "heading": "What to Look For Beyond Grep"
-    },
-    {
-      "section_idx": 50,
-      "document": "references/defensive_patterns.md",
-      "heading": "Converting Findings to Scenarios"
-    },
-    {
-      "section_idx": 51,
-      "document": "references/defensive_patterns.md",
-      "heading": "Converting Findings to Boundary Tests"
-    },
-    {
-      "section_idx": 52,
-      "document": "references/defensive_patterns.md",
-      "heading": "State Machine Patterns"
-    },
-    {
-      "section_idx": 53,
-      "document": "references/defensive_patterns.md",
-      "heading": "Enumeration and Whitelist Completeness"
-    },
-    {
-      "section_idx": 54,
-      "document": "references/defensive_patterns.md",
-      "heading": "Missing Safeguard Patterns"
-    },
-    {
-      "section_idx": 55,
-      "document": "references/defensive_patterns.md",
-      "heading": "Minimum Bar"
-    },
-    {
-      "section_idx": 56,
-      "document": "references/exploration_patterns.md",
-      "heading": "Pattern 1: Fallback and Degradation Path Parity"
-    },
-    {
-      "section_idx": 57,
-      "document": "references/exploration_patterns.md",
-      "heading": "Pattern 2: Dispatcher Return-Value Correctness"
-    },
-    {
-      "section_idx": 58,
-      "document": "references/exploration_patterns.md",
-      "heading": "Pattern 3: Cross-Implementation Contract Consistency"
-    },
-    {
-      "section_idx": 59,
-      "document": "references/exploration_patterns.md",
-      "heading": "Pattern 4: Enumeration and Representation Completeness"
-    },
-    {
-      "section_idx": 60,
-      "document": "references/exploration_patterns.md",
-      "heading": "Pattern 5: API Surface Consistency"
-    },
-    {
-      "section_idx": 61,
-      "document": "references/exploration_patterns.md",
-      "heading": "Pattern 6: Spec-Structured Parsing Fidelity"
-    },
-    {
-      "section_idx": 62,
-      "document": "references/exploration_patterns.md",
-      "heading": "Extending This List"
-    },
-    {
-      "section_idx": 63,
-      "document": "references/functional_tests.md",
-      "heading": "Structure: Three Test Groups"
-    },
-    {
-      "section_idx": 64,
-      "document": "references/functional_tests.md",
-      "heading": "Test Count Heuristic"
-    },
-    {
-      "section_idx": 65,
-      "document": "references/functional_tests.md",
-      "heading": "Import Pattern: Match the Existing Tests"
-    },
-    {
-      "section_idx": 66,
-      "document": "references/functional_tests.md",
-      "heading": "Create Test Setup BEFORE Writing Tests"
-    },
-    {
-      "section_idx": 67,
-      "document": "references/functional_tests.md",
-      "heading": "No Placeholder Tests"
-    },
-    {
-      "section_idx": 68,
-      "document": "references/functional_tests.md",
-      "heading": "Read Before You Write: The Function Call Map"
-    },
-    {
-      "section_idx": 69,
-      "document": "references/functional_tests.md",
-      "heading": "Writing Spec-Derived Tests"
-    },
-    {
-      "section_idx": 70,
-      "document": "references/functional_tests.md",
-      "heading": "What Makes a Good Functional Test"
-    },
-    {
-      "section_idx": 71,
-      "document": "references/functional_tests.md",
-      "heading": "Cross-Variant Testing Strategy"
-    },
-    {
-      "section_idx": 72,
-      "document": "references/functional_tests.md",
-      "heading": "Anti-Patterns to Avoid"
-    },
-    {
-      "section_idx": 73,
-      "document": "references/functional_tests.md",
-      "heading": "Testing at the Right Layer"
-    },
-    {
-      "section_idx": 74,
-      "document": "references/functional_tests.md",
-      "heading": "Fitness-to-Purpose Scenario Tests"
-    },
-    {
-      "section_idx": 75,
-      "document": "references/functional_tests.md",
-      "heading": "Boundary and Negative Tests"
-    },
-    {
-      "section_idx": 77,
-      "document": "references/iteration.md",
-      "heading": "Shared rules for all strategies"
-    },
-    {
-      "section_idx": 78,
-      "document": "references/iteration.md",
-      "heading": "Meta-strategy: `all` \u2014 run every strategy in sequence"
-    },
-    {
-      "section_idx": 79,
-      "document": "references/iteration.md",
-      "heading": "Strategy: `gap` (default) \u2014 find what the previous run missed"
-    },
-    {
-      "section_idx": 80,
-      "document": "references/iteration.md",
-      "heading": "Strategy: `unfiltered` \u2014 pure domain-driven exploration without structural constraints"
-    },
-    {
-      "section_idx": 81,
-      "document": "references/iteration.md",
-      "heading": "Strategy: `parity` \u2014 cross-path comparison and diffing"
-    },
-    {
-      "section_idx": 82,
-      "document": "references/iteration.md",
-      "heading": "Strategy: `adversarial` \u2014 challenge the previous run's conclusions"
-    },
-    {
-      "section_idx": 83,
-      "document": "references/orchestrator_protocol.md",
-      "heading": "Role Definition"
-    },
-    {
-      "section_idx": 84,
-      "document": "references/orchestrator_protocol.md",
-      "heading": "File-Writing Override"
-    },
-    {
-      "section_idx": 85,
-      "document": "references/orchestrator_protocol.md",
-      "heading": "Rationalization Patterns"
-    },
-    {
-      "section_idx": 86,
-      "document": "references/orchestrator_protocol.md",
-      "heading": "Grounding"
-    },
-    {
-      "section_idx": 87,
-      "document": "references/orchestrator_protocol.md",
-      "heading": "Post-Phase Verification Gate (Mandatory)"
-    },
-    {
-      "section_idx": 88,
-      "document": "references/orchestrator_protocol.md",
-      "heading": "Error Recovery"
-    },
-    {
-      "section_idx": 90,
-      "document": "references/requirements_pipeline.md",
-      "heading": "Files produced"
-    },
-    {
-      "section_idx": 91,
-      "document": "references/requirements_pipeline.md",
-      "heading": "Phase A: Extract behavioral contracts"
-    },
-    {
-      "section_idx": 92,
-      "document": "references/requirements_pipeline.md",
-      "heading": "Phase B: Derive requirements from contracts"
-    },
-    {
-      "section_idx": 94,
-      "document": "references/requirements_pipeline.md",
-      "heading": "Phase D: Completeness check"
-    },
-    {
-      "section_idx": 95,
-      "document": "references/requirements_pipeline.md",
-      "heading": "Phase E: Narrative pass"
-    },
-    {
-      "section_idx": 96,
-      "document": "references/requirements_pipeline.md",
-      "heading": "Versioning protocol"
-    },
-    {
-      "section_idx": 97,
-      "document": "references/requirements_pipeline.md",
-      "heading": "After the pipeline: review and refinement"
-    },
-    {
-      "section_idx": 100,
-      "document": "references/requirements_refinement.md",
-      "heading": "Refinement Pass \u2014 v[new version]"
-    },
-    {
-      "section_idx": 103,
-      "document": "references/requirements_review.md",
-      "heading": "Cross-Model Audit"
-    },
-    {
-      "section_idx": 104,
-      "document": "references/requirements_review.md",
-      "heading": "Review Progress"
-    },
-    {
-      "section_idx": 105,
-      "document": "references/requirements_review.md",
-      "heading": "Cross-Cutting Concerns"
-    },
-    {
-      "section_idx": 106,
-      "document": "references/requirements_review.md",
-      "heading": "Feedback"
-    },
-    {
-      "section_idx": 107,
-      "document": "references/requirements_review.md",
-      "heading": "Additional hints"
-    },
-    {
-      "section_idx": 108,
-      "document": "references/review_protocols.md",
-      "heading": "File 3: Code Review Protocol (`RUN_CODE_REVIEW.md`)"
-    },
-    {
-      "section_idx": 109,
-      "document": "references/review_protocols.md",
-      "heading": "File 4: Integration Test Protocol (`RUN_INTEGRATION_TESTS.md`)"
-    },
-    {
-      "section_idx": 110,
-      "document": "references/review_protocols.md",
-      "heading": "Integration Test Plan"
-    },
-    {
-      "section_idx": 111,
-      "document": "references/review_protocols.md",
-      "heading": "Results"
-    },
-    {
-      "section_idx": 112,
-      "document": "references/schema_mapping.md",
-      "heading": "Why This Matters"
-    },
-    {
-      "section_idx": 113,
-      "document": "references/schema_mapping.md",
-      "heading": "How to Build the Map"
-    },
-    {
-      "section_idx": 114,
-      "document": "references/schema_mapping.md",
-      "heading": "Rules for Choosing Mutation Values"
-    },
-    {
-      "section_idx": 115,
-      "document": "references/schema_mapping.md",
-      "heading": "When to Skip This Step"
-    },
-    {
-      "section_idx": 116,
-      "document": "references/spec_audit.md",
-      "heading": "Why Three Models?"
-    },
-    {
-      "section_idx": 118,
-      "document": "references/spec_audit.md",
-      "heading": "Council Status"
-    },
-    {
-      "section_idx": 119,
-      "document": "references/spec_audit.md",
-      "heading": "The Four Guardrails (Critical for All Auditors)"
-    },
-    {
-      "section_idx": 120,
-      "document": "references/spec_audit.md",
-      "heading": "Model Selection Notes"
-    },
-    {
-      "section_idx": 121,
-      "document": "references/spec_audit.md",
-      "heading": "Tips for Writing Scrutiny Areas"
-    },
-    {
-      "section_idx": 122,
-      "document": "references/verification.md",
-      "heading": "Self-Check Benchmarks"
-    },
-    {
-      "section_idx": 123,
-      "document": "references/verification.md",
-      "heading": "Documentation Verification"
-    },
-    {
-      "section_idx": 124,
-      "document": "references/verification.md",
-      "heading": "Quick Checklist Format"
-    }
-  ]
+  "completeness_gaps": []
 }

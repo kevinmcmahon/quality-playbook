@@ -82,6 +82,17 @@ EXECUTION_MODE_KEYWORDS = frozenset({
     "convergence",
     "interactive",
     "non-interactive",
+    # Phase 3d additions per Round 6 Council Finding 4: surface
+    # UC-09 (Benchmark Operator) and UC-10 (Bootstrap Self-Audit)
+    # which the original keyword set missed.
+    # - "self-check" matches SKILL.md "Gate Self-Check" (the
+    #   bootstrap-style self-audit execution mode) AND
+    #   references/verification.md "Self-Check Benchmarks" (the
+    #   benchmark execution mode).
+    # - "benchmark" matches "Self-Check Benchmarks" directly and
+    #   any future SKILL.md/reference heading using the term.
+    "self-check",
+    "benchmark",
 })
 
 # Top-level section split threshold (lines). A `##` section longer

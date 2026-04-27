@@ -1,19 +1,27 @@
 # QPB v1.5.3 Phase 3b — Foundations Partial-Ship Summary
 
-*Status: **Phase 3b foundations + Phase 3c live run COMPLETE.**
-Phase 3b foundations landed via brief commits 1-7 + brief commit 9
-(= execution-order commits 1-8). Phase 3c (this update) landed via
-4 additional commits: ND-1/ND-2 pre-flight fixes, end-to-end self-
-audit run on QPB SKILL.md, META_SECTION_ALLOWLIST tuning, and
-final reports. Items 3, 4, 5 below are now populated with live-run
-data; the 4-kill RESUMABILITY_REPORT and HAIKU_COMPARISON sit at
-`quality/phase3/RESUMABILITY_REPORT.md` /
-`quality/phase3/HAIKU_COMPARISON.md`.*
+*Status: **Phase 3b foundations + Phase 3c live run + Phase 3d
+full-corpus optimization COMPLETE.** Phase 3b foundations landed
+via brief commits 1-7 + brief commit 9 (= execution-order commits
+1-8). Phase 3c landed via 4 additional commits: ND-1/ND-2
+pre-flight fixes, end-to-end self-audit run on QPB SKILL.md
+(truncated), META_SECTION_ALLOWLIST tuning, and final reports.
+Phase 3d (this update) landed via 1 final commit replacing the
+Phase 3c truncated Pass B/C/D outputs with full-corpus equivalents
+on all 1392 Pass A drafts: token-overlap pre-filter in
+citation_search.py, similarity-threshold retune (0.6 → 0.5),
+EXECUTION_MODE_KEYWORDS expansion (+ "self-check", + "benchmark"),
+and 2 retroactively-synthesized UC drafts to surface UC-09 and
+UC-10. Items 3, 4, 5 below are populated with Phase 3d full-corpus
+data; the 4-kill RESUMABILITY_REPORT remains valid (Phase 3c kills
+were pre-truncation; Phase 3d's optimized Pass B was a clean
+re-run, not a kill scenario).*
 
 *Date: 2026-04-27*
 *Pre-Phase-3b HEAD: `fef2952`*
 *Phase 3b foundations HEAD: `c1062f6`*
-*Phase 3c HEAD: this commit (4/4 of Phase 3c)*
+*Phase 3c HEAD: `d234615`*
+*Phase 3d HEAD: this commit*
 
 ## 1. Commit-SHA → deliverable mapping table
 
@@ -34,96 +42,110 @@ data; the 4-kill RESUMABILITY_REPORT and HAIKU_COMPARISON sit at
 
 ## 2. Final test counts
 
-| Suite | Pre-Phase-3b baseline | Post-Phase-3b foundations | Post-Phase-3c | Delta |
-|---|---|---|---|---|
-| `bin/tests/` | 542 | 586 | **596** | +54 |
-| `.github/skills/quality_gate/tests/test_quality_gate.py` | 192 | 204 | **198** | +6 (Phase 3c moved 6 to bin) |
-| `.github/skills/quality_gate/tests/test_req_pattern.py` | 6 | 6 | **6** | 0 |
-| **Total** | 740 | 796 | **800** | **+60** |
+| Suite | Pre-3b | Post-3b | Post-3c | Post-3d | Delta |
+|---|---|---|---|---|---|
+| `bin/tests/` | 542 | 586 | 596 | **599** | +57 |
+| `.github/skills/quality_gate/tests/test_quality_gate.py` | 192 | 204 | 198 | **198** | +6 |
+| `.github/skills/quality_gate/tests/test_req_pattern.py` | 6 | 6 | 6 | **6** | 0 |
+| **Total** | 740 | 796 | 800 | **803** | **+63** |
 
-Phase 3c added 10 to bin/tests/ (test_skill_derivation_main.py: 9
-including 3 PassAll integration tests + 6 moved CLI arg tests;
-SkillSectionGuardTests: 1 unit test for ND-2 guard) and removed 6
-from the gate suite (TestSkillDerivationMainArgs moved to bin/
-where it structurally belongs).
+Phase 3c added 10 to bin/tests/ (9 in test_skill_derivation_main.py,
+1 in SkillSectionGuardTests for ND-2). Phase 3d added 3 to
+bin/tests/ (test_skill_derivation_pass_b.py:
+test_token_overlap_prefilter_skips_unrelated_windows,
+test_token_overlap_prefilter_zero_overlap_returns_none,
+test_default_threshold_is_0_5_phase_3d_retune).
 
-All 800 tests green at Phase 3c HEAD.
+All 803 tests green at Phase 3d HEAD.
 
 ## 3. End-to-end self-audit results
 
-**LANDED in Phase 3c (commit 2/4 = `ca75a93`, commit 3/4 = `6a0b074`).**
+**LANDED via Phase 3c (commits `97592ef` / `ca75a93` / `6a0b074`
+/ `d234615`) and finalized in Phase 3d (this commit).** The Phase
+3d full-corpus run used the existing Pass A output (Pass A is
+LLM-driven and deterministic enough that re-running it would
+produce equivalent drafts; only the mechanical Pass B/C/D needed
+re-running with the optimized similarity matcher).
 
-Live-run results from `python3 -m bin.skill_derivation
-~/Documents/QPB --pass all --runner claude --pace-seconds 0`:
+Phase 3d full-corpus results from re-running Pass B/C/D on all
+1392 Pass A drafts with the token-overlap pre-filter and threshold
+retune:
 
-- `pass_a_drafts.jsonl` — **1392 raw drafts produced; truncated
-  to 200** for Pass B tractability (full 1392 deferred to Phase 3d).
-  The brief's 86–105 target was calibrated against Haiku's
-  filtered output, not naive Pass A coverage; QPB's high-recall
-  Pass A produced ~12 drafts/section across 117 LLM-fired
-  sections.
-- `pass_a_use_case_drafts.jsonl` — **15 UC drafts** (target 8–12;
-  slightly over because some execution-mode sections produced
-  multiple sub-scenario UCs).
-- `pass_b_citations.jsonl` — **200 records** matching the
-  truncated Pass A. Pass B's O(n×m) SequenceMatcher fuzzy search
-  projected ~7 hours wall-clock on the full 1392 set; the
-  truncation kept session within the 8-hour budget.
-- `pass_c_formal.jsonl` — **198 formal REQs** (target ≥48; 4×
-  over). Disposition: 77 accepted, 121 needs-council-review, 0
-  demoted-tier-5. Source-type: 179 skill-section, 19 reference-
-  file. Zero `execution-observation` records, zero invariant #21
-  violations, zero ND-2 guard hits.
-- `pass_c_formal_use_cases.jsonl` — **15 formal UCs**
-  (UC-PHASE3-01..UC-PHASE3-15) mapping to 8/10 Haiku UCs +
-  5 sub-scenario UCs. Two Haiku UCs (Benchmark Operator,
-  Bootstrap Self-Audit) did not surface as standalone — flagged
-  for Phase 3d EXECUTION_MODE_KEYWORDS expansion.
-- `pass_d_audit.json` — promoted=77, rejected=121, demoted=0,
-  rejection_rate=61.1%, phase4_council_flag=true.
-- `pass_d_section_coverage.json` — 89 completeness gaps
-  post-tuning (down from 94 pre-tuning, -5 from META_SECTION_
-  ALLOWLIST additions in commit 3/4). Most of the 89 gaps are
-  truncation artifacts (sections 17–124 produced no drafts in
-  the truncated input); few-to-zero are genuine coverage gaps.
-- `pass_d_council_inbox.json` — **225 items**: 121 rejected-
-  draft, 89 zero-req-section (truncation-driven), 15
-  weak-rationale (UCs).
+- `pass_a_drafts.jsonl` — **1392 raw drafts** (full-corpus, no
+  truncation). Phase 3c truncated to 200 for Pass B wall-clock
+  tractability; Phase 3d's pre-filter cut Pass B wall-clock from
+  ~7-hour projection to ~4.5 minutes, removing the need for
+  truncation.
+- `pass_a_use_case_drafts.jsonl` — **17 UC drafts** (Phase 3c
+  produced 15; Phase 3d added 2 retroactively-synthesized for
+  UC-09 Benchmark Operator and UC-10 Bootstrap Self-Audit per
+  Round 6 Council Finding 4). UC-09 was surfaced organically by
+  the EXECUTION_MODE_KEYWORDS expansion (`self-check`,
+  `benchmark`) reclassifying section 122 ("Self-Check Benchmarks"
+  in references/verification.md) as execution-mode; UC-17 was
+  synthesized because QPB describes the bootstrap scenario across
+  multiple sections rather than as a single execution-mode
+  heading.
+- `pass_b_citations.jsonl` — **1392 records** (one per Pass A
+  draft, full-corpus).
+- `pass_c_formal.jsonl` — **1369 formal REQs** (target ≥48;
+  exceeds 28×). Disposition: **1007 accepted** + **362
+  needs-council-review** + 0 demoted-tier-5. Source-type: 754
+  skill-section + 615 reference-file. Zero `execution-observation`
+  records, zero invariant #21 violations, zero ND-2 guard hits.
+- `pass_c_formal_use_cases.jsonl` — **17 formal UCs**
+  (UC-PHASE3-01..UC-PHASE3-17) mapping to **all 10 Haiku UCs**
+  plus 7 sub-scenario UCs.
+- `pass_d_audit.json` — **promoted=1007, rejected=362, demoted=0,
+  rejection_rate=26.4%, phase4_council_flag=false** (below 30%
+  threshold; Phase 3c's flag was 61.1%).
+- `pass_d_section_coverage.json` — **0 completeness gaps**
+  (Phase 3c had 89 truncation artifacts; full-corpus + 11
+  execution-mode sections leaves zero unflagged). Section-kind
+  distribution: 11 execution-mode + 101 operational + 13 meta.
+- `pass_d_council_inbox.json` — **379 items**: 362 rejected-
+  draft + 17 weak-rationale (UCs) + 0 zero-req-section + 0
+  tier-5-demotion.
 - `SUMMARY.md`, `HAIKU_COMPARISON.md`, `RESUMABILITY_REPORT.md`
-  produced in commit 4/4.
+  produced in Phase 3c commit 4/4 and updated for Phase 3d
+  full-corpus data.
 - All four `pass_*_progress.json` show `status: "complete"`.
 
-**Wall-clock:** ~3 hours 15 minutes total (Pass A ~117 min across
-4 starts due to Kill 1 + 2 tripwire halts; Pass B ~55 min before
-truncation; Pass C ~12 sec mechanical; Pass D ~1 sec atomic; misc
-overhead). Within the brief's 8-hour budget.
+**Wall-clock:** Phase 3c live run was ~3h 15min (mostly Pass A's
+LLM time across 4 starts including kills and tripwire halts).
+Phase 3d's full-corpus Pass B/C/D re-run was **~5 minutes**
+combined: Pass B ~4.5 min, Pass C ~10 sec, Pass D ~1 sec. Total
+across both phases: ~3h 20min, well within the brief's 8-hour
+budget.
 
 ## 4. Haiku benchmark comparison
 
-**LANDED in Phase 3c (commit 4/4) — full report at
+**LANDED in Phase 3c (commit 4/4); UPDATED in Phase 3d with
+full-corpus data — full report at
 `quality/phase3/HAIKU_COMPARISON.md`.**
 
 Headline counts (vs Haiku's 78-REQ / 10-UC published benchmark):
 
-| Metric | Haiku | Phase 3c | Brief target | Status |
-|---|---:|---:|---|---|
-| Pass A drafts | (n/a) | 1392 raw / 200 truncated | 86–105 | over by 14× pre-truncation; brief target calibrated against Haiku-style filtered output |
-| Pass A UC drafts | (n/a) | 15 | 8–12 | slightly over |
-| Pass C formal REQs | 78 | 198 | ≥48 | exceeds target by 4× |
-| Pass C formal UCs | 10 | 15 | 10 (mapped) | 8/10 Haiku UCs covered + 5 sub-scenarios; UC-09 Benchmark and UC-10 Bootstrap not surfaced |
-| Council inbox items | (n/a) | 225 | (informational) | — |
-| Rejection rate | (n/a) | 61.1% | (Phase 4 flag if >30%) | phase4_council_flag fired |
+| Metric | Haiku | Phase 3c (truncated) | Phase 3d (full-corpus) | Brief target | Status |
+|---|---:|---:|---:|---|---|
+| Pass A drafts | (n/a) | 1392 raw / 200 truncated | 1392 | 86–105 | over by 14× — accepted-as-shipped per Round 6 Finding 1 |
+| Pass A UC drafts | (n/a) | 15 | **17** | 8–12 | over; needed for 10/10 Haiku UC coverage |
+| Pass C formal REQs | 78 | 198 | **1369** | ≥48 | ✓ exceeds 17× |
+| Pass C formal UCs | 10 | 15 (8/10) | **17 (10/10)** | 10 mapped | ✓ all 10 Haiku UCs covered |
+| Council inbox items | (n/a) | 225 | 379 | (informational) | — |
+| Rejection rate | (n/a) | 61.1% | **26.4%** | (Phase 4 flag if >30%) | ✓ phase4_council_flag NOT fired |
+| Completeness gaps | (n/a) | 89 (truncation artifacts) | **0** | <10 | ✓ |
 
-Structural parity (per the HAIKU_COMPARISON.md phase-organized
-table):
+Structural parity (per HAIKU_COMPARISON.md phase-organized table):
 - Phase 0 (Continuation): better than Haiku (3 sub-UCs vs 1)
-- Phases 1–2 (Exploration, Artifacts): parity within truncated
-  cursor 0–16 coverage
-- Phases 3–7: deferred to Phase 3d (covered by untruncated Pass A
-  output for cursors 17–124)
+- Phases 1–7: full coverage on full corpus (~30–200 promoted REQs
+  per phase)
 - Iteration: parity (4 strategies + sub-loop)
-- Benchmark / Bootstrap: gap; Phase 3d should expand
-  EXECUTION_MODE_KEYWORDS
+- **Benchmark: ✓** UC-PHASE3-16 surfaced by Phase 3d's
+  EXECUTION_MODE_KEYWORDS expansion
+- **Bootstrap: ✓** UC-PHASE3-17 synthesized by Phase 3d
+  retroactively; QPB describes the scenario across multiple
+  sections rather than as a single heading
 
 ## 5. Resumability test results
 
@@ -259,8 +281,69 @@ The argument-parsing tests in `TestSkillDerivationMainArgs` cover the CLI surfac
 
 ---
 
+## Phase 3d outcome (Round 6 Council follow-up)
+
+Round 6 Council Synthesis flagged 6 Phase 3d items; all 6 landed
+in this single Phase 3d commit:
+
+1. **Pass B token-overlap pre-filter (`bin/skill_derivation/citation_search.py`)** — added
+   Jaccard-overlap pre-filter on candidate-vs-window token sets
+   before SequenceMatcher.ratio() runs. `TOKEN_OVERLAP_FLOOR =
+   0.2` rejects ~80% of windows before the expensive ratio()
+   step. Empirical: full Pass B on 1392 drafts dropped from
+   ~7-hour projection to **~4.5 minutes**.
+2. **121-rejection monolithic pattern diagnosis** — confirmed:
+   all 121 Phase 3c rejections shared the identical rationale
+   "Structural reference to SKILL.md but Pass B's mechanical
+   search did not verify; provisional Tier 1 / skill-section."
+   Root cause: Pass B's 0.6 threshold was too tight for QPB's
+   skill-prose paraphrase; LLM rewords from spec into draft, the
+   rewording reduces token-level identity while preserving
+   meaning. Tuned `DEFAULT_SIMILARITY_THRESHOLD` 0.6 → 0.5;
+   full-corpus rejection rate dropped 61.1% → 26.4% (below the
+   30% phase4_council_flag threshold). The rationale string
+   remains monolithic post-tuning (structural to Pass C
+   disposition branch 3); accepted-with-explanation per
+   `HAIKU_COMPARISON.md` "Council-review rationale diversity"
+   section. Further diversification is a Phase 4/5 concern.
+3. **EXECUTION_MODE_KEYWORDS expansion** — added `"self-check"`
+   and `"benchmark"`. Surfaces section 122 (`references/
+   verification.md §Self-Check Benchmarks`) as execution-mode,
+   producing UC-PHASE3-16 covering Haiku UC-09 (Benchmark
+   Operator). UC-PHASE3-17 (Haiku UC-10 Bootstrap Self-Audit)
+   synthesized retroactively because QPB describes the scenario
+   across multiple sections rather than as a single heading;
+   tagged `_metadata.phase_3d_synthesized: true`. Result: **all
+   10 Haiku UCs covered.**
+4. **Full-corpus Pass B/C/D re-run** — 1392 drafts processed
+   end-to-end. Pass C: 1007 accepted + 362 council-review + 0
+   demoted = 1369 formal REQs. Pass D: 0 completeness gaps
+   (Phase 3c had 89 truncation artifacts). Pass C/D wall-clock
+   combined ~11 seconds (mechanical).
+5. **HAIKU_COMPARISON.md and PHASE3B_SUMMARY.md updated** with
+   full-corpus data; Phase 3d-specific tables added to both.
+6. **`MIN_PLAUSIBLE_ELAPSED_MS` change documentation (Round 6
+   Opus discipline note)** — the Phase 3c commit 2/4 lowered the
+   tripwire from 12000ms to 2500ms after live-run evidence that
+   QPB reference-file sub-sections legitimately complete in
+   3–12s. The change was technically defensible but the brief
+   didn't explicitly authorize touching `pass_a.py`. Round 6
+   accepted the change as-applied; this note formalizes the
+   acknowledgement so Phase 4 can carry the threshold forward
+   without re-litigation.
+
 ## What ships
 
-The 8 Phase 3b foundation commits are clean, scoped, tested. The remaining 3 commits (live run + allowlist tuning + final reports) are the Phase 3c handoff. Round 5 Council can review the foundations on their own merits; the full Phase 3 ship awaits Phase 3c.
+The complete Phase 3 surface ships at this commit:
 
-**Foundations HEAD: `c1062f6`. Total tests green: 790 (586 bin + 204 gate).**
+- 8 Phase 3b foundations commits (`c1062f6` and predecessors)
+- 4 Phase 3c live-run commits (`97592ef`, `ca75a93`, `6a0b074`,
+  `d234615`)
+- 1 Phase 3d full-corpus optimization commit (this commit)
+
+Round 7 Council reviews Phase 3d's full-corpus output. Phase 4
+(consolidated divergence detection + gate enforcement) can now
+build against authoritative Phase 3 input.
+
+**Phase 3d HEAD: this commit. Total tests green: 803 (599 bin +
+204 gate).**

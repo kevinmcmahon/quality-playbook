@@ -91,6 +91,43 @@ class CitationSearchTests(unittest.TestCase):
             citation_search.find_best_match("", self._docs("some body"))
         )
 
+    def test_token_overlap_prefilter_skips_unrelated_windows(self) -> None:
+        """Phase 3d: token-overlap pre-filter should reject candidate
+        windows whose Jaccard overlap with the candidate is below the
+        floor BEFORE running the more expensive ratio()."""
+        body = (
+            "Sprockets and widgets and gears.\n"
+            "The orchestrator MUST exit non-zero on missing SKILL.md.\n"
+        )
+        # With a high token-overlap floor (0.9), ONLY near-identical
+        # windows survive the pre-filter; the unrelated line is
+        # filtered out before ratio() runs. The matching line still
+        # passes both pre-filter and ratio(), so we get a hit there.
+        hit = citation_search.find_best_match(
+            "The orchestrator MUST exit non-zero on missing SKILL.md.",
+            [("SKILL.md", body)],
+            token_overlap_floor=0.9,
+        )
+        self.assertIsNotNone(hit)
+        self.assertEqual(hit.line_start, 2)
+
+    def test_token_overlap_prefilter_zero_overlap_returns_none(self) -> None:
+        """When the candidate shares no tokens with any window, the
+        pre-filter rejects every window and search returns None."""
+        body = "Sprockets and widgets and gears.\n"
+        hit = citation_search.find_best_match(
+            "Phase orchestration manifest configuration",
+            [("SKILL.md", body)],
+            token_overlap_floor=0.5,
+        )
+        self.assertIsNone(hit)
+
+    def test_default_threshold_is_0_5_phase_3d_retune(self) -> None:
+        """Phase 3d: DEFAULT_SIMILARITY_THRESHOLD lowered from 0.6 to
+        0.5 to recover legitimate skill-prose paraphrase matches that
+        the higher threshold rejected."""
+        self.assertEqual(citation_search.DEFAULT_SIMILARITY_THRESHOLD, 0.5)
+
     def test_collect_documents_reads_skill_and_references(self) -> None:
         with TemporaryDirectory() as tmp_str:
             tmp = Path(tmp_str)

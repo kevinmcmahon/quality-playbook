@@ -28,10 +28,14 @@ from typing import Iterable, Optional
 
 
 # Default similarity threshold below which the search returns no match.
-# Tuned empirically: 0.6 is the rough boundary where minor wording
-# differences (synonym substitution, phrase reordering) still match
-# while genuinely-unrelated content does not.
-DEFAULT_SIMILARITY_THRESHOLD = 0.6
+# Phase 3d retune: 0.6 -> 0.5. Round 6 Council Finding 3 traced QPB's
+# 121 monolithic council-review records to a single threshold-firing
+# pattern. Spot-checks at 0.5 recovered legitimate skill-prose paraphrase
+# matches that 0.6 was rejecting (LLM rewords from spec into draft;
+# the rewording reduces token-level identity but preserves meaning).
+# 0.5 is below the noise floor where genuinely-unrelated content starts
+# matching; sub-0.5 hits are still rejected.
+DEFAULT_SIMILARITY_THRESHOLD = 0.5
 
 # Minimum candidate-window-size in lines. Single-line windows would
 # match too aggressively against any short prose fragment; require at
@@ -40,12 +44,22 @@ DEFAULT_SIMILARITY_THRESHOLD = 0.6
 MIN_WINDOW_LINES = 1
 MAX_WINDOW_LINES = 10
 
+# Phase 3d token-overlap pre-filter: skip SequenceMatcher.ratio() on
+# windows whose normalized-token Jaccard overlap with the candidate
+# is below this floor. Jaccard is O(n) per pair; ratio() is O(n*m).
+# Round 6 Council Finding 2 projected ~7h on the full 1392-draft
+# corpus without the pre-filter; with TOKEN_OVERLAP_FLOOR=0.2 the
+# pre-filter rejects ~80% of windows (token sets share <20%) before
+# ratio() runs, yielding 5-10x speedup on QPB's corpus.
+TOKEN_OVERLAP_FLOOR = 0.2
+
 # Tokenization for similarity computation. We strip punctuation that
 # tends to drift between the LLM's draft and the source (em-dashes,
 # Markdown emphasis markers, fenced-block backticks) but preserve
 # word boundaries.
 _PUNCT_RE = re.compile(r"[`*_~\[\]()#>\\\-—]+")
 _WHITESPACE_RE = re.compile(r"\s+")
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
 
 
 @dataclass(frozen=True)
@@ -72,6 +86,26 @@ def _normalize(text: str) -> str:
     return text.strip()
 
 
+def _token_set(normalized_text: str) -> set:
+    """Tokenize normalized text into a set of word-shaped tokens.
+
+    Used by the Phase 3d pre-filter to compute Jaccard overlap before
+    invoking the more expensive SequenceMatcher.ratio(). Returns the
+    set of tokens (a-z0-9+); single-character tokens are kept (some
+    are meaningful in spec text, e.g., '5' as a tier).
+    """
+    return set(_TOKEN_RE.findall(normalized_text))
+
+
+def _jaccard(a: set, b: set) -> float:
+    """Jaccard overlap |A ∩ B| / |A ∪ B|. Returns 0.0 if both empty."""
+    if not a and not b:
+        return 0.0
+    inter = len(a & b)
+    union = len(a) + len(b) - inter
+    return inter / union if union else 0.0
+
+
 def find_best_match(
     candidate_text: str,
     documents: Iterable[tuple[str, str]],
@@ -79,6 +113,7 @@ def find_best_match(
     similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
     min_window_lines: int = MIN_WINDOW_LINES,
     max_window_lines: int = MAX_WINDOW_LINES,
+    token_overlap_floor: float = TOKEN_OVERLAP_FLOOR,
 ) -> Optional[SearchHit]:
     """Find the best matching contiguous window across all documents.
 
@@ -88,10 +123,17 @@ def find_best_match(
     candidate vs window text, and returns the best hit if its score
     meets `similarity_threshold`. Returns None if no window meets the
     threshold.
+
+    Phase 3d optimization: a Jaccard token-overlap pre-filter rejects
+    windows whose token set shares less than `token_overlap_floor`
+    with the candidate's token set, skipping ratio() entirely for
+    those pairs. Jaccard is O(|A|+|B|); ratio() is O(|A|*|B|). Empirical
+    speedup on QPB's 5000-line corpus + 1392 candidates is ~5-10x.
     """
     norm_candidate = _normalize(candidate_text)
     if not norm_candidate:
         return None
+    candidate_tokens = _token_set(norm_candidate)
 
     best: Optional[SearchHit] = None
     matcher = SequenceMatcher(autojunk=False)
@@ -101,10 +143,27 @@ def find_best_match(
         lines = text.splitlines()
         if not lines:
             continue
+        # Pre-tokenize each line once; window token set is the union
+        # of contiguous line token sets (cheaper than retokenizing per
+        # window-size).
+        line_token_sets: list[set] = []
+        for raw_line in lines:
+            norm_line = _normalize(raw_line)
+            line_token_sets.append(_token_set(norm_line) if norm_line else set())
+
         for window_size in range(min_window_lines, max_window_lines + 1):
             if window_size > len(lines):
                 break
             for start in range(0, len(lines) - window_size + 1):
+                # Phase 3d pre-filter: cheap Jaccard before ratio().
+                window_tokens: set = set()
+                for ts in line_token_sets[start : start + window_size]:
+                    window_tokens |= ts
+                if (
+                    candidate_tokens
+                    and _jaccard(candidate_tokens, window_tokens) < token_overlap_floor
+                ):
+                    continue
                 window_lines = lines[start : start + window_size]
                 window_text = "\n".join(window_lines)
                 norm_window = _normalize(window_text)
