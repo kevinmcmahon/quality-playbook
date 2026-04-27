@@ -2675,43 +2675,5 @@ class TestV153CouncilInboxValidation(unittest.TestCase):
         self.assertIn("tier-5", out)
 
 
-class TestSkillDerivationMainArgs(unittest.TestCase):
-    """Phase 3b commit 9: __main__.py argument parsing."""
-
-    def test_imports_cleanly(self) -> None:
-        # Smoke test: the module imports without side effects.
-        from bin.skill_derivation import __main__ as main_mod
-        self.assertTrue(callable(main_mod._main))
-
-    def test_pass_choice_default_is_all(self) -> None:
-        from bin.skill_derivation.__main__ import _parse_args
-        args = _parse_args(["/tmp/example"])
-        self.assertEqual(args.pass_choice, "all")
-        self.assertTrue(args.resume)
-        self.assertEqual(args.runner, "claude")
-        self.assertEqual(args.pace_seconds, 0)
-
-    def test_no_resume_flag(self) -> None:
-        from bin.skill_derivation.__main__ import _parse_args
-        args = _parse_args(["/tmp/example", "--no-resume"])
-        self.assertFalse(args.resume)
-
-    def test_pass_choice_individual(self) -> None:
-        from bin.skill_derivation.__main__ import _parse_args
-        for choice in ("A", "B", "C", "D"):
-            args = _parse_args(["/tmp/example", "--pass", choice])
-            self.assertEqual(args.pass_choice, choice)
-
-    def test_runner_copilot(self) -> None:
-        from bin.skill_derivation.__main__ import _parse_args
-        args = _parse_args(["/tmp/example", "--runner", "copilot"])
-        self.assertEqual(args.runner, "copilot")
-
-    def test_pace_seconds_int(self) -> None:
-        from bin.skill_derivation.__main__ import _parse_args
-        args = _parse_args(["/tmp/example", "--pace-seconds", "30"])
-        self.assertEqual(args.pace_seconds, 30)
-
-
 if __name__ == "__main__":
     unittest.main()

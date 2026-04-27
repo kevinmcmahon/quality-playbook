@@ -23,7 +23,12 @@ Critical invariants:
   2. execution-observation is reserved for Phase 4 -- MUST NOT
      appear in any Pass C record.
   3. skill_section is non-empty when source_type == "skill-section";
-     null otherwise (schemas.md invariant #21).
+     null otherwise (schemas.md invariant #21). Round 5 ND-2: a
+     Pass A draft with neither section_heading nor parseable
+     proposed_source_ref would otherwise produce an invariant-
+     violating record; the guard in _build_formal_req re-routes such
+     a record to council-review with a provisional skill_section
+     placeholder so the manifest validator does not FAIL.
 
 UCs do NOT get mechanical citations (Phase 3b decision); they pass
 through Pass B with citation_status="skipped" and Pass C produces
@@ -240,6 +245,28 @@ def _build_formal_req(
                     "mechanical search did not verify; provisional "
                     "Tier 1 / skill-section."
                 )
+
+    # Round 5 ND-2 guard: schemas.md invariant #21 requires
+    # skill_section to be a non-empty string when source_type ==
+    # "skill-section". A Pass A draft with neither a section_heading
+    # field nor a parseable proposed_source_ref leaves
+    # _section_heading_for returning None, which would emit a record
+    # with skill_section None/empty. Re-route that case to
+    # council-review with a provisional skill_section placeholder so
+    # the manifest validator does not FAIL on the record.
+    if formal["source_type"] == "skill-section":
+        ss = formal.get("skill_section")
+        if ss is None or (isinstance(ss, str) and not ss.strip()):
+            formal["skill_section"] = (
+                "(unable to resolve from draft; council to assign)"
+            )
+            formal["disposition"] = "needs-council-review"
+            formal["council_review_rationale"] = (
+                "skill_section unresolvable from Pass A draft "
+                "(neither section_heading nor proposed_source_ref "
+                "yielded a non-empty value); routed to council-review "
+                "per Round 5 ND-2 guard."
+            )
 
     # Invariant: source_type is in the valid set, NEVER reserved.
     assert formal["source_type"] in VALID_SOURCE_TYPES, (

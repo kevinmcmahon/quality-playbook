@@ -373,6 +373,59 @@ class ProjectTypeFileTests(unittest.TestCase):
             self.assertIn("classify_project", str(cm.exception))
 
 
+class SkillSectionGuardTests(unittest.TestCase):
+    """Round 5 ND-2: Pass C must NOT emit a record with
+    source_type=='skill-section' AND empty skill_section. Such a
+    record would FAIL schemas.md invariant #21 in the v1.5.3 manifest
+    validator. The guard re-routes the record to council-review with
+    a provisional skill_section placeholder."""
+
+    def _setup(self, tmp: Path, project_type: str = "Skill"):
+        _write_project_type(tmp, project_type)
+        _write_pass_b_complete_progress(tmp)
+        return _make_config(tmp)
+
+    def test_empty_source_ref_skill_project_routes_to_council(self) -> None:
+        """Behavioral branch on a pure-Skill project would set
+        source_type=skill-section with skill_section from
+        proposed_source_ref. When proposed_source_ref is empty AND
+        section_heading is missing, the guard rewrites disposition
+        to needs-council-review with a provisional placeholder
+        instead of emitting an invariant-violating record."""
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            config = self._setup(tmp, project_type="Skill")
+            _write_citations(config.citations_path, [{
+                "draft_idx": 0,
+                "section_idx": 1,
+                "_pass_b_idx": 0,
+                "title": "behavioral claim",
+                "description": "x",
+                "acceptance_criteria": "y",
+                "proposed_source_ref": "",  # empty -> behavioral path
+                # No section_heading field on the draft.
+                "citation_status": "unverified",
+                "source_document": None,
+            }])
+            pass_c.run_pass_c(config)
+            recs = [
+                json.loads(line)
+                for line in config.formal_path.read_text().splitlines()
+                if line.strip()
+            ]
+            self.assertEqual(len(recs), 1)
+            r = recs[0]
+            # Invariant-preserving: source_type=skill-section AND
+            # skill_section is a non-empty string.
+            self.assertEqual(r["source_type"], "skill-section")
+            self.assertIsNotNone(r["skill_section"])
+            self.assertIsInstance(r["skill_section"], str)
+            self.assertNotEqual(r["skill_section"].strip(), "")
+            # Disposition was rewritten to council-review.
+            self.assertEqual(r["disposition"], "needs-council-review")
+            self.assertIn("ND-2", r.get("council_review_rationale", ""))
+
+
 class UCHandlingTests(unittest.TestCase):
     def test_uc_drafts_become_formal_uc_records(self) -> None:
         with TemporaryDirectory() as tmp_str:
