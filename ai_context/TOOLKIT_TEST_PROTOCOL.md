@@ -126,7 +126,11 @@ enforcement (4 new gate checks); the curated REQUIREMENTS.md
 bootstrap at `previous_runs/v1.5.3/REQUIREMENTS.md`. A correct
 answer also surfaces the scope limits — execution divergence
 needs archived runs to land any signal; the Council override path
-exists for when the classifier is wrong.
+exists for when the classifier is wrong; v1.5.3 also added the
+OpenAI codex CLI as a third LLM backend (alongside `claude
+--print` and `gh copilot --prompt`) so adopters who prefer the
+codex CLI can drive the pipeline via `--runner codex` without
+giving up access to the skill-as-code surface.
 
 ### Persona 14 — The PR-submitter walkthrough
 
@@ -167,7 +171,7 @@ Note: convergence is NOT "all panelists agree." Agreement optimizes for plausibi
 
 The protocol is best run with a top-level agent orchestrating sub-agents:
 
-1. The top-level agent fans out the persona prompts to N sub-agents (Task tool with restricted Read access, separate Cowork sessions, or three Council-of-Three terminals run via `gh copilot --model …`).
+1. The top-level agent fans out the persona prompts to N sub-agents (Task tool with restricted Read access, separate Cowork sessions, or three Council-of-Three terminals run via `gh copilot --model …`, `claude --print --model …`, or `codex exec --full-auto -m …`). v1.5.3+ supports all three CLIs as runner backends; the panelist-model choice is independent of which CLI fires the prompt.
 2. Each sub-agent is given TOOLKIT.md (and optionally IMPROVEMENT_LOOP.md / this file) as context, plus its persona prompt.
 3. Sub-agents return responses to the top-level agent.
 4. The top-level agent applies the rubric, identifies DOC GAP / DOC WRONG findings, and proposes fixes.

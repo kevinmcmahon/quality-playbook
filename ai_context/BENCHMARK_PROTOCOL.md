@@ -107,6 +107,17 @@ python3 -m bin.skill_derivation --phase 4 --part all <target>
 python3 -m bin.skill_derivation --phase 4 --part a3 --runner claude --pace-seconds 0 <target>
 ```
 
+**Runner choice (v1.5.3+).** Three LLM backends ship: `--runner
+claude` (default; wraps `claude --print`), `--runner copilot`
+(wraps `gh copilot --prompt`), and `--runner codex` (added
+post-tag in commit `b6b31f2`; wraps `codex exec --full-auto`,
+codex-cli 0.125+). For benchmark-cell isolation, the runner choice
+should be recorded in the run directory's `NOTES.md` so future
+analysis can attribute variance to the runner backend. Codex picks
+its model from `~/.codex/config.toml` by default; pass
+`--model gpt-5-codex` (or any model in the user's codex config)
+to override.
+
 Output artifacts land under `<target>/quality/phase3/` (the same
 directory holds Phase 3 four-pass + Phase 4 divergence outputs).
 The contamination-risk discipline above still applies — never run

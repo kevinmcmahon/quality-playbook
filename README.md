@@ -98,6 +98,8 @@ cat skill-template.gitignore >> .gitignore
 
 **Cursor, Windsurf, other tools:** Use any of the locations above, or put `SKILL.md` and `references/` in your project root. The runner, gate, and orchestrator agents check all four locations — repo-root `SKILL.md`, Claude's `.claude/skills/quality-playbook/`, and both Copilot layouts.
 
+**OpenAI Codex CLI:** v1.5.3 adds the standalone [codex CLI](https://github.com/openai/codex) (codex-cli 0.125+) as a third runner alongside claude and copilot. No separate skill-install layout — codex runs the playbook from any of the locations above. To use it via `bin/run_playbook.py`, pass `--codex` (see Step 3 + the "Running everything autonomously" section below).
+
 ### Step 3: Run the playbook
 
 **Claude Code:**
@@ -107,6 +109,12 @@ claude --agent agents/quality-playbook.agent.md
 Add `--dangerously-skip-permissions` to skip file-write approval prompts.
 
 **GitHub Copilot:** Open the chat panel in VS Code, IntelliJ, or any IDE with Copilot support and say: *"Run the quality playbook on this project."* For the CLI, use `copilot-cli` with `--yolo` to skip prompts.
+
+**OpenAI Codex CLI:**
+```bash
+python3 bin/run_playbook.py --codex ./my-project
+```
+This invokes `codex exec --full-auto` (sandboxed automatic execution; the codex equivalent of `gh copilot --yolo`) for each playbook phase. Codex picks its model from `~/.codex/config.toml` unless you pass `--model gpt-5-codex` (or another model name in your codex config).
 
 **Cursor:** Open Composer (Cmd+I / Ctrl+I) and say: *"Read SKILL.md and run the quality playbook on this project."*
 
@@ -148,6 +156,8 @@ claude --agent agents/quality-playbook-claude.agent.md --dangerously-skip-permis
 ```
 
 To capture the output to a log file, add `2>&1 | tee playbook-run.log` to the end.
+
+**Via `bin/run_playbook.py` (any runner):** the Python orchestrator at `bin/run_playbook.py` accepts a runner-selection flag — pick one of `--claude` / `--copilot` (default) / `--codex`. Example: `python3 bin/run_playbook.py --codex ./my-project` runs all six phases via `codex exec --full-auto`. Use `--model <name>` to override the runner's default model (codex picks from `~/.codex/config.toml` when no `--model` is passed).
 
 This uses the orchestrator agent (`quality-playbook-claude.agent.md`), which spawns a separate sub-agent for each of the six phases and each of the four iteration strategies. Each sub-agent gets its own context window, communicates with the others through files on disk (`quality/PROGRESS.md`, `quality/BUGS.md`, etc.), and exits when its phase is complete. The orchestrator reads the results and launches the next sub-agent.
 
@@ -370,7 +380,8 @@ python3 ../bin/run_playbook.py chi     # resolves to chi-1.4.6 via SKILL.md vers
 ### Usage
 
 ```text
-usage: run_playbook.py [-h] [--parallel | --sequential] [--claude | --copilot]
+usage: run_playbook.py [-h] [--parallel | --sequential]
+                       [--claude | --copilot | --codex]
                        [--no-seeds | --with-seeds] [--phase PHASE]
                        [--next-iteration]
                        [--strategy {gap,unfiltered,parity,adversarial,all}]
@@ -389,13 +400,14 @@ options:
   --sequential          Run targets one after another.
   --claude              Use claude -p instead of gh copilot.
   --copilot             Use gh copilot (default).
+  --codex               Use codex exec --full-auto instead of gh copilot.
   --no-seeds            Skip Phase 0/0b seed injection (default).
   --with-seeds          Allow Phase 0/0b seed injection from prior or sibling runs.
   --phase PHASE         Run specific phase(s): 1-6, all, or comma-separated values like 3,4,5.
   --next-iteration      Iterate on an existing quality/ run.
   --strategy {gap,unfiltered,parity,adversarial,all}
                         Iteration strategy to use with --next-iteration.
-  --model MODEL         Runner model override (copilot: gpt-5.4, claude: sonnet/opus/etc).
+  --model MODEL         Runner model override (copilot: gpt-5.4, claude: sonnet/opus/etc, codex: gpt-5-codex/etc).
   --kill                Kill processes from the current or last parallel run.
 ```
 

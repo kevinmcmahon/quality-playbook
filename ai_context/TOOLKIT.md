@@ -143,6 +143,7 @@ python3 /path/to/quality-playbook/bin/run_playbook.py                      # run
 python3 /path/to/quality-playbook/bin/run_playbook.py --phase all          # phase-by-phase on cwd
 python3 /path/to/quality-playbook/bin/run_playbook.py ./project1 ./project2  # multiple targets
 python3 /path/to/quality-playbook/bin/run_playbook.py --claude --model sonnet ./project1
+python3 /path/to/quality-playbook/bin/run_playbook.py --codex ./project1                  # v1.5.3 codex CLI runner
 python3 /path/to/quality-playbook/bin/run_playbook.py --next-iteration --strategy parity ./project1
 ```
 
@@ -185,7 +186,7 @@ On Windows (PowerShell), replace the loop with `foreach ($repo in $args)` and us
 
 `bin/run_playbook.py` is the entry point. The top-level flags are:
 - `--parallel` or `--sequential`
-- `--claude` or `--copilot`
+- `--claude` or `--copilot` or `--codex` (codex-cli 0.125+ via `codex exec --full-auto`; added in v1.5.3 as the third runner)
 - `--phase all`, `--phase N`, or `--phase 3,4,5`
 - `--next-iteration --strategy gap|unfiltered|parity|adversarial|all`
 - `--strategy` also accepts a comma-separated ordered subset (e.g. `unfiltered,parity,adversarial`)
@@ -241,6 +242,22 @@ gh copilot -p "Read the quality playbook skill at .github/skills/SKILL.md and ex
 - `--yolo` is Copilot's equivalent of skip-permissions
 - Rate limits are aggressive: running 6+ repos in parallel with iteration cycles can trigger a 54-hour cooldown
 - Stagger runs: 2-3 repos at a time, with pauses between batches
+
+### OpenAI Codex CLI
+
+**Third runner, added in v1.5.3 (codex-cli 0.125+).** The standalone codex CLI (`https://github.com/openai/codex`) is distinct from `gh copilot` — it's OpenAI's own non-interactive coding assistant, not a GitHub-CLI extension. The runner wraps `codex exec --full-auto`, codex's sandboxed automatic-execution mode (the codex equivalent of `gh copilot --yolo`).
+
+```bash
+cd /path/to/repo
+python3 /path/to/quality-playbook/bin/run_playbook.py --codex .
+# or via the skill_derivation entry-point for Skill / Hybrid targets:
+python3 -m bin.skill_derivation --runner codex --pass all .
+```
+
+- The runner pipes the playbook's prompt to codex on stdin (codex `exec` reads from stdin when no positional prompt is given), so long phase prompts don't hit shell command-line length limits
+- Default model is empty — codex picks from `~/.codex/config.toml`; pass `--model gpt-5-codex` (or any model name in your codex config) to override
+- `--dangerously-bypass-approvals-and-sandbox` is NOT enabled by default; the runner uses `--full-auto` (sandboxed) for safety
+- Smoke-tested at v1.5.3 release: a one-shot `CodexRunner().run(...)` call returned in ~6 seconds via stdin invocation
 
 ### Cursor (IDE)
 

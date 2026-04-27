@@ -195,6 +195,7 @@ cd repos/
 ./setup_repos.sh chi cobra virtio                     # copy skill files into the three repo-based targets
 python3 ../bin/run_playbook.py chi-1.4.6 cobra-1.4.6 virtio-1.4.6          # baseline runs (Copilot default)
 python3 ../bin/run_playbook.py --claude chi-1.4.6 cobra-1.4.6 virtio-1.4.6 # baseline runs (Claude Code)
+python3 ../bin/run_playbook.py --codex chi-1.4.6 cobra-1.4.6 virtio-1.4.6  # baseline runs (codex-cli, v1.5.3+)
 python3 ../bin/run_playbook.py --next-iteration --strategy all chi-1.4.6 cobra-1.4.6 virtio-1.4.6  # full iteration cycle
 ```
 
@@ -233,6 +234,7 @@ Council review artifacts go in `council-reviews/`. Each review has:
 | Copilot / gpt-5.4 | Strong | Weak (skips log creation) | 54hr rate limit on heavy use |
 | Cursor / Sonnet | Good | Weak first pass, follows up when asked | Workspace scope bleeds to siblings |
 | Cursor / Codex 5.3 | Weak (zero bugs) | N/A | Insufficient reasoning depth |
+| Codex CLI / `codex exec --full-auto` (v1.5.3+) | TBD — released as a runner option in commit `b6b31f2`; benchmark data accumulates as adopters use it | TBD | Standalone CLI (NOT `gh copilot`); codex picks its model from `~/.codex/config.toml` unless `--model` overrides |
 
 ## Version history highlights
 
@@ -269,6 +271,7 @@ Council review artifacts go in `council-reviews/`. Each review has:
     - **Bootstrap evidence at `previous_runs/v1.5.3/`** (28 files, ~4.6 MB). Curated REQUIREMENTS.md (171 REQs across 171 sections — over the brief's [80, 110] target; cross-partition consolidation needed to reach the band, tracked as v1.5.4 backlog B-4); full Phase 3 + Phase 4 artifact set; 8 partition-density warnings as v1.5.4 curation signal.
     - **Eight Council-of-Three rounds** drove v1.5.3 development end-to-end (Phase 3a foundations through Phase 4 Round 8 + Round 7 follow-up + Phase 5 release-readiness). Synthesis docs at `Quality Playbook/Reviews/QPB_v1.5.3_Round{1..8}_Synthesis.md`.
     - **Five items deferred to v1.5.3.1 patch** per the brief's wall-clock-budget allowance: full playbook regression sweep on 5 code targets (Stage 4A), cross-model second backend opus run (Stage 4D), optional v1.4.5 cross-version cell (Stage 4E), categorization tagging surface, orientation-doc release-cadence review. Full backlog at `Quality Playbook/Reviews/v1.5.4_backlog.md` (14 items B-1 through B-14).
+    - **Post-tag — codex CLI runner added (commit `b6b31f2`).** OpenAI's standalone codex CLI (`https://github.com/openai/codex`, codex-cli 0.125+) joins claude (`claude --print`) and copilot (`gh copilot --prompt`) as a third LLM backend. `bin/skill_derivation/runners.py` ships a `CodexRunner` dataclass alongside `ClaudeRunner` and `CopilotRunner`; the runner factory `make_runner(name, *, model=None)` routes `name="codex"` to `CodexRunner`. CLI plumbing extended in `bin/run_playbook.py` (new `--codex` flag in the runner mutex group; nine dispatch sites updated for three-way runner choice; `ensure_runner_available` checks `shutil.which("codex")`; install hint points at the codex GitHub repo) and `bin/skill_derivation/__main__.py` (`--runner` choices extended to `{claude, copilot, codex}`). Codex's non-interactive mode is `codex exec --full-auto` — sandboxed automatic execution, the codex equivalent of `gh copilot --yolo`. The runner pipes the playbook prompt on stdin (codex `exec` reads stdin when no positional prompt is given), avoiding shell command-line length limits. Default model is empty (codex picks from `~/.codex/config.toml`); `--model gpt-5-codex` (or any model in the user's codex config) overrides. 7 new tests added (3 in `TestSkillDerivationMainArgs` + 3 in `MakeRunnerModelOverrideTests` + 2 in new `CodexRunnerArgvTests` class); bin/tests/ count is now 669 (was 662).
 
 ## Current known issues
 
