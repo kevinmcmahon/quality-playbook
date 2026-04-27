@@ -330,6 +330,7 @@ Per the workspace `AGENTS.md` rule, orientation-doc edits trigger TTP review bef
 - Part D version stamps bumped consistently across SKILL.md, RELEASE_VERSION, schemas.md banner, and README.
 - Part E TTP returns Pass or Pass-With-Caveats.
 - Part F tag visible on origin via `git ls-remote`.
+- Tests green under `python3 -m unittest discover -s bin/tests/` AND `python3 -m unittest discover -s .github/skills/quality_gate/tests/ -p 'test_*.py'`. Note: the gate-suite README.md documents why pytest is NOT the canonical runner for that directory (pre-existing import shadowing; v1.5.4+ may revisit). DQ-5-8 locks this to unittest discover.
 
 ---
 
