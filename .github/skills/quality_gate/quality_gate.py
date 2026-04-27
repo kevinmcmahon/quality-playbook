@@ -2741,6 +2741,250 @@ def check_v1_5_3_council_inbox_validation(q):
     pass_(f"{inbox_path.name}: v1.5.3 council inbox validation complete")
 
 
+# ---------------------------------------------------------------------------
+# Phase 4 skill-project gate enforcement checks (DQ-4-4).
+#
+# These four checks fire on Skill / Hybrid projects only; they SKIP
+# (informational `INFO: skipped` line, no fail counter increment) on
+# Code projects. The only check that runs for all projects is
+# check_project_type_consistency.
+#
+# Project type is read from <q>/project_type.json (the Phase 1
+# classifier output). If the file is missing, all four checks SKIP
+# silently — Phase 1 has not been run yet on this target.
+# ---------------------------------------------------------------------------
+
+
+def _phase4_project_type(q):
+    """Return the project's classification ('Code'/'Skill'/'Hybrid')
+    or None if project_type.json is absent or unparseable."""
+    pt_path = q / "project_type.json"
+    data = load_json(pt_path)
+    if not isinstance(data, dict):
+        return None
+    return data.get("classification")
+
+
+def check_skill_section_req_coverage(repo_dir, q):
+    """Skill / Hybrid: every operational SKILL.md section per
+    pass_d_section_coverage.json has ≥1 promoted REQ. Meta-allowlist
+    sections are exempt (their section_kind == 'meta').
+
+    SKIPS for Code projects."""
+    print("[Phase 4: skill-section REQ coverage]")
+    classification = _phase4_project_type(q)
+    if classification not in ("Skill", "Hybrid"):
+        info(f"check_skill_section_req_coverage: skip (project_type={classification!r})")
+        return
+    coverage_path = q / "phase3" / "pass_d_section_coverage.json"
+    data = load_json(coverage_path)
+    if not isinstance(data, dict):
+        info(
+            "check_skill_section_req_coverage: skip "
+            "(pass_d_section_coverage.json missing or unparseable)"
+        )
+        return
+    failures = 0
+    for s in data.get("sections", []) or []:
+        if not isinstance(s, dict):
+            continue
+        kind = s.get("section_kind")
+        if kind != "operational":
+            continue
+        promoted = s.get("drafts_promoted", 0) or 0
+        if promoted < 1:
+            heading = s.get("heading") or "<unknown>"
+            document = s.get("document") or "SKILL.md"
+            section_idx = s.get("section_idx")
+            fail(
+                f"{document}",
+                f"section #{section_idx} {heading!r} has 0 promoted "
+                "REQs and is not in the meta allowlist "
+                "(check_skill_section_req_coverage)",
+            )
+            failures += 1
+    if failures == 0:
+        pass_("check_skill_section_req_coverage: every operational section has ≥1 promoted REQ")
+
+
+def check_reference_file_req_coverage(repo_dir, q):
+    """Skill / Hybrid: every reference file under references/ has ≥1
+    REQ citing it OR a `<!-- non-normative -->` marker in its first
+    5 lines.
+
+    SKIPS for Code projects."""
+    print("[Phase 4: reference-file REQ coverage]")
+    classification = _phase4_project_type(q)
+    if classification not in ("Skill", "Hybrid"):
+        info(f"check_reference_file_req_coverage: skip (project_type={classification!r})")
+        return
+    references_dir = repo_dir / "references"
+    if not references_dir.is_dir():
+        info("check_reference_file_req_coverage: skip (no references/ directory)")
+        return
+    formal_path = q / "phase3" / "pass_c_formal.jsonl"
+    if not formal_path.is_file():
+        info(
+            "check_reference_file_req_coverage: skip "
+            "(pass_c_formal.jsonl missing — Phase 3 not run yet)"
+        )
+        return
+    cited_documents = set()
+    for line in formal_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(rec, dict):
+            continue
+        sd = rec.get("source_document")
+        if isinstance(sd, str):
+            cited_documents.add(sd)
+    failures = 0
+    for ref in sorted(references_dir.glob("*.md")):
+        rel = f"references/{ref.name}"
+        if rel in cited_documents:
+            continue
+        # Non-normative marker check (first 5 lines).
+        head = ref.read_text(encoding="utf-8", errors="replace").splitlines()[:5]
+        if any("<!-- non-normative -->" in line.lower() for line in head):
+            continue
+        fail(
+            rel,
+            "no REQ cites this reference file and no <!-- non-normative --> "
+            "marker in its first 5 lines (check_reference_file_req_coverage)",
+        )
+        failures += 1
+    if failures == 0:
+        pass_("check_reference_file_req_coverage: every reference file has ≥1 citing REQ or non-normative marker")
+
+
+def check_hybrid_cross_cutting_reqs(repo_dir, q):
+    """Hybrid only: ≥1 REQ has triangulated evidence —
+    `source_type=skill-section` AND its acceptance_criteria references
+    a code artifact mentioned in another REQ with
+    `source_type=code-derived`.
+
+    SKIPS for Skill or Code projects."""
+    print("[Phase 4: hybrid cross-cutting REQs]")
+    classification = _phase4_project_type(q)
+    if classification != "Hybrid":
+        info(f"check_hybrid_cross_cutting_reqs: skip (project_type={classification!r})")
+        return
+    formal_path = q / "phase3" / "pass_c_formal.jsonl"
+    if not formal_path.is_file():
+        info(
+            "check_hybrid_cross_cutting_reqs: skip "
+            "(pass_c_formal.jsonl missing — Phase 3 not run yet)"
+        )
+        return
+    skill_section_reqs = []
+    code_derived_artifacts = set()
+    for line in formal_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(rec, dict):
+            continue
+        st = rec.get("source_type")
+        if st == "skill-section":
+            skill_section_reqs.append(rec)
+        elif st == "code-derived":
+            ac = (rec.get("acceptance_criteria") or "")
+            cite = (rec.get("citation_excerpt") or "")
+            for token in re.findall(
+                r"\b([\w./-]+\.(?:py|sh|json))\b", ac + " " + cite
+            ):
+                code_derived_artifacts.add(token)
+    if not code_derived_artifacts:
+        # On a Hybrid project that hasn't yet produced any code-derived
+        # REQs, the cross-cutting check has nothing to triangulate
+        # against. INFO + skip rather than fail (the absence is the
+        # diagnostic).
+        info(
+            "check_hybrid_cross_cutting_reqs: skip "
+            "(no code-derived REQs in pass_c_formal.jsonl yet)"
+        )
+        return
+    triangulated = 0
+    for rec in skill_section_reqs:
+        ac = (rec.get("acceptance_criteria") or "") + " " + (
+            rec.get("citation_excerpt") or ""
+        )
+        if any(art in ac for art in code_derived_artifacts):
+            triangulated += 1
+            if triangulated >= 1:
+                break
+    if triangulated >= 1:
+        pass_(
+            f"check_hybrid_cross_cutting_reqs: triangulated evidence "
+            f"present (≥{triangulated} skill-section REQ references a "
+            "code-derived artifact)"
+        )
+    else:
+        fail(
+            "pass_c_formal.jsonl",
+            "Hybrid project has no triangulated REQ pair "
+            "(skill-section REQ referencing a code-derived artifact); "
+            "check_hybrid_cross_cutting_reqs",
+        )
+
+
+def check_project_type_consistency(repo_dir, q):
+    """All projects: project_type.json exists; classification is one
+    of {Code, Skill, Hybrid}; if override_applied, override_rationale
+    is non-empty.
+
+    Runs for every project (no skip)."""
+    print("[Phase 4: project-type consistency]")
+    pt_path = q / "project_type.json"
+    if not pt_path.is_file():
+        # If the fixture / target has not been classified yet (Phase 1
+        # not run), skip silently. Phase 4's own self-audit on QPB
+        # populates project_type.json before the gate runs; pre-Phase-1
+        # fixtures (the existing TestAllPassBaseline-style tests) don't
+        # have it and shouldn't fail this check just because Phase 4
+        # landed.
+        info(
+            "check_project_type_consistency: skip "
+            "(project_type.json absent — Phase 1 classifier not run yet)"
+        )
+        return
+    data = load_json(pt_path)
+    if not isinstance(data, dict):
+        fail(
+            f"{pt_path.relative_to(q.parent)}",
+            "project_type.json is not a valid JSON object",
+        )
+        return
+    classification = data.get("classification")
+    if classification not in ("Code", "Skill", "Hybrid"):
+        fail(
+            f"{pt_path.relative_to(q.parent)}",
+            f"classification {classification!r} is not in "
+            "{Code, Skill, Hybrid} (check_project_type_consistency)",
+        )
+        return
+    if data.get("override_applied"):
+        rationale = data.get("override_rationale")
+        if not isinstance(rationale, str) or not rationale.strip():
+            fail(
+                f"{pt_path.relative_to(q.parent)}",
+                "override_applied is true but override_rationale is "
+                "empty / missing (check_project_type_consistency)",
+            )
+            return
+    pass_(
+        f"{pt_path.relative_to(q.parent)}: project type "
+        f"{classification!r} consistent (check_project_type_consistency)"
+    )
+
+
 def check_v1_5_2_cardinality_gate(repo_dir):
     """v1.5.2 Lever 3: Phase 5 cardinality reconciliation gate.
 
@@ -2781,6 +3025,13 @@ def check_v1_5_0_gate_invariants(repo_dir, q):
     # validation (DQ-5 + BLOCK-4). No-op for Code projects (phase3
     # directory is absent).
     check_v1_5_3_council_inbox_validation(q)
+    # v1.5.3 Phase 4 (DQ-4-4): skill-project gate enforcement. The
+    # first three SKIP for Code projects;
+    # check_project_type_consistency runs for all projects.
+    check_skill_section_req_coverage(repo_dir, q)
+    check_reference_file_req_coverage(repo_dir, q)
+    check_hybrid_cross_cutting_reqs(repo_dir, q)
+    check_project_type_consistency(repo_dir, q)
 
 
 def check_repo(repo_dir, version_arg, strictness):
