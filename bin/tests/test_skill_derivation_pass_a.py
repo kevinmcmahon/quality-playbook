@@ -271,7 +271,7 @@ class TripwireTests(unittest.TestCase):
                     "acceptance_criteria": "z",
                     "proposed_source_ref": "w",
                 }),
-                elapsed_ms=4000,  # 4s -- well below 12s floor
+                elapsed_ms=1500,  # 1.5s -- well below the 2.5s floor
             )
             with self.assertRaises(pass_a.TripwireFired) as cm:
                 pass_a.run_pass_a(config, runner, template)

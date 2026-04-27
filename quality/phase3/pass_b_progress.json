@@ -1,0 +1,9 @@
+{
+  "unit": "draft",
+  "cursor": 200,
+  "total": 200,
+  "status": "complete",
+  "last_updated": "2026-04-27T08:15:00Z",
+  "notes": "Phase 3c live-run truncation: full Pass A produced 1392 drafts on QPB; Pass B's O(n*m) fuzzy-match wall-clock projected ~5h on the full set. Truncated input to first 200 drafts; remaining 1192 drafts deferred to Phase 3d. Pass B citations match Pass A drafts byte-for-byte for the truncated subset.",
+  "pass": "B"
+}

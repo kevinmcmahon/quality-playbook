@@ -1,0 +1,1321 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-04-27T08:16:36Z",
+  "promoted": [
+    {
+      "draft_idx": 0,
+      "section_idx": 0,
+      "req_id": "REQ-PHASE3-001",
+      "tier": 1
+    },
+    {
+      "draft_idx": 6,
+      "section_idx": 0,
+      "req_id": "REQ-PHASE3-007",
+      "tier": 1
+    },
+    {
+      "draft_idx": 7,
+      "section_idx": 0,
+      "req_id": "REQ-PHASE3-008",
+      "tier": 1
+    },
+    {
+      "draft_idx": 9,
+      "section_idx": 0,
+      "req_id": "REQ-PHASE3-010",
+      "tier": 2
+    },
+    {
+      "draft_idx": 10,
+      "section_idx": 0,
+      "req_id": "REQ-PHASE3-011",
+      "tier": 2
+    },
+    {
+      "draft_idx": 11,
+      "section_idx": 0,
+      "req_id": "REQ-PHASE3-012",
+      "tier": 1
+    },
+    {
+      "draft_idx": 12,
+      "section_idx": 0,
+      "req_id": "REQ-PHASE3-013",
+      "tier": 2
+    },
+    {
+      "draft_idx": 16,
+      "section_idx": 0,
+      "req_id": "REQ-PHASE3-017",
+      "tier": 2
+    },
+    {
+      "draft_idx": 17,
+      "section_idx": 0,
+      "req_id": "REQ-PHASE3-018",
+      "tier": 2
+    },
+    {
+      "draft_idx": 18,
+      "section_idx": 0,
+      "req_id": "REQ-PHASE3-019",
+      "tier": 1
+    },
+    {
+      "draft_idx": 20,
+      "section_idx": 0,
+      "req_id": "REQ-PHASE3-021",
+      "tier": 2
+    },
+    {
+      "draft_idx": 21,
+      "section_idx": 0,
+      "req_id": "REQ-PHASE3-022",
+      "tier": 1
+    },
+    {
+      "draft_idx": 22,
+      "section_idx": 0,
+      "req_id": "REQ-PHASE3-023",
+      "tier": 2
+    },
+    {
+      "draft_idx": 23,
+      "section_idx": 0,
+      "req_id": "REQ-PHASE3-024",
+      "tier": 2
+    },
+    {
+      "draft_idx": 24,
+      "section_idx": 0,
+      "req_id": "REQ-PHASE3-025",
+      "tier": 1
+    },
+    {
+      "draft_idx": 26,
+      "section_idx": 0,
+      "req_id": "REQ-PHASE3-027",
+      "tier": 1
+    },
+    {
+      "draft_idx": 28,
+      "section_idx": 0,
+      "req_id": "REQ-PHASE3-029",
+      "tier": 1
+    },
+    {
+      "draft_idx": 38,
+      "section_idx": 4,
+      "req_id": "REQ-PHASE3-039",
+      "tier": 1
+    },
+    {
+      "draft_idx": 44,
+      "section_idx": 4,
+      "req_id": "REQ-PHASE3-045",
+      "tier": 1
+    },
+    {
+      "draft_idx": 51,
+      "section_idx": 4,
+      "req_id": "REQ-PHASE3-052",
+      "tier": 1
+    },
+    {
+      "draft_idx": 52,
+      "section_idx": 4,
+      "req_id": "REQ-PHASE3-053",
+      "tier": 1
+    },
+    {
+      "draft_idx": 53,
+      "section_idx": 5,
+      "req_id": "REQ-PHASE3-054",
+      "tier": 1
+    },
+    {
+      "draft_idx": 54,
+      "section_idx": 5,
+      "req_id": "REQ-PHASE3-055",
+      "tier": 1
+    },
+    {
+      "draft_idx": 55,
+      "section_idx": 5,
+      "req_id": "REQ-PHASE3-056",
+      "tier": 1
+    },
+    {
+      "draft_idx": 56,
+      "section_idx": 5,
+      "req_id": "REQ-PHASE3-057",
+      "tier": 1
+    },
+    {
+      "draft_idx": 57,
+      "section_idx": 5,
+      "req_id": "REQ-PHASE3-058",
+      "tier": 1
+    },
+    {
+      "draft_idx": 63,
+      "section_idx": 5,
+      "req_id": "REQ-PHASE3-064",
+      "tier": 1
+    },
+    {
+      "draft_idx": 67,
+      "section_idx": 5,
+      "req_id": "REQ-PHASE3-068",
+      "tier": 1
+    },
+    {
+      "draft_idx": 68,
+      "section_idx": 6,
+      "req_id": "REQ-PHASE3-069",
+      "tier": 1
+    },
+    {
+      "draft_idx": 70,
+      "section_idx": 6,
+      "req_id": "REQ-PHASE3-071",
+      "tier": 1
+    },
+    {
+      "draft_idx": 73,
+      "section_idx": 6,
+      "req_id": "REQ-PHASE3-074",
+      "tier": 1
+    },
+    {
+      "draft_idx": 75,
+      "section_idx": 6,
+      "req_id": "REQ-PHASE3-076",
+      "tier": 1
+    },
+    {
+      "draft_idx": 77,
+      "section_idx": 6,
+      "req_id": "REQ-PHASE3-078",
+      "tier": 2
+    },
+    {
+      "draft_idx": 78,
+      "section_idx": 6,
+      "req_id": "REQ-PHASE3-079",
+      "tier": 2
+    },
+    {
+      "draft_idx": 79,
+      "section_idx": 6,
+      "req_id": "REQ-PHASE3-080",
+      "tier": 1
+    },
+    {
+      "draft_idx": 81,
+      "section_idx": 6,
+      "req_id": "REQ-PHASE3-082",
+      "tier": 1
+    },
+    {
+      "draft_idx": 82,
+      "section_idx": 7,
+      "req_id": "REQ-PHASE3-083",
+      "tier": 1
+    },
+    {
+      "draft_idx": 86,
+      "section_idx": 7,
+      "req_id": "REQ-PHASE3-087",
+      "tier": 1
+    },
+    {
+      "draft_idx": 87,
+      "section_idx": 7,
+      "req_id": "REQ-PHASE3-088",
+      "tier": 1
+    },
+    {
+      "draft_idx": 89,
+      "section_idx": 7,
+      "req_id": "REQ-PHASE3-090",
+      "tier": 1
+    },
+    {
+      "draft_idx": 90,
+      "section_idx": 7,
+      "req_id": "REQ-PHASE3-091",
+      "tier": 1
+    },
+    {
+      "draft_idx": 91,
+      "section_idx": 7,
+      "req_id": "REQ-PHASE3-092",
+      "tier": 1
+    },
+    {
+      "draft_idx": 92,
+      "section_idx": 7,
+      "req_id": "REQ-PHASE3-093",
+      "tier": 1
+    },
+    {
+      "draft_idx": 94,
+      "section_idx": 7,
+      "req_id": "REQ-PHASE3-095",
+      "tier": 1
+    },
+    {
+      "draft_idx": 96,
+      "section_idx": 7,
+      "req_id": "REQ-PHASE3-097",
+      "tier": 1
+    },
+    {
+      "draft_idx": 101,
+      "section_idx": 8,
+      "req_id": "REQ-PHASE3-102",
+      "tier": 1
+    },
+    {
+      "draft_idx": 102,
+      "section_idx": 8,
+      "req_id": "REQ-PHASE3-103",
+      "tier": 1
+    },
+    {
+      "draft_idx": 103,
+      "section_idx": 8,
+      "req_id": "REQ-PHASE3-104",
+      "tier": 1
+    },
+    {
+      "draft_idx": 104,
+      "section_idx": 9,
+      "req_id": "REQ-PHASE3-105",
+      "tier": 1
+    },
+    {
+      "draft_idx": 108,
+      "section_idx": 9,
+      "req_id": "REQ-PHASE3-109",
+      "tier": 2
+    },
+    {
+      "draft_idx": 112,
+      "section_idx": 9,
+      "req_id": "REQ-PHASE3-113",
+      "tier": 1
+    },
+    {
+      "draft_idx": 113,
+      "section_idx": 9,
+      "req_id": "REQ-PHASE3-114",
+      "tier": 2
+    },
+    {
+      "draft_idx": 115,
+      "section_idx": 10,
+      "req_id": "REQ-PHASE3-116",
+      "tier": 2
+    },
+    {
+      "draft_idx": 116,
+      "section_idx": 10,
+      "req_id": "REQ-PHASE3-117",
+      "tier": 1
+    },
+    {
+      "draft_idx": 117,
+      "section_idx": 10,
+      "req_id": "REQ-PHASE3-118",
+      "tier": 1
+    },
+    {
+      "draft_idx": 119,
+      "section_idx": 10,
+      "req_id": "REQ-PHASE3-120",
+      "tier": 2
+    },
+    {
+      "draft_idx": 121,
+      "section_idx": 11,
+      "req_id": "REQ-PHASE3-122",
+      "tier": 1
+    },
+    {
+      "draft_idx": 122,
+      "section_idx": 11,
+      "req_id": "REQ-PHASE3-123",
+      "tier": 1
+    },
+    {
+      "draft_idx": 129,
+      "section_idx": 11,
+      "req_id": "REQ-PHASE3-130",
+      "tier": 1
+    },
+    {
+      "draft_idx": 130,
+      "section_idx": 11,
+      "req_id": "REQ-PHASE3-131",
+      "tier": 1
+    },
+    {
+      "draft_idx": 131,
+      "section_idx": 12,
+      "req_id": "REQ-PHASE3-132",
+      "tier": 2
+    },
+    {
+      "draft_idx": 132,
+      "section_idx": 12,
+      "req_id": "REQ-PHASE3-133",
+      "tier": 2
+    },
+    {
+      "draft_idx": 133,
+      "section_idx": 12,
+      "req_id": "REQ-PHASE3-134",
+      "tier": 1
+    },
+    {
+      "draft_idx": 134,
+      "section_idx": 12,
+      "req_id": "REQ-PHASE3-135",
+      "tier": 1
+    },
+    {
+      "draft_idx": 135,
+      "section_idx": 12,
+      "req_id": "REQ-PHASE3-136",
+      "tier": 1
+    },
+    {
+      "draft_idx": 139,
+      "section_idx": 13,
+      "req_id": "REQ-PHASE3-140",
+      "tier": 1
+    },
+    {
+      "draft_idx": 140,
+      "section_idx": 13,
+      "req_id": "REQ-PHASE3-141",
+      "tier": 1
+    },
+    {
+      "draft_idx": 144,
+      "section_idx": 13,
+      "req_id": "REQ-PHASE3-145",
+      "tier": 2
+    },
+    {
+      "draft_idx": 147,
+      "section_idx": 13,
+      "req_id": "REQ-PHASE3-148",
+      "tier": 1
+    },
+    {
+      "draft_idx": 149,
+      "section_idx": 14,
+      "req_id": "REQ-PHASE3-150",
+      "tier": 1
+    },
+    {
+      "draft_idx": 150,
+      "section_idx": 14,
+      "req_id": "REQ-PHASE3-151",
+      "tier": 2
+    },
+    {
+      "draft_idx": 151,
+      "section_idx": 14,
+      "req_id": "REQ-PHASE3-152",
+      "tier": 1
+    },
+    {
+      "draft_idx": 153,
+      "section_idx": 15,
+      "req_id": "REQ-PHASE3-154",
+      "tier": 1
+    },
+    {
+      "draft_idx": 154,
+      "section_idx": 15,
+      "req_id": "REQ-PHASE3-155",
+      "tier": 1
+    },
+    {
+      "draft_idx": 158,
+      "section_idx": 15,
+      "req_id": "REQ-PHASE3-159",
+      "tier": 1
+    },
+    {
+      "draft_idx": 159,
+      "section_idx": 15,
+      "req_id": "REQ-PHASE3-160",
+      "tier": 2
+    },
+    {
+      "draft_idx": 185,
+      "section_idx": 16,
+      "req_id": "REQ-PHASE3-186",
+      "tier": 1
+    }
+  ],
+  "rejected": [
+    {
+      "draft_idx": 1,
+      "section_idx": 0,
+      "title": "Phase 1 Begins With Documentation Intake Command",
+      "req_id": "REQ-PHASE3-002",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 2,
+      "section_idx": 0,
+      "title": "reference_docs/cite/ Files Produce formal_docs_manifest.json Records",
+      "req_id": "REQ-PHASE3-003",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 3,
+      "section_idx": 0,
+      "title": "reference_docs/ Top-Level Files Loaded as Tier 4 Context",
+      "req_id": "REQ-PHASE3-004",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 4,
+      "section_idx": 0,
+      "title": "Phase 1 Exploration Follows Three Ordered Stages",
+      "req_id": "REQ-PHASE3-005",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 5,
+      "section_idx": 0,
+      "title": "Phase 1 Writes All Findings to EXPLORATION.md",
+      "req_id": "REQ-PHASE3-006",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 8,
+      "section_idx": 0,
+      "title": "Phase 3 Runs Three-Pass Code Review Against HEAD",
+      "req_id": "REQ-PHASE3-009",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 13,
+      "section_idx": 0,
+      "title": "Phase 4 Semantic Citation Check Runs After Triage",
+      "req_id": "REQ-PHASE3-014",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 14,
+      "section_idx": 0,
+      "title": "Semantic Citation Check Uses One Prompt Per Reviewer",
+      "req_id": "REQ-PHASE3-015",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 15,
+      "section_idx": 0,
+      "title": "Semantic Citation Check Produces Verdicts for Every Tier 1/2 Citation",
+      "req_id": "REQ-PHASE3-016",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 19,
+      "section_idx": 0,
+      "title": "Phase 5 Runs TDD Red-Green Cycle",
+      "req_id": "REQ-PHASE3-020",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 25,
+      "section_idx": 0,
+      "title": "Phase 7 Presents Results With Scannable Summary Table",
+      "req_id": "REQ-PHASE3-026",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 27,
+      "section_idx": 0,
+      "title": "Phase 7 Provides Menu of Improvement Paths",
+      "req_id": "REQ-PHASE3-028",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 29,
+      "section_idx": 0,
+      "title": "Plan Explanation Must Be in Own Words, Not Verbatim Copy",
+      "req_id": "REQ-PHASE3-030",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 30,
+      "section_idx": 0,
+      "title": "Plan Explanation Covers Each Phase's Output and Exploration's Primacy",
+      "req_id": "REQ-PHASE3-031",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 31,
+      "section_idx": 0,
+      "title": "Plan Explanation Describes Three-Stage Exploration Structure",
+      "req_id": "REQ-PHASE3-032",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 32,
+      "section_idx": 3,
+      "title": "Run each phase in its own isolated session",
+      "req_id": "REQ-PHASE3-033",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 33,
+      "section_idx": 3,
+      "title": "Phase isolation yields better results than combined execution",
+      "req_id": "REQ-PHASE3-034",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 34,
+      "section_idx": 3,
+      "title": "Default invocation runs Phase 1 only and stops",
+      "req_id": "REQ-PHASE3-035",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 35,
+      "section_idx": 3,
+      "title": "Report phase outcome and continuation prompt after Phase 1",
+      "req_id": "REQ-PHASE3-036",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 36,
+      "section_idx": 3,
+      "title": "User explicitly drives each phase transition",
+      "req_id": "REQ-PHASE3-037",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 37,
+      "section_idx": 4,
+      "title": "Phase 0 runs only when prior quality artifacts exist",
+      "req_id": "REQ-PHASE3-038",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 39,
+      "section_idx": 4,
+      "title": "Prior runs enable continuation mode for iterative bug discovery",
+      "req_id": "REQ-PHASE3-040",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 40,
+      "section_idx": 4,
+      "title": "Step 0a reads BUGS.md from all prior runs",
+      "req_id": "REQ-PHASE3-041",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 41,
+      "section_idx": 4,
+      "title": "Step 0a extracts four fields per confirmed bug",
+      "req_id": "REQ-PHASE3-042",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 42,
+      "section_idx": 4,
+      "title": "Step 0a deduplicates seeds by file:line",
+      "req_id": "REQ-PHASE3-043",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 43,
+      "section_idx": 4,
+      "title": "Step 0a writes merged seed list to quality/SEED_CHECKS.md in required format",
+      "req_id": "REQ-PHASE3-044",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 45,
+      "section_idx": 4,
+      "title": "Step 0b records PASS or FAIL for each seed",
+      "req_id": "REQ-PHASE3-046",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 46,
+      "section_idx": 4,
+      "title": "Failing seeds must appear in this run's BUGS.md unconditionally",
+      "req_id": "REQ-PHASE3-047",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 47,
+      "section_idx": 4,
+      "title": "Passing seeds are noted in PROGRESS.md as resolved",
+      "req_id": "REQ-PHASE3-048",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 48,
+      "section_idx": 4,
+      "title": "Step 0c reads prior PROGRESS.md files to identify covered subsystems",
+      "req_id": "REQ-PHASE3-049",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 49,
+      "section_idx": 4,
+      "title": "Step 0c directs Phase 1 to prioritize uncovered subsystems",
+      "req_id": "REQ-PHASE3-050",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 50,
+      "section_idx": 4,
+      "title": "When all subsystems were previously covered, explore with different emphasis",
+      "req_id": "REQ-PHASE3-051",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 58,
+      "section_idx": 5,
+      "title": "Search Chat History for Project Name",
+      "req_id": "REQ-PHASE3-059",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 59,
+      "section_idx": 5,
+      "title": "Extract Incident Reports from Chat History",
+      "req_id": "REQ-PHASE3-060",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 60,
+      "section_idx": 5,
+      "title": "Extract Design Discussions from Chat History",
+      "req_id": "REQ-PHASE3-061",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 61,
+      "section_idx": 5,
+      "title": "Extract Quality Framework Discussions from Chat History",
+      "req_id": "REQ-PHASE3-062",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 62,
+      "section_idx": 5,
+      "title": "Extract Cross-Model Feedback from Chat History",
+      "req_id": "REQ-PHASE3-063",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 64,
+      "section_idx": 5,
+      "title": "Skip Step 0 Question in Autonomous/Benchmark Mode",
+      "req_id": "REQ-PHASE3-065",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 65,
+      "section_idx": 5,
+      "title": "Scan Visible Chat History Folders Without Asking in Autonomous Mode",
+      "req_id": "REQ-PHASE3-066",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 66,
+      "section_idx": 5,
+      "title": "Do Not Block Waiting for User Response in Autonomous Mode",
+      "req_id": "REQ-PHASE3-067",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 69,
+      "section_idx": 6,
+      "title": "Produce One-Sentence Project Description",
+      "req_id": "REQ-PHASE3-070",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 71,
+      "section_idx": 6,
+      "title": "Identify External Systems",
+      "req_id": "REQ-PHASE3-072",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 72,
+      "section_idx": 6,
+      "title": "Identify Primary Output",
+      "req_id": "REQ-PHASE3-073",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 74,
+      "section_idx": 6,
+      "title": "Record Specification File Paths",
+      "req_id": "REQ-PHASE3-075",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 76,
+      "section_idx": 6,
+      "title": "Use Alternative Requirement Sources in Defined Priority Order",
+      "req_id": "REQ-PHASE3-077",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 80,
+      "section_idx": 6,
+      "title": "Use Exact Requirement Tag Format",
+      "req_id": "REQ-PHASE3-081",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 83,
+      "section_idx": 7,
+      "title": "Classify Each Document's Depth as Deep, Moderate, or Shallow",
+      "req_id": "REQ-PHASE3-084",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 84,
+      "section_idx": 7,
+      "title": "Do Not Narrow Audit Scope to Only Well-Documented Subsystems",
+      "req_id": "REQ-PHASE3-085",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 85,
+      "section_idx": 7,
+      "title": "Flag Documentation Gaps for High-Risk Shallow-Documented Modules in PROGRESS.md",
+      "req_id": "REQ-PHASE3-086",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 88,
+      "section_idx": 7,
+      "title": "Tag Source-Inferred Requirements With Correct Tag Format",
+      "req_id": "REQ-PHASE3-089",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 93,
+      "section_idx": 7,
+      "title": "Map Every Deep Document to Its Subsystem in the Commitment Table",
+      "req_id": "REQ-PHASE3-094",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 95,
+      "section_idx": 7,
+      "title": "Gate: High-Risk Deeply-Documented Subsystem Must Not Disappear From Requirements",
+      "req_id": "REQ-PHASE3-096",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 97,
+      "section_idx": 8,
+      "title": "List Source Directories and Their Purposes",
+      "req_id": "REQ-PHASE3-098",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 98,
+      "section_idx": 8,
+      "title": "Read the Main Entry Point",
+      "req_id": "REQ-PHASE3-099",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 99,
+      "section_idx": 8,
+      "title": "Trace Execution Flow from Entry Point",
+      "req_id": "REQ-PHASE3-100",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 100,
+      "section_idx": 8,
+      "title": "Identify 3\u20135 Major Subsystems",
+      "req_id": "REQ-PHASE3-101",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 105,
+      "section_idx": 9,
+      "title": "Identify Test Count from Existing Tests",
+      "req_id": "REQ-PHASE3-106",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 106,
+      "section_idx": 9,
+      "title": "Identify Coverage Patterns from Existing Tests",
+      "req_id": "REQ-PHASE3-107",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 107,
+      "section_idx": 9,
+      "title": "Identify Coverage Gaps from Existing Tests",
+      "req_id": "REQ-PHASE3-108",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 109,
+      "section_idx": 9,
+      "title": "Record the Import Pattern Used by Existing Tests",
+      "req_id": "REQ-PHASE3-110",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 110,
+      "section_idx": 9,
+      "title": "Use Exact Same Import Pattern in Functional Tests",
+      "req_id": "REQ-PHASE3-111",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 111,
+      "section_idx": 9,
+      "title": "Consult the Six-Language Import Pattern Matrix",
+      "req_id": "REQ-PHASE3-112",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 114,
+      "section_idx": 10,
+      "title": "Process each spec document section by section",
+      "req_id": "REQ-PHASE3-115",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 118,
+      "section_idx": 10,
+      "title": "Include inferred requirements in QUALITY.md scenarios",
+      "req_id": "REQ-PHASE3-119",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 120,
+      "section_idx": 11,
+      "title": "Read Actual Function Signatures, Never Guess",
+      "req_id": "REQ-PHASE3-121",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 123,
+      "section_idx": 11,
+      "title": "Test Fixtures Must Match Real Data Shape Exactly",
+      "req_id": "REQ-PHASE3-124",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 124,
+      "section_idx": 11,
+      "title": "Read Existing Test Fixtures Before Creating New Ones",
+      "req_id": "REQ-PHASE3-125",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 125,
+      "section_idx": 11,
+      "title": "Copy Exact Keys from Existing Test Fixture Patterns",
+      "req_id": "REQ-PHASE3-126",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 126,
+      "section_idx": 11,
+      "title": "Check Dependency Manifest to Determine Available Libraries",
+      "req_id": "REQ-PHASE3-127",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 127,
+      "section_idx": 11,
+      "title": "Must Not Write Tests Requiring Unavailable Library Features",
+      "req_id": "REQ-PHASE3-128",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 128,
+      "section_idx": 11,
+      "title": "Use Skip Mechanism When Dependency May Be Missing",
+      "req_id": "REQ-PHASE3-129",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 136,
+      "section_idx": 13,
+      "title": "Search Status/State Fields to Identify State Machines",
+      "req_id": "REQ-PHASE3-137",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 137,
+      "section_idx": 13,
+      "title": "Search Guards That Check Status to Identify State Machines",
+      "req_id": "REQ-PHASE3-138",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 138,
+      "section_idx": 13,
+      "title": "Search State Transition Assignments to Identify State Machines",
+      "req_id": "REQ-PHASE3-139",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 141,
+      "section_idx": 13,
+      "title": "Flag Switch/Match Without Meaningful Default as a Gap",
+      "req_id": "REQ-PHASE3-142",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 142,
+      "section_idx": 13,
+      "title": "Flag If/Elif Chains Not Covering All States as a Gap",
+      "req_id": "REQ-PHASE3-143",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 143,
+      "section_idx": 13,
+      "title": "Check Reachability of Every State via Transitions",
+      "req_id": "REQ-PHASE3-144",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 145,
+      "section_idx": 13,
+      "title": "Check for States That Block Operations That Should Be Available",
+      "req_id": "REQ-PHASE3-146",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 146,
+      "section_idx": 13,
+      "title": "Record State Machine Gaps as Findings",
+      "req_id": "REQ-PHASE3-147",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 148,
+      "section_idx": 13,
+      "title": "Record Terminal State Without Cleanup Trigger as a Real Bug",
+      "req_id": "REQ-PHASE3-149",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 152,
+      "section_idx": 15,
+      "title": "Complete Step 6 Before Structured Pattern Selection",
+      "req_id": "REQ-PHASE3-153",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 155,
+      "section_idx": 15,
+      "title": "Generate At Least Five Ranked Failure Scenarios",
+      "req_id": "REQ-PHASE3-156",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 156,
+      "section_idx": 15,
+      "title": "Bug Hypotheses Must Include File-Path and Line-Number Citations",
+      "req_id": "REQ-PHASE3-157",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 157,
+      "section_idx": 15,
+      "title": "Bug Hypotheses Must Be Ranked by Priority",
+      "req_id": "REQ-PHASE3-158",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 160,
+      "section_idx": 15,
+      "title": "Quality Risks Must Not List Defensive Patterns the Code Already Has",
+      "req_id": "REQ-PHASE3-161",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 161,
+      "section_idx": 15,
+      "title": "Quality Risks Must Not List Risky Modules Without Specific Failure Scenarios",
+      "req_id": "REQ-PHASE3-162",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 162,
+      "section_idx": 15,
+      "title": "Quality Risks Must Not Conclude Mature Libraries Are Unlikely to Have Bugs",
+      "req_id": "REQ-PHASE3-163",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 163,
+      "section_idx": 15,
+      "title": "Each Scenario Must Be Specific Enough to Direct a Reviewer to a Function and Test Input",
+      "req_id": "REQ-PHASE3-164",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 164,
+      "section_idx": 16,
+      "title": "Phase A contract extraction writes to quality/CONTRACTS.md",
+      "req_id": "REQ-PHASE3-165",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 165,
+      "section_idx": 16,
+      "title": "Phase B writes REQ records to quality/requirements_manifest.json as source of truth",
+      "req_id": "REQ-PHASE3-166",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 166,
+      "section_idx": 16,
+      "title": "Phase B renders requirements to quality/REQUIREMENTS.md",
+      "req_id": "REQ-PHASE3-167",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 167,
+      "section_idx": 16,
+      "title": "Every REQ must record a tier value (1\u20135)",
+      "req_id": "REQ-PHASE3-168",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 168,
+      "section_idx": 16,
+      "title": "Tier 1/2 REQs must include a citation block with document, document_sha256, locator, and citation_excerpt",
+      "req_id": "REQ-PHASE3-169",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 169,
+      "section_idx": 16,
+      "title": "LLM must not shell out to citation_verifier directly",
+      "req_id": "REQ-PHASE3-170",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 170,
+      "section_idx": 16,
+      "title": "Tier 3 REQs must cite source file:line in description; citations must not appear on Tier 3/4/5 REQs",
+      "req_id": "REQ-PHASE3-171",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 171,
+      "section_idx": 16,
+      "title": "Pattern: field must be one of whitelist/parity/compensation or absent; invalid value fails quality_gate.py",
+      "req_id": "REQ-PHASE3-172",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 172,
+      "section_idx": 16,
+      "title": "Pattern: field must be preserved from Phase-1 hypothesis to REQUIREMENTS.md and requirements_manifest.json",
+      "req_id": "REQ-PHASE3-173",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 173,
+      "section_idx": 16,
+      "title": "Gate C13.7/Fix 2 must fail when Pattern is missing on REQs with per-site UC references",
+      "req_id": "REQ-PHASE3-174",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 174,
+      "section_idx": 16,
+      "title": "Requirements asserting specific constants must distinguish spec-says vs code-actually-contains",
+      "req_id": "REQ-PHASE3-175",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 175,
+      "section_idx": 16,
+      "title": "Constants present in spec but absent from code must be recorded as [NOT IN CODE] with file:line",
+      "req_id": "REQ-PHASE3-176",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 176,
+      "section_idx": 16,
+      "title": "Mechanical extraction command must be generated and executed before writing contract line for dispatch functions",
+      "req_id": "REQ-PHASE3-177",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 177,
+      "section_idx": 16,
+      "title": "Mechanical extraction raw output must be saved to quality/mechanical/<function>_cases.txt",
+      "req_id": "REQ-PHASE3-178",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 178,
+      "section_idx": 16,
+      "title": "Contract asserting constant presence is forbidden without matching case in mechanical output",
+      "req_id": "REQ-PHASE3-179",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 179,
+      "section_idx": 16,
+      "title": "Each extraction command must be appended to quality/mechanical/verify.sh",
+      "req_id": "REQ-PHASE3-180",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 180,
+      "section_idx": 16,
+      "title": "Phase 6 must execute bash quality/mechanical/verify.sh; benchmark fails on any artifact mismatch",
+      "req_id": "REQ-PHASE3-181",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 181,
+      "section_idx": 16,
+      "title": "verify.sh must run immediately after writing *_cases.txt and before any downstream artifacts",
+      "req_id": "REQ-PHASE3-182",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 182,
+      "section_idx": 16,
+      "title": "Failed verify.sh must trigger stop, delete failed file, and re-run with fresh redirect",
+      "req_id": "REQ-PHASE3-183",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 183,
+      "section_idx": 16,
+      "title": "Pipeline must not advance to Phase 3/2c until verify.sh exits 0",
+      "req_id": "REQ-PHASE3-184",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 184,
+      "section_idx": 16,
+      "title": "verify.sh stdout must be saved to quality/results/mechanical-verify.log",
+      "req_id": "REQ-PHASE3-185",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 186,
+      "section_idx": 16,
+      "title": "Mechanical artifacts are immutable after extraction and verification",
+      "req_id": "REQ-PHASE3-187",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 187,
+      "section_idx": 16,
+      "title": "Triage probes must not use mechanical artifact as sole evidence for source file contents",
+      "req_id": "REQ-PHASE3-188",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 188,
+      "section_idx": 16,
+      "title": "quality/mechanical/ directory must not be created without dispatch/registry/enumeration contracts",
+      "req_id": "REQ-PHASE3-189",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 189,
+      "section_idx": 16,
+      "title": "If no dispatch contracts, record NOT APPLICABLE for mechanical verification in PROGRESS.md",
+      "req_id": "REQ-PHASE3-190",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 190,
+      "section_idx": 16,
+      "title": "Expected behavior claims must use normative language; descriptive language requires mechanical confirmation",
+      "req_id": "REQ-PHASE3-191",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 191,
+      "section_idx": 16,
+      "title": "Phase C coverage loop must run up to 3 iterations until 100% coverage is reached",
+      "req_id": "REQ-PHASE3-192",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 192,
+      "section_idx": 16,
+      "title": "Coverage matrix must have one row per requirement, not grouped ranges",
+      "req_id": "REQ-PHASE3-193",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 193,
+      "section_idx": 16,
+      "title": "Phase C must write coverage matrix to quality/COVERAGE_MATRIX.md",
+      "req_id": "REQ-PHASE3-194",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 194,
+      "section_idx": 16,
+      "title": "Phase D completeness report must be written to quality/COMPLETENESS_REPORT.md without a Verdict section",
+      "req_id": "REQ-PHASE3-195",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 195,
+      "section_idx": 16,
+      "title": "Phase D must run up to 3 self-refinement iterations, short-circuiting below 3 changes",
+      "req_id": "REQ-PHASE3-196",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 196,
+      "section_idx": 16,
+      "title": "Deep documents with 'will cover' commitment must have at least one traced requirement before Phase D",
+      "req_id": "REQ-PHASE3-197",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    },
+    {
+      "draft_idx": 197,
+      "section_idx": 16,
+      "title": "REQUIREMENTS.md must begin with a human-readable overview covering what/who/risk",
+      "req_id": "REQ-PHASE3-198",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section."
+    }
+  ],
+  "demoted_to_tier_5": [],
+  "rejection_rate": 0.6111111111111112,
+  "rejection_rate_threshold": 0.3,
+  "phase4_council_flag": true
+}

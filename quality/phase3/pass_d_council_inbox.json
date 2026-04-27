@@ -1,0 +1,2076 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-04-27T08:16:36Z",
+  "items": [
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 1,
+      "section_idx": 0,
+      "section_heading": "Plan Overview \u2014 read this first, then explain it to the user",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Run the v1.5.2 documentation intake first (`python -m bin.reference_docs_ingest <target>` to walk `reference_docs/`)",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 2,
+      "section_idx": 0,
+      "section_heading": "Plan Overview \u2014 read this first, then explain it to the user",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "`cite/` files produce `quality/formal_docs_manifest.json` records",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 3,
+      "section_idx": 0,
+      "section_heading": "Plan Overview \u2014 read this first, then explain it to the user",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "top-level files are loaded as Tier 4 context via `reference_docs_ingest.load_tier4_context(<target>)`",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 4,
+      "section_idx": 0,
+      "section_heading": "Plan Overview \u2014 read this first, then explain it to the user",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "explore the codebase in three stages: open exploration driven by domain knowledge, domain-knowledge risk analysis, and selected structured exploration patterns",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 5,
+      "section_idx": 0,
+      "section_heading": "Plan Overview \u2014 read this first, then explain it to the user",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Write all findings to `quality/EXPLORATION.md`. This file is the foundation \u2014 Phase 2 reads it as its primary input.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 8,
+      "section_idx": 0,
+      "section_heading": "Plan Overview \u2014 read this first, then explain it to the user",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Run the three-pass code review against HEAD.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 13,
+      "section_idx": 0,
+      "section_heading": "Plan Overview \u2014 read this first, then explain it to the user",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "After triage, the same Council runs the v1.5.2 Layer-2 semantic citation check",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 14,
+      "section_idx": 0,
+      "section_heading": "Plan Overview \u2014 read this first, then explain it to the user",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "one prompt per reviewer, structured per-REQ verdicts for every Tier 1/2 citation",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 15,
+      "section_idx": 0,
+      "section_heading": "Plan Overview \u2014 read this first, then explain it to the user",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "structured per-REQ verdicts for every Tier 1/2 citation",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 19,
+      "section_idx": 0,
+      "section_heading": "Plan Overview \u2014 read this first, then explain it to the user",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Run TDD red-green cycle.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 25,
+      "section_idx": 0,
+      "section_heading": "Plan Overview \u2014 read this first, then explain it to the user",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Present results to the user with a scannable summary table",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 27,
+      "section_idx": 0,
+      "section_heading": "Plan Overview \u2014 read this first, then explain it to the user",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "provide a menu of improvement paths (iteration strategies, requirement refinement, integration test tuning)",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 29,
+      "section_idx": 0,
+      "section_heading": "Plan Overview \u2014 read this first, then explain it to the user",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Do not copy the plan verbatim; paraphrase it to demonstrate understanding.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 30,
+      "section_idx": 0,
+      "section_heading": "Plan Overview \u2014 read this first, then explain it to the user",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "explain the plan in your own words \u2014 what you'll do, what each phase produces, and why the exploration phase matters most",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 31,
+      "section_idx": 0,
+      "section_heading": "Plan Overview \u2014 read this first, then explain it to the user",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Emphasize that exploration starts with open-ended domain-driven investigation, followed by domain-knowledge risk analysis that reasons about what goes wrong in systems like this, then supplemented by ",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 32,
+      "section_idx": 3,
+      "section_heading": "How to Use",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Each phase runs in its own session with a clean context window, producing files on disk that the next phase reads.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 33,
+      "section_idx": 3,
+      "section_heading": "How to Use",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Each phase gets the full context window for deep analysis instead of competing for space with other phases.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 34,
+      "section_idx": 3,
+      "section_heading": "How to Use",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "When someone says 'run the quality playbook' or 'execute the quality playbook,' run Phase 1 (Explore) and stop.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 35,
+      "section_idx": 3,
+      "section_heading": "How to Use",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "After Phase 1 completes, tell the user what happened and what to say next.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 36,
+      "section_idx": 3,
+      "section_heading": "How to Use",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "The user drives each phase forward explicitly.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 37,
+      "section_idx": 4,
+      "section_heading": "Phase 0: Prior Run Analysis (Automatic)",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "If there are no prior runs, skip to Phase 1.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 39,
+      "section_idx": 4,
+      "section_heading": "Phase 0: Prior Run Analysis (Automatic)",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "When prior runs exist, the playbook enters continuation mode.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 40,
+      "section_idx": 4,
+      "section_heading": "Phase 0: Prior Run Analysis (Automatic)",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Read quality/runs/*/quality/BUGS.md from all prior runs.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 41,
+      "section_idx": 4,
+      "section_heading": "Phase 0: Prior Run Analysis (Automatic)",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "For each confirmed bug, extract: bug ID, file:line, summary, and the regression test assertion.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 42,
+      "section_idx": 4,
+      "section_heading": "Phase 0: Prior Run Analysis (Automatic)",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Deduplicate by file:line (the same bug found in multiple runs counts once).",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 43,
+      "section_idx": 4,
+      "section_heading": "Phase 0: Prior Run Analysis (Automatic)",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Write the merged seed list to quality/SEED_CHECKS.md with the specified markdown table format.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 45,
+      "section_idx": 4,
+      "section_heading": "Phase 0: Prior Run Analysis (Automatic)",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Record PASS (bug was fixed since last run) or FAIL (bug still present).",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 46,
+      "section_idx": 4,
+      "section_heading": "Phase 0: Prior Run Analysis (Automatic)",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "A failing seed is a confirmed carry-forward bug \u2014 it must appear in this run's BUGS.md regardless of whether any auditor independently finds it.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 47,
+      "section_idx": 4,
+      "section_heading": "Phase 0: Prior Run Analysis (Automatic)",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "A passing seed means the bug was fixed \u2014 note it in PROGRESS.md as 'SEED-NNN: resolved since prior run'.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 48,
+      "section_idx": 4,
+      "section_heading": "Phase 0: Prior Run Analysis (Automatic)",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Read quality/runs/*/quality/PROGRESS.md for scope declarations. Note which subsystems were covered in prior runs.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 49,
+      "section_idx": 4,
+      "section_heading": "Phase 0: Prior Run Analysis (Automatic)",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "During Phase 1 exploration, prioritize areas NOT covered by prior runs to maximize the chance of finding new bugs.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 50,
+      "section_idx": 4,
+      "section_heading": "Phase 0: Prior Run Analysis (Automatic)",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "If all subsystems were covered in prior runs, explore the same scope but with different emphasis (e.g., different scrutiny areas, different entry points).",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 58,
+      "section_idx": 5,
+      "section_heading": "Step 0: Ask About Development History",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Also search for the project name.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 59,
+      "section_idx": 5,
+      "section_heading": "Step 0: Ask About Development History",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Extract incident reports \u2014 what went wrong, how many records affected, how it was detected.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 60,
+      "section_idx": 5,
+      "section_heading": "Step 0: Ask About Development History",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Extract design discussions \u2014 why a particular approach was chosen, what alternatives were rejected.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 61,
+      "section_idx": 5,
+      "section_heading": "Step 0: Ask About Development History",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Extract quality framework discussions \u2014 coverage targets, testing philosophy, model review experiences.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 62,
+      "section_idx": 5,
+      "section_heading": "Step 0: Ask About Development History",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Extract cross-model feedback \u2014 where different AI models disagreed about the code.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 64,
+      "section_idx": 5,
+      "section_heading": "Step 0: Ask About Development History",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "When running in benchmark mode, via bin/run_playbook.py, or without user interaction (e.g., --single-pass), skip Step 0's question and proceed directly to Step 1.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 65,
+      "section_idx": 5,
+      "section_heading": "Step 0: Ask About Development History",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "If chat history folders are visible in the project tree (e.g., AI Chat History/, .chat_exports/), scan them without asking.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 66,
+      "section_idx": 5,
+      "section_heading": "Step 0: Ask About Development History",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "If no chat history is found, proceed \u2014 do not block waiting for a response that won't come.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 69,
+      "section_idx": 6,
+      "section_heading": "Step 1: Identify Domain, Stack, and Specifications",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "The skill produces a one-sentence answer to 'What does this project do?'",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 71,
+      "section_idx": 6,
+      "section_heading": "Step 1: Identify Domain, Stack, and Specifications",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "The skill identifies all external systems the project communicates with.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 72,
+      "section_idx": 6,
+      "section_heading": "Step 1: Identify Domain, Stack, and Specifications",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "The skill identifies and records the primary output of the project.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 74,
+      "section_idx": 6,
+      "section_heading": "Step 1: Identify Domain, Stack, and Specifications",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "The skill records the paths of all found specification documents.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 76,
+      "section_idx": 6,
+      "section_heading": "Step 1: Identify Domain, Stack, and Specifications",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "When working from non-formal requirements, alternative sources are used in order: (1) Ask the user, (2) README and inline documentation, (3) Existing test suite, (4) Type signatures and validation rul",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 80,
+      "section_idx": 6,
+      "section_heading": "Step 1: Identify Domain, Stack, and Specifications",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Requirement tags use the exact format '[Req: <tier> \u2014 <source>]' with tiers limited to 'formal', 'user-confirmed', and 'inferred'.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 83,
+      "section_idx": 7,
+      "section_heading": "Step 1b: Evaluate Documentation Depth",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "For each document, classify its depth as Deep, Moderate, or Shallow per the definitions provided.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 84,
+      "section_idx": 7,
+      "section_heading": "Step 1b: Evaluate Documentation Depth",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Do not narrow the audit scope to only the subsystems that have deep documentation.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 85,
+      "section_idx": 7,
+      "section_heading": "Step 1b: Evaluate Documentation Depth",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "If the most complex or most failure-prone module has only shallow documentation, that is a documentation gap to flag in PROGRESS.md, not a reason to skip the module.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 88,
+      "section_idx": 7,
+      "section_heading": "Step 1b: Evaluate Documentation Depth",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Tag them as `[Req: inferred \u2014 from source]`.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 93,
+      "section_idx": 7,
+      "section_heading": "Step 1b: Evaluate Documentation Depth",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "For every deep document, map it to the subsystem it covers, then either commit to deriving requirements from it ('will cover in Phase 2') or provide a specific justification.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 95,
+      "section_idx": 7,
+      "section_heading": "Step 1b: Evaluate Documentation Depth",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "A high-risk subsystem documented deeply in `docs_gathered/` must not silently disappear from the requirements set.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 97,
+      "section_idx": 8,
+      "section_heading": "Step 2: Map the Architecture",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "The architecture mapping output lists source directories and their purposes.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 98,
+      "section_idx": 8,
+      "section_heading": "Step 2: Map the Architecture",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "The agent reads the main entry point as part of architecture mapping.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 99,
+      "section_idx": 8,
+      "section_heading": "Step 2: Map the Architecture",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Execution flow is traced as part of the architecture mapping step.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 100,
+      "section_idx": 8,
+      "section_heading": "Step 2: Map the Architecture",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "The architecture map identifies the 3\u20135 major subsystems.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 105,
+      "section_idx": 9,
+      "section_heading": "Step 3: Read Existing Tests",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Identify: test count, coverage patterns, gaps, and any coverage theater",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 106,
+      "section_idx": 9,
+      "section_heading": "Step 3: Read Existing Tests",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Identify: test count, coverage patterns, gaps, and any coverage theater",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 107,
+      "section_idx": 9,
+      "section_heading": "Step 3: Read Existing Tests",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Identify: test count, coverage patterns, gaps, and any coverage theater",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 109,
+      "section_idx": 9,
+      "section_heading": "Step 3: Read Existing Tests",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Critical: Record the import pattern. How do existing tests import project modules?",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 110,
+      "section_idx": 9,
+      "section_heading": "Step 3: Read Existing Tests",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "You must use the exact same pattern in your functional tests \u2014 getting this wrong means every test fails with import/resolution errors.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 111,
+      "section_idx": 9,
+      "section_heading": "Step 3: Read Existing Tests",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "See references/functional_tests.md \u00a7 \"Import Pattern\" for the full six-language matrix.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 114,
+      "section_idx": 10,
+      "section_heading": "Step 4: Read the Specifications",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Walk each spec document section by section.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 118,
+      "section_idx": 10,
+      "section_heading": "Step 4: Read the Specifications",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Inferred requirements feed into QUALITY.md scenarios.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 120,
+      "section_idx": 11,
+      "section_heading": "Step 4b: Read Function Signatures and Real Data",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Don't guess from usage context \u2014 read the function definition and any documentation",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 123,
+      "section_idx": 11,
+      "section_heading": "Step 4b: Read Function Signatures and Real Data",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Your test fixtures must match the real data shape exactly",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 124,
+      "section_idx": 11,
+      "section_heading": "Step 4b: Read Function Signatures and Real Data",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Read existing test fixtures \u2014 How do existing tests create test data?",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 125,
+      "section_idx": 11,
+      "section_heading": "Step 4b: Read Function Signatures and Real Data",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "If they build config dicts with specific keys, use those exact keys",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 126,
+      "section_idx": 11,
+      "section_heading": "Step 4b: Read Function Signatures and Real Data",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Check the project's dependency manifest (`requirements.txt`, `build.sbt`, `package.json`, `pom.xml`/`build.gradle`, `go.mod`, `Cargo.toml`) to see what's actually available",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 127,
+      "section_idx": 11,
+      "section_heading": "Step 4b: Read Function Signatures and Real Data",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Don't write tests that depend on library features that aren't installed",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 128,
+      "section_idx": 11,
+      "section_heading": "Step 4b: Read Function Signatures and Real Data",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "If a dependency might be missing, use the test framework's skip mechanism \u2014 see `references/functional_tests.md` \u00a7 \"Library version awareness\" for framework-specific examples",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 136,
+      "section_idx": 13,
+      "section_heading": "Step 5a: Trace State Machines",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Search for status/state fields in models, enums, or constants (e.g., `status`, `state`, `phase`, `mode`).",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 137,
+      "section_idx": 13,
+      "section_heading": "Step 5a: Trace State Machines",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Search for guards that check status before allowing actions (e.g., `if status == \"running\"`, `match self.state`).",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 138,
+      "section_idx": 13,
+      "section_heading": "Step 5a: Trace State Machines",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Search for state transitions (assignments to status fields).",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 141,
+      "section_idx": 13,
+      "section_heading": "Step 5a: Trace State Machines",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "A `switch`/`match` without a meaningful default... is a gap.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 142,
+      "section_idx": 13,
+      "section_heading": "Step 5a: Trace State Machines",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "An `if/elif` chain that doesn't cover all states, is a gap.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 143,
+      "section_idx": 13,
+      "section_heading": "Step 5a: Trace State Machines",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "For each state transition, check: can you reach every state?",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 145,
+      "section_idx": 13,
+      "section_heading": "Step 5a: Trace State Machines",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Are there states that block operations that should be available?",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 146,
+      "section_idx": 13,
+      "section_heading": "Step 5a: Trace State Machines",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Record gaps as findings.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 148,
+      "section_idx": 13,
+      "section_heading": "Step 5a: Trace State Machines",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "A process that enters a terminal state but never triggers cleanup is a real bug.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 152,
+      "section_idx": 15,
+      "section_heading": "Step 6: Domain-Knowledge Risk Analysis (Code + Domain Knowledge)",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Complete it before selecting any structured patterns.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 155,
+      "section_idx": 15,
+      "section_heading": "Step 6: Domain-Knowledge Risk Analysis (Code + Domain Knowledge)",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Generate at least 5 ranked failure scenarios from this knowledge.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 156,
+      "section_idx": 15,
+      "section_heading": "Step 6: Domain-Knowledge Risk Analysis (Code + Domain Knowledge)",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Write them as specific bug hypotheses with file-path and line-number citations, ranked by priority.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 157,
+      "section_idx": 15,
+      "section_heading": "Step 6: Domain-Knowledge Risk Analysis (Code + Domain Knowledge)",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Write them as specific bug hypotheses with file-path and line-number citations, ranked by priority.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 160,
+      "section_idx": 15,
+      "section_heading": "Step 6: Domain-Knowledge Risk Analysis (Code + Domain Knowledge)",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "A Quality Risks section that lists defensive patterns the code already has (things the code does right) is not a risk analysis \u2014 it is a reassurance exercise and will not find bugs.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 161,
+      "section_idx": 15,
+      "section_heading": "Step 6: Domain-Knowledge Risk Analysis (Code + Domain Knowledge)",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "A section that lists risky modules without specific failure scenarios is not actionable.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 162,
+      "section_idx": 15,
+      "section_heading": "Step 6: Domain-Knowledge Risk Analysis (Code + Domain Knowledge)",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "A section that concludes 'this is a mature, well-tested library so basic bugs are unlikely' is actively harmful \u2014 mature libraries have the most subtle API-contract and edge-case bugs, precisely becau",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 163,
+      "section_idx": 15,
+      "section_heading": "Step 6: Domain-Knowledge Risk Analysis (Code + Domain Knowledge)",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "The test: could a code reviewer read each scenario and immediately know what function to open and what input to test? If not, the scenario is too abstract.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 164,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "After Phase A completes, quality/CONTRACTS.md exists and contains behavioral contracts extracted from all source files; every behavioral contract found during exploration is listed.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 165,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "After Phase B completes, quality/requirements_manifest.json exists and contains all formal REQ records; it is designated and treated as the source of truth.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 166,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "After Phase B completes, quality/REQUIREMENTS.md exists and contains rendered requirements derived from CONTRACTS.md and documentation.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 167,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Every REQ record in requirements_manifest.json carries a 'tier' field with an integer value in the range 1\u20135; any REQ missing 'tier' is non-conformant.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 168,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Every REQ with tier \u2208 {1, 2} carries a citation block; the block includes 'document', 'document_sha256', at least one of 'section'/'line', and 'citation_excerpt'; any Tier 1/2 REQ missing any of these",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 169,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "No shell invocation of bin/citation_verifier appears in the model's action trace for a run; citation excerpts are consumed from formal_docs_manifest.json, not generated by direct shell calls.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 170,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Every Tier 3 REQ description contains a 'file:line' citation; no Tier 3/4/5 REQ carries a 'citation' block; the citation block is exclusive to Tier 1 and Tier 2.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 171,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "A REQ with Pattern: set to any value other than 'whitelist', 'parity', or 'compensation' causes quality_gate.py to fail; a REQ with no Pattern: field passes the gate without error related to this fiel",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 172,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Every Pattern: value present on a Phase-1 hypothesis appears on the corresponding REQ in both quality/REQUIREMENTS.md and quality/requirements_manifest.json; any REQ that had Pattern: in Phase 1 but l",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 173,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "quality_gate.py C13.7/Fix 2 fails when a REQ carries UC references in UC-N.a/UC-N.b form but has no Pattern: field; REQs with UC-N.a/UC-N.b references and a valid Pattern: field pass this check.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 174,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "No requirement is written as 'must preserve X, Y, and Z' without first extracting and comparing the actual code contents; each requirement distinguishes 'spec-asserted' from 'code-verified' when makin",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 175,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Every requirement citing a constant that is in the spec but not in the code includes a '[NOT IN CODE]' marker with the spec file:line and the absent code location; no requirement asserts code presence",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 176,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "For any contract asserting dispatch-function coverage, evidence of a prior shell command execution (mechanical extraction) exists before the corresponding contract line is written; no contract asserti",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 177,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "For each dispatch function examined mechanically, a file exists at quality/mechanical/<function>_cases.txt containing the raw shell command output; the file is produced by shell redirect, not hand-wri",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 178,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Every contract claiming 'function preserves constant X' has a corresponding 'case X:' in quality/mechanical/<function>_cases.txt; any constant absent from the mechanical file triggers an 'absent' nota",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 179,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "quality/mechanical/verify.sh exists and contains one verification block per mechanical extraction; each block re-runs the exact extraction pipeline and diffs the output against the corresponding saved",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 180,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Phase 6 execution log shows 'bash quality/mechanical/verify.sh' was run; if any *_cases.txt does not match the fresh extraction output, the benchmark exits non-zero and is recorded as failed.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 181,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "In any run that writes a *_cases.txt file, verify.sh is executed before any contract line, REQUIREMENTS.md entry, or prose artifact citing that extraction is written; the execution ordering is verifia",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 182,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "When verify.sh exits non-zero: the failed *_cases.txt is deleted; a fresh shell redirect is used to re-run the extraction command; verify.sh is re-run on the new file; the pipeline does not advance un",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 183,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "No Phase 3 or Phase 2c activity begins if verify.sh last exited non-zero; the gate is a hard stop, not a warning.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 184,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "After verify.sh runs, quality/results/mechanical-verify.log exists and contains the stdout output from the verify.sh execution.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 186,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "No *_cases.txt file is modified after its initial verify.sh pass; when a discrepancy is found between a requirement and a mechanical artifact, the requirement is updated to match the artifact, not vic",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 187,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "No triage probe uses only 'open(quality/mechanical/...)' or 'cat quality/mechanical/...' to assert source file contents; probes either read the source file directly or re-execute the extraction pipeli",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 188,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "If the project has no dispatch-function, registry, or enumeration contracts, quality/mechanical/ is not created; if quality/mechanical/ exists, it contains at least one *_cases.txt and a verify.sh; an",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 189,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "When quality/mechanical/ is not created, PROGRESS.md contains a line stating 'Mechanical verification: NOT APPLICABLE \u2014 no dispatch/registry/enumeration contracts in scope' or equivalent explicit stat",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 190,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Every requirement using descriptive language ('preserves', 'handles') cites a confirming mechanical artifact; requirements without mechanical confirmation use normative language ('must preserve', 'mus",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 191,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Phase C iterates until coverage is 100% or 3 iterations have been completed; partial coverage declared after fewer than 3 iterations when coverage is below 100% is non-conformant.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 192,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "quality/COVERAGE_MATRIX.md contains exactly one row per REQ-NNN entry; no row uses a range notation (e.g., 'REQ-001 to REQ-005'); every individual requirement has its own distinct row.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 193,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "After Phase C completes, quality/COVERAGE_MATRIX.md exists and contains the coverage cross-reference matrix mapping contracts to requirements.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 194,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "quality/COMPLETENESS_REPORT.md exists after Phase D; the file does not contain a '## Verdict' section; the verdict is absent from this baseline report.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 195,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Phase D runs at least 1 and at most 3 self-refinement iterations; if an iteration produces fewer than 3 changes, the loop exits immediately regardless of remaining iteration budget.",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 196,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "Before Phase D is marked complete, every deep document listed as 'will cover' in PROGRESS.md has at least one REQ record in requirements_manifest.json tracing to the subsystem it documents; gaps trigg",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "rejected-draft",
+      "draft_idx": 197,
+      "section_idx": 16,
+      "section_heading": "Step 7: Derive Testable Requirements",
+      "rationale": "Structural reference to SKILL.md but Pass B's mechanical search did not verify; provisional Tier 1 / skill-section.",
+      "context_excerpt": "quality/REQUIREMENTS.md opens with a prose overview section that answers all four questions (what, does, actors, risks) before any requirement listings; a reviewer who has never seen the project can u",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 17,
+      "section_heading": "Checkpoint: Initialize PROGRESS.md",
+      "rationale": "Operational section 'Checkpoint: Initialize PROGRESS.md' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 18,
+      "section_heading": "Write exploration findings to disk",
+      "rationale": "Operational section 'Write exploration findings to disk' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 19,
+      "section_heading": "v1.5.2 JSON manifest discipline (read before writing any artifact)",
+      "rationale": "Operational section 'v1.5.2 JSON manifest discipline (read before writing any artifact)' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 20,
+      "section_heading": "File 1: `quality/QUALITY.md` \u2014 Quality Constitution",
+      "rationale": "Operational section 'File 1: `quality/QUALITY.md` \u2014 Quality Constitution' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 21,
+      "section_heading": "File 2: Functional Tests",
+      "rationale": "Operational section 'File 2: Functional Tests' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 22,
+      "section_heading": "File 3: `quality/RUN_CODE_REVIEW.md`",
+      "rationale": "Operational section 'File 3: `quality/RUN_CODE_REVIEW.md`' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 23,
+      "section_heading": "File 4: `quality/RUN_INTEGRATION_TESTS.md`",
+      "rationale": "Operational section 'File 4: `quality/RUN_INTEGRATION_TESTS.md`' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 24,
+      "section_heading": "File 5: `quality/RUN_SPEC_AUDIT.md` \u2014 Council of Three",
+      "rationale": "Operational section 'File 5: `quality/RUN_SPEC_AUDIT.md` \u2014 Council of Three' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 25,
+      "section_heading": "File 6: `AGENTS.md`",
+      "rationale": "Operational section 'File 6: `AGENTS.md`' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 26,
+      "section_heading": "File 7: `quality/RUN_TDD_TESTS.md` \u2014 TDD Verification Protocol",
+      "rationale": "Operational section 'File 7: `quality/RUN_TDD_TESTS.md` \u2014 TDD Verification Protocol' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 27,
+      "section_heading": "Checkpoint: Update PROGRESS.md after artifact generation",
+      "rationale": "Operational section 'Checkpoint: Update PROGRESS.md after artifact generation' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 34,
+      "section_heading": "Fixture Strategy",
+      "rationale": "Operational section 'Fixture Strategy' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 38,
+      "section_heading": "Purpose",
+      "rationale": "Operational section 'Purpose' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 39,
+      "section_heading": "The two-round challenge",
+      "rationale": "Operational section 'The two-round challenge' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 40,
+      "section_heading": "Auto-trigger patterns",
+      "rationale": "Operational section 'Auto-trigger patterns' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 41,
+      "section_heading": "Standalone invocation",
+      "rationale": "Operational section 'Standalone invocation' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 42,
+      "section_heading": "Token budget",
+      "rationale": "Operational section 'Token budget' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 43,
+      "section_heading": "Template",
+      "rationale": "Operational section 'Template' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 44,
+      "section_heading": "Where Scenarios Come From",
+      "rationale": "Operational section 'Where Scenarios Come From' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 45,
+      "section_heading": "Calibrating Scenario Count",
+      "rationale": "Operational section 'Calibrating Scenario Count' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 46,
+      "section_heading": "Self-Critique Before Finishing",
+      "rationale": "Operational section 'Self-Critique Before Finishing' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 47,
+      "section_heading": "Critical Rule",
+      "rationale": "Operational section 'Critical Rule' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 48,
+      "section_heading": "Systematic Search",
+      "rationale": "Operational section 'Systematic Search' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 49,
+      "section_heading": "What to Look For Beyond Grep",
+      "rationale": "Operational section 'What to Look For Beyond Grep' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 50,
+      "section_heading": "Converting Findings to Scenarios",
+      "rationale": "Operational section 'Converting Findings to Scenarios' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 51,
+      "section_heading": "Converting Findings to Boundary Tests",
+      "rationale": "Operational section 'Converting Findings to Boundary Tests' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 52,
+      "section_heading": "State Machine Patterns",
+      "rationale": "Operational section 'State Machine Patterns' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 53,
+      "section_heading": "Enumeration and Whitelist Completeness",
+      "rationale": "Operational section 'Enumeration and Whitelist Completeness' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 54,
+      "section_heading": "Missing Safeguard Patterns",
+      "rationale": "Operational section 'Missing Safeguard Patterns' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 55,
+      "section_heading": "Minimum Bar",
+      "rationale": "Operational section 'Minimum Bar' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 56,
+      "section_heading": "Pattern 1: Fallback and Degradation Path Parity",
+      "rationale": "Operational section 'Pattern 1: Fallback and Degradation Path Parity' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 57,
+      "section_heading": "Pattern 2: Dispatcher Return-Value Correctness",
+      "rationale": "Operational section 'Pattern 2: Dispatcher Return-Value Correctness' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 58,
+      "section_heading": "Pattern 3: Cross-Implementation Contract Consistency",
+      "rationale": "Operational section 'Pattern 3: Cross-Implementation Contract Consistency' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 59,
+      "section_heading": "Pattern 4: Enumeration and Representation Completeness",
+      "rationale": "Operational section 'Pattern 4: Enumeration and Representation Completeness' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 60,
+      "section_heading": "Pattern 5: API Surface Consistency",
+      "rationale": "Operational section 'Pattern 5: API Surface Consistency' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 61,
+      "section_heading": "Pattern 6: Spec-Structured Parsing Fidelity",
+      "rationale": "Operational section 'Pattern 6: Spec-Structured Parsing Fidelity' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 62,
+      "section_heading": "Extending This List",
+      "rationale": "Operational section 'Extending This List' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 63,
+      "section_heading": "Structure: Three Test Groups",
+      "rationale": "Operational section 'Structure: Three Test Groups' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 64,
+      "section_heading": "Test Count Heuristic",
+      "rationale": "Operational section 'Test Count Heuristic' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 65,
+      "section_heading": "Import Pattern: Match the Existing Tests",
+      "rationale": "Operational section 'Import Pattern: Match the Existing Tests' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 66,
+      "section_heading": "Create Test Setup BEFORE Writing Tests",
+      "rationale": "Operational section 'Create Test Setup BEFORE Writing Tests' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 67,
+      "section_heading": "No Placeholder Tests",
+      "rationale": "Operational section 'No Placeholder Tests' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 68,
+      "section_heading": "Read Before You Write: The Function Call Map",
+      "rationale": "Operational section 'Read Before You Write: The Function Call Map' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 69,
+      "section_heading": "Writing Spec-Derived Tests",
+      "rationale": "Operational section 'Writing Spec-Derived Tests' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 70,
+      "section_heading": "What Makes a Good Functional Test",
+      "rationale": "Operational section 'What Makes a Good Functional Test' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 71,
+      "section_heading": "Cross-Variant Testing Strategy",
+      "rationale": "Operational section 'Cross-Variant Testing Strategy' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 72,
+      "section_heading": "Anti-Patterns to Avoid",
+      "rationale": "Operational section 'Anti-Patterns to Avoid' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 73,
+      "section_heading": "Testing at the Right Layer",
+      "rationale": "Operational section 'Testing at the Right Layer' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 74,
+      "section_heading": "Fitness-to-Purpose Scenario Tests",
+      "rationale": "Operational section 'Fitness-to-Purpose Scenario Tests' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 75,
+      "section_heading": "Boundary and Negative Tests",
+      "rationale": "Operational section 'Boundary and Negative Tests' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 77,
+      "section_heading": "Shared rules for all strategies",
+      "rationale": "Operational section 'Shared rules for all strategies' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 78,
+      "section_heading": "Meta-strategy: `all` \u2014 run every strategy in sequence",
+      "rationale": "Operational section 'Meta-strategy: `all` \u2014 run every strategy in sequence' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 79,
+      "section_heading": "Strategy: `gap` (default) \u2014 find what the previous run missed",
+      "rationale": "Operational section 'Strategy: `gap` (default) \u2014 find what the previous run missed' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 80,
+      "section_heading": "Strategy: `unfiltered` \u2014 pure domain-driven exploration without structural constraints",
+      "rationale": "Operational section 'Strategy: `unfiltered` \u2014 pure domain-driven exploration without structural constraints' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 81,
+      "section_heading": "Strategy: `parity` \u2014 cross-path comparison and diffing",
+      "rationale": "Operational section 'Strategy: `parity` \u2014 cross-path comparison and diffing' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 82,
+      "section_heading": "Strategy: `adversarial` \u2014 challenge the previous run's conclusions",
+      "rationale": "Operational section \"Strategy: `adversarial` \u2014 challenge the previous run's conclusions\" produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 83,
+      "section_heading": "Role Definition",
+      "rationale": "Operational section 'Role Definition' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 84,
+      "section_heading": "File-Writing Override",
+      "rationale": "Operational section 'File-Writing Override' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 85,
+      "section_heading": "Rationalization Patterns",
+      "rationale": "Operational section 'Rationalization Patterns' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 86,
+      "section_heading": "Grounding",
+      "rationale": "Operational section 'Grounding' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 87,
+      "section_heading": "Post-Phase Verification Gate (Mandatory)",
+      "rationale": "Operational section 'Post-Phase Verification Gate (Mandatory)' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 88,
+      "section_heading": "Error Recovery",
+      "rationale": "Operational section 'Error Recovery' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 90,
+      "section_heading": "Files produced",
+      "rationale": "Operational section 'Files produced' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 91,
+      "section_heading": "Phase A: Extract behavioral contracts",
+      "rationale": "Operational section 'Phase A: Extract behavioral contracts' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 92,
+      "section_heading": "Phase B: Derive requirements from contracts",
+      "rationale": "Operational section 'Phase B: Derive requirements from contracts' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 94,
+      "section_heading": "Phase D: Completeness check",
+      "rationale": "Operational section 'Phase D: Completeness check' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 95,
+      "section_heading": "Phase E: Narrative pass",
+      "rationale": "Operational section 'Phase E: Narrative pass' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 96,
+      "section_heading": "Versioning protocol",
+      "rationale": "Operational section 'Versioning protocol' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 97,
+      "section_heading": "After the pipeline: review and refinement",
+      "rationale": "Operational section 'After the pipeline: review and refinement' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 99,
+      "section_heading": "Generated file template",
+      "rationale": "Operational section 'Generated file template' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 100,
+      "section_heading": "Refinement Pass \u2014 v[new version]",
+      "rationale": "Operational section 'Refinement Pass \u2014 v[new version]' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 102,
+      "section_heading": "Generated file template",
+      "rationale": "Operational section 'Generated file template' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 103,
+      "section_heading": "Cross-Model Audit",
+      "rationale": "Operational section 'Cross-Model Audit' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 104,
+      "section_heading": "Review Progress",
+      "rationale": "Operational section 'Review Progress' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 105,
+      "section_heading": "Cross-Cutting Concerns",
+      "rationale": "Operational section 'Cross-Cutting Concerns' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 106,
+      "section_heading": "Feedback",
+      "rationale": "Operational section 'Feedback' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 107,
+      "section_heading": "Additional hints",
+      "rationale": "Operational section 'Additional hints' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 108,
+      "section_heading": "File 3: Code Review Protocol (`RUN_CODE_REVIEW.md`)",
+      "rationale": "Operational section 'File 3: Code Review Protocol (`RUN_CODE_REVIEW.md`)' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 109,
+      "section_heading": "File 4: Integration Test Protocol (`RUN_INTEGRATION_TESTS.md`)",
+      "rationale": "Operational section 'File 4: Integration Test Protocol (`RUN_INTEGRATION_TESTS.md`)' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 110,
+      "section_heading": "Integration Test Plan",
+      "rationale": "Operational section 'Integration Test Plan' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 111,
+      "section_heading": "Results",
+      "rationale": "Operational section 'Results' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 112,
+      "section_heading": "Why This Matters",
+      "rationale": "Operational section 'Why This Matters' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 113,
+      "section_heading": "How to Build the Map",
+      "rationale": "Operational section 'How to Build the Map' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 114,
+      "section_heading": "Rules for Choosing Mutation Values",
+      "rationale": "Operational section 'Rules for Choosing Mutation Values' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 115,
+      "section_heading": "When to Skip This Step",
+      "rationale": "Operational section 'When to Skip This Step' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 116,
+      "section_heading": "Why Three Models?",
+      "rationale": "Operational section 'Why Three Models?' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 117,
+      "section_heading": "Template",
+      "rationale": "Operational section 'Template' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 118,
+      "section_heading": "Council Status",
+      "rationale": "Operational section 'Council Status' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 119,
+      "section_heading": "The Four Guardrails (Critical for All Auditors)",
+      "rationale": "Operational section 'The Four Guardrails (Critical for All Auditors)' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 120,
+      "section_heading": "Model Selection Notes",
+      "rationale": "Operational section 'Model Selection Notes' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 121,
+      "section_heading": "Tips for Writing Scrutiny Areas",
+      "rationale": "Operational section 'Tips for Writing Scrutiny Areas' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 122,
+      "section_heading": "Self-Check Benchmarks",
+      "rationale": "Operational section 'Self-Check Benchmarks' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 123,
+      "section_heading": "Documentation Verification",
+      "rationale": "Operational section 'Documentation Verification' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "zero-req-section",
+      "draft_idx": null,
+      "section_idx": 124,
+      "section_heading": "Quick Checklist Format",
+      "rationale": "Operational section 'Quick Checklist Format' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
+      "context_excerpt": "",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "weak-rationale",
+      "draft_idx": 0,
+      "section_idx": 3,
+      "section_heading": "How to Use",
+      "rationale": "UC UC-PHASE3-01 requires Council review (UCs are not mechanically cited; verification path is Council).",
+      "context_excerpt": "User invokes playbook with default trigger phrase, only Phase 1 runs",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "weak-rationale",
+      "draft_idx": 1,
+      "section_idx": 3,
+      "section_heading": "How to Use",
+      "rationale": "UC UC-PHASE3-02 requires Council review (UCs are not mechanically cited; verification path is Council).",
+      "context_excerpt": "User explicitly advances through phases one at a time across sessions",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "weak-rationale",
+      "draft_idx": 2,
+      "section_idx": 4,
+      "section_heading": "Phase 0: Prior Run Analysis (Automatic)",
+      "rationale": "UC UC-PHASE3-03 requires Council review (UCs are not mechanically cited; verification path is Council).",
+      "context_excerpt": "Phase 0 full continuation mode: prior runs exist with conformant artifacts",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "weak-rationale",
+      "draft_idx": 3,
+      "section_idx": 4,
+      "section_heading": "Phase 0: Prior Run Analysis (Automatic)",
+      "rationale": "UC UC-PHASE3-04 requires Council review (UCs are not mechanically cited; verification path is Council).",
+      "context_excerpt": "Phase 0 skip: no prior runs exist",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "weak-rationale",
+      "draft_idx": 4,
+      "section_idx": 4,
+      "section_heading": "Phase 0: Prior Run Analysis (Automatic)",
+      "rationale": "UC UC-PHASE3-05 requires Council review (UCs are not mechanically cited; verification path is Council).",
+      "context_excerpt": "Phase 0 partial skip: quality/runs/ exists but contains no conformant artifacts",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "weak-rationale",
+      "draft_idx": 5,
+      "section_idx": 28,
+      "section_heading": "Phase 3: Code Review and Regression Tests",
+      "rationale": "UC UC-PHASE3-06 requires Council review (UCs are not mechanically cited; verification path is Council).",
+      "context_excerpt": "User runs Phase 3 code review and regression tests",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "weak-rationale",
+      "draft_idx": 6,
+      "section_idx": 29,
+      "section_heading": "Phase 4: Spec Audit and Triage",
+      "rationale": "UC UC-PHASE3-07 requires Council review (UCs are not mechanically cited; verification path is Council).",
+      "context_excerpt": "Full-council Phase 4 spec audit and triage with spot-check validation",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "weak-rationale",
+      "draft_idx": 7,
+      "section_idx": 29,
+      "section_heading": "Phase 4: Spec Audit and Triage",
+      "rationale": "UC UC-PHASE3-08 requires Council review (UCs are not mechanically cited; verification path is Council).",
+      "context_excerpt": "Phase 4 spec audit with incomplete council and enumeration or whitelist checks",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "weak-rationale",
+      "draft_idx": 8,
+      "section_idx": 30,
+      "section_heading": "Phase 5: Post-Review Reconciliation and Closure Verification",
+      "rationale": "UC UC-PHASE3-09 requires Council review (UCs are not mechanically cited; verification path is Council).",
+      "context_excerpt": "Run Phase 5 reconciliation and closure verification after Phase 4 completes",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "weak-rationale",
+      "draft_idx": 9,
+      "section_idx": 30,
+      "section_heading": "Phase 5: Post-Review Reconciliation and Closure Verification",
+      "rationale": "UC UC-PHASE3-10 requires Council review (UCs are not mechanically cited; verification path is Council).",
+      "context_excerpt": "Challenge gate rejects or downgrades false-positive bugs before reconciliation",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "weak-rationale",
+      "draft_idx": 10,
+      "section_idx": 31,
+      "section_heading": "Phase 6: Verify",
+      "rationale": "UC UC-PHASE3-11 requires Council review (UCs are not mechanically cited; verification path is Council).",
+      "context_excerpt": "Execute Phase 6 incremental verification after reconciliation completes",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "weak-rationale",
+      "draft_idx": 11,
+      "section_idx": 32,
+      "section_heading": "Recheck Mode \u2014 Verify Bug Fixes",
+      "rationale": "UC UC-PHASE3-12 requires Council review (UCs are not mechanically cited; verification path is Council).",
+      "context_excerpt": "User verifies applied bug fixes using recheck mode",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "weak-rationale",
+      "draft_idx": 12,
+      "section_idx": 33,
+      "section_heading": "Phase 7: Present, Explore, Improve (Interactive)",
+      "rationale": "UC UC-PHASE3-13 requires Council review (UCs are not mechanically cited; verification path is Council).",
+      "context_excerpt": "User reviews generated artifacts and directs next steps after Phase 6 completes",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "weak-rationale",
+      "draft_idx": 13,
+      "section_idx": 76,
+      "section_heading": "Iteration cycle",
+      "rationale": "UC UC-PHASE3-14 requires Council review (UCs are not mechanically cited; verification path is Council).",
+      "context_excerpt": "Agent executes the full four-strategy iteration cycle in recommended order",
+      "provisional_disposition": "needs-council-review"
+    },
+    {
+      "item_type": "weak-rationale",
+      "draft_idx": 14,
+      "section_idx": 93,
+      "section_heading": "Phase C: Verify coverage (loop, max 3 iterations)",
+      "rationale": "UC UC-PHASE3-15 requires Council review (UCs are not mechanically cited; verification path is Council).",
+      "context_excerpt": "Phase C: iterative contract coverage verification and gap remediation loop",
+      "provisional_disposition": "needs-council-review"
+    }
+  ]
+}

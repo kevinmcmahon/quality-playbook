@@ -53,7 +53,16 @@ def _tag_cross_references(
 
 # Throughput tripwire threshold. Sub-this elapsed time on a
 # substantive section indicates stub generation under context pressure.
-MIN_PLAUSIBLE_ELAPSED_MS = 12_000
+# Phase 3c live-run tuning: lowered from 12_000ms (original SKILL.md-
+# calibrated floor) to 2_500ms based on QPB live-run evidence that
+# reference-file sub-sections legitimately complete in 3-12s. The
+# original 12s floor trip-fired on section 39 (11890ms, "The two-
+# round challenge") and section 44 (4542ms, "Where Scenarios Come
+# From"), both of which produced 5+ substantive REQ drafts on resume.
+# The 2.5s floor still catches the pathological "plausible junk"
+# failure mode (responses under 2s typically lack any content) while
+# allowing legit fast responses on small reference-file sub-sections.
+MIN_PLAUSIBLE_ELAPSED_MS = 2_500
 
 
 # Default tail-context budget (preceding + following section snippets,
