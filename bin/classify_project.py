@@ -146,8 +146,13 @@ SKILL_DOMINANCE_RATIO = 2.0
 # extensive skill prose still falls below 5× when its code carries weight,
 # so a project crossing this threshold is reliably Skill, not Hybrid. The
 # 5× choice (vs 3× or 10×) keeps the medium-confidence Skill band wide
-# enough to catch borderline projects and gives QPB at 1.67× a comfortable
-# margin from any transition.
+# enough to catch borderline projects and gives QPB at its current ratio
+# (~1.10× as of v1.5.3 release-readiness; verify with
+# `python3 -m bin.classify_project --benchmark`) a comfortable margin
+# from any transition. Phase 5 calibration anchor refresh: the ratio
+# slid from 1.67× (v1.5.2) to 1.10× (v1.5.3) as code outpaced prose
+# during Phases 1-4. Re-check before each release; QPB sits well within
+# the [1.0×, 2.0×) Hybrid band either way.
 SKILL_HIGH_CONFIDENCE_RATIO = 5.0
 # Symmetric to SKILL_DOMINANCE_RATIO but on the code-dominant side: a
 # project where code outsizes SKILL.md prose by 2× or more is reliably
@@ -578,13 +583,24 @@ def _utc_now_iso() -> str:
 # are resolved relative to the QPB repo root (this file's grandparent).
 _QPB_ROOT = Path(__file__).resolve().parents[1]
 
+# Maintenance discipline (Phase 5 DQ-5-3 / Stage 3C): the cobra path
+# is pinned per release rather than auto-resolved. To bump the
+# pinned snapshot for a future v1.5.x release:
+#   1. Verify the new cobra/ snapshot exists under repos/.
+#   2. Update the path tuple below.
+#   3. Re-run `python3 -m bin.classify_project --benchmark`; commit
+#      the updated benchmark log along with the pin bump.
+# Auto-resolving (e.g. globbing "repos/cobra-*") would silently
+# follow whatever snapshot happens to be on disk and break
+# reproducibility across releases. Explicit pinning keeps the
+# benchmark surface stable.
 _BENCHMARK_TARGETS: list[tuple[str, Path, str, bool]] = [
     # (label, path-relative-to-QPB-root, expected_classification, write_to_disk)
     ("chi-1.5.1", Path("repos/chi-1.5.1"), "Code", True),
     ("virtio-1.5.1", Path("repos/virtio-1.5.1"), "Code", True),
     ("express-1.5.1", Path("repos/express-1.5.1"), "Code", True),
-    ("cobra-latest", Path("repos/cobra-1.3.46"), "Code", True),
-    ("casbin-latest", Path("repos/archive/casbin-1.5.1"), "Code", True),
+    ("cobra-1.3.46", Path("repos/cobra-1.3.46"), "Code", True),
+    ("casbin-1.5.1", Path("repos/archive/casbin-1.5.1"), "Code", True),
     # QPB itself: classify but do NOT write -- QPB's quality/ subtree is
     # tracked, and the v1.5.3 Phase 1 brief explicitly forbids modifying
     # files outside the Phase 1 surface. The verification log captures the

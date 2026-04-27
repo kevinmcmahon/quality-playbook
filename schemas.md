@@ -1045,6 +1045,21 @@ Layer 1 (mechanical checks):
     unique. Values within `UC.formal_doc_refs` MUST be unique. Duplicate
     entries fail the gate.
 
+19. **Pattern-tagged REQs have complete grid coverage.** For every REQ with
+    a `pattern:` field, every (authoritative item × site) cell from the
+    Phase 3 compensation grid MUST appear either in some BUG's `covers` array
+    or in a structured downgrade record in
+    `quality/compensation_grid_downgrades.json`.
+
+20. **Structured downgrade records are complete.** Every record in
+    `quality/compensation_grid_downgrades.json` MUST have all five fields:
+    `cell_id`, `authority_ref`, `site_citation`, `reason_class`,
+    `falsifiable_claim`. `reason_class` MUST be one of
+    `out-of-scope | deprecated | platform-gated | handled-upstream |
+    intentionally-partial`. `falsifiable_claim` MUST have non-zero length.
+    Missing fields or invalid `reason_class` → cell reverts to BUG at gate
+    time.
+
 21. **v1.5.3 source_type / skill_section consistency.** On a v1.5.3-shaped
     requirements manifest (per §3.10), every REQ MUST have `source_type`
     populated with a member of `req_source_type` (§3.7); every REQ with
@@ -1064,21 +1079,6 @@ Layer 1 (mechanical checks):
     manifest (per §3.10), every record MUST have `role` populated with a
     member of `formal_doc_role` (§3.6). Missing or invalid value fails
     the gate.
-
-19. **Pattern-tagged REQs have complete grid coverage.** For every REQ with
-    a `pattern:` field, every (authoritative item × site) cell from the
-    Phase 3 compensation grid MUST appear either in some BUG's `covers` array
-    or in a structured downgrade record in
-    `quality/compensation_grid_downgrades.json`.
-
-20. **Structured downgrade records are complete.** Every record in
-    `quality/compensation_grid_downgrades.json` MUST have all five fields:
-    `cell_id`, `authority_ref`, `site_citation`, `reason_class`,
-    `falsifiable_claim`. `reason_class` MUST be one of
-    `out-of-scope | deprecated | platform-gated | handled-upstream |
-    intentionally-partial`. `falsifiable_claim` MUST have non-zero length.
-    Missing fields or invalid `reason_class` → cell reverts to BUG at gate
-    time.
 
 ---
 
