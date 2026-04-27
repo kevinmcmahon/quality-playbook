@@ -203,107 +203,141 @@ Gate to Phase 4:
 
 ---
 
-## Phase 4 — Internal and Prose-to-Code Divergence Detection
+## Phase 4 — All Divergence Detection + Skill-Project Gate Enforcement
 
-Goal: implement static divergence checks for skills.
+> **Scope-consolidation note (2026-04-27):** the original plan split divergence detection across Phases 4 (internal-prose + prose-to-code), 5 (execution), and 6 (gate enforcement). After completing Phases 1-3a, real-world phase sizing showed Phases 4/5/6 were uneven: Phase 5 (execution divergence) was small, Phase 6 (gate enforcement) was small, and the cognitive boundary between detection and enforcement was artificial. The leaner consolidation merges them into one phase: Phase 4 detects all three divergence categories AND adds the gate enforcement that consumes them.
 
-Work items:
-- Internal divergence: for each pair of REQs citing the same document, check if their `citation_excerpt` content supports compatible claims. Contradictions flagged as bugs with disposition `spec-fix`.
-- Prose-to-code divergence: for Hybrid projects, scan SKILL.md claims that reference code (e.g., "quality_gate.py runs 45 checks") and cross-check against the actual code. Tool: the Phase 4 Council gets the REQ + the referenced code region + asks "does the code match the prose claim?"
-- Output: bugs with `divergence_type = internal-prose` or `prose-to-code`
-- Dispositions populated by the Council, not auto-assigned
+Goal: implement static and dynamic divergence detection for skill / hybrid projects, plus the skill-project gate invariants that enforce coverage.
 
-Test fixtures:
-- A SKILL.md with a deliberate internal contradiction (two sections disagreeing on artifact count)
-- A Hybrid project with a deliberate prose-to-code divergence
+### Part A — Static divergence detection (internal-prose + prose-to-code)
 
-Deliverable: divergence detection implemented, verified on fixtures, verified on QPB's actual self-audit (may find real bugs).
+- **Internal-prose divergence:** for each pair of REQs citing the same document, check if their `citation_excerpt` content supports compatible claims. Contradictions flagged as bugs with `divergence_type = "internal-prose"` and provisional disposition `spec-fix` per the SKILL.md-vs-reference-file precedence rule (`schemas.md §3.9`).
+- **Prose-to-code divergence (Hybrid only):** SKILL.md claims that reference code behavior (e.g., "quality_gate.py runs 45 checks"). Two-tier detection:
+  - **Tier 1 (mechanical):** countable claims (`\d+ checks`, `\d+ phases`, etc.) — count actual code artifact, compare, FAIL on mismatch.
+  - **Tier 2 (LLM-driven):** non-countable claims — invoke a Council-style prompt: "Given this prose claim and this code region, does the code match?" Output verdict + rationale; non-matches → `divergence_type = "prose-to-code"`.
+- Output: bugs with `divergence_type` in `{"internal-prose", "prose-to-code"}` written to `pass_e_internal_divergences.jsonl` and `pass_e_prose_to_code_divergences.jsonl`.
+- Dispositions populated by Council per `schemas.md §3.9` precedence; mechanical detection only sets *provisional* disposition.
 
-Gate to Phase 5: fixtures correctly flagged; any real divergences found on QPB are triaged (either fixed or dispositioned as known/deferred).
+### Part B — Execution divergence (consume archived gate results)
+
+**Scope boundary (strict):** this part does NOT build an LLM evaluation harness. It does NOT parse unstructured LLM outputs, grade intermediate reasoning, or evaluate semantic quality. It consumes existing structured `quality_gate.py` results across archived runs and recognizes patterns. If the work starts drifting into "grading LLM outputs," stop and re-scope — that's parked indefinitely.
+
+- **Gate result loader:** read `quality_gate.py` output files from each archived run in `previous_runs/`.
+- **REQ-to-gate-check mapper:** for each skill REQ derived in Phase 3 from a SKILL.md section, identify which gate check(s) implement it. Mapping authored explicitly in the REQ record, not inferred.
+- **Pattern aggregator:** for each REQ, count pass/fail rate of its associated gate checks across all archived runs.
+- **Divergence reporter:** flag REQs where the associated gate check failed in ≥1 of the last K runs (K = 5 by default).
+- Output: bugs with `divergence_type = "execution"`, citing the SKILL.md REQ, the associated gate check, and the archived run IDs where the check failed. Written to `pass_e_execution_divergences.jsonl`.
+- Confidence handling: a REQ whose gate check failed in 1 of 5 runs is a lower-urgency flag than one that failed in 5 of 5. Failure count in the bug record. Gate does not auto-reject on low-failure-count findings but surfaces them for Council review.
+- Minimum run threshold: if fewer than 3 prior runs exist, execution divergence check runs with a confidence caveat. With 0 prior runs, the check is skipped entirely.
+
+### Part C — Skill-project gate enforcement
+
+New checks added to `quality_gate.py` that enforce skill-project requirements:
+
+- **Skill/Hybrid projects:** every operational SKILL.md section has at least one REQ citing it (consume `pass_d_section_coverage.json` from Phase 3).
+- **Skill/Hybrid projects:** every reference file has at least one REQ OR is explicitly marked as non-normative.
+- **Hybrid projects:** cross-cutting REQs that span SKILL.md and code both populate.
+- **All projects:** `project_type.json` exists at expected location and matches actual repo layout.
+
+Failure modes output specific `file:section` references so fixes don't require re-running the full playbook.
+
+### Part D — BUG record production + Council inbox extension
+
+- Convert each detected divergence into a formal BUG record matching the v1.5.3-extended schema. Required fields per invariant #21 + #22: `bug_id`, `divergence_type`, `disposition`, `description`, `affected_artifacts`, `severity`, `tier`.
+- Output: `pass_e_bugs.jsonl` (seed for Phase 5+ to merge into `bugs_manifest.json`).
+- Extend `pass_d_council_inbox.json` with new items for each detected divergence: `item_type` ∈ `{"divergence-internal-prose", "divergence-prose-to-code", "divergence-execution"}`.
+
+### Part E — Council override workflow for project-type-classifier
+
+Round 1 carry-forward: when a Phase 4 reviewer believes the Phase 1 classification is wrong, the override path is to re-run `python3 -m bin.classify_project <target> --override <new> --override-rationale "<text>"`. Phase 1's existing override mechanism is reused; no new helper needed. Document the workflow in `bin/classify_project.py`'s module docstring.
+
+### Test fixtures
+
+- A skill with a deliberate internal-prose contradiction (two SKILL.md sections disagreeing on artifact count).
+- A Hybrid project with a deliberate prose-to-code divergence (SKILL.md says "X checks", code has Y).
+- A skill project with a section that has zero REQs and is not in the meta allowlist (gate enforcement Part C should flag it).
+- An execution-divergence fixture: a synthetic `previous_runs/` directory with archived gate results showing intermittent failures of a specific check.
+
+### Deliverable
+
+Divergence detection (all three categories) + gate enforcement implemented, tested on fixtures, run against QPB's actual self-audit. Real divergences triaged: fixed in source, dispositioned as known/deferred, or confirmed false-positive with corresponding fixture additions.
+
+### Gate to Phase 5
+
+- Fixtures correctly flagged for each detection category.
+- Any real divergences found on QPB are triaged.
+- All five code-project benchmark targets continue to pass the new gate checks (no regression — code projects shouldn't trigger skill-specific invariants).
+- At least one real execution divergence surfaced from QPB's bootstrap history (expected based on v1.4.x self-audits known to have had gate failures on skill-related checks).
 
 ---
 
-## Phase 5 — Execution Divergence Infrastructure
+## Phase 5 — Release Readiness + Bootstrap + Tag
 
-Goal: implement the third divergence category — comparing SKILL.md promises against observed behavior in prior runs — by aggregating existing `quality_gate.py` results across archived runs.
+Consolidates the original Phase 7 (full benchmark validation), Phase 8 (self-audit bootstrap), and the Phase 7 carry-forward items accumulated during Rounds 1-3 (banner version sync, schemas.md §10 invariant re-sequencing, calibration anchor refresh, cobra-path snapshot maintenance, schemas.md banner sync to SKILL.md `metadata.version`).
 
-**Scope boundary (strict):** this phase does NOT build an LLM evaluation harness. It does NOT parse unstructured LLM outputs, grade intermediate reasoning, or evaluate semantic quality. It consumes existing structured gate results and recognizes patterns across them. If the work starts drifting into "grading LLM outputs," stop and re-scope.
+Goal: run v1.5.3 against all benchmark targets, validate cross-model consistency, sync version stamps, commit the formal self-audit bootstrap, tag and push.
 
-Work items:
-- Gate result loader: read `quality_gate.py` output files from each archived run in `previous_runs/`
-- REQ-to-gate-check mapper: for each skill REQ (derived in Phase 3 from SKILL.md sections), identify which gate check(s) implement it. Mapping is authored explicitly in the REQ record, not inferred.
-- Pattern aggregator: for each REQ, count pass/fail rate of its associated gate checks across all archived runs
-- Divergence reporter: flag REQs where the associated gate check failed in ≥1 of the last K runs (K = 5 by default)
-- Output: bugs with `divergence_type = execution`, citing the SKILL.md REQ, the associated gate check, and the archived run IDs where the check failed
+### Part A — Full benchmark validation
 
-What this explicitly does NOT do:
-- Does not parse LLM output prose for quality
-- Does not re-run any archived runs
-- Does not evaluate whether gate-passing runs are "actually good"
-- Does not produce statistical confidence intervals on LLM behavior
-
-Confidence handling: a REQ whose gate check failed in 1 of 5 runs is a lower-urgency flag than one that failed in 5 of 5. Failure count reported in the bug record. Gate does not auto-reject on low-failure-count findings but surfaces them for Council review.
-
-Minimum run threshold: if fewer than 3 prior runs exist, execution divergence check runs with a confidence caveat in the bug record. With 0 prior runs, the check is skipped entirely.
-
-Deliverable: execution divergence module scoped strictly to gate-result aggregation, tested against QPB's archived previous_runs, findings triaged.
-
-Gate to Phase 6: at least one real execution divergence surfaced from QPB's bootstrap history (expected based on v1.4.x self-audits known to have had gate failures on skill-related checks).
-
----
-
-## Phase 6 — Quality Gate Updates
-
-Goal: quality_gate.py enforces skill-project requirements.
-
-New checks to add:
-- Skill/Hybrid projects: every operational SKILL.md section has at least one REQ citing it
-- Skill/Hybrid projects: every reference file has at least one REQ or is explicitly marked as non-normative
-- Hybrid projects: cross-cutting REQs that span SKILL.md and code both populate
-- All projects: project_type.json exists and matches actual repo layout
-
-Failure modes output specific file+section references so fixes don't require re-running the full playbook.
-
-Deliverable: updated quality_gate.py, test fixtures for each new failure mode, no regression on code projects.
-
-Gate to Phase 7: gate correctly flags deliberately-broken skill fixtures; all five code benchmarks still pass.
-
----
-
-## Phase 7 — Full Benchmark Validation
-
-Goal: run v1.5.3 against all five code benchmark repos AND against QPB itself (Hybrid) AND against the skill test fixture (pure Skill).
+Run v1.5.3 against:
+- **5 code-project benchmark targets** (chi-1.5.1, virtio-1.5.1, express-1.5.1, cobra-latest, casbin-latest)
+- **QPB itself** (Hybrid)
+- **A pure-Skill test fixture** (created during Phase 4 if not yet)
 
 Expected outcomes:
-- **Code projects** (virtio, chi, cobra, express, httpx): bug yields within ±10% of v1.5.0 baseline. No new false positives from skill-specific checks (they shouldn't fire).
-- **QPB self-audit** (Hybrid): REQ count and structure at parity with Haiku benchmark (within ±20% of Haiku's 95 REQs, same 10 UCs in some form). Real skill-related bugs surfaced and triaged.
-- **Pure skill fixture**: clean run. Section-to-REQ mapping produces expected structure.
-- Cross-model consistency: repeating self-audit with claude-opus, claude-sonnet, copilot+gpt produces comparable coverage (within ±20% REQ count, same UC set).
+- **Code projects:** bug yields within ±10% of v1.5.0 baseline. No new false positives from skill-specific checks (they shouldn't fire on Code projects).
+- **QPB self-audit (Hybrid):** REQ count and structure at parity with Haiku benchmark (within ±20% of Haiku's 95 REQs, same 10 UCs in some form). Real skill-related bugs surfaced and triaged.
+- **Pure-Skill fixture:** clean run. Section-to-REQ mapping produces expected structure.
+- **Cross-model consistency:** repeating self-audit with claude-opus, claude-sonnet, copilot+gpt produces comparable coverage (within ±20% REQ count, same UC set).
 
-Deliverable: comparison report across all 7 runs (5 code + QPB + skill fixture), cross-model report for self-audit, go/no-go decision for release.
+Deliverable: comparison report across all 7 runs (5 code + QPB + skill fixture), cross-model report, go/no-go decision.
 
-Gate to release: all success criteria from design doc met; no unresolved regressions on code benchmarks.
+### Part B — Self-audit bootstrap
+
+QPB v1.5.3 audits itself with full v1.5.3 machinery; artifacts committed under `previous_runs/v1.5.3/` as bootstrap evidence.
+
+### Part C — Phase 7 carry-forwards (cleanup pass)
+
+Single commit covering the items deferred from prior rounds:
+
+- **Banner version sync:** `schemas.md` banner version (currently `v1.5.1`) → `1.5.3` (matching SKILL.md `metadata.version` after the bump in Part D).
+- **Schemas.md §10 invariant re-sequencing:** re-sequence so #19 and #20 follow #18 sequentially with the Phase-2-introduced #21-23 landing after #20 (currently #21-23 land between #18 and #19-20).
+- **Calibration anchor refresh:** `bin/classify_project.py`'s comments cite "QPB at ~1.7×" but live `--benchmark` prints the actual current ratio. Update to a band ("1.5×-1.7×") or reference the live benchmark log.
+- **`_BENCHMARK_TARGETS` cobra path snapshot:** the path is hardcoded to `cobra-1.3.46`. Update to either the latest cobra snapshot OR document the maintenance discipline (do not auto-resolve; pin explicitly per release).
+
+### Part D — Version stamp bump + README
+
+- Bump `bin/benchmark_lib.py::RELEASE_VERSION` to `"1.5.3"`.
+- Bump `SKILL.md` `metadata.version` and all inline version stamps from `1.5.2` to `1.5.3` (per the Part C banner sync, `schemas.md` follows).
+- Update `README.md` with a v1.5.3 changelog entry naming the skill-as-code feature work, the divergence detection, and the bootstrap evidence.
+
+### Part E — Toolkit Test Protocol pass
+
+Per the workspace `AGENTS.md` rule, orientation-doc edits trigger TTP review before tagging. Run TTP against the updated orientation docs (`TOOLKIT.md`, `IMPROVEMENT_LOOP.md`, `README.md`) to verify reader personas can navigate the v1.5.3 changes correctly.
+
+### Part F — Tag + push + verify
+
+- `git tag -a v1.5.3 <HEAD-after-Part-D>` with annotated tag message naming the v1.5.3 features.
+- `git push origin 1.5.3` (the branch).
+- `git push origin v1.5.3` (the tag).
+- Verify with `git ls-remote origin refs/tags/v1.5.3` per the workspace verification rule.
+
+### Gate to release
+
+- All Part A success criteria met.
+- Part B bootstrap artifacts committed and archived.
+- Part C cleanup commit lands cleanly.
+- Part D version stamps bumped consistently across SKILL.md, RELEASE_VERSION, schemas.md banner, and README.
+- Part E TTP returns Pass or Pass-With-Caveats.
+- Part F tag visible on origin via `git ls-remote`.
 
 ---
 
-## Phase 8 — Self-Audit Bootstrap
+## Release (folded into Phase 5 above)
 
-Goal: QPB v1.5.3 audits itself one more time with full v1.5.3 machinery, artifacts committed as bootstrap evidence.
+The original "Release" section's items (tag, release notes, document the project-type classification, start backlog) are now Parts D, E, F of Phase 5. No separate release phase.
 
-Same pattern as v1.5.0 Phase 8. Any bugs found go to v1.5.3 backlog.
-
-Deliverable: v1.5.3 self-audit complete, artifacts in `quality/` and archived to `previous_runs/v1.5.3/`.
-
-Gate to release: self-audit completes cleanly OR any failures are explicitly dispositioned.
-
----
-
-## Release
-
-- Tag v1.5.3
-- Update release notes citing the Haiku demonstration as originating evidence
-- Document the project-type classification as the key v1.5.3 feature
-- Start v1.5.3 backlog
+After Phase 5 ships and v1.5.3 is tagged on origin, v1.5.3 is complete. The next release in the QPB arc is v1.5.4 (statistical-control machinery — see `QPB_v1.5.4_Design.md`).
 
 ---
 
