@@ -70,6 +70,108 @@ class TestSkillDerivationMainArgs(unittest.TestCase):
         args = _parse_args(["/tmp/example", "--pace-seconds", "30"])
         self.assertEqual(args.pace_seconds, 30)
 
+    def test_phase_default_is_3(self) -> None:
+        from bin.skill_derivation.__main__ import _parse_args
+        args = _parse_args(["/tmp/example"])
+        self.assertEqual(args.phase, 3)
+
+    def test_phase_4_accepted(self) -> None:
+        from bin.skill_derivation.__main__ import _parse_args
+        args = _parse_args(["/tmp/example", "--phase", "4"])
+        self.assertEqual(args.phase, 4)
+
+    def test_part_default_is_all(self) -> None:
+        from bin.skill_derivation.__main__ import _parse_args
+        args = _parse_args(["/tmp/example"])
+        self.assertEqual(args.part, "all")
+
+    def test_part_individual(self) -> None:
+        from bin.skill_derivation.__main__ import _parse_args
+        for choice in ("a1", "a2", "a3", "b", "c", "d", "all"):
+            args = _parse_args(["/tmp/example", "--part", choice])
+            self.assertEqual(args.part, choice)
+
+    def test_model_default_is_none(self) -> None:
+        from bin.skill_derivation.__main__ import _parse_args
+        args = _parse_args(["/tmp/example"])
+        self.assertIsNone(args.model)
+
+    def test_model_passthrough(self) -> None:
+        from bin.skill_derivation.__main__ import _parse_args
+        args = _parse_args(["/tmp/example", "--model", "opus"])
+        self.assertEqual(args.model, "opus")
+
+
+class MakeRunnerModelOverrideTests(unittest.TestCase):
+    """Phase 5 Stage 0: make_runner accepts a model override that
+    propagates to the constructed runner."""
+
+    def test_make_runner_claude_default_model(self) -> None:
+        from bin.skill_derivation.runners import make_runner, ClaudeRunner
+        r = make_runner("claude")
+        self.assertIsInstance(r, ClaudeRunner)
+        self.assertEqual(r.model, "sonnet")
+
+    def test_make_runner_claude_override_model(self) -> None:
+        from bin.skill_derivation.runners import make_runner, ClaudeRunner
+        r = make_runner("claude", model="opus")
+        self.assertIsInstance(r, ClaudeRunner)
+        self.assertEqual(r.model, "opus")
+
+    def test_make_runner_copilot_default_model(self) -> None:
+        from bin.skill_derivation.runners import make_runner, CopilotRunner
+        r = make_runner("copilot")
+        self.assertIsInstance(r, CopilotRunner)
+        self.assertEqual(r.model, "claude-sonnet-4.6")
+
+    def test_make_runner_copilot_override_model(self) -> None:
+        from bin.skill_derivation.runners import make_runner, CopilotRunner
+        r = make_runner("copilot", model="claude-opus-4.6")
+        self.assertIsInstance(r, CopilotRunner)
+        self.assertEqual(r.model, "claude-opus-4.6")
+
+
+class Phase4DispatcherSmokeTests(unittest.TestCase):
+    """Phase 5 Stage 0: --phase 4 routes to the Phase 4 dispatcher.
+    These smoke tests exercise the routing surface without requiring
+    full Phase 4 module behavior; they verify _run_phase4 is reached
+    with the right target_dir + part values."""
+
+    def test_phase4_part_a1_runs_against_minimal_phase3_artifacts(self) -> None:
+        """A.1 only needs pass_c_formal.jsonl + pass_c_formal_use_cases.jsonl
+        + pass_a_sections.json. Construct a minimal phase3/ tree and
+        verify --phase 4 --part a1 produces an empty
+        pass_e_internal_divergences.jsonl without errors."""
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            p3 = tmp / "quality" / "phase3"
+            p3.mkdir(parents=True)
+            (p3 / "pass_c_formal.jsonl").write_text("", encoding="utf-8")
+            (p3 / "pass_c_formal_use_cases.jsonl").write_text("", encoding="utf-8")
+            (p3 / "pass_a_sections.json").write_text(
+                json.dumps({"sections": []}), encoding="utf-8"
+            )
+            rc = main_mod._main([
+                str(tmp), "--phase", "4", "--part", "a1",
+            ])
+            self.assertEqual(rc, 0)
+            output = (p3 / "pass_e_internal_divergences.jsonl").read_text(
+                encoding="utf-8"
+            )
+            self.assertEqual(output, "")  # zero records on empty input
+
+    def test_phase4_part_c_emits_info_line_only(self) -> None:
+        """Part 'c' (gate enforcement) is accepted by argparse but
+        runs via quality_gate.py, not this CLI. The dispatcher emits
+        an info line and exits 0 without touching disk."""
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            (tmp / "quality" / "phase3").mkdir(parents=True)
+            rc = main_mod._main([
+                str(tmp), "--phase", "4", "--part", "c",
+            ])
+            self.assertEqual(rc, 0)
+
 
 # ---------------------------------------------------------------------------
 # End-to-end --pass all integration test (Round 5 ND-1).
