@@ -277,8 +277,17 @@ def _build_formal_req(
 
 
 def _build_formal_uc(record: dict, *, uc_idx: int) -> dict:
-    """UCs do not get citations. Phase 4's Council reviews them."""
-    return {
+    """UCs do not get citations. Phase 4's Council reviews them.
+
+    Round 7 Council finding: hand-authored / retroactively-synthesized
+    UC drafts carry an `_metadata.phase_3d_synthesized=true` tag in
+    pass_a_use_case_drafts.jsonl that Phase 4's Council triage relies
+    on to differentiate organic UCs (surfaced via section enumeration)
+    from hand-authored ones (which need anchor verification before
+    BUGs are generated against them). Pass C must propagate this tag
+    to the formal UC record so the discipline holds end-to-end.
+    """
+    formal: dict = {
         "uc_id": _next_uc_id(uc_idx),
         "section_idx": record.get("section_idx"),
         "title": record.get("title", ""),
@@ -289,6 +298,10 @@ def _build_formal_uc(record: dict, *, uc_idx: int) -> dict:
         "needs_council_review": True,
         "uc_draft_idx": record.get("uc_draft_idx"),
     }
+    src_metadata = record.get("_metadata") or {}
+    if isinstance(src_metadata, dict) and src_metadata.get("phase_3d_synthesized"):
+        formal["_metadata"] = {"phase_3d_synthesized": True}
+    return formal
 
 
 def _read_uc_drafts(path: Optional[Path]) -> list[dict]:

@@ -460,5 +460,140 @@ class UCHandlingTests(unittest.TestCase):
             self.assertEqual(uc["title"], "Operator runs Phase 1")
 
 
+class HandAuthoredUcSynthesizedTagTests(unittest.TestCase):
+    """Round 7 Council finding: hand-authored / retroactively-
+    synthesized UC drafts (those carrying
+    `_metadata.phase_3d_synthesized=true` in
+    pass_a_use_case_drafts.jsonl) must propagate the tag through
+    Pass C to the formal UC record. Phase 4's Council triage relies
+    on the tag to differentiate organic UCs (surfaced via section
+    enumeration) from hand-authored ones that need anchor verification
+    before BUGs are generated against them.
+
+    The discipline these tests enforce: a future Phase 3e / 4 / 5
+    hand-authored UC cannot ship un-tagged. If Pass C's
+    `_build_formal_uc` regresses and drops the tag, these tests fail
+    loudly.
+    """
+
+    def _setup(self, tmp: Path):
+        _write_project_type(tmp, "Hybrid")
+        _write_pass_b_complete_progress(tmp)
+        config = _make_config(tmp)
+        (config.citations_path).parent.mkdir(parents=True, exist_ok=True)
+        (config.citations_path).write_text("", encoding="utf-8")
+        return config
+
+    def test_synthesized_uc_draft_propagates_tag_to_formal(self) -> None:
+        """A Pass A UC draft with `_metadata.phase_3d_synthesized=true`
+        must produce a formal Pass C UC record carrying the same tag
+        on `_metadata.phase_3d_synthesized=true`."""
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            config = self._setup(tmp)
+            with config.uc_drafts_path.open("w", encoding="utf-8") as fh:
+                fh.write(json.dumps({
+                    "uc_draft_idx": 0, "section_idx": 4,
+                    "title": "Bootstrap self-audit (hand-authored)",
+                    "actors": ["maintainer"],
+                    "steps": ["invoke playbook on QPB itself"],
+                    "trigger": "maintainer runs self-audit",
+                    "acceptance": "all four passes complete",
+                    "proposed_source_ref": "SKILL.md §Phase 0",
+                    "_metadata": {"phase_3d_synthesized": True},
+                }) + "\n")
+            pass_c.run_pass_c(config)
+            ucs = [
+                json.loads(line)
+                for line in config.formal_use_cases_path.read_text().splitlines()
+                if line.strip()
+            ]
+            self.assertEqual(len(ucs), 1)
+            uc = ucs[0]
+            self.assertIn(
+                "_metadata", uc,
+                "hand-authored UC draft tagged `_metadata.phase_3d_synthesized=true` "
+                "in Pass A must carry an `_metadata` dict on the formal Pass C UC; "
+                "missing `_metadata` means Pass C's `_build_formal_uc` is dropping "
+                "the tag and the discipline cannot be enforced downstream.",
+            )
+            self.assertIsInstance(uc["_metadata"], dict)
+            self.assertTrue(
+                uc["_metadata"].get("phase_3d_synthesized"),
+                "formal UC built from a synthesized Pass A draft must carry "
+                "`_metadata.phase_3d_synthesized=true` (got "
+                f"{uc['_metadata']!r})",
+            )
+
+    def test_organic_uc_draft_does_not_carry_synthesized_tag(self) -> None:
+        """Symmetric guard: a Pass A UC draft WITHOUT the synthesized
+        tag must NOT carry the tag on the formal record. Otherwise the
+        tag becomes meaningless (every UC has it). Organic UCs surfaced
+        by section enumeration ship without the tag."""
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            config = self._setup(tmp)
+            with config.uc_drafts_path.open("w", encoding="utf-8") as fh:
+                fh.write(json.dumps({
+                    "uc_draft_idx": 0, "section_idx": 3,
+                    "title": "Operator runs Phase 1 (organic)",
+                    "actors": ["operator"],
+                    "steps": ["invoke"],
+                    "trigger": "operator action",
+                    "acceptance": "Phase 1 completes",
+                    "proposed_source_ref": "SKILL.md §How to Use",
+                    "_metadata": {"elapsed_ms": 30000},
+                }) + "\n")
+            pass_c.run_pass_c(config)
+            ucs = [
+                json.loads(line)
+                for line in config.formal_use_cases_path.read_text().splitlines()
+                if line.strip()
+            ]
+            self.assertEqual(len(ucs), 1)
+            uc = ucs[0]
+            md = uc.get("_metadata") or {}
+            self.assertFalse(
+                md.get("phase_3d_synthesized"),
+                "organic UC draft (no `_metadata.phase_3d_synthesized` in "
+                "Pass A input) must NOT carry the synthesized tag on the "
+                "formal Pass C UC record",
+            )
+
+    def test_live_run_uc_phase3_17_carries_tag(self) -> None:
+        """Regression guard for the Round 7 finding itself: the
+        committed live-run artifact at
+        quality/phase3/pass_c_formal_use_cases.jsonl must contain
+        UC-PHASE3-17 with the `_metadata.phase_3d_synthesized=true`
+        tag. If a future re-run of Pass C drops the tag, this test
+        fails loudly."""
+        repo_root = Path(__file__).resolve().parents[2]
+        artifact = repo_root / "quality" / "phase3" / "pass_c_formal_use_cases.jsonl"
+        if not artifact.is_file():
+            self.skipTest(
+                f"live-run artifact at {artifact} not present; this guard only "
+                "fires when the Phase 3d artifacts are committed."
+            )
+        ucs = [
+            json.loads(line)
+            for line in artifact.read_text().splitlines()
+            if line.strip()
+        ]
+        uc17 = next((u for u in ucs if u.get("uc_id") == "UC-PHASE3-17"), None)
+        self.assertIsNotNone(
+            uc17,
+            "UC-PHASE3-17 (Bootstrap Self-Audit) must be present in the "
+            "live-run artifact",
+        )
+        md = uc17.get("_metadata") or {}
+        self.assertTrue(
+            md.get("phase_3d_synthesized"),
+            "UC-PHASE3-17 is the Phase 3d hand-authored UC (Round 6 Finding 4); "
+            "it must carry `_metadata.phase_3d_synthesized=true` so Phase 4's "
+            "Council triage knows to anchor-verify before generating BUGs. "
+            f"Got _metadata={md!r}",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
