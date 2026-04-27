@@ -241,3 +241,60 @@ def render_recovery_preamble(*, pass_spec_path: Path, progress_file_path: Path) 
         pass_spec_path=str(pass_spec_path),
         progress_file_path=str(progress_file_path),
     )
+
+
+class UpstreamIncompleteError(RuntimeError):
+    """Raised by require_upstream_complete when an upstream pass has
+    not reached status="complete".
+
+    Round 3 Council B4: every downstream pass MUST verify its upstream
+    pass is complete before consuming the upstream artifact, per the
+    Implementation Plan's "downstream refuses to start unless upstream
+    is complete" gate (Plan line 202). Without this check, a Pass A
+    crash that leaves status="running" would silently allow Pass B to
+    consume an incomplete pass_a_drafts.jsonl, propagating coverage
+    gaps into the formal REQ pipeline.
+    """
+
+
+def require_upstream_complete(
+    upstream_progress_path: Path, *, downstream_pass_name: str
+) -> None:
+    """Raise UpstreamIncompleteError unless the upstream progress file
+    exists AND reports status="complete".
+
+    Round 3 Council B4 fix (Implementation Plan line 202): the
+    "downstream refuses to start unless upstream is complete" gate
+    is method-enforced rather than caller-convention. Three failure
+    cases produce a clear diagnostic:
+
+      1. Upstream progress file does not exist -- upstream pass has
+         never been run.
+      2. Upstream progress file exists but has status="running" or
+         "blocked" or "paused" -- upstream crashed or was killed
+         mid-pass and never finalized.
+      3. Upstream progress file exists but is malformed (cannot be
+         parsed) -- treated as not-complete; the maintainer should
+         repair the file or re-run upstream from scratch.
+
+    `downstream_pass_name` is included in the error message so the
+    diagnostic names which pass refused to start (e.g., "Pass B
+    refused to start").
+    """
+    state = read_progress(upstream_progress_path)
+    if state is None:
+        raise UpstreamIncompleteError(
+            f"{downstream_pass_name} refused to start: upstream progress "
+            f"file at {upstream_progress_path} does not exist or is empty. "
+            f"Run the upstream pass to completion before starting "
+            f"{downstream_pass_name}."
+        )
+    if state.status != "complete":
+        raise UpstreamIncompleteError(
+            f"{downstream_pass_name} refused to start: upstream progress "
+            f"at {upstream_progress_path} reports status={state.status!r} "
+            f"(cursor={state.cursor}, total={state.total}). The upstream "
+            f"pass must reach status='complete' before downstream may "
+            f"consume its artifact. Resume or re-run the upstream pass "
+            f"first."
+        )

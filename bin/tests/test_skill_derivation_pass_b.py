@@ -167,6 +167,23 @@ class PassBDriverTests(unittest.TestCase):
         with drafts_path.open("w", encoding="utf-8") as fh:
             for d in drafts:
                 fh.write(json.dumps(d) + "\n")
+        # Round 3 Council B4: Pass B requires an upstream-complete
+        # Pass A progress file. The setup synthesizes one alongside
+        # the drafts so the existing tests exercise normal Pass B
+        # behavior; the dedicated B4 test below removes / corrupts
+        # this file to verify the refusal path.
+        pass_a_progress_path = drafts_path.with_name("pass_a_progress.json")
+        protocol.write_progress_atomic(
+            pass_a_progress_path,
+            protocol.ProgressState(
+                pass_="A",
+                unit="section",
+                cursor=4,
+                total=4,
+                status="complete",
+                last_updated="2026-04-26T12:00:00Z",
+            ),
+        )
         config = pass_b.PassBConfig(
             drafts_path=drafts_path,
             citations_path=tmp / "phase3" / "pass_b_citations.jsonl",
@@ -174,6 +191,7 @@ class PassBDriverTests(unittest.TestCase):
             skill_md_path=skill,
             references_dir=None,
             document_root=tmp,
+            pass_a_progress_path=pass_a_progress_path,
         )
         return config, drafts
 
@@ -275,6 +293,144 @@ class PassBDriverTests(unittest.TestCase):
             # Each draft idx represented exactly once.
             idxs = sorted(r["_pass_b_idx"] for r in recs)
             self.assertEqual(idxs, list(range(len(drafts))))
+
+
+class UpstreamCompletionGateTests(unittest.TestCase):
+    """Round 3 Council B4 regression tests.
+
+    Pass B MUST refuse to start unless its upstream Pass A progress
+    file reports status="complete" (Implementation Plan line 202).
+    Without this gate, a Pass A crash leaving status="running" would
+    silently allow Pass B to consume an incomplete drafts file and
+    propagate coverage gaps into the formal REQ pipeline.
+
+    Tests cover the three failure cases require_upstream_complete()
+    must reject, plus the success path.
+    """
+
+    def _bare_config(self, tmp: Path) -> tuple[pass_b.PassBConfig, Path]:
+        skill = tmp / "SKILL.md"
+        skill.write_text("# Doc\n\n## Phase 1\n\nstub\n", encoding="utf-8")
+        drafts_path = tmp / "phase3" / "pass_a_drafts.jsonl"
+        drafts_path.parent.mkdir(parents=True, exist_ok=True)
+        drafts_path.write_text(
+            json.dumps({
+                "draft_idx": 0, "section_idx": 1,
+                "title": "x", "description": "y",
+                "acceptance_criteria": "z", "proposed_source_ref": "w",
+            }) + "\n",
+            encoding="utf-8",
+        )
+        upstream = drafts_path.with_name("pass_a_progress.json")
+        config = pass_b.PassBConfig(
+            drafts_path=drafts_path,
+            citations_path=tmp / "phase3" / "pass_b_citations.jsonl",
+            progress_path=tmp / "phase3" / "pass_b_progress.json",
+            skill_md_path=skill,
+            references_dir=None,
+            document_root=tmp,
+            pass_a_progress_path=upstream,
+        )
+        return config, upstream
+
+    def test_refuses_when_upstream_progress_file_missing(self) -> None:
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            config, upstream = self._bare_config(tmp)
+            self.assertFalse(upstream.exists())
+            with self.assertRaises(protocol.UpstreamIncompleteError) as cm:
+                pass_b.run_pass_b(config)
+            self.assertIn("Pass B refused to start", str(cm.exception))
+            self.assertIn("does not exist or is empty", str(cm.exception))
+
+    def test_refuses_when_upstream_status_running(self) -> None:
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            config, upstream = self._bare_config(tmp)
+            protocol.write_progress_atomic(
+                upstream,
+                protocol.ProgressState(
+                    pass_="A",
+                    unit="section",
+                    cursor=2,
+                    total=4,
+                    status="running",
+                    last_updated="2026-04-26T12:00:00Z",
+                ),
+            )
+            with self.assertRaises(protocol.UpstreamIncompleteError) as cm:
+                pass_b.run_pass_b(config)
+            msg = str(cm.exception)
+            self.assertIn("Pass B refused to start", msg)
+            self.assertIn("'running'", msg)
+            self.assertIn("cursor=2", msg)
+            self.assertIn("total=4", msg)
+
+    def test_refuses_when_upstream_status_blocked(self) -> None:
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            config, upstream = self._bare_config(tmp)
+            protocol.write_progress_atomic(
+                upstream,
+                protocol.ProgressState(
+                    pass_="A",
+                    unit="section",
+                    cursor=0,
+                    total=None,
+                    status="blocked",
+                    last_updated="2026-04-26T12:00:00Z",
+                    notes="LLM timeout on section 0",
+                ),
+            )
+            with self.assertRaises(protocol.UpstreamIncompleteError):
+                pass_b.run_pass_b(config)
+
+    def test_proceeds_when_upstream_complete(self) -> None:
+        # Smoke test: with a valid upstream-complete progress file,
+        # Pass B does NOT raise UpstreamIncompleteError. We don't
+        # care about the body of the run here (the existing
+        # PassBDriverTests cover that); just that the gate doesn't
+        # block.
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            config, upstream = self._bare_config(tmp)
+            protocol.write_progress_atomic(
+                upstream,
+                protocol.ProgressState(
+                    pass_="A",
+                    unit="section",
+                    cursor=4,
+                    total=4,
+                    status="complete",
+                    last_updated="2026-04-26T12:00:00Z",
+                ),
+            )
+            # Should not raise.
+            pass_b.run_pass_b(config)
+
+    def test_default_upstream_path_resolves_next_to_drafts(self) -> None:
+        # When pass_a_progress_path is None, the default is to look
+        # for "pass_a_progress.json" in the same directory as the
+        # drafts JSONL. Confirm by NOT setting the field and checking
+        # the gate still fires.
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            config, upstream = self._bare_config(tmp)
+            # Wipe the explicit field; the default should still find
+            # the upstream file at the same canonical location.
+            config_default = pass_b.PassBConfig(
+                drafts_path=config.drafts_path,
+                citations_path=config.citations_path,
+                progress_path=config.progress_path,
+                skill_md_path=config.skill_md_path,
+                references_dir=config.references_dir,
+                document_root=config.document_root,
+                pass_a_progress_path=None,
+            )
+            # Without the upstream file written, the default resolution
+            # finds nothing -> raises.
+            with self.assertRaises(protocol.UpstreamIncompleteError):
+                pass_b.run_pass_b(config_default)
 
 
 if __name__ == "__main__":

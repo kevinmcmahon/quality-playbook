@@ -38,6 +38,12 @@ class PassBConfig:
     references_dir: Optional[Path]
     document_root: Path  # repo root, used to resolve doc paths
     similarity_threshold: float = citation_search.DEFAULT_SIMILARITY_THRESHOLD
+    # Round 3 Council B4: Pass B MUST verify Pass A reached
+    # status="complete" before consuming pass_a_drafts.jsonl. Caller
+    # passes the path to pass_a_progress.json; require_upstream_complete
+    # is called at the start of run_pass_b. Default convention: Pass A
+    # progress sits next to Pass A drafts.
+    pass_a_progress_path: Optional[Path] = None
 
 
 def _utc_now_iso() -> str:
@@ -154,7 +160,24 @@ def _draft_to_citation_record(
 
 
 def run_pass_b(config: PassBConfig, *, resume: bool = True) -> int:
-    """Drive Pass B end-to-end. Returns count of records emitted."""
+    """Drive Pass B end-to-end. Returns count of records emitted.
+
+    Round 3 Council B4: refuses to start unless the upstream Pass A
+    progress file reports status="complete". If
+    config.pass_a_progress_path is None (legacy callers from before the
+    B4 fix), defaults to "pass_a_progress.json" next to the drafts
+    JSONL. Raises UpstreamIncompleteError on missing / non-complete
+    upstream.
+    """
+    upstream_progress = (
+        config.pass_a_progress_path
+        if config.pass_a_progress_path is not None
+        else config.drafts_path.with_name("pass_a_progress.json")
+    )
+    protocol.require_upstream_complete(
+        upstream_progress, downstream_pass_name="Pass B"
+    )
+
     drafts = _read_drafts(config.drafts_path)
     total = len(drafts)
     documents = citation_search.collect_documents(
