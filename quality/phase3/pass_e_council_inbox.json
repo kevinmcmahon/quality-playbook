@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "generated_at": "2026-04-27T17:28:56Z",
+  "generated_at": "2026-04-27T20:21:28Z",
   "phase": "4",
   "phase_3_inbox_ref": "pass_d_council_inbox.json",
   "items": [
@@ -22,32 +22,6 @@
       "divergence_id": "DIV-INT-002",
       "bug_id": "BUG-PHASE4-002",
       "auto_disposition": null,
-      "rationale": "Two records in the same section claim different counts for 'req': REQ-PHASE3-171 says 5, REQ-PHASE3-210 says 2.",
-      "context_excerpts": [
-        "Every Tier 3 REQ description contains a 'file:line' citation; no Tier 3/4/5 REQ carries a 'citation' block; the citation block is exclusive to Tier 1 and Tier 2.",
-        "No requirement records a contradiction between project spec and external standard at Tier 2; all such contradictions are recorded at Tier 1 with the project's position cited; Tier 2 REQs are used only for external standards without a conflicting project-spec position."
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "SKILL.md::16"
-    },
-    {
-      "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-003",
-      "bug_id": "BUG-PHASE4-003",
-      "auto_disposition": null,
-      "rationale": "Two records in the same section claim different counts for 'req': REQ-PHASE3-171 says 5, REQ-PHASE3-211 says 2.",
-      "context_excerpts": [
-        "Every Tier 3 REQ description contains a 'file:line' citation; no Tier 3/4/5 REQ carries a 'citation' block; the citation block is exclusive to Tier 1 and Tier 2.",
-        "When no Tier 1 or Tier 2 REQs exist, the completeness report contains a '0 Tier 1/2 requirements' metric entry; the run is not marked as failed due to the absence of formal documentation; no citations are fabricated to improve tier distribution."
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "SKILL.md::16"
-    },
-    {
-      "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-004",
-      "bug_id": "BUG-PHASE4-004",
-      "auto_disposition": null,
       "rationale": "Two records in the same section claim different counts for 'req': REQ-PHASE3-171 says 5, REQ-PHASE3-212 says 2.",
       "context_excerpts": [
         "Every Tier 3 REQ description contains a 'file:line' citation; no Tier 3/4/5 REQ carries a 'citation' block; the citation block is exclusive to Tier 1 and Tier 2.",
@@ -58,8 +32,8 @@
     },
     {
       "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-005",
-      "bug_id": "BUG-PHASE4-005",
+      "divergence_id": "DIV-INT-003",
+      "bug_id": "BUG-PHASE4-003",
       "auto_disposition": null,
       "rationale": "Two records in the same section claim different counts for 'req': REQ-PHASE3-171 says 5, REQ-PHASE3-217 says 2.",
       "context_excerpts": [
@@ -71,8 +45,8 @@
     },
     {
       "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-006",
-      "bug_id": "BUG-PHASE4-006",
+      "divergence_id": "DIV-INT-004",
+      "bug_id": "BUG-PHASE4-004",
       "auto_disposition": null,
       "rationale": "Two records in the same section claim different counts for 'section': REQ-PHASE3-262 says 3, REQ-PHASE3-265 says 4.",
       "context_excerpts": [
@@ -84,10 +58,36 @@
     },
     {
       "item_type": "divergence-internal-prose",
+      "divergence_id": "DIV-INT-005",
+      "bug_id": "BUG-PHASE4-005",
+      "auto_disposition": null,
+      "rationale": "Two records in the same section claim different counts for 'section': REQ-PHASE3-262 says 3, REQ-PHASE3-274 says 4.",
+      "context_excerpts": [
+        "2. `## Open Exploration Findings` \u2014 must exist verbatim\n3. `## Quality Risks` \u2014 must exist verbatim\n4. `## Pattern Applicability Matrix` \u2014 must exist verbatim\n5. At least 3 sections starting with `## Pattern Deep Dive \u2014 ` \u2014 must exist verbatim\n6. `## Candidate Bugs for Phase 2` \u2014 must exist verbatim\n7. `## Gate Self-Check` \u2014 must exist (proves the Phase 1 gate was run)\n8. `quality/PROGRESS.md` exists and its Phase 1 line is marked `[x]` \u2014 proves Phase 1 was completed, not just started\n9. The `## Open Exploration Findings` section contains at least 8 concrete bug hypotheses \u2014 count lines with file:line citations\n10. At least 3 findings in `## Open Exploration Findings` trace behavior across 2+ functions \u2014 look for multi-location traces\n11. Between 3 and 4 patterns are marked `FULL` in `## Pattern Applicability Matrix` \u2014 count FULL entries",
+        "7. A section titled **exactly** `## Pattern Applicability Matrix` exists and evaluates all six patterns from `exploration_patterns.md`, marking each as `FULL` or `SKIP` with target modules and codebase-specific rationale.\n8. Between 3 and 4 patterns (inclusive) are marked `FULL` in the applicability matrix.\n9. There are between 3 and 4 sections (inclusive) whose titles begin with `## Pattern Deep Dive \u2014 `. Each must contain concrete file:line evidence, not just pattern-name placeholders. The count must match the number of `FULL` patterns in the matrix.\n10. **Pattern depth check:** At least 2 of the pattern deep-dive sections must trace a code path across 2 or more functions. A section that says \"function X at file:line has a gap\" is a surface finding. A section that says \"function X at file:line calls function Y at file:line, which does A but not B; compare with function Z which does both\" is a depth finding.\n11. A section titled **exactly** `## Candidate Bugs for Phase 2` exists and contains at least 4 prioritized bug hypotheses with file:line references, the stage that surfaced each one (open exploration, quality risks, or pattern), and what the code review should look for.\n12. **Ensemble balance check:** At least 2 candidate bugs must originate from open exploration or quality risks, and at least 1 must originate from or be materially strengthened by a pattern deep dive. This ensures both domain-knowledge and structural-analysis findings flow into Phase 2."
+      ],
+      "council_action_required": true,
+      "triage_batch_key": "SKILL.md::18"
+    },
+    {
+      "item_type": "divergence-internal-prose",
+      "divergence_id": "DIV-INT-006",
+      "bug_id": "BUG-PHASE4-006",
+      "auto_disposition": null,
+      "rationale": "Two records in the same section claim different counts for 'section': REQ-PHASE3-262 says 3, REQ-PHASE3-275 says 4.",
+      "context_excerpts": [
+        "2. `## Open Exploration Findings` \u2014 must exist verbatim\n3. `## Quality Risks` \u2014 must exist verbatim\n4. `## Pattern Applicability Matrix` \u2014 must exist verbatim\n5. At least 3 sections starting with `## Pattern Deep Dive \u2014 ` \u2014 must exist verbatim\n6. `## Candidate Bugs for Phase 2` \u2014 must exist verbatim\n7. `## Gate Self-Check` \u2014 must exist (proves the Phase 1 gate was run)\n8. `quality/PROGRESS.md` exists and its Phase 1 line is marked `[x]` \u2014 proves Phase 1 was completed, not just started\n9. The `## Open Exploration Findings` section contains at least 8 concrete bug hypotheses \u2014 count lines with file:line citations\n10. At least 3 findings in `## Open Exploration Findings` trace behavior across 2+ functions \u2014 look for multi-location traces\n11. Between 3 and 4 patterns are marked `FULL` in `## Pattern Applicability Matrix` \u2014 count FULL entries",
+        "7. A section titled **exactly** `## Pattern Applicability Matrix` exists and evaluates all six patterns from `exploration_patterns.md`, marking each as `FULL` or `SKIP` with target modules and codebase-specific rationale.\n8. Between 3 and 4 patterns (inclusive) are marked `FULL` in the applicability matrix.\n9. There are between 3 and 4 sections (inclusive) whose titles begin with `## Pattern Deep Dive \u2014 `. Each must contain concrete file:line evidence, not just pattern-name placeholders. The count must match the number of `FULL` patterns in the matrix.\n10. **Pattern depth check:** At least 2 of the pattern deep-dive sections must trace a code path across 2 or more functions. A section that says \"function X at file:line has a gap\" is a surface finding. A section that says \"function X at file:line calls function Y at file:line, which does A but not B; compare with function Z which does both\" is a depth finding.\n11. A section titled **exactly** `## Candidate Bugs for Phase 2` exists and contains at least 4 prioritized bug hypotheses with file:line references, the stage that surfaced each one (open exploration, quality risks, or pattern), and what the code review should look for.\n12. **Ensemble balance check:** At least 2 candidate bugs must originate from open exploration or quality risks, and at least 1 must originate from or be materially strengthened by a pattern deep dive. This ensures both domain-knowledge and structural-analysis findings flow into Phase 2."
+      ],
+      "council_action_required": true,
+      "triage_batch_key": "SKILL.md::18"
+    },
+    {
+      "item_type": "divergence-internal-prose",
       "divergence_id": "DIV-INT-007",
       "bug_id": "BUG-PHASE4-007",
       "auto_disposition": null,
-      "rationale": "Two records in the same section claim different counts for 'section': REQ-PHASE3-262 says 3, REQ-PHASE3-274 says 4.",
+      "rationale": "Two records in the same section claim different counts for 'section': REQ-PHASE3-262 says 3, REQ-PHASE3-276 says 4.",
       "context_excerpts": [
         "2. `## Open Exploration Findings` \u2014 must exist verbatim\n3. `## Quality Risks` \u2014 must exist verbatim\n4. `## Pattern Applicability Matrix` \u2014 must exist verbatim\n5. At least 3 sections starting with `## Pattern Deep Dive \u2014 ` \u2014 must exist verbatim\n6. `## Candidate Bugs for Phase 2` \u2014 must exist verbatim\n7. `## Gate Self-Check` \u2014 must exist (proves the Phase 1 gate was run)\n8. `quality/PROGRESS.md` exists and its Phase 1 line is marked `[x]` \u2014 proves Phase 1 was completed, not just started\n9. The `## Open Exploration Findings` section contains at least 8 concrete bug hypotheses \u2014 count lines with file:line citations\n10. At least 3 findings in `## Open Exploration Findings` trace behavior across 2+ functions \u2014 look for multi-location traces\n11. Between 3 and 4 patterns are marked `FULL` in `## Pattern Applicability Matrix` \u2014 count FULL entries",
         "7. A section titled **exactly** `## Pattern Applicability Matrix` exists and evaluates all six patterns from `exploration_patterns.md`, marking each as `FULL` or `SKIP` with target modules and codebase-specific rationale.\n8. Between 3 and 4 patterns (inclusive) are marked `FULL` in the applicability matrix.\n9. There are between 3 and 4 sections (inclusive) whose titles begin with `## Pattern Deep Dive \u2014 `. Each must contain concrete file:line evidence, not just pattern-name placeholders. The count must match the number of `FULL` patterns in the matrix.\n10. **Pattern depth check:** At least 2 of the pattern deep-dive sections must trace a code path across 2 or more functions. A section that says \"function X at file:line has a gap\" is a surface finding. A section that says \"function X at file:line calls function Y at file:line, which does A but not B; compare with function Z which does both\" is a depth finding.\n11. A section titled **exactly** `## Candidate Bugs for Phase 2` exists and contains at least 4 prioritized bug hypotheses with file:line references, the stage that surfaced each one (open exploration, quality risks, or pattern), and what the code review should look for.\n12. **Ensemble balance check:** At least 2 candidate bugs must originate from open exploration or quality risks, and at least 1 must originate from or be materially strengthened by a pattern deep dive. This ensures both domain-knowledge and structural-analysis findings flow into Phase 2."
@@ -100,32 +100,6 @@
       "divergence_id": "DIV-INT-008",
       "bug_id": "BUG-PHASE4-008",
       "auto_disposition": null,
-      "rationale": "Two records in the same section claim different counts for 'section': REQ-PHASE3-262 says 3, REQ-PHASE3-275 says 4.",
-      "context_excerpts": [
-        "2. `## Open Exploration Findings` \u2014 must exist verbatim\n3. `## Quality Risks` \u2014 must exist verbatim\n4. `## Pattern Applicability Matrix` \u2014 must exist verbatim\n5. At least 3 sections starting with `## Pattern Deep Dive \u2014 ` \u2014 must exist verbatim\n6. `## Candidate Bugs for Phase 2` \u2014 must exist verbatim\n7. `## Gate Self-Check` \u2014 must exist (proves the Phase 1 gate was run)\n8. `quality/PROGRESS.md` exists and its Phase 1 line is marked `[x]` \u2014 proves Phase 1 was completed, not just started\n9. The `## Open Exploration Findings` section contains at least 8 concrete bug hypotheses \u2014 count lines with file:line citations\n10. At least 3 findings in `## Open Exploration Findings` trace behavior across 2+ functions \u2014 look for multi-location traces\n11. Between 3 and 4 patterns are marked `FULL` in `## Pattern Applicability Matrix` \u2014 count FULL entries",
-        "7. A section titled **exactly** `## Pattern Applicability Matrix` exists and evaluates all six patterns from `exploration_patterns.md`, marking each as `FULL` or `SKIP` with target modules and codebase-specific rationale.\n8. Between 3 and 4 patterns (inclusive) are marked `FULL` in the applicability matrix.\n9. There are between 3 and 4 sections (inclusive) whose titles begin with `## Pattern Deep Dive \u2014 `. Each must contain concrete file:line evidence, not just pattern-name placeholders. The count must match the number of `FULL` patterns in the matrix.\n10. **Pattern depth check:** At least 2 of the pattern deep-dive sections must trace a code path across 2 or more functions. A section that says \"function X at file:line has a gap\" is a surface finding. A section that says \"function X at file:line calls function Y at file:line, which does A but not B; compare with function Z which does both\" is a depth finding.\n11. A section titled **exactly** `## Candidate Bugs for Phase 2` exists and contains at least 4 prioritized bug hypotheses with file:line references, the stage that surfaced each one (open exploration, quality risks, or pattern), and what the code review should look for.\n12. **Ensemble balance check:** At least 2 candidate bugs must originate from open exploration or quality risks, and at least 1 must originate from or be materially strengthened by a pattern deep dive. This ensures both domain-knowledge and structural-analysis findings flow into Phase 2."
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "SKILL.md::18"
-    },
-    {
-      "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-009",
-      "bug_id": "BUG-PHASE4-009",
-      "auto_disposition": null,
-      "rationale": "Two records in the same section claim different counts for 'section': REQ-PHASE3-262 says 3, REQ-PHASE3-276 says 4.",
-      "context_excerpts": [
-        "2. `## Open Exploration Findings` \u2014 must exist verbatim\n3. `## Quality Risks` \u2014 must exist verbatim\n4. `## Pattern Applicability Matrix` \u2014 must exist verbatim\n5. At least 3 sections starting with `## Pattern Deep Dive \u2014 ` \u2014 must exist verbatim\n6. `## Candidate Bugs for Phase 2` \u2014 must exist verbatim\n7. `## Gate Self-Check` \u2014 must exist (proves the Phase 1 gate was run)\n8. `quality/PROGRESS.md` exists and its Phase 1 line is marked `[x]` \u2014 proves Phase 1 was completed, not just started\n9. The `## Open Exploration Findings` section contains at least 8 concrete bug hypotheses \u2014 count lines with file:line citations\n10. At least 3 findings in `## Open Exploration Findings` trace behavior across 2+ functions \u2014 look for multi-location traces\n11. Between 3 and 4 patterns are marked `FULL` in `## Pattern Applicability Matrix` \u2014 count FULL entries",
-        "7. A section titled **exactly** `## Pattern Applicability Matrix` exists and evaluates all six patterns from `exploration_patterns.md`, marking each as `FULL` or `SKIP` with target modules and codebase-specific rationale.\n8. Between 3 and 4 patterns (inclusive) are marked `FULL` in the applicability matrix.\n9. There are between 3 and 4 sections (inclusive) whose titles begin with `## Pattern Deep Dive \u2014 `. Each must contain concrete file:line evidence, not just pattern-name placeholders. The count must match the number of `FULL` patterns in the matrix.\n10. **Pattern depth check:** At least 2 of the pattern deep-dive sections must trace a code path across 2 or more functions. A section that says \"function X at file:line has a gap\" is a surface finding. A section that says \"function X at file:line calls function Y at file:line, which does A but not B; compare with function Z which does both\" is a depth finding.\n11. A section titled **exactly** `## Candidate Bugs for Phase 2` exists and contains at least 4 prioritized bug hypotheses with file:line references, the stage that surfaced each one (open exploration, quality risks, or pattern), and what the code review should look for.\n12. **Ensemble balance check:** At least 2 candidate bugs must originate from open exploration or quality risks, and at least 1 must originate from or be materially strengthened by a pattern deep dive. This ensures both domain-knowledge and structural-analysis findings flow into Phase 2."
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "SKILL.md::18"
-    },
-    {
-      "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-010",
-      "bug_id": "BUG-PHASE4-010",
-      "auto_disposition": null,
       "rationale": "Two records in the same section claim different counts for 'section': REQ-PHASE3-262 says 3, REQ-PHASE3-278 says 4.",
       "context_excerpts": [
         "2. `## Open Exploration Findings` \u2014 must exist verbatim\n3. `## Quality Risks` \u2014 must exist verbatim\n4. `## Pattern Applicability Matrix` \u2014 must exist verbatim\n5. At least 3 sections starting with `## Pattern Deep Dive \u2014 ` \u2014 must exist verbatim\n6. `## Candidate Bugs for Phase 2` \u2014 must exist verbatim\n7. `## Gate Self-Check` \u2014 must exist (proves the Phase 1 gate was run)\n8. `quality/PROGRESS.md` exists and its Phase 1 line is marked `[x]` \u2014 proves Phase 1 was completed, not just started\n9. The `## Open Exploration Findings` section contains at least 8 concrete bug hypotheses \u2014 count lines with file:line citations\n10. At least 3 findings in `## Open Exploration Findings` trace behavior across 2+ functions \u2014 look for multi-location traces\n11. Between 3 and 4 patterns are marked `FULL` in `## Pattern Applicability Matrix` \u2014 count FULL entries",
@@ -136,8 +110,8 @@
     },
     {
       "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-011",
-      "bug_id": "BUG-PHASE4-011",
+      "divergence_id": "DIV-INT-009",
+      "bug_id": "BUG-PHASE4-009",
       "auto_disposition": null,
       "rationale": "Two records in the same section claim different counts for 'section': REQ-PHASE3-262 says 3, REQ-PHASE3-279 says 4.",
       "context_excerpts": [
@@ -149,8 +123,8 @@
     },
     {
       "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-012",
-      "bug_id": "BUG-PHASE4-012",
+      "divergence_id": "DIV-INT-010",
+      "bug_id": "BUG-PHASE4-010",
       "auto_disposition": null,
       "rationale": "Two records in the same section claim different counts for 'section': REQ-PHASE3-262 says 3, REQ-PHASE3-288 says 4.",
       "context_excerpts": [
@@ -162,21 +136,8 @@
     },
     {
       "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-013",
-      "bug_id": "BUG-PHASE4-013",
-      "auto_disposition": null,
-      "rationale": "Two records in the same section claim different counts for 'line': REQ-PHASE3-262 says 1, REQ-PHASE3-291 says 120.",
-      "context_excerpts": [
-        "2. `## Open Exploration Findings` \u2014 must exist verbatim\n3. `## Quality Risks` \u2014 must exist verbatim\n4. `## Pattern Applicability Matrix` \u2014 must exist verbatim\n5. At least 3 sections starting with `## Pattern Deep Dive \u2014 ` \u2014 must exist verbatim\n6. `## Candidate Bugs for Phase 2` \u2014 must exist verbatim\n7. `## Gate Self-Check` \u2014 must exist (proves the Phase 1 gate was run)\n8. `quality/PROGRESS.md` exists and its Phase 1 line is marked `[x]` \u2014 proves Phase 1 was completed, not just started\n9. The `## Open Exploration Findings` section contains at least 8 concrete bug hypotheses \u2014 count lines with file:line citations\n10. At least 3 findings in `## Open Exploration Findings` trace behavior across 2+ functions \u2014 look for multi-location traces\n11. Between 3 and 4 patterns are marked `FULL` in `## Pattern Applicability Matrix` \u2014 count FULL entries",
-        "**Minimum depth expectation:** EXPLORATION.md must contain at least 120 lines of substantive content \u2014 not padding or boilerplate headers, but actual findings (file paths, behavioral rules, derived requirements, architecture observations). A skeleton that lists section headers with one-line placeholders is not a valid handoff artifact. If the file is thinner than this, go back and add the detail Phase 2 will need."
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "SKILL.md::18"
-    },
-    {
-      "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-014",
-      "bug_id": "BUG-PHASE4-014",
+      "divergence_id": "DIV-INT-011",
+      "bug_id": "BUG-PHASE4-011",
       "auto_disposition": null,
       "rationale": "Two records in the same section claim different counts for 'section': REQ-PHASE3-262 says 3, REQ-PHASE3-299 says 4.",
       "context_excerpts": [
@@ -185,253 +146,6 @@
       ],
       "council_action_required": true,
       "triage_batch_key": "SKILL.md::18"
-    },
-    {
-      "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-015",
-      "bug_id": "BUG-PHASE4-015",
-      "auto_disposition": null,
-      "rationale": "Two records in the same section claim different counts for 'line': REQ-PHASE3-1001 says 30, REQ-PHASE3-1002 says 60.",
-      "context_excerpts": [
-        "The previous-run scan should consume ~20\u201330 lines of context.",
-        "Targeted deep-reads should consume ~40\u201360 lines total."
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "SKILL.md::77"
-    },
-    {
-      "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-016",
-      "bug_id": "BUG-PHASE4-016",
-      "auto_disposition": null,
-      "rationale": "Records in different sections of SKILL.md claim different counts for 'use case': REQ-PHASE3-203 (section 16) says 7; REQ-PHASE3-438 (section 23) says 2.",
-      "context_excerpts": [
-        "The requirements artifact contains between 5 and 7 use cases (inclusive); a run producing fewer than 5 or more than 7 use cases fails the derivation gate.",
-        "**Per-UC group splitting (mandatory).** Each integration test group must map to at most **2 use cases**. A group that maps to 3+ UCs is too coarse \u2014 it can't distinguish which use case failed when a test breaks. If a single test command (e.g., `mvn test`, `go test ./...`) would exercise multiple use cases, split it into separate groups with targeted test selectors (`-Dtest=`, `-run`, `-k`, `--tests`, `-- test_name`, etc.) so each group isolates 1\u20132 UCs. Groups covering all UCs in one undifferentiated command are explicitly prohibited \u2014 they provide no diagnostic value when a failure occurs."
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "cross-section"
-    },
-    {
-      "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-017",
-      "bug_id": "BUG-PHASE4-017",
-      "auto_disposition": null,
-      "rationale": "Records in different sections of SKILL.md claim different counts for 'use case': REQ-PHASE3-204 (section 16) says 7; REQ-PHASE3-438 (section 23) says 2.",
-      "context_excerpts": [
-        "Each of the 5\u20137 use cases is framed as a user accomplishment; no use case is framed as a code capability or framework feature; a reviewer can identify a real person achieving something in each use case.",
-        "**Per-UC group splitting (mandatory).** Each integration test group must map to at most **2 use cases**. A group that maps to 3+ UCs is too coarse \u2014 it can't distinguish which use case failed when a test breaks. If a single test command (e.g., `mvn test`, `go test ./...`) would exercise multiple use cases, split it into separate groups with targeted test selectors (`-Dtest=`, `-run`, `-k`, `--tests`, `-- test_name`, etc.) so each group isolates 1\u20132 UCs. Groups covering all UCs in one undifferentiated command are explicitly prohibited \u2014 they provide no diagnostic value when a failure occurs."
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "cross-section"
-    },
-    {
-      "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-018",
-      "bug_id": "BUG-PHASE4-018",
-      "auto_disposition": null,
-      "rationale": "Records in different sections of SKILL.md claim different counts for 'line': REQ-PHASE3-262 (section 18) says 1; REQ-PHASE3-1001 (section 77) says 30.",
-      "context_excerpts": [
-        "2. `## Open Exploration Findings` \u2014 must exist verbatim\n3. `## Quality Risks` \u2014 must exist verbatim\n4. `## Pattern Applicability Matrix` \u2014 must exist verbatim\n5. At least 3 sections starting with `## Pattern Deep Dive \u2014 ` \u2014 must exist verbatim\n6. `## Candidate Bugs for Phase 2` \u2014 must exist verbatim\n7. `## Gate Self-Check` \u2014 must exist (proves the Phase 1 gate was run)\n8. `quality/PROGRESS.md` exists and its Phase 1 line is marked `[x]` \u2014 proves Phase 1 was completed, not just started\n9. The `## Open Exploration Findings` section contains at least 8 concrete bug hypotheses \u2014 count lines with file:line citations\n10. At least 3 findings in `## Open Exploration Findings` trace behavior across 2+ functions \u2014 look for multi-location traces\n11. Between 3 and 4 patterns are marked `FULL` in `## Pattern Applicability Matrix` \u2014 count FULL entries",
-        "The previous-run scan should consume ~20\u201330 lines of context."
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "cross-section"
-    },
-    {
-      "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-019",
-      "bug_id": "BUG-PHASE4-019",
-      "auto_disposition": null,
-      "rationale": "Records in different sections of SKILL.md claim different counts for 'line': REQ-PHASE3-262 (section 18) says 1; REQ-PHASE3-1002 (section 77) says 60.",
-      "context_excerpts": [
-        "2. `## Open Exploration Findings` \u2014 must exist verbatim\n3. `## Quality Risks` \u2014 must exist verbatim\n4. `## Pattern Applicability Matrix` \u2014 must exist verbatim\n5. At least 3 sections starting with `## Pattern Deep Dive \u2014 ` \u2014 must exist verbatim\n6. `## Candidate Bugs for Phase 2` \u2014 must exist verbatim\n7. `## Gate Self-Check` \u2014 must exist (proves the Phase 1 gate was run)\n8. `quality/PROGRESS.md` exists and its Phase 1 line is marked `[x]` \u2014 proves Phase 1 was completed, not just started\n9. The `## Open Exploration Findings` section contains at least 8 concrete bug hypotheses \u2014 count lines with file:line citations\n10. At least 3 findings in `## Open Exploration Findings` trace behavior across 2+ functions \u2014 look for multi-location traces\n11. Between 3 and 4 patterns are marked `FULL` in `## Pattern Applicability Matrix` \u2014 count FULL entries",
-        "Targeted deep-reads should consume ~40\u201360 lines total."
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "cross-section"
-    },
-    {
-      "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-020",
-      "bug_id": "BUG-PHASE4-020",
-      "auto_disposition": null,
-      "rationale": "Records in different sections of SKILL.md claim different counts for 'line': REQ-PHASE3-291 (section 18) says 120; REQ-PHASE3-1001 (section 77) says 30.",
-      "context_excerpts": [
-        "**Minimum depth expectation:** EXPLORATION.md must contain at least 120 lines of substantive content \u2014 not padding or boilerplate headers, but actual findings (file paths, behavioral rules, derived requirements, architecture observations). A skeleton that lists section headers with one-line placeholders is not a valid handoff artifact. If the file is thinner than this, go back and add the detail Phase 2 will need.",
-        "The previous-run scan should consume ~20\u201330 lines of context."
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "cross-section"
-    },
-    {
-      "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-021",
-      "bug_id": "BUG-PHASE4-021",
-      "auto_disposition": null,
-      "rationale": "Records in different sections of SKILL.md claim different counts for 'line': REQ-PHASE3-291 (section 18) says 120; REQ-PHASE3-1002 (section 77) says 60.",
-      "context_excerpts": [
-        "**Minimum depth expectation:** EXPLORATION.md must contain at least 120 lines of substantive content \u2014 not padding or boilerplate headers, but actual findings (file paths, behavioral rules, derived requirements, architecture observations). A skeleton that lists section headers with one-line placeholders is not a valid handoff artifact. If the file is thinner than this, go back and add the detail Phase 2 will need.",
-        "Targeted deep-reads should consume ~40\u201360 lines total."
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "cross-section"
-    },
-    {
-      "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-022",
-      "bug_id": "BUG-PHASE4-022",
-      "auto_disposition": null,
-      "rationale": "Records in different sections of references/iteration.md claim different counts for 'line': REQ-PHASE3-295 (section 18) says 80; REQ-PHASE3-1039 (section 79) says 3.",
-      "context_excerpts": [
-        "6. **Iteration mode completion gate.** Before proceeding to Phase 2 (applies to all strategies):\n   - `quality/ITERATION_PLAN.md` exists and names the strategy used\n   - `quality/EXPLORATION_ITER{N}.md` exists for this iteration with at least 80 lines of substantive content\n   - `quality/EXPLORATION_MERGED.md` exists and contains findings from all iterations\n   - The merged Candidate Bugs section has at least 2 new candidates not present in previous iterations\n   - At least 1 finding covers a code area not explored in previous iterations OR re-confirms a previously dismissed finding with fresh evidence",
-        "   - Read just the section headers and first 2\u20133 lines of each section to build a coverage map\n   - For each section, record: section name, subsystems covered, number of findings, depth level (shallow = single-function mentions, deep = multi-function traces)\n   - Write the coverage map to `quality/ITERATION_PLAN.md`"
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "cross-section"
-    },
-    {
-      "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-023",
-      "bug_id": "BUG-PHASE4-023",
-      "auto_disposition": null,
-      "rationale": "Records in different sections of references/iteration.md claim different counts for 'line': REQ-PHASE3-1019 (section 77) says 80; REQ-PHASE3-1039 (section 79) says 3.",
-      "context_excerpts": [
-        "   - `quality/ITERATION_PLAN.md` exists and names the strategy used\n   - `quality/EXPLORATION_ITER{N}.md` exists for this iteration with at least 80 lines of substantive content\n   - `quality/EXPLORATION_MERGED.md` exists and contains findings from all iterations\n   - The merged Candidate Bugs section has at least 2 new candidates not present in previous iterations\n   - At least 1 finding covers a code area not explored in previous iterations OR re-confirms a previously dismissed finding with fresh evidence",
-        "   - Read just the section headers and first 2\u20133 lines of each section to build a coverage map\n   - For each section, record: section name, subsystems covered, number of findings, depth level (shallow = single-function mentions, deep = multi-function traces)\n   - Write the coverage map to `quality/ITERATION_PLAN.md`"
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "cross-section"
-    },
-    {
-      "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-024",
-      "bug_id": "BUG-PHASE4-024",
-      "auto_disposition": null,
-      "rationale": "Records in different sections of references/iteration.md claim different counts for 'line': REQ-PHASE3-1020 (section 77) says 80; REQ-PHASE3-1039 (section 79) says 3.",
-      "context_excerpts": [
-        "   - `quality/EXPLORATION_ITER{N}.md` exists for this iteration with at least 80 lines of substantive content\n   - `quality/EXPLORATION_MERGED.md` exists and contains findings from all iterations\n   - The merged Candidate Bugs section has at least 2 new candidates not present in previous iterations\n   - At least 1 finding covers a code area not explored in previous iterations OR re-confirms a previously dismissed finding with fresh evidence",
-        "   - Read just the section headers and first 2\u20133 lines of each section to build a coverage map\n   - For each section, record: section name, subsystems covered, number of findings, depth level (shallow = single-function mentions, deep = multi-function traces)\n   - Write the coverage map to `quality/ITERATION_PLAN.md`"
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "cross-section"
-    },
-    {
-      "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-025",
-      "bug_id": "BUG-PHASE4-025",
-      "auto_disposition": null,
-      "rationale": "Records in different sections of references/iteration.md claim different counts for 'line': REQ-PHASE3-1039 (section 79) says 3; REQ-PHASE3-1059 (section 80) says 80.",
-      "context_excerpts": [
-        "   - Read just the section headers and first 2\u20133 lines of each section to build a coverage map\n   - For each section, record: section name, subsystems covered, number of findings, depth level (shallow = single-function mentions, deep = multi-function traces)\n   - Write the coverage map to `quality/ITERATION_PLAN.md`",
-        "   - `quality/ITERATION_PLAN.md` exists and names the strategy used\n   - `quality/EXPLORATION_ITER{N}.md` exists for this iteration with at least 80 lines of substantive content\n   - `quality/EXPLORATION_MERGED.md` exists and contains findings from all iterations\n   - The merged Candidate Bugs section has at least 2 new candidates not present in previous iterations\n   - At least 1 finding covers a code area not explored in previous iterations OR re-confirms a previously dismissed finding with fresh evidence"
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "cross-section"
-    },
-    {
-      "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-026",
-      "bug_id": "BUG-PHASE4-026",
-      "auto_disposition": null,
-      "rationale": "Records in different sections of references/iteration.md claim different counts for 'line': REQ-PHASE3-1039 (section 79) says 3; REQ-PHASE3-1099 (section 82) says 80.",
-      "context_excerpts": [
-        "   - Read just the section headers and first 2\u20133 lines of each section to build a coverage map\n   - For each section, record: section name, subsystems covered, number of findings, depth level (shallow = single-function mentions, deep = multi-function traces)\n   - Write the coverage map to `quality/ITERATION_PLAN.md`",
-        "   - `quality/ITERATION_PLAN.md` exists and names the strategy used\n   - `quality/EXPLORATION_ITER{N}.md` exists for this iteration with at least 80 lines of substantive content\n   - `quality/EXPLORATION_MERGED.md` exists and contains findings from all iterations\n   - The merged Candidate Bugs section has at least 2 new candidates not present in previous iterations\n   - At least 1 finding covers a code area not explored in previous iterations OR re-confirms a previously dismissed finding with fresh evidence"
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "cross-section"
-    },
-    {
-      "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-027",
-      "bug_id": "BUG-PHASE4-027",
-      "auto_disposition": null,
-      "rationale": "Records in different sections of references/iteration.md claim different counts for 'line': REQ-PHASE3-1039 (section 79) says 3; REQ-PHASE3-1100 (section 82) says 80.",
-      "context_excerpts": [
-        "   - Read just the section headers and first 2\u20133 lines of each section to build a coverage map\n   - For each section, record: section name, subsystems covered, number of findings, depth level (shallow = single-function mentions, deep = multi-function traces)\n   - Write the coverage map to `quality/ITERATION_PLAN.md`",
-        "   - `quality/ITERATION_PLAN.md` exists and names the strategy used\n   - `quality/EXPLORATION_ITER{N}.md` exists for this iteration with at least 80 lines of substantive content\n   - `quality/EXPLORATION_MERGED.md` exists and contains findings from all iterations\n   - The merged Candidate Bugs section has at least 2 new candidates not present in previous iterations\n   - At least 1 finding covers a code area not explored in previous iterations OR re-confirms a previously dismissed finding with fresh evidence"
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "cross-section"
-    },
-    {
-      "item_type": "divergence-internal-prose",
-      "divergence_id": "DIV-INT-028",
-      "bug_id": "BUG-PHASE4-028",
-      "auto_disposition": null,
-      "rationale": "Records in different sections of references/iteration.md claim different counts for 'line': REQ-PHASE3-1039 (section 79) says 3; REQ-PHASE3-1101 (section 82) says 80.",
-      "context_excerpts": [
-        "   - Read just the section headers and first 2\u20133 lines of each section to build a coverage map\n   - For each section, record: section name, subsystems covered, number of findings, depth level (shallow = single-function mentions, deep = multi-function traces)\n   - Write the coverage map to `quality/ITERATION_PLAN.md`",
-        "   - `quality/ITERATION_PLAN.md` exists and names the strategy used\n   - `quality/EXPLORATION_ITER{N}.md` exists for this iteration with at least 80 lines of substantive content\n   - `quality/EXPLORATION_MERGED.md` exists and contains findings from all iterations\n   - The merged Candidate Bugs section has at least 2 new candidates not present in previous iterations\n   - At least 1 finding covers a code area not explored in previous iterations OR re-confirms a previously dismissed finding with fresh evidence"
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "cross-section"
-    },
-    {
-      "item_type": "divergence-prose-to-code",
-      "divergence_id": "DIV-P2C-001",
-      "bug_id": "BUG-PHASE4-029",
-      "auto_disposition": "spec-fix",
-      "rationale": "Prose claims 50 tests (REQ REQ-PHASE3-110), code matches 634 via '^\\\\s*def test_' in bin/tests/.",
-      "context_excerpts": [
-        "- **Match the existing import pattern exactly.** Read how existing tests import project modules and do the same thing. Getting this wrong means every test fails.\n- **Read every function's signature before calling it.** Read the actual `def` line \u2014 parameter names, types, defaults. Read real data files from the project to understand data shapes. Do not guess at function parameters or fixture structures.\n- **No placeholder tests.** Every test must import and call actual project code. If the body is `pass` or the assertion is trivial (`assert isinstance(x, list)`), delete it. A test that doesn't exercise project code inflates the count and creates false confidence.\n- **Test count heuristic** = (testable spec sections) + (QUALITY.md scenarios) + (defensive patterns). For a medium project (5\u201315 source files), this typically yields 35\u201350 tests. Significantly fewer suggests missed requirements or shallow exploration. Significantly more is fine if every test is meaningful \u2014 don't pad to hit a number.\n- **Cross-variant heuristic: ~30%** \u2014 If the project handles multiple input types, aim for roughly 30% of tests parametrized across all variants. The exact percentage matters less than ensuring every cross-cutting property is tested across all variants.\n- **Test outcomes, not mechanisms** \u2014 Assert what the spec says should happen, not how the code implements it.\n- **Use schema-valid mutations** \u2014 Boundary tests must use values the schema accepts (from Step 5b), not values it rejects.",
-        "bin/tests/"
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "SKILL.md::9"
-    },
-    {
-      "item_type": "divergence-prose-to-code",
-      "divergence_id": "DIV-P2C-002",
-      "bug_id": null,
-      "auto_disposition": "spec-fix",
-      "rationale": "Prose claims 50 tests (REQ REQ-PHASE3-111), code matches 634 via '^\\\\s*def test_' in bin/tests/.",
-      "context_excerpts": [
-        "Key rules:\n- **Match the existing import pattern exactly.** Read how existing tests import project modules and do the same thing. Getting this wrong means every test fails.\n- **Read every function's signature before calling it.** Read the actual `def` line \u2014 parameter names, types, defaults. Read real data files from the project to understand data shapes. Do not guess at function parameters or fixture structures.\n- **No placeholder tests.** Every test must import and call actual project code. If the body is `pass` or the assertion is trivial (`assert isinstance(x, list)`), delete it. A test that doesn't exercise project code inflates the count and creates false confidence.\n- **Test count heuristic** = (testable spec sections) + (QUALITY.md scenarios) + (defensive patterns). For a medium project (5\u201315 source files), this typically yields 35\u201350 tests. Significantly fewer suggests missed requirements or shallow exploration. Significantly more is fine if every test is meaningful \u2014 don't pad to hit a number.\n- **Cross-variant heuristic: ~30%** \u2014 If the project handles multiple input types, aim for roughly 30% of tests parametrized across all variants. The exact percentage matters less than ensuring every cross-cutting property is tested across all variants.\n- **Test outcomes, not mechanisms** \u2014 Assert what the spec says should happen, not how the code implements it.\n- **Use schema-valid mutations** \u2014 Boundary tests must use values the schema accepts (from Step 5b), not values it rejects.",
-        "bin/tests/"
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "SKILL.md::9"
-    },
-    {
-      "item_type": "divergence-prose-to-code",
-      "divergence_id": "DIV-P2C-003",
-      "bug_id": null,
-      "auto_disposition": "spec-fix",
-      "rationale": "Prose claims 50 tests (REQ REQ-PHASE3-342), code matches 634 via '^\\\\s*def test_' in bin/tests/.",
-      "context_excerpts": [
-        "- **Match the existing import pattern exactly.** Read how existing tests import project modules and do the same thing. Getting this wrong means every test fails.\n- **Read every function's signature before calling it.** Read the actual `def` line \u2014 parameter names, types, defaults. Read real data files from the project to understand data shapes. Do not guess at function parameters or fixture structures.\n- **No placeholder tests.** Every test must import and call actual project code. If the body is `pass` or the assertion is trivial (`assert isinstance(x, list)`), delete it. A test that doesn't exercise project code inflates the count and creates false confidence.\n- **Test count heuristic** = (testable spec sections) + (QUALITY.md scenarios) + (defensive patterns). For a medium project (5\u201315 source files), this typically yields 35\u201350 tests. Significantly fewer suggests missed requirements or shallow exploration. Significantly more is fine if every test is meaningful \u2014 don't pad to hit a number.\n- **Cross-variant heuristic: ~30%** \u2014 If the project handles multiple input types, aim for roughly 30% of tests parametrized across all variants. The exact percentage matters less than ensuring every cross-cutting property is tested across all variants.\n- **Test outcomes, not mechanisms** \u2014 Assert what the spec says should happen, not how the code implements it.\n- **Use schema-valid mutations** \u2014 Boundary tests must use values the schema accepts (from Step 5b), not values it rejects.",
-        "bin/tests/"
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "SKILL.md::21"
-    },
-    {
-      "item_type": "divergence-prose-to-code",
-      "divergence_id": "DIV-P2C-004",
-      "bug_id": null,
-      "auto_disposition": "spec-fix",
-      "rationale": "Prose claims 50 tests (REQ REQ-PHASE3-343), code matches 634 via '^\\\\s*def test_' in bin/tests/.",
-      "context_excerpts": [
-        "- **No placeholder tests.** Every test must import and call actual project code. If the body is `pass` or the assertion is trivial (`assert isinstance(x, list)`), delete it. A test that doesn't exercise project code inflates the count and creates false confidence.\n- **Test count heuristic** = (testable spec sections) + (QUALITY.md scenarios) + (defensive patterns). For a medium project (5\u201315 source files), this typically yields 35\u201350 tests. Significantly fewer suggests missed requirements or shallow exploration. Significantly more is fine if every test is meaningful \u2014 don't pad to hit a number.\n- **Cross-variant heuristic: ~30%** \u2014 If the project handles multiple input types, aim for roughly 30% of tests parametrized across all variants. The exact percentage matters less than ensuring every cross-cutting property is tested across all variants.\n- **Test outcomes, not mechanisms** \u2014 Assert what the spec says should happen, not how the code implements it.\n- **Use schema-valid mutations** \u2014 Boundary tests must use values the schema accepts (from Step 5b), not values it rejects.",
-        "bin/tests/"
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "SKILL.md::21"
-    },
-    {
-      "item_type": "divergence-prose-to-code",
-      "divergence_id": "DIV-P2C-005",
-      "bug_id": null,
-      "auto_disposition": "spec-fix",
-      "rationale": "Prose claims 50 tests (REQ REQ-PHASE3-344), code matches 634 via '^\\\\s*def test_' in bin/tests/.",
-      "context_excerpts": [
-        "- **Test count heuristic** = (testable spec sections) + (QUALITY.md scenarios) + (defensive patterns). For a medium project (5\u201315 source files), this typically yields 35\u201350 tests. Significantly fewer suggests missed requirements or shallow exploration. Significantly more is fine if every test is meaningful \u2014 don't pad to hit a number.\n- **Cross-variant heuristic: ~30%** \u2014 If the project handles multiple input types, aim for roughly 30% of tests parametrized across all variants. The exact percentage matters less than ensuring every cross-cutting property is tested across all variants.\n- **Test outcomes, not mechanisms** \u2014 Assert what the spec says should happen, not how the code implements it.\n- **Use schema-valid mutations** \u2014 Boundary tests must use values the schema accepts (from Step 5b), not values it rejects.",
-        "bin/tests/"
-      ],
-      "council_action_required": true,
-      "triage_batch_key": "SKILL.md::21"
     }
   ]
 }
