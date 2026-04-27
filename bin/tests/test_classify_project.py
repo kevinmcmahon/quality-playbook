@@ -271,6 +271,54 @@ class OverrideTests(unittest.TestCase):
         self.assertIsNone(record["override_rationale"])
 
 
+class CliOverrideTests(unittest.TestCase):
+    """Phase 4 DQ-4-1: --override / --override-rationale argparse
+    flags exposed at the CLI surface."""
+
+    def test_cli_override_applies_classification_and_writes_file(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # Synthesize a Code-shaped fixture so the override path
+            # is actually visible (heuristic would say Code; we
+            # override to Hybrid).
+            (root / "main.py").write_text("def main(): pass\n", encoding="utf-8")
+            rc = cp._main([
+                "--target", str(root),
+                "--override", "hybrid",
+                "--override-rationale",
+                "Council determined hybrid based on test fixture.",
+                "--write",
+            ])
+            self.assertEqual(rc, 0)
+            written = json.loads(
+                (root / "quality" / "project_type.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(written["classification"], "Hybrid")
+            self.assertTrue(written["override_applied"])
+            self.assertIn(
+                "Council determined hybrid",
+                written["override_rationale"],
+            )
+
+    def test_cli_override_without_rationale_errors(self) -> None:
+        with TemporaryDirectory() as tmp:
+            with self.assertRaises(SystemExit):
+                cp._parse_args([
+                    "--target", str(tmp),
+                    "--override", "skill",
+                ])
+
+    def test_cli_rationale_without_override_errors(self) -> None:
+        with TemporaryDirectory() as tmp:
+            with self.assertRaises(SystemExit):
+                cp._parse_args([
+                    "--target", str(tmp),
+                    "--override-rationale", "rationale without override",
+                ])
+
+
 # ---------------------------------------------------------------------------
 # JSON writer
 # ---------------------------------------------------------------------------

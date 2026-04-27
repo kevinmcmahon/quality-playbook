@@ -32,6 +32,18 @@ bypass the heuristic. v1.5.3 Phase 4's Council uses this hook to re-verify
 classifications and override them with rationale; the heuristic's evidence
 is preserved in the output even when an override applies.
 
+CLI override (Phase 4 DQ-4-1):
+
+    python3 -m bin.classify_project --target <repo> \\
+        --override <code|skill|hybrid> \\
+        --override-rationale "<text>" \\
+        --write
+
+The full Phase 4 Council Override Workflow (when to invoke, what
+downstream phases need re-running, expected post-override
+project_type.json shape) lives at
+`docs/design/QPB_v1.5.3_Phase4_Council_Override_Workflow.md`.
+
 Note on the empty-SKILL.md edge case: an empty SKILL.md (zero words) at
 the repo root classifies as Hybrid with low confidence, NOT Code. This
 is intentional -- the file's presence is treated as a signal of
@@ -687,7 +699,34 @@ def _parse_args(argv: Optional[list[str]] = None) -> "argparse.Namespace":
         default=None,
         help="with --benchmark: path to write the verification log",
     )
-    return parser.parse_args(argv)
+    # Phase 4 DQ-4-1 (Council override workflow): Round 1 carry-
+    # forward. The classify_project() function has had override /
+    # override_rationale parameters since v1.5.3 Phase 1, but they
+    # weren't exposed at the CLI surface. Phase 4 adds them so a
+    # Council reviewer who believes the heuristic classification is
+    # wrong can re-run with explicit override + rationale. See
+    # docs/design/QPB_v1.5.3_Phase4_Council_Override_Workflow.md.
+    parser.add_argument(
+        "--override",
+        choices=["code", "skill", "hybrid"],
+        default=None,
+        help=(
+            "override the heuristic classification with this value "
+            "(case-insensitive); requires --override-rationale"
+        ),
+    )
+    parser.add_argument(
+        "--override-rationale",
+        type=str,
+        default=None,
+        help="required when --override is used; recorded in project_type.json",
+    )
+    args = parser.parse_args(argv)
+    if args.override and not args.override_rationale:
+        parser.error("--override requires --override-rationale")
+    if args.override_rationale and not args.override:
+        parser.error("--override-rationale only meaningful with --override")
+    return args
 
 
 def _main(argv: Optional[list[str]] = None) -> int:
@@ -696,7 +735,15 @@ def _main(argv: Optional[list[str]] = None) -> int:
     if args.benchmark:
         return _run_benchmark_verification(_QPB_ROOT, args.log)
 
-    record = classify_project(args.target)
+    # The classify_project() function expects capitalized values
+    # ("Code"/"Skill"/"Hybrid") in VALID_CLASSIFICATIONS; the CLI
+    # accepts lowercase per the Phase 4 brief. Normalize here.
+    override = args.override.capitalize() if args.override else None
+    record = classify_project(
+        args.target,
+        override=override,
+        override_rationale=args.override_rationale,
+    )
     print(json.dumps(record, indent=2))
     if args.write:
         out_path = write_classification(args.target, record)
