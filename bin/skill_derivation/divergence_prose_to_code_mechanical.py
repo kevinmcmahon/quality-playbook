@@ -50,18 +50,32 @@ from bin.skill_derivation.divergence_internal import (
 # Mapping: (normalized_noun) -> (default_artifact_path_relative_to_repo,
 #                                code_count_pattern_regex_string,
 #                                regex_flags).
-# Patterns are anchored by `^` to count occurrences without matching
-# inside docstrings/comments. Defaults are sensible for QPB's layout;
-# tests can override via config.artifact_resolvers.
+#
+# Phase 5 Stage 1E (Round 8 DN-3 + Phase 4 G.2 audit-back): every
+# pattern uses `^\s*` (rather than the bare `^`) so indented
+# declarations are counted. Phase 4's QPB G.1 silently miscounted
+# `def test_*` methods as 0 because tests live inside
+# unittest.TestCase classes (indented). The same shape of bug could
+# surface on another corpus where:
+#   * `def check_*` lives inside a class (currently top-level in
+#     quality_gate.py — verified 34 top-level, 0 indented at HEAD
+#     `43ddaee`);
+#   * `def run_pass_*` is moved into a Pass*Driver class (currently
+#     top-level in pass_a.py..pass_d.py — verified 4 top-level,
+#     0 indented);
+#   * `## Phase N` is nested under another heading (currently
+#     top-level in SKILL.md — verified 9 top-level, 0 indented).
+# Switching to `^\s*` is a no-op against the current QPB corpus and
+# defensive against future structural moves.
 _CODE_PATTERNS: dict[str, tuple[str, str, int]] = {
     "check": (
         ".github/skills/quality_gate/quality_gate.py",
-        r"^def check_",
+        r"^\s*def check_",
         re.MULTILINE,
     ),
     "phase": (
         "SKILL.md",
-        r"^##\s+Phase\s+\d+",
+        r"^\s*##\s+Phase\s+\d+",
         re.MULTILINE,
     ),
     "test": (
@@ -72,8 +86,8 @@ _CODE_PATTERNS: dict[str, tuple[str, str, int]] = {
         re.MULTILINE,
     ),
     "pass": (
-        "bin/skill_derivation/",  # pass_a/b/c/d.py — counts files matching pass_?.py
-        r"^def run_pass_",
+        "bin/skill_derivation/",  # pass_a/b/c/d.py — counts run_pass_ across all .py
+        r"^\s*def run_pass_",
         re.MULTILINE,
     ),
 }
