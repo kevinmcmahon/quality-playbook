@@ -214,11 +214,17 @@ def _build_section_coverage(
             "marker": marker,
         }
         sections_report.append(report)
-        # Completeness-gap flagging: operational section, no
-        # promoted REQs, no skip-rationale.
+        # Completeness-gap flagging: operational section, ZERO drafts
+        # produced (not just zero promoted), and no skip-rationale.
+        # A section that produced drafts that all got rejected /
+        # demoted is visible in this per-section report but is NOT a
+        # completeness gap -- the section WAS visited and DID produce
+        # something. The gap signal is for sections the LLM silently
+        # under-produced on (no drafts at all from a real
+        # operational section).
         if (
             section_kind == "operational"
-            and promoted_in_section == 0
+            and len(drafts) == 0
             and marker is None
         ):
             completeness_gaps.append({
