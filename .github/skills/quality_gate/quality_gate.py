@@ -2616,6 +2616,131 @@ def check_v1_5_3_divergence_type_validation(q):
         pass_("bugs_manifest.json: v1.5.3 divergence_type validation complete")
 
 
+_V153_COUNCIL_INBOX_ITEM_TYPES = frozenset({
+    "rejected-draft",
+    "tier-5-demotion",
+    "zero-req-section",
+    "weak-rationale",
+})
+
+
+def check_v1_5_3_council_inbox_validation(q):
+    """Phase 3b BLOCK-4 cross-reference + DQ-5 structural validation.
+
+    Validates quality/phase3/pass_d_council_inbox.json against the
+    DQ-5 schema AND verifies that every Pass D rejection / Tier-5
+    demotion has a matching council-inbox item. Without the
+    cross-reference invariant, a syntactically-valid but functionally
+    -empty inbox could pass while pass_d_audit.json shows 30+
+    rejections -- the inbox population could silently break and the
+    gate would not catch it.
+
+    Two failure modes:
+      1. Structural -- malformed item record, invalid item_type,
+         missing required field per the DQ-5 schema.
+      2. Cross-reference -- pass_d_audit.json entry with outcome in
+         {rejected, demoted_to_tier_5} has no matching item in the
+         inbox.
+
+    Phase 3 artifact set is at <repo>/quality/phase3/, NOT at the
+    top-level <repo>/quality/. The check returns silently if the
+    phase3 directory does not exist (the project is Code-only or
+    Phase 3 has not been run yet).
+    """
+    phase3_dir = q / "phase3"
+    if not phase3_dir.is_dir():
+        return  # phase 3 not run; not in scope for this manifest set
+    inbox_path = phase3_dir / "pass_d_council_inbox.json"
+    audit_path = phase3_dir / "pass_d_audit.json"
+    if not inbox_path.is_file():
+        return  # phase 3 partially run; skip silently
+
+    inbox_data = load_json(inbox_path)
+    if not isinstance(inbox_data, dict):
+        fail(f"{inbox_path.name}: not a valid JSON object")
+        return
+
+    # Structural validation.
+    schema_version = inbox_data.get("schema_version")
+    if schema_version != "1.0":
+        fail(
+            f"{inbox_path.name}: schema_version {schema_version!r} "
+            "does not match the DQ-5 spec value '1.0'"
+        )
+    items = inbox_data.get("items")
+    if not isinstance(items, list):
+        fail(f"{inbox_path.name}: 'items' is missing or not a list")
+        return
+
+    required_fields = {
+        "item_type",
+        "draft_idx",
+        "section_idx",
+        "section_heading",
+        "rationale",
+        "context_excerpt",
+        "provisional_disposition",
+    }
+    for idx, item in enumerate(items):
+        if not isinstance(item, dict):
+            fail(f"{inbox_path.name}: item #{idx} is not a JSON object")
+            continue
+        missing = required_fields - set(item.keys())
+        if missing:
+            fail(
+                f"{inbox_path.name}: item #{idx} is missing required "
+                f"DQ-5 fields: {sorted(missing)}"
+            )
+        if item.get("item_type") not in _V153_COUNCIL_INBOX_ITEM_TYPES:
+            fail(
+                f"{inbox_path.name}: item #{idx} has invalid item_type "
+                f"{item.get('item_type')!r} (valid: "
+                f"{sorted(_V153_COUNCIL_INBOX_ITEM_TYPES)})"
+            )
+        rationale = item.get("rationale")
+        if not isinstance(rationale, str) or not rationale.strip():
+            fail(
+                f"{inbox_path.name}: item #{idx} has empty or missing "
+                "rationale"
+            )
+
+    # Cross-reference invariant: every rejected / demoted audit entry
+    # must have a matching inbox item by (draft_idx, item_type).
+    if audit_path.is_file():
+        audit_data = load_json(audit_path)
+        if isinstance(audit_data, dict):
+            inbox_pairs = {
+                (item.get("draft_idx"), item.get("item_type"))
+                for item in items
+                if isinstance(item, dict)
+            }
+            for entry in audit_data.get("rejected", []) or []:
+                if not isinstance(entry, dict):
+                    continue
+                pair = (entry.get("draft_idx"), "rejected-draft")
+                if pair not in inbox_pairs:
+                    fail(
+                        f"{inbox_path.name}: pass_d_audit.json shows "
+                        f"rejected draft_idx={entry.get('draft_idx')} "
+                        "but there is no matching rejected-draft item "
+                        "in the council inbox (BLOCK-4 cross-reference "
+                        "invariant violation)"
+                    )
+            for entry in audit_data.get("demoted_to_tier_5", []) or []:
+                if not isinstance(entry, dict):
+                    continue
+                pair = (entry.get("draft_idx"), "tier-5-demotion")
+                if pair not in inbox_pairs:
+                    fail(
+                        f"{inbox_path.name}: pass_d_audit.json shows "
+                        f"tier-5 demotion at draft_idx={entry.get('draft_idx')} "
+                        "but there is no matching tier-5-demotion item "
+                        "in the council inbox"
+                    )
+
+    pass_(f"{inbox_path.name}: v1.5.3 council inbox validation complete")
+
+
 def check_v1_5_2_cardinality_gate(repo_dir):
     """v1.5.2 Lever 3: Phase 5 cardinality reconciliation gate.
 
@@ -2652,6 +2777,10 @@ def check_v1_5_0_gate_invariants(repo_dir, q):
     check_v1_5_3_source_type_validation(q)
     check_v1_5_3_skill_section_consistency(q)
     check_v1_5_3_divergence_type_validation(q)
+    # v1.5.3 Phase 3b: council inbox structural + cross-reference
+    # validation (DQ-5 + BLOCK-4). No-op for Code projects (phase3
+    # directory is absent).
+    check_v1_5_3_council_inbox_validation(q)
 
 
 def check_repo(repo_dir, version_arg, strictness):

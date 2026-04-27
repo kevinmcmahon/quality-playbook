@@ -2553,5 +2553,165 @@ class TestV153IsShapedHelper(unittest.TestCase):
         self.assertFalse(quality_gate._is_v1_5_3_shaped(None))
 
 
+class TestV153CouncilInboxValidation(unittest.TestCase):
+    """Phase 3b BLOCK-4 + DQ-5: pass_d_council_inbox.json structural
+    validation + cross-reference invariant against pass_d_audit.json."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self._tmp.name)
+        self.q = self.repo / "quality"
+        self.phase3 = self.q / "phase3"
+        self.phase3.mkdir(parents=True)
+        quality_gate.FAIL = 0
+        quality_gate.WARN = 0
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _write_inbox(self, items: list, schema_version: str = "1.0") -> None:
+        (self.phase3 / "pass_d_council_inbox.json").write_text(
+            json.dumps({
+                "schema_version": schema_version,
+                "generated_at": "2026-04-27T00:00:00Z",
+                "items": items,
+            }),
+            encoding="utf-8",
+        )
+
+    def _write_audit(self, rejected: list, demoted: list) -> None:
+        (self.phase3 / "pass_d_audit.json").write_text(
+            json.dumps({
+                "schema_version": "1.0",
+                "generated_at": "2026-04-27T00:00:00Z",
+                "promoted": [],
+                "rejected": rejected,
+                "demoted_to_tier_5": demoted,
+                "rejection_rate": 0.0,
+                "rejection_rate_threshold": 0.30,
+                "phase4_council_flag": False,
+            }),
+            encoding="utf-8",
+        )
+
+    def _valid_item(self, **overrides) -> dict:
+        item = {
+            "item_type": "rejected-draft",
+            "draft_idx": 0,
+            "section_idx": 1,
+            "section_heading": "Phase 1",
+            "rationale": "structural near-miss",
+            "context_excerpt": "x",
+            "provisional_disposition": "needs-council-review",
+        }
+        item.update(overrides)
+        return item
+
+    def test_phase3_dir_absent_is_noop(self):
+        # Remove phase3/ entirely.
+        import shutil
+        shutil.rmtree(self.phase3)
+        fails, _ = _capture_fail_output(
+            quality_gate.check_v1_5_3_council_inbox_validation, self.q
+        )
+        self.assertEqual(fails, 0)
+
+    def test_valid_inbox_passes(self):
+        self._write_inbox([self._valid_item()])
+        self._write_audit(
+            rejected=[{"draft_idx": 0, "rationale": "x"}],
+            demoted=[],
+        )
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_3_council_inbox_validation, self.q
+        )
+        self.assertEqual(fails, 0, out)
+        self.assertIn("validation complete", out)
+
+    def test_invalid_item_type_fails(self):
+        self._write_inbox(
+            [self._valid_item(item_type="invented-kind")]
+        )
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_3_council_inbox_validation, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("invented-kind", out)
+
+    def test_missing_required_field_fails(self):
+        bad = self._valid_item()
+        del bad["rationale"]
+        self._write_inbox([bad])
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_3_council_inbox_validation, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("rationale", out)
+
+    def test_cross_reference_audit_rejection_without_inbox_item_fails(self):
+        # Audit has 1 rejection, inbox has 0 items -> BLOCK-4 violation.
+        self._write_inbox([])
+        self._write_audit(
+            rejected=[{"draft_idx": 5, "rationale": "x"}],
+            demoted=[],
+        )
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_3_council_inbox_validation, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("draft_idx=5", out)
+        self.assertIn("BLOCK-4", out)
+
+    def test_cross_reference_audit_demotion_without_inbox_item_fails(self):
+        self._write_inbox([])
+        self._write_audit(
+            rejected=[],
+            demoted=[{"draft_idx": 3, "rationale": "x"}],
+        )
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_3_council_inbox_validation, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("tier-5", out)
+
+
+class TestSkillDerivationMainArgs(unittest.TestCase):
+    """Phase 3b commit 9: __main__.py argument parsing."""
+
+    def test_imports_cleanly(self) -> None:
+        # Smoke test: the module imports without side effects.
+        from bin.skill_derivation import __main__ as main_mod
+        self.assertTrue(callable(main_mod._main))
+
+    def test_pass_choice_default_is_all(self) -> None:
+        from bin.skill_derivation.__main__ import _parse_args
+        args = _parse_args(["/tmp/example"])
+        self.assertEqual(args.pass_choice, "all")
+        self.assertTrue(args.resume)
+        self.assertEqual(args.runner, "claude")
+        self.assertEqual(args.pace_seconds, 0)
+
+    def test_no_resume_flag(self) -> None:
+        from bin.skill_derivation.__main__ import _parse_args
+        args = _parse_args(["/tmp/example", "--no-resume"])
+        self.assertFalse(args.resume)
+
+    def test_pass_choice_individual(self) -> None:
+        from bin.skill_derivation.__main__ import _parse_args
+        for choice in ("A", "B", "C", "D"):
+            args = _parse_args(["/tmp/example", "--pass", choice])
+            self.assertEqual(args.pass_choice, choice)
+
+    def test_runner_copilot(self) -> None:
+        from bin.skill_derivation.__main__ import _parse_args
+        args = _parse_args(["/tmp/example", "--runner", "copilot"])
+        self.assertEqual(args.runner, "copilot")
+
+    def test_pace_seconds_int(self) -> None:
+        from bin.skill_derivation.__main__ import _parse_args
+        args = _parse_args(["/tmp/example", "--pace-seconds", "30"])
+        self.assertEqual(args.pace_seconds, 30)
+
+
 if __name__ == "__main__":
     unittest.main()
