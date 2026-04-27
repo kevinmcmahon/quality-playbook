@@ -2,7 +2,7 @@
 
 Point an AI coding tool at any codebase. Get a complete quality engineering infrastructure: requirements derived from the actual intent of the code, functional tests traced to those requirements, a three-pass code review protocol, and a multi-model spec audit that catches bugs no single reviewer can find alone.
 
-**Version:** 1.5.2 | **Author:** [Andrew Stellman](https://github.com/andrewstellman) | **License:** Apache 2.0
+**Version:** 1.5.3 | **Author:** [Andrew Stellman](https://github.com/andrewstellman) | **License:** Apache 2.0
 
 ## Find the 35% of bugs that code review misses
 
@@ -248,6 +248,19 @@ The playbook's value comes from requirement derivation. AI code reviewers are bo
 ### Why documentation matters
 
 Adding community documentation to the pipeline produces measurably better results. In a controlled experiment across multiple repositories, documentation-enriched runs found more bugs, different bugs, and higher-confidence bugs than code-only baselines. The documentation gives auditors spec language to check against, turning "this code looks odd" into "this code contradicts the documented behavior."
+
+### What's new in v1.5.3
+
+- **Skill-as-code feature complete.** v1.5.3 extends the v1.5.0 divergence model to AI-skill targets — projects where SKILL.md prose IS the spec (no separate implementation). The originating evidence was the **2026-04-19 Haiku demonstration**: claude-haiku-4-5-20251001 generated a 2,129-line REQUIREMENTS.md against QPB's own SKILL.md from a simple two-turn interaction, demonstrating that earlier QPB releases were leaving substantial skill-prose coverage on the table because the heuristic pipeline was tuned for code projects.
+- **Phase 0 project-type classifier.** `bin/classify_project.py` classifies every target as **Code**, **Skill**, or **Hybrid** based on a SKILL.md-prose-vs-code-LOC ratio with explicit override hooks for Council triage. Code targets continue through the v1.5.0 divergence pipeline unchanged; Skill / Hybrid targets get the new four-pass derivation pipeline. Council override workflow at [`docs/design/QPB_v1.5.3_Phase4_Council_Override_Workflow.md`](docs/design/QPB_v1.5.3_Phase4_Council_Override_Workflow.md).
+- **Four-pass generate-then-verify skill-derivation pipeline.** Pass A (naive coverage, section-iterative) reads SKILL.md + every `references/*.md` file with high-recall LLM extraction. Pass B (mechanical citation extraction with token-overlap pre-filter) cuts the O(n×m) similarity match by ~93× via a Jaccard pre-filter (Round 6 follow-up, applied at v1.5.3 to keep cross-target wall-clock tractable). Pass C (formal REQ + UC production) applies the v1.5.3 disposition table with project-type-aware behavioral routing. Pass D (coverage audit + Council inbox) emits per-section accounting + a structured triage queue.
+- **Skill-divergence taxonomy: internal-prose, prose-to-code, execution.** `BUG.divergence_type` extends to four values per `schemas.md` §3.8. Phase 4's detection machinery covers all three skill-divergence categories with a precision-tuned pipeline (four-prong filter for internal-prose, Tier-1-mechanical + Tier-2-LLM split for prose-to-code, archived-gate-result aggregation for execution). The detection ships under `bin/skill_derivation/divergence_*.py`.
+- **Skill-project gate enforcement.** Four new gate checks in `quality_gate.py` (`check_skill_section_req_coverage`, `check_reference_file_req_coverage`, `check_hybrid_cross_cutting_reqs`, `check_project_type_consistency`) verify Skill/Hybrid invariants. Code projects SKIP the skill-specific checks rather than failing on them — the v1.5.3 surface is additive against Code-project gates.
+- **Curated REQUIREMENTS.md bootstrap.** v1.5.3's self-audit produces a curated REQUIREMENTS.md with **comparable coverage** to the Haiku reference (~65 unique REQ definitions in the published Haiku artifact; v1.5.3's curated output renders at 171 REQs across 171 sections, sub-agent spot-check folded into the bootstrap commit). The curation algorithm groups by section, dedupes via Jaccard at 0.6 threshold, and caps at K REQs per partition. See `previous_runs/v1.5.3/REQUIREMENTS.md`.
+- **Cross-target validation: 5 code regression + QPB Hybrid + 3 pure skills.** Phase 5 captured pre-v1.5.3 BUGS.md snapshots for chi-1.5.1, virtio-1.5.1, express-1.5.1, cobra-1.3.46, and ran v1.5.3 against three pure-skill targets (anthropic-skills/skills/skill-creator, pdf, claude-api). All three pure-skill cells classify as Skill, run cleanly through Phase 3 + Phase 4, and produce zero false-positive divergences after the Stage 1 precision tuning. The full code-target playbook regression sweep + cross-model second backend (opus) are deferred to a v1.5.3.1 patch.
+- **Backward compatibility verified.** `python3 -m bin.classify_project --benchmark` returns `## Overall: PASS` for all 6 cells (5 code + QPB). Phase 4's skill-specific checks SKIP cleanly on Code projects; no `bin/run_playbook.py` changes shipped in v1.5.3.
+
+Originating evidence and the full bootstrap archive (1369 formal REQs + 17 UCs + 11 internal-prose divergences + 4 LLM-judged prose-to-code divergences + 8 partition-density warnings + the curated REQUIREMENTS.md) live under `previous_runs/v1.5.3/`. Phase summaries: `quality/phase3/PHASE3B_SUMMARY.md`, `PHASE4_SUMMARY.md`, `PHASE5_SUMMARY.md`.
 
 ### What's new in v1.5.2
 

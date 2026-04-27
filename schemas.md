@@ -1,4 +1,4 @@
-> Quality Playbook v1.5.1 — Data Contract (`schemas.md`)
+> Quality Playbook v1.5.3 — Data Contract (`schemas.md`)
 > Versioned with the playbook skill. Do not edit per-run.
 
 # Quality Playbook Data Schemas
@@ -124,7 +124,7 @@ Example:
 
 ```json
 {
-  "schema_version": "1.5.1",
+  "schema_version": "1.5.3",
   "generated_at": "2026-04-19T14:30:22Z",
   "records": []
 }
@@ -917,7 +917,7 @@ instead of `records`:
 
 ```json
 {
-  "schema_version": "1.5.1",
+  "schema_version": "1.5.3",
   "generated_at": "2026-04-19T14:30:22Z",
   "reviews": [
     {
@@ -1096,7 +1096,7 @@ non-empty.
 | `run_timestamp_start`   | string          | yes      | ISO 8601 with explicit timezone. Run start.                                              |
 | `run_timestamp_end`     | string          | yes      | ISO 8601 with explicit timezone. Run end.                                                |
 | `duration_seconds`      | integer         | yes      | End minus start, rounded to whole seconds.                                               |
-| `qpb_version`           | string          | yes      | Playbook version that produced the run, e.g. `"1.5.1"`.                                  |
+| `qpb_version`           | string          | yes      | Playbook version that produced the run, e.g. `"1.5.3"`.                                  |
 | `target_repo_path`      | string          | yes      | Absolute or repo-root-relative path to the target repo.                                  |
 | `target_repo_git_sha`   | string          | yes      | Git SHA of the target repo HEAD at run start. May be `"unknown"` for non-git targets.    |
 | `target_project_type`   | string          | yes      | One of `Code`, `Skill`, `Hybrid` (per v1.5.2 project-type taxonomy).                     |
