@@ -283,6 +283,40 @@ def enumerate_sections(
     return sections
 
 
+def enumerate_skill_and_references(
+    skill_md_path: Path,
+    references_dir: Optional[Path],
+    repo_root: Path,
+) -> List[Section]:
+    """Phase 3b A.2: enumerate SKILL.md AND every references/*.md file.
+
+    Iteration units are chained with monotonic `section_idx` across
+    all documents (SKILL.md first, then each reference in
+    sorted-by-name order). Pass A reads the chained list and runs
+    the LLM once per non-skipped section.
+
+    Reference files are markdown by convention; non-markdown files in
+    references/ are skipped. Missing references_dir is silently empty.
+    Pass C uses the `document` field on each draft to set source_type
+    correctly (skill-section for SKILL.md; reference-file for
+    references/*.md).
+    """
+    out: List[Section] = []
+    if skill_md_path.is_file():
+        out.extend(
+            enumerate_sections(skill_md_path, repo_root=repo_root, starting_idx=0)
+        )
+    if references_dir is not None and references_dir.is_dir():
+        next_idx = len(out)
+        for ref in sorted(references_dir.glob("*.md")):
+            ref_secs = enumerate_sections(
+                ref, repo_root=repo_root, starting_idx=next_idx
+            )
+            out.extend(ref_secs)
+            next_idx += len(ref_secs)
+    return out
+
+
 def write_sections_json(sections: List[Section], out_path: Path) -> None:
     """Emit pass_a_sections.json (the deterministic enumeration artifact).
 

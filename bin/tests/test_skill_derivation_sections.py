@@ -256,5 +256,95 @@ class QPBSkillFixtureTests(unittest.TestCase):
             self.assertEqual(wte[0].skip_reason, "meta-allowlist")
 
 
+class ReferenceFileIterationTests(unittest.TestCase):
+    """Phase 3b A.2: enumerate_skill_and_references chains SKILL.md +
+    references/*.md with monotonic section_idx across documents."""
+
+    def test_chains_skill_and_references_with_monotonic_idx(self) -> None:
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            (tmp / "SKILL.md").write_text(
+                "# Doc\n\n## Phase 1\n\nfoo\n\n## Phase 2\n\nbar\n",
+                encoding="utf-8",
+            )
+            refs = tmp / "references"
+            refs.mkdir()
+            (refs / "patterns.md").write_text(
+                "# Patterns\n\n## Pattern One\n\nbaz\n",
+                encoding="utf-8",
+            )
+            (refs / "verification.md").write_text(
+                "# Verification\n\n## Verify One\n\nqux\n",
+                encoding="utf-8",
+            )
+            secs = sections.enumerate_skill_and_references(
+                tmp / "SKILL.md", refs, tmp
+            )
+            # 2 SKILL.md sections + 1 patterns + 1 verification = 4
+            self.assertEqual(len(secs), 4)
+            # Monotonic section_idx across documents.
+            self.assertEqual(
+                [s.section_idx for s in secs],
+                list(range(len(secs))),
+            )
+            # Order: SKILL.md first, then references in
+            # sorted-by-name order.
+            docs = [s.document for s in secs]
+            self.assertEqual(docs[0], "SKILL.md")
+            self.assertEqual(docs[1], "SKILL.md")
+            self.assertIn("patterns.md", docs[2])
+            self.assertIn("verification.md", docs[3])
+
+    def test_missing_references_dir_returns_skill_only(self) -> None:
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            (tmp / "SKILL.md").write_text(
+                "# Doc\n\n## Only One\n\nbody\n", encoding="utf-8"
+            )
+            secs = sections.enumerate_skill_and_references(
+                tmp / "SKILL.md", None, tmp
+            )
+            self.assertEqual(len(secs), 1)
+            self.assertEqual(secs[0].document, "SKILL.md")
+
+    def test_non_markdown_files_in_references_skipped(self) -> None:
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            (tmp / "SKILL.md").write_text(
+                "# Doc\n\n## One\n\nbody\n", encoding="utf-8"
+            )
+            refs = tmp / "references"
+            refs.mkdir()
+            (refs / "patterns.md").write_text(
+                "# P\n\n## P1\n\nbody\n", encoding="utf-8"
+            )
+            (refs / "ignore.txt").write_text(
+                "should be skipped", encoding="utf-8"
+            )
+            secs = sections.enumerate_skill_and_references(
+                tmp / "SKILL.md", refs, tmp
+            )
+            docs = [s.document for s in secs]
+            self.assertNotIn("references/ignore.txt", docs)
+
+    def test_qpb_references_dir_iterates_14_files(self) -> None:
+        """Phase 3b A.2 acceptance: QPB has 14 reference files in
+        references/. enumerate_skill_and_references should chain them
+        all with SKILL.md."""
+        repo = Path(__file__).resolve().parents[2]
+        if not (repo / "SKILL.md").is_file():
+            self.skipTest("QPB SKILL.md not at expected location")
+        secs = sections.enumerate_skill_and_references(
+            repo / "SKILL.md", repo / "references", repo
+        )
+        documents = sorted(set(s.document for s in secs))
+        ref_docs = [d for d in documents if d.startswith("references/")]
+        self.assertEqual(
+            len(ref_docs),
+            14,
+            f"Expected 14 reference files; got {len(ref_docs)}: {ref_docs}",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
