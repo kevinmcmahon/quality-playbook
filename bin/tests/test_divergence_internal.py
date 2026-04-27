@@ -646,6 +646,64 @@ class PrecisionProng4DemotionToCandidatesTests(unittest.TestCase):
             self.assertEqual(cands, [])
 
 
+class PartitionDensityWarningsTests(unittest.TestCase):
+    """Phase 5 Stage 1D (DQ-5-6): hot partitions emit warnings to
+    partition_density_warnings.json as a curation signal for v1.5.4+."""
+
+    def test_dense_partition_emits_warning(self) -> None:
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            cfg = _make_config(tmp)
+            # 31 REQs in section 1; threshold is 30, so this fires.
+            reqs = [
+                {"id": f"REQ-PHASE3-{i:03d}", "section_idx": 1,
+                 "source_document": "SKILL.md",
+                 "citation_excerpt": f"item {i} description"}
+                for i in range(31)
+            ]
+            _write_jsonl(cfg.formal_path, reqs)
+            _write_jsonl(cfg.formal_use_cases_path, [])
+            _write_sections(cfg.sections_path, [
+                {"section_idx": 1, "document": "SKILL.md",
+                 "heading": "Hot Section", "line_start": 1,
+                 "line_end": 5},
+            ])
+            run_divergence_internal(cfg)
+            warnings_path = cfg.output_path.with_name(
+                "partition_density_warnings.json"
+            )
+            payload = json.loads(warnings_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["schema_version"], "1.0")
+            self.assertEqual(len(payload["warnings"]), 1)
+            warning = payload["warnings"][0]
+            self.assertEqual(warning["partition_key"], "SKILL.md::1")
+            self.assertEqual(warning["req_count"], 31)
+            self.assertEqual(warning["pairs"], 31 * 30 // 2)
+
+    def test_sparse_partitions_no_warnings(self) -> None:
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            cfg = _make_config(tmp)
+            reqs = [
+                {"id": f"REQ-PHASE3-{i:03d}", "section_idx": 1,
+                 "source_document": "SKILL.md",
+                 "citation_excerpt": f"item {i} description"}
+                for i in range(5)
+            ]
+            _write_jsonl(cfg.formal_path, reqs)
+            _write_jsonl(cfg.formal_use_cases_path, [])
+            _write_sections(cfg.sections_path, [
+                {"section_idx": 1, "document": "SKILL.md",
+                 "heading": "Sparse", "line_start": 1, "line_end": 5},
+            ])
+            run_divergence_internal(cfg)
+            warnings_path = cfg.output_path.with_name(
+                "partition_density_warnings.json"
+            )
+            payload = json.loads(warnings_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["warnings"], [])
+
+
 class PerformanceTests(unittest.TestCase):
     def test_200_reqs_complete_under_30s_with_bounded_pair_count(self) -> None:
         with TemporaryDirectory() as tmp_str:
@@ -678,11 +736,14 @@ class PerformanceTests(unittest.TestCase):
             result = run_divergence_internal(cfg)
             elapsed = time.monotonic() - t0
             self.assertLess(elapsed, 30.0)
+            # Phase 5 DQ-5-6: budget recalibrated to 25,000 (5x safety
+            # margin over Phase 4's QPB live-run measurement of 15,926).
             self.assertLess(
                 result["comparison_count_by_stage"]["stage2_pairs"]
                 + result["comparison_count_by_stage"]["stage3_pairs"],
-                5000,
+                25_000,
             )
+            self.assertEqual(result["comparison_pair_budget"], 25_000)
 
 
 if __name__ == "__main__":

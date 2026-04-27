@@ -43,6 +43,7 @@ import json
 import os
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -545,7 +546,26 @@ class InternalDivergenceConfig:
     # countable matches now emit to a separate candidates file. If
     # None, defaults to <output_path with stem replaced>.
     candidates_path: Optional[Path] = None
+    # Phase 5 Stage 1D (DQ-5-6): partition-density warnings file.
+    # When any partition has > _PARTITION_DENSITY_WARN_THRESHOLD REQs,
+    # an entry is emitted here as a curation signal for v1.5.4+. If
+    # None, defaults to <output_path's directory>/
+    # partition_density_warnings.json.
+    partition_warnings_path: Optional[Path] = None
     starting_div_idx: int = 1
+
+
+# Phase 5 DQ-5-6: budget threshold for the acceptance-gate check.
+# Calibrated against Phase 4's QPB live run (15,926 actual pairs)
+# with a ~5x safety margin.
+_COMPARISON_PAIR_BUDGET = 25_000
+
+# Partition density above this triggers a warning in
+# partition_density_warnings.json. 30 REQs per section produces
+# C(30,2)=435 pairs; sections >30 are dense enough to drive
+# section-level Council triage and may warrant prose-section
+# refactor in v1.5.4+.
+_PARTITION_DENSITY_WARN_THRESHOLD = 30
 
 
 @dataclass
@@ -820,6 +840,51 @@ def run_divergence_internal(
     )
     os.replace(candidates_tmp, candidates_path)
 
+    # Phase 5 Stage 1D (DQ-5-6): partition-density warnings — emit a
+    # signal file when any partition has more than
+    # _PARTITION_DENSITY_WARN_THRESHOLD REQs. Curation signal for
+    # v1.5.4+; not a Phase 5 fix.
+    partition_warnings_path = (
+        config.partition_warnings_path
+        if config.partition_warnings_path is not None
+        else config.output_path.with_name("partition_density_warnings.json")
+    )
+    warnings = []
+    for (document, section_idx), bucket in partitions.items():
+        req_count = len(bucket)
+        if req_count <= _PARTITION_DENSITY_WARN_THRESHOLD:
+            continue
+        pairs = req_count * (req_count - 1) // 2
+        warnings.append({
+            "partition_key": f"{document}::{section_idx}",
+            "section_heading": _section_heading(
+                config.sections_path, document, section_idx,
+            ),
+            "req_count": req_count,
+            "pairs": pairs,
+            "rationale": (
+                f"Section density exceeds "
+                f"{_PARTITION_DENSITY_WARN_THRESHOLD} REQs; consider "
+                "partition splitting or prose-section refactor in "
+                "v1.5.4+."
+            ),
+        })
+    warnings_payload = {
+        "schema_version": "1.0",
+        "generated_at": datetime.now(timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        ),
+        "warnings": warnings,
+    }
+    warnings_tmp = partition_warnings_path.with_name(
+        partition_warnings_path.name + ".tmp"
+    )
+    warnings_tmp.write_text(
+        json.dumps(warnings_payload, indent=2, sort_keys=False) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(warnings_tmp, partition_warnings_path)
+
     return {
         "divergences_emitted": len(output_lines),
         "candidates_emitted": len(candidates_lines),
@@ -829,6 +894,8 @@ def run_divergence_internal(
             "stage2_pairs": counts.stage2_pairs,
             "stage3_pairs": counts.stage3_pairs,
         },
+        "comparison_pair_budget": _COMPARISON_PAIR_BUDGET,
+        "partition_density_warnings": len(warnings),
     }
 
 
