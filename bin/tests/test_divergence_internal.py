@@ -272,6 +272,95 @@ class UcAnchorVerificationTests(unittest.TestCase):
             )
 
 
+class UcAnchorTightenedThresholdTests(unittest.TestCase):
+    """Phase 5 Stage 1C (DQ-5-5): UC anchor verification now
+    requires (1) ≥3 overlapping ≥5-char tokens AND (2) at least one
+    overlapping token must be in the section heading or UC title OR
+    NOT in the generic-English top-200 allowlist."""
+
+    def test_six_generic_english_overlap_is_un_anchored(self) -> None:
+        """A UC whose only overlap is 6 generic-English words
+        (`audit`, `coverage`, `present`, `prior`, `record`, `review`
+        — Round 8 DN-1's literal example) is rejected as un-anchored."""
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            cfg = _make_config(tmp)
+            (tmp / "SKILL.md").write_text(
+                "## Overview\n\n"
+                "audit coverage present prior record review.\n",
+                encoding="utf-8",
+            )
+            _write_jsonl(cfg.formal_path, [])
+            # UC text uses only the 6 generic-English overlap words +
+            # filler from the stopword list (which is filtered out).
+            _write_jsonl(cfg.formal_use_cases_path, [
+                {"uc_id": "UC-PHASE3-99", "section_idx": 1,
+                 "title": "Overview UC",
+                 "actors": [],
+                 "steps": [
+                     "audit coverage", "present prior",
+                     "record review",
+                 ],
+                 "trigger": "audit",
+                 "acceptance": "coverage present prior record review",
+                 "_metadata": {"phase_3d_synthesized": True}},
+            ])
+            _write_sections(cfg.sections_path, [
+                {"section_idx": 1, "document": "SKILL.md",
+                 "heading": "Overview", "line_start": 1, "line_end": 3},
+            ])
+            run_divergence_internal(cfg)
+            recs = _read_output(cfg.output_path)
+            un_anchored = [
+                r for r in recs if r["subtype"] == "un-anchored-uc"
+            ]
+            self.assertEqual(
+                len(un_anchored), 1,
+                "UC overlap consisting only of generic-English tokens "
+                "must NOT clear the tightened anchor verification "
+                "(Phase 5 DQ-5-5).",
+            )
+            self.assertEqual(un_anchored[0]["req_a_id"], "UC-PHASE3-99")
+
+    def test_topic_distinctive_token_clears_threshold(self) -> None:
+        """When the overlap includes a section-heading token (e.g.,
+        "bootstrap"), the UC clears even if the other 2 overlapping
+        tokens are generic English."""
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            cfg = _make_config(tmp)
+            (tmp / "SKILL.md").write_text(
+                "## Bootstrap Self-Audit\n\n"
+                "Maintainers run a bootstrap self-audit that reviews "
+                "coverage of present records.\n",
+                encoding="utf-8",
+            )
+            _write_jsonl(cfg.formal_path, [])
+            _write_jsonl(cfg.formal_use_cases_path, [
+                {"uc_id": "UC-PHASE3-100", "section_idx": 1,
+                 "title": "Bootstrap maintainer scenario",
+                 "actors": ["maintainer"],
+                 "steps": ["maintainer triggers bootstrap audit"],
+                 "trigger": "maintainer initiates",
+                 "acceptance": "bootstrap audit reviews coverage "
+                               "of present records",
+                 "_metadata": {"phase_3d_synthesized": True}},
+            ])
+            _write_sections(cfg.sections_path, [
+                {"section_idx": 1, "document": "SKILL.md",
+                 "heading": "Bootstrap Self-Audit",
+                 "line_start": 1, "line_end": 3},
+            ])
+            run_divergence_internal(cfg)
+            recs = _read_output(cfg.output_path)
+            self.assertEqual(
+                [r for r in recs if r["subtype"] == "un-anchored-uc"],
+                [],
+                "UC sharing a section-heading token (bootstrap) should "
+                "clear the tightened threshold.",
+            )
+
+
 class SourceDocumentNoneHandlingTests(unittest.TestCase):
     def test_none_source_document_partitions_as_skill_md(self) -> None:
         with TemporaryDirectory() as tmp_str:

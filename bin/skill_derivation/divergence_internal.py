@@ -317,16 +317,26 @@ def _read_section_text(
     return "\n".join(lines[line_start - 1:line_end])
 
 
-def _uc_anchor_supports(uc: dict, section_text: str) -> bool:
-    """DQ-4-6: a hand-authored UC's `steps` and `acceptance` fields
-    are loosely supported by the section anchor if at least one
-    distinctive token from the UC text appears verbatim in the
-    section body. Conservative: any 5+-character word from
-    `steps`+`acceptance` matching a 5+-character word in the section
-    counts as support. This catches the obvious un-anchored case
-    (UC about "Bootstrap self-audit" in a section that doesn't
-    discuss bootstrap or self-audit at all) without false-positiving
-    on legitimately-anchored UCs.
+def _uc_anchor_supports(uc: dict, section_text: str, *,
+                          section_heading: str = "",
+                          uc_title: str = "") -> bool:
+    """DQ-4-6 / Phase 5 DQ-5-5 tightened: a hand-authored UC's
+    `steps` / `acceptance` / `trigger` fields are loosely supported
+    by the section anchor if:
+
+      (1) at least 3 overlapping ≥5-character tokens between UC text
+          and section body (was 2);
+      (2) at least one overlapping token is either:
+          (a) a bigram (or unigram) drawn from the section heading;
+          (b) a bigram (or unigram) drawn from the UC title; OR
+          (c) a token NOT in the generic-English allowlist of the
+              top-200 most common English words.
+
+    Round 8 DN-1 finding: UC-PHASE3-17 cleared on 6 generic-English
+    tokens (`audit`, `coverage`, `present`, `prior`, `record`,
+    `review`); the brief's intent (anchor must be topic-distinctive)
+    was not enforced. The tightening forces at least one
+    topic-distinctive overlap.
     """
     if not section_text:
         return False
@@ -342,7 +352,32 @@ def _uc_anchor_supports(uc: dict, section_text: str) -> bool:
     }
     section_tokens = set(re.findall(r"[a-z][a-z0-9_-]{4,}", section_lower))
     overlap = uc_tokens & section_tokens
-    return len(overlap) >= 2
+    if len(overlap) < 3:
+        return False
+
+    # Topic-distinctive check.
+    heading_tokens = set(re.findall(
+        r"[a-z][a-z0-9_-]{4,}", (section_heading or "").lower()
+    ))
+    title_tokens = set(re.findall(
+        r"[a-z][a-z0-9_-]{4,}", (uc_title or "").lower()
+    ))
+    distinctive_anchors = (heading_tokens | title_tokens)
+    has_distinctive = False
+    for tok in overlap:
+        if tok in distinctive_anchors:
+            has_distinctive = True
+            break
+        # Strip trailing 's' for plural-tolerant allowlist lookup so
+        # "reviews"/"records" are checked as "review"/"record".
+        singular = tok[:-1] if tok.endswith("s") and len(tok) > 5 else tok
+        if (
+            tok not in _GENERIC_ENGLISH_TOP200
+            and singular not in _GENERIC_ENGLISH_TOP200
+        ):
+            has_distinctive = True
+            break
+    return has_distinctive
 
 
 _ANCHOR_STOPWORDS = frozenset({
@@ -350,6 +385,58 @@ _ANCHOR_STOPWORDS = frozenset({
     "would", "will", "must", "shall", "exist", "exists", "produce",
     "produced", "produces", "before", "after", "during", "again",
     "across", "every", "within", "without",
+})
+
+
+# Phase 5 Stage 1C (DQ-5-5): generic-English top-200 allowlist.
+# A UC's anchor overlap is considered "topic-distinctive" only when
+# at least one overlapping token is NOT in this set (or when the
+# token appears in the section heading / UC title). Hardcoded list
+# from Project Gutenberg-style frequency tables, filtered to ≥5-char
+# words (matching the regex used to extract tokens). Order doesn't
+# matter; any reasonable top-200 list with the same length-filter
+# would produce equivalent results.
+_GENERIC_ENGLISH_TOP200 = frozenset({
+    "about", "above", "after", "again", "against", "along", "almost",
+    "alone", "along", "already", "also", "although", "always", "among",
+    "another", "around", "audit", "back", "because", "become", "before",
+    "began", "being", "below", "between", "both", "brought", "called",
+    "came", "cannot", "certain", "change", "clear", "close", "come",
+    "common", "complete", "could", "course", "coverage",
+    "different", "does", "doing", "done", "down", "during", "each",
+    "early", "either", "end", "enough", "even", "ever", "every",
+    "everything", "example", "feel", "felt", "find", "first",
+    "follow", "follows", "found", "friend", "from", "full", "general",
+    "generally", "give", "given", "goes", "going", "good", "great",
+    "group", "grow", "hand", "happen", "hard", "have", "having",
+    "having", "head", "hear", "help", "here", "high", "hold", "home",
+    "how", "however", "important", "include", "including", "indeed",
+    "instead", "into", "itself", "just", "keep", "kind", "knew",
+    "know", "known", "large", "last", "later", "leave", "less",
+    "level", "life", "light", "like", "likely", "line", "list",
+    "little", "live", "long", "look", "made", "make", "making",
+    "many", "matter", "may", "mean", "might", "more", "most",
+    "much", "must", "name", "near", "need", "never", "next", "nothing",
+    "now", "number", "often", "once", "only", "open", "order",
+    "other", "others", "our", "out", "over", "own", "part",
+    "particular", "particularly", "people", "perhaps", "place",
+    "plain", "point", "possible", "present", "prior", "probably",
+    "process", "produce", "produced", "produces", "provide", "put",
+    "quite", "rather", "really", "reason", "record", "review", "right",
+    "same", "say", "see", "seem", "seems", "seen", "self", "send",
+    "set", "several", "shall", "she", "short", "should", "show",
+    "side", "simple", "since", "single", "small", "some", "something",
+    "sometimes", "soon", "sort", "specific", "still", "such", "support",
+    "sure", "system", "take", "taken", "tell", "than", "that", "their",
+    "them", "themselves", "then", "there", "these", "they", "thing",
+    "things", "think", "this", "those", "though", "thought",
+    "through", "throughout", "time", "today", "together", "took",
+    "toward", "tried", "true", "turn", "type", "under", "until",
+    "use", "used", "uses", "using", "usually", "value", "very",
+    "want", "way", "ways", "well", "were", "what", "whatever", "when",
+    "where", "whether", "which", "while", "who", "whole", "whom",
+    "whose", "why", "will", "with", "within", "without", "word",
+    "work", "would", "year", "yet", "young", "your",
 })
 
 
@@ -499,7 +586,14 @@ def run_divergence_internal(
             uc.get("section_idx"),
             config.sections_path,
         )
-        if _uc_anchor_supports(uc, section_text):
+        section_heading_text = _section_heading(
+            config.sections_path, "SKILL.md", uc.get("section_idx"),
+        )
+        if _uc_anchor_supports(
+            uc, section_text,
+            section_heading=section_heading_text,
+            uc_title=uc.get("title", "") or "",
+        ):
             continue
         un_anchored_uc_ids.add(uc.get("uc_id"))
         rec = {
