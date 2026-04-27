@@ -120,12 +120,18 @@ class CopilotRunner:
             )
 
 
-def make_runner(name: str) -> LLMRunner:
-    """Factory. CLI flag value -> runner instance."""
+def make_runner(name: str, *, model: str | None = None) -> LLMRunner:
+    """Factory. CLI flag value -> runner instance.
+
+    Phase 5 Stage 0 (DQ-5-1): the optional `model` keyword overrides
+    the runner's default model. None preserves the runner's built-in
+    default; an explicit string ('sonnet', 'opus', etc.) routes to
+    the corresponding subprocess invocation.
+    """
     if name == "claude":
-        return ClaudeRunner()
+        return ClaudeRunner(model=model) if model else ClaudeRunner()
     if name == "copilot":
-        return CopilotRunner()
+        return CopilotRunner(model=model) if model else CopilotRunner()
     raise ValueError(
         f"unknown runner {name!r}; valid values: claude, copilot"
     )

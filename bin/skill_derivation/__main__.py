@@ -108,6 +108,41 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         type=Path,
         default=_DEFAULT_PASS_SPEC_PATH,
     )
+    # Phase 5 Stage 0 (DQ-5-1): expose --phase, --part, --model so
+    # later stages can drive Phase 4 modules from the same CLI.
+    parser.add_argument(
+        "--phase",
+        type=int,
+        choices=[3, 4],
+        default=3,
+        help=(
+            "Phase to run. 3 = standard four-pass derivation "
+            "(Pass A->B->C->D, current default). 4 = divergence "
+            "detection over Phase 3's output (requires Phase 3 "
+            "outputs at <target>/quality/phase3/)."
+        ),
+    )
+    parser.add_argument(
+        "--part",
+        choices=("a1", "a2", "a3", "b", "c", "d", "all"),
+        default="all",
+        help=(
+            "Specific part to run (--phase 4 only). a1=internal-prose, "
+            "a2=prose-to-code-mechanical, a3=prose-to-code-llm, "
+            "b=execution, c=gate-enforcement, d=bug-production+inbox, "
+            "all=run sequence A1..D. Ignored for --phase 3."
+        ),
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help=(
+            "Override the runner's default model. For --runner claude: "
+            "'sonnet' (default), 'opus'. For --runner copilot: "
+            "'claude-sonnet-4.6' (default), 'claude-opus-4.6'."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -167,7 +202,7 @@ def _run_pass_a(args: argparse.Namespace, target_dir: Path) -> int:
         uc_template_path=Path(__file__).parent / "prompts" / "pass_a_uc_section.md",
         references_dir=refs_dir if refs_dir.is_dir() else None,
     )
-    inner_runner = make_runner(args.runner)
+    inner_runner = make_runner(args.runner, model=args.model)
     runner = (
         _PacingRunner(inner_runner, args.pace_seconds)
         if args.pace_seconds > 0
@@ -237,11 +272,165 @@ def _run_pass_d(args: argparse.Namespace, target_dir: Path) -> dict:
     return pass_d.run_pass_d(config, resume=args.resume)
 
 
+def _run_phase4(args: argparse.Namespace, target_dir: Path) -> int:
+    """Phase 5 Stage 0 dispatcher: drives Phase 4 modules per --part.
+
+    --part a1: internal-prose divergence (divergence_internal.py)
+    --part a2: prose-to-code mechanical (divergence_prose_to_code_mechanical.py)
+    --part a3: prose-to-code LLM (divergence_prose_to_code_llm.py)
+    --part b: execution divergence (divergence_execution.py)
+    --part d: bug production + Phase 4 inbox (divergence_to_bugs.py + phase4_inbox.py)
+    --part all: a1 -> a2 -> b -> d in sequence (a3 NOT in 'all'; LLM
+                pacing makes it inappropriate for the default sweep)
+    --part c: skill-project gate enforcement runs as part of the
+              quality_gate.py check sequence; not driven via this CLI.
+              We accept --part c so the argparse choice list is
+              non-confusing, but emit an info message and exit 0.
+    """
+    from bin.skill_derivation import (
+        divergence_internal,
+        divergence_prose_to_code_mechanical,
+        divergence_prose_to_code_llm,
+        divergence_execution,
+        divergence_to_bugs,
+        phase4_inbox,
+    )
+    p3 = _phase3_dir(target_dir)
+    p3.mkdir(parents=True, exist_ok=True)
+    sections_path = p3 / "pass_a_sections.json"
+    formal_path = p3 / "pass_c_formal.jsonl"
+    formal_uc_path = p3 / "pass_c_formal_use_cases.jsonl"
+    parts_to_run = (
+        ("a1", "a2", "b", "d") if args.part == "all" else (args.part,)
+    )
+    un_anchored_uc_ids: tuple = ()
+    for part in parts_to_run:
+        if part == "a1":
+            print(
+                "=== Phase 4 Part A.1: internal-prose divergence ===",
+                file=sys.stderr,
+            )
+            cfg = divergence_internal.InternalDivergenceConfig(
+                formal_path=formal_path,
+                formal_use_cases_path=formal_uc_path,
+                sections_path=sections_path,
+                document_root=target_dir,
+                output_path=p3 / "pass_e_internal_divergences.jsonl",
+            )
+            result = divergence_internal.run_divergence_internal(cfg)
+            un_anchored_uc_ids = tuple(result.get("un_anchored_uc_ids") or ())
+            print(f"Part A.1 summary: {result}", file=sys.stderr)
+        elif part == "a2":
+            print(
+                "=== Phase 4 Part A.2: mechanical prose-to-code ===",
+                file=sys.stderr,
+            )
+            cfg = divergence_prose_to_code_mechanical.ProseToCodeMechanicalConfig(
+                formal_path=formal_path,
+                output_path=p3 / "pass_e_prose_to_code_divergences.jsonl",
+                repo_root=target_dir,
+                sections_path=sections_path,
+                skipped_uc_ids=un_anchored_uc_ids,
+            )
+            result = divergence_prose_to_code_mechanical.run_divergence_prose_to_code_mechanical(cfg)
+            print(f"Part A.2 summary: {result}", file=sys.stderr)
+        elif part == "a3":
+            print(
+                "=== Phase 4 Part A.3: LLM-driven prose-to-code ===",
+                file=sys.stderr,
+            )
+            project_type_path = (
+                args.project_type_path
+                if args.project_type_path is not None
+                else target_dir / "quality" / "project_type.json"
+            )
+            import json as _json
+            try:
+                project_type = _json.loads(
+                    project_type_path.read_text(encoding="utf-8")
+                ).get("classification", "Unknown")
+            except (OSError, _json.JSONDecodeError):
+                project_type = "Unknown"
+            cfg = divergence_prose_to_code_llm.ProseToCodeLLMConfig(
+                formal_path=formal_path,
+                output_path=p3 / "pass_e_prose_to_code_divergences.jsonl",
+                progress_path=p3 / "pass_e_prose_to_code_progress.json",
+                repo_root=target_dir,
+                project_type=project_type,
+                sections_path=sections_path,
+                pass_spec_path=args.pass_spec_path,
+                skipped_uc_ids=un_anchored_uc_ids,
+                pace_seconds=args.pace_seconds,
+            )
+            inner_runner = make_runner(args.runner, model=args.model)
+            result = divergence_prose_to_code_llm.run_divergence_prose_to_code_llm(
+                cfg, inner_runner, resume=args.resume,
+            )
+            print(f"Part A.3 summary: {result}", file=sys.stderr)
+        elif part == "b":
+            print(
+                "=== Phase 4 Part B: execution divergence ===",
+                file=sys.stderr,
+            )
+            prev_runs = target_dir / "previous_runs"
+            cfg = divergence_execution.ExecutionDivergenceConfig(
+                formal_path=formal_path,
+                previous_runs_dir=prev_runs if prev_runs.is_dir() else None,
+                output_path=p3 / "pass_e_execution_divergences.jsonl",
+                sections_path=sections_path,
+            )
+            result = divergence_execution.run_divergence_execution(cfg)
+            print(f"Part B summary: {result}", file=sys.stderr)
+        elif part == "c":
+            print(
+                "=== Phase 4 Part C: gate enforcement runs via "
+                "quality_gate.py; skipping ===", file=sys.stderr,
+            )
+        elif part == "d":
+            print(
+                "=== Phase 4 Part D: BUG production + inbox ===",
+                file=sys.stderr,
+            )
+            # Ensure all three divergence files exist (touch empty if absent).
+            for fname in (
+                "pass_e_internal_divergences.jsonl",
+                "pass_e_prose_to_code_divergences.jsonl",
+                "pass_e_execution_divergences.jsonl",
+            ):
+                (p3 / fname).touch()
+            bugs_cfg = divergence_to_bugs.DivergenceToBugsConfig(
+                internal_path=p3 / "pass_e_internal_divergences.jsonl",
+                prose_to_code_path=p3 / "pass_e_prose_to_code_divergences.jsonl",
+                execution_path=p3 / "pass_e_execution_divergences.jsonl",
+                output_path=p3 / "pass_e_bugs.jsonl",
+            )
+            bugs_result = divergence_to_bugs.run_divergence_to_bugs(bugs_cfg)
+            print(f"Part D.1 summary: {bugs_result}", file=sys.stderr)
+            inbox_cfg = phase4_inbox.Phase4InboxConfig(
+                internal_path=p3 / "pass_e_internal_divergences.jsonl",
+                prose_to_code_path=p3 / "pass_e_prose_to_code_divergences.jsonl",
+                execution_path=p3 / "pass_e_execution_divergences.jsonl",
+                bugs_path=p3 / "pass_e_bugs.jsonl",
+                phase4_inbox_path=p3 / "pass_e_council_inbox.json",
+                phase3_inbox_path=p3 / "pass_d_council_inbox.json",
+                formal_path=formal_path,
+                formal_use_cases_path=formal_uc_path,
+            )
+            inbox_result = phase4_inbox.build_phase4_inbox(inbox_cfg)
+            print(f"Part D.2 inbox summary: {inbox_result}", file=sys.stderr)
+            backfill_result = phase4_inbox.backfill_triage_batch_key(inbox_cfg)
+            print(f"Part D.2 backfill summary: {backfill_result}", file=sys.stderr)
+    return 0
+
+
 def _main(argv: Optional[list[str]] = None) -> int:
     args = _parse_args(sys.argv[1:] if argv is None else argv)
     target_dir = args.target_dir.resolve()
     p3 = _phase3_dir(target_dir)
     p3.mkdir(parents=True, exist_ok=True)
+
+    if args.phase == 4:
+        return _run_phase4(args, target_dir)
 
     if args.pass_choice in ("A", "all"):
         print(f"=== Pass A: naive coverage on {target_dir} ===", file=sys.stderr)
