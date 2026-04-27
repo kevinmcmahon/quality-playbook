@@ -21,7 +21,21 @@ quality-playbook/
 │   ├── __init__.py                    ← Package marker
 │   ├── benchmark_lib.py               ← Shared helpers (versioned from repos/_benchmark_lib.sh)
 │   ├── run_playbook.py                ← Main runner — positional args are target directories (python3 bin/run_playbook.py)
-│   └── tests/                         ← Stdlib-only tests for the runner package (92 tests)
+│   ├── classify_project.py            ← v1.5.3 Phase 0 project-type classifier (Code / Skill / Hybrid)
+│   ├── citation_verifier.py           ← v1.5.0 byte-deterministic citation excerpt extractor
+│   ├── skill_derivation/              ← v1.5.3 Skill / Hybrid four-pass derivation + divergence detection
+│   │   ├── __main__.py                ← CLI entry: `python3 -m bin.skill_derivation --phase {3,4} --part {a1..d,all} <target>`
+│   │   ├── pass_a.py / pass_b.py / pass_c.py / pass_d.py   ← Phase 3 four-pass driver modules
+│   │   ├── citation_search.py         ← Pass B fuzzy search with token-overlap pre-filter
+│   │   ├── sections.py                ← Section enumeration + EXECUTION_MODE_KEYWORDS
+│   │   ├── divergence_internal.py     ← Phase 4 Part A.1 internal-prose detection (precision-tuned in v1.5.3 Phase 5)
+│   │   ├── divergence_prose_to_code_mechanical.py    ← Phase 4 A.2 Tier 1 mechanical
+│   │   ├── divergence_prose_to_code_llm.py           ← Phase 4 A.3 Tier 2 LLM-driven (Hybrid only, resumable)
+│   │   ├── divergence_execution.py    ← Phase 4 Part B archived-gate aggregator
+│   │   ├── divergence_to_bugs.py      ← Phase 4 Part D.1 BUG production with §8.1 consolidation
+│   │   ├── phase4_inbox.py            ← Phase 4 Part D.2 inbox + triage_batch_key backfill
+│   │   └── curate_requirements.py     ← v1.5.3 Phase 5 Stage 5A curated REQUIREMENTS.md generator
+│   └── tests/                         ← Stdlib-only tests for the runner package (662 tests at v1.5.3)
 ├── pytest/                            ← Local stdlib-only shim so python3 -m pytest works without installs
 ├── references/                        ← Reference files read during specific phases
 │   ├── challenge_gate.md              ← False-positive detection challenge gate (v1.4.3+)
@@ -45,10 +59,12 @@ quality-playbook/
 │       ├── quality_gate.py            ← Symlink → quality_gate/quality_gate.py (stable invocation path)
 │       └── quality_gate/              ← Gate script package (sole mechanical gate since v1.4.5; bash retired)
 │           ├── __init__.py            ← Re-exports public API
-│           ├── quality_gate.py        ← Mechanical validation (14 checks, 1100+ lines, Python 3.8+)
+│           ├── quality_gate.py        ← Mechanical validation (34 check_* functions at v1.5.3, 3000+ lines, Python 3.8+)
 │           └── tests/
 │               ├── __init__.py
-│               └── test_quality_gate.py  ← 108 stdlib-only unit tests
+│               ├── README.md          ← v1.5.3: documents `unittest discover` as the canonical runner (DQ-5-8)
+│               ├── test_quality_gate.py  ← 215 stdlib-only unit tests at v1.5.3
+│               └── test_req_pattern.py   ← 6 stdlib-only unit tests
 ├── ai_context/                        ← AI-readable context files
 │   ├── TOOLKIT.md                     ← For users' AI assistants (setup, run, interpret, recheck)
 │   ├── DEVELOPMENT_CONTEXT.md         ← For maintainers' AI assistants (this file)
@@ -66,15 +82,28 @@ quality-playbook/
 **Running the tests:**
 
 ```
-# Benchmark runner (92 tests)
-python3 -m pytest bin/tests/
+# Benchmark runner + skill-derivation modules (662 tests at v1.5.3)
 python3 -m unittest discover bin/tests
+python3 -m pytest bin/tests/                                     # works under both runners
 
-# Quality gate package (108 tests) — invoke from the package dir
-cd .github/skills/quality_gate && python3 -m unittest discover -s tests -t .
+# Quality gate package (221 tests at v1.5.3 — 215 in test_quality_gate.py + 6 in test_req_pattern.py)
+python3 -m unittest discover -s .github/skills/quality_gate/tests/ -p 'test_*.py'
 ```
 
-The local `pytest` package is a minimal shim around `unittest` so `python3 -m pytest` works on plain Python 3.8+ with no external dependencies.
+The canonical runner for the gate suite is `unittest discover`,
+not pytest — pytest fails on that directory due to a pre-existing
+import-shadowing issue (sibling `__init__.py` + same-directory
+`quality_gate.py` produces a copy of the FAIL global rather than a
+reference). v1.5.3 DQ-5-8 documented this and locked the
+acceptance gate to unittest discover; the `bin/tests/` suite
+supports both runners. See
+`.github/skills/quality_gate/tests/README.md` for the full
+explanation. v1.5.4+ may revisit the import architecture
+(backlog item B-8).
+
+The local `pytest` package is a minimal shim around `unittest` so
+`python3 -m pytest` works on plain Python 3.8+ with no external
+dependencies.
 
 ## How the skill works
 
@@ -230,16 +259,30 @@ Council review artifacts go in `council-reviews/`. Each review has:
     - **27-bug bootstrap self-audit fix batch.** Opus self-audit over the v1.4.5 baseline + four iteration strategies (gap, unfiltered, parity, adversarial) confirmed 27 real defects; all 27 are fixed with passing regression tests in `quality/test_regression.py`. Shipped in seven thematic commits. Material behavior changes: Phase 2 gate now FAILs below 120 lines instead of WARNing at 80 (matches SKILL.md §Phase 1 completion gate); Phase 3 gate checks all nine Phase 2 artifacts instead of four; Phase 5 gate enforces SKILL.md:1663-1667 hard-stop (spec_audits triage + auditor files + Phase 4 `[x]`); `archive_previous_run` stages into a `.partial` subfolder under the runs archive then atomically renames, and preserves the per-phase prompt outputs instead of deleting them (v1.5.1 paths: `quality/runs/<ts>.partial/` and `quality/control_prompts/`; v1.4.x used root-level `previous_runs/` and `control_prompts/`); `cleanup_repo` adds `AGENTS.md` to its protected-path set via `PROTECTED_EXACT`; child-process exit codes propagate through `run_one_phase` / `run_one_singlepass`; missing `docs_gathered/` WARNs and continues with code-only analysis instead of blocking the run; runner prompts front-load a `SKILL_FALLBACK_GUIDE` constant advertising all four install paths; `check_run_metadata` and `_check_exploration_sections` close two long-standing gate gaps; `validate_iso_date` accepts full ISO 8601 datetimes; `_parse_porcelain_path` unwraps Git's quote-wrapped paths for names with spaces; `detect_project_language` skips `repos/` fixtures so the self-audit classifies correctly; the functional-test filename matrix + extension check now recognize the full `functional_test.*` / `FunctionalTest.*` / `FunctionalSpec.*` / `functional.test.ts` set; `FUNCTIONAL_TEST_PATTERNS` / `REGRESSION_TEST_PATTERNS` narrowed to canonical names only; both orchestrator agents list repo-root `SKILL.md` as install-discovery entry 1 and the general agent's Mode 1 now starts a fresh context for Phase 1. Recheck: 27/27 FIXED (`quality/results/recheck-summary.md`).
     - **Bootstrap artifacts tracked in git.** Reverses the earlier untracking now that `cleanup_repo`'s `PROTECTED_PREFIXES` guards `quality/` (which in v1.5.1 covers `quality/runs/` and `quality/control_prompts/`) from `git checkout .`. These trees are the proof-of-work for the self-audit and belong in git history so future iterations can diff against them. v1.5.1's `bin/migrate_v1_5_0_layout.py` moves the legacy root-level `previous_runs/` and `control_prompts/` under `quality/`.
 - **v1.5.1:** Phase 5 writeup hardening — `phase5_prompt()` now hydrates writeups from BUGS.md via a MANDATORY HYDRATION STEP with worked BUG-004 example and per-writeup confirmation checklist; `check_writeups` in `quality_gate.py` fails on any of five template-sentinel strings or a ` ```diff ` fence that has no `+` / `-` lines; `_WRITEUP_DIFF_BLOCK_RE` uses case-insensitive matching so mixed-case diff fences (` ```Diff `, ` ```DIFF `) don't produce spurious "no inline fix diffs" FAILs. New unit tests cover sentinel detection and empty-diff-fence detection. Four commits landed on branch `1.5.1` ahead of main: b7b8752 (version bump 1.5.0 → 1.5.1), 9c23059 (case-insensitive regex), d4b4ae8 (tests), 002e3c6 (CHANGELOG). Benchmark results: virtio-1.5.1 found 8 bugs matching the 1.4.6 baseline count with substantial overlap on the core five (MMIO reset, IRQ config, INTx admin queue, slow_virtqueues rejoin, vDPA affinity) and three different bugs in each direction; chi-1.5.1 found 9 bugs versus 5 in chi-1.4.6 and 6 in chi-1.5.0, confirming that the writeup hardening did not regress discovery yield. One coverage gap surfaced in the 1.5.1 runs: the RING_RESET bug family from v1.4.5 (four bugs spanning VIRTIO_F_RING_RESET, VIRTIO_F_NOTIF_CONFIG_DATA, VIRTIO_F_ADMIN_VQ, VIRTIO_F_SR_IOV across MMIO and vDPA transports) was correctly identified by the Phase 2 reviewer — REQ-010 flagged "Modern PCI compensates; MMIO/vDPA do not" — but classified as QUESTION-001 instead of escalated to BUG, so the four bugs never reached BUGS.md. Planned for 1.5.2: Phase 1 cartesian use-case rule (emit one UC per symmetric implementation site) plus Phase 2 mechanical compensation-grid rule (any `pattern: whitelist | parity | compensation` requirement produces a grid where missing cells default to BUG, not QUESTION).
+- **v1.5.2:** Bug-family amplification + operational polish. Phase 1 cartesian use-case rule ships (Lever 5 mechanical extraction surface enforces emit-one-UC-per-symmetric-implementation-site); Phase 2 mechanical compensation-grid rule promotes whitelist/parity/compensation cells to BUG-by-default rather than QUESTION (closes the v1.5.1 RING_RESET coverage gap). C13.6–C13.10 lever pulls land: `bin/citation_verifier.py` adds the `reference_docs/cite/` extension check, tier marker semantics, downgrade-record skip handling, present:true evidence enforcement; `_finalize_iteration` in `bin/run_playbook.py` runs `quality_gate.py` as a subprocess after each iteration and writes a structured block to PROGRESS.md mapping the verdict into INDEX.md's `gate_verdict` field; `document_sha256` schema fix in `bin/reference_docs_ingest.py` (producer was writing `sha256` while gate read `document_sha256`, silently disabling stale-citation invariant); `--flag=value` argparse form fix in `_mark_iterations_explicit`; SKILL.md version stamps consistent with `bin/tests/test_run_playbook.py:test_skill_version_matches_release_constant` as CI guard. Two full Council-of-Three nested-panel reviews (Round 7 against C13.6–C13.9 surface, Round 8 against C13.10 release-prep fixes; Round 8 was 8/9 ship + 1 block on a structural test-discipline issue logged for v1.5.3). Three new orientation files: `ai_context/IMPROVEMENT_LOOP.md`, `ai_context/TOOLKIT_TEST_PROTOCOL.md`, and the "How we improve the playbook" section in README.md. Honest "moving toward statistical control" framing across the methodology surface (within-version variance estimation deferred to v1.5.4 replicate harness; ±2 bugs across runs is within noise floor and should not be interpreted as real movement).
+- **v1.5.3:** Skill-as-code feature complete. Originating evidence: 2026-04-19 Haiku demonstration showed claude-haiku-4-5 generating a 2,129-line REQUIREMENTS.md against QPB's own SKILL.md from a simple two-turn interaction, exposing that earlier QPB releases were leaving substantial skill-prose coverage on the table because the heuristic pipeline was tuned for code projects.
+    - **Phase 0 project-type classifier** (`bin/classify_project.py`). Classifies every target as Code, Skill, or Hybrid based on a SKILL.md-prose-vs-code-LOC ratio; persists output to `<target>/quality/project_type.json`. CLI surface includes `--target` / `--benchmark` / `--write` plus the v1.5.3 Phase 4 `--override` and `--override-rationale` flags for Council triage. Validated against 6 benchmark cells (5 code + QPB self) — `## Overall: PASS`. Council override workflow at `docs/design/QPB_v1.5.3_Phase4_Council_Override_Workflow.md`.
+    - **Schema extensions** (`schemas.md` §3.6 / §3.7 / §3.8 / §3.9 / §3.10). Adds `req_source_type` enum (`code-derived` / `skill-section` / `reference-file` / `execution-observation`), `bug_divergence_type` enum (`code-spec` / `internal-prose` / `prose-to-code` / `execution`), `formal_doc_role` enum, the SKILL.md-vs-reference-file precedence rule for default disposition, and v1.5.3 field-presence detection (the validator treats a manifest as v1.5.3-shaped iff any record carries `source_type` / `divergence_type` / `role`).
+    - **Four-pass generate-then-verify pipeline** (`bin/skill_derivation/`). Pass A naive coverage section-iterative (`pass_a.py` + LLM prompts under `prompts/`); Pass B mechanical citation extraction with token-overlap pre-filter (`pass_b.py` + `citation_search.py`, ~93× speedup vs full O(n×m) similarity match); Pass C formal REQ + UC production with project-type-aware behavioral routing (`pass_c.py`, including the Round 5 ND-2 skill_section non-empty validation guard); Pass D coverage audit + Council inbox per the DQ-5 schema (`pass_d.py`). Resumability: every pass advances a per-record cursor atomically and rolls back to disk state on restart. Verified by 4 mid-pass-kill exercises during the v1.5.3 self-audit.
+    - **Skill-divergence taxonomy** (`bin/skill_derivation/divergence_*.py`). Internal-prose (`divergence_internal.py`) detects within-prose contradictions via three-stage indexing (intra-section + cross-section-countable + un-anchored-uc subtypes); prose-to-code splits into Tier 1 mechanical (`divergence_prose_to_code_mechanical.py`, regex-countable claims) and Tier 2 LLM-driven (`divergence_prose_to_code_llm.py`, Hybrid only, resumable); execution (`divergence_execution.py`) aggregates archived `quality_gate.py` results across `previous_runs/` per-target. Phase 5 detector-precision pass tightened the four-pronged filter (ordinal-context skip; artifact-name proximity for cross-section pairs; hedge / parenthetical claim filter; Stage 3 candidate demotion to a separate `pass_e_internal_candidates.jsonl`) to drop the FP rate from ~70% on internal-prose to plausibly-real on QPB.
+    - **Skill-project gate enforcement.** Four new check_* functions in `quality_gate.py`: `check_skill_section_req_coverage`, `check_reference_file_req_coverage`, `check_hybrid_cross_cutting_reqs`, `check_project_type_consistency`. Skill-specific checks SKIP (info, no fail counter increment) for Code projects; `check_project_type_consistency` runs for all projects but SKIP-silently on missing `project_type.json` (pre-Phase-1 fixture).
+    - **Bootstrap evidence at `previous_runs/v1.5.3/`** (28 files, ~4.6 MB). Curated REQUIREMENTS.md (171 REQs across 171 sections — over the brief's [80, 110] target; cross-partition consolidation needed to reach the band, tracked as v1.5.4 backlog B-4); full Phase 3 + Phase 4 artifact set; 8 partition-density warnings as v1.5.4 curation signal.
+    - **Eight Council-of-Three rounds** drove v1.5.3 development end-to-end (Phase 3a foundations through Phase 4 Round 8 + Round 7 follow-up + Phase 5 release-readiness). Synthesis docs at `Quality Playbook/Reviews/QPB_v1.5.3_Round{1..8}_Synthesis.md`.
+    - **Five items deferred to v1.5.3.1 patch** per the brief's wall-clock-budget allowance: full playbook regression sweep on 5 code targets (Stage 4A), cross-model second backend opus run (Stage 4D), optional v1.4.5 cross-version cell (Stage 4E), categorization tagging surface, orientation-doc release-cadence review. Full backlog at `Quality Playbook/Reviews/v1.5.4_backlog.md` (14 items B-1 through B-14).
 
 ## Current known issues
 
-1. **RING_RESET bug family not recovered since v1.4.5.** The v1.4.5 run found four feature-negotiation bugs (VIRTIO_F_RING_RESET cleared in MMIO and vDPA, VIRTIO_F_NOTIF_CONFIG_DATA cleared in all transports, VIRTIO_F_ADMIN_VQ and VIRTIO_F_SR_IOV cleared in vDPA) via a mechanical compensation table in the Phase 2 review. v1.4.6 and v1.5.1 runs identify the same architectural asymmetry (REQ-010: "Modern PCI compensates; MMIO/vDPA do not") but downgrade the finding to a QUESTION verdict, so the four bugs never reach BUGS.md. The two bugs that item 1 previously called out (slow_virtqueues rejoin after reset, GFP_KERNEL under spin_lock_irqsave) are both now recovered — virtio-1.5.1 BUG-006 and BUG-007. Planned fix for the RING family in v1.5.2: Phase 1 cartesian use-case rule plus Phase 2 mechanical compensation grid with BUG-default classification.
+1. **RING_RESET bug family — fix landed in v1.5.2.** The v1.4.5 run found four feature-negotiation bugs (VIRTIO_F_RING_RESET cleared in MMIO and vDPA, VIRTIO_F_NOTIF_CONFIG_DATA cleared in all transports, VIRTIO_F_ADMIN_VQ and VIRTIO_F_SR_IOV cleared in vDPA) via a mechanical compensation table in the Phase 2 review. v1.4.6 and v1.5.1 runs identified the same architectural asymmetry (REQ-010: "Modern PCI compensates; MMIO/vDPA do not") but downgraded the finding to QUESTION-001 instead of escalating to BUG, so the four bugs never reached BUGS.md. v1.5.2 closed this gap with the Phase 1 cartesian use-case rule + Phase 2 mechanical compensation grid (BUG-default classification on whitelist/parity/compensation cells). Item retained here as historical context.
 
-2. **TDD execution compliance.** Only Claude Code reliably creates red/green log files. Copilot and Cursor skip the step despite v1.3.47's six insertion points (not yet tested on v1.3.47). If v1.3.47 doesn't fix it, a post-run script that mechanically runs the TDD cycle may be needed.
+2. **v1.5.3.1 deferred items.** Five Phase 5 items deferred per wall-clock budget — see `Quality Playbook/Reviews/v1.5.4_backlog.md` B-1 through B-3 for the deferral rationale. The substantive no-regression evidence already shipped (`--benchmark` PASS for all 6 cells; Phase 4 skill-checks SKIP on Code; no `bin/run_playbook.py` changes shipped in v1.5.3); the v1.5.3.1 patch will close the full-playbook-sweep + opus-cross-model gates.
 
-3. **Rate limits.** Running 6+ repos simultaneously through iteration cycles triggers Copilot's 54-hour cooldown. Users need to stagger runs (2-3 repos at a time) or use Claude Code / Cursor.
+3. **TDD execution compliance.** Only Claude Code reliably creates red/green log files. Copilot and Cursor skip the step despite v1.3.47's six insertion points (not yet tested on v1.3.47). If v1.3.47 doesn't fix it, a post-run script that mechanically runs the TDD cycle may be needed.
 
-4. **Cursor workspace contamination.** Cursor reads sibling directories and imports findings from prior runs. Repos must be isolated in their own parent directory.
+4. **Rate limits.** Running 6+ repos simultaneously through iteration cycles triggers Copilot's 54-hour cooldown. Users need to stagger runs (2-3 repos at a time) or use Claude Code / Cursor.
+
+5. **Cursor workspace contamination.** Cursor reads sibling directories and imports findings from prior runs. Repos must be isolated in their own parent directory.
+
+6. **Curation-algorithm 171-floor on QPB self-audit.** The v1.5.3 Phase 5 Stage 5A `curate_requirements.py` algorithm settles at 171 REQs on QPB (above the brief's [80, 110] target). Cause: 1007 accepted REQs collapse to 171 partitions each with ≥1 distinct post-Jaccard REQ; K=1 per partition is the floor. Cross-partition consolidation is needed to land in the band — tracked as v1.5.4 backlog B-4. Acceptable for v1.5.3 ship per the brief's "settle at whatever count the algorithm produces and document the calibration tension" allowance.
 
 ## Making changes to the skill
 

@@ -96,13 +96,37 @@ Tests: canonical vocabulary preservation; doc fidelity to the four-strategy taxo
 
 Tests: IMPROVEMENT_LOOP.md awareness; honest "moving toward statistical control" framing; benchmark-driven calibration vocabulary.
 
-### Persona 13 — The categorization-asker (post-v1.5.3)
+### Persona 13 — The categorization-asker (deferred to v1.5.4+)
 
 > The bug report has tags like "standout," "confirmed," "probable," "candidate." What do these mean? Which should I prioritize?
 
 Tests: categorization-tier vocabulary correctness; standout-as-earned framing.
 
-(Activate Persona 13 after v1.5.3 ships the categorization tagging.)
+(Activate Persona 13 after categorization tagging ships. Originally
+scoped for v1.5.3 but deferred — v1.5.3's actual scope shifted to
+the skill-as-code feature complete pass per the 2026-04-19 Haiku
+demonstration. Categorization tagging is tracked as v1.5.4 backlog
+item B-13 in `Quality Playbook/Reviews/v1.5.4_backlog.md`. Until
+that surface ships, panelists asked this question should answer
+"the doc does not support this — categorization tagging is not yet
+shipped; the operator picks standouts manually by reading the
+writeups.")
+
+### Persona 19 — The skill-as-code adopter (v1.5.3)
+
+> I have a Claude Code skill (a SKILL.md plus references/) and I want to know if QPB can find defects IN THE SKILL ITSELF — places where the prose contradicts itself, places where the prose claims a code behavior the implementation doesn't deliver, places where archived runs show the skill underperforming its own promises. Will v1.5.3 do that?
+
+Tests: awareness of the v1.5.3 skill-as-code surface — Phase 0
+project-type classifier (Code / Skill / Hybrid); four-pass
+generate-then-verify pipeline (Pass A naive coverage; Pass B
+mechanical citation extraction; Pass C formal REQ production; Pass
+D coverage audit); the three skill-divergence categories
+(internal-prose / prose-to-code / execution); skill-project gate
+enforcement (4 new gate checks); the curated REQUIREMENTS.md
+bootstrap at `previous_runs/v1.5.3/REQUIREMENTS.md`. A correct
+answer also surfaces the scope limits — execution divergence
+needs archived runs to land any signal; the Council override path
+exists for when the classifier is wrong.
 
 ### Persona 14 — The PR-submitter walkthrough
 
@@ -116,7 +140,7 @@ Tests: PR-pipeline workflow guidance; standout-tier-as-submission-criterion clar
 
 Tests: recognition of root-cause vs. symptom; whether the doc distinguishes BUGS.md as "individual reports" vs. "a list of distinct defects"; awareness that maintainers prefer one consolidated PR for a defect family over nine individual ones; whether the iteration-strategy taxonomy (gap, unfiltered, parity, adversarial) admits the possibility that multiple iterations re-find the same underlying defect.
 
-(Personas 14 and 17 added at the v1.5.2 release-gate, sourced from the 2026-04-25 cross-repo analysis. Personas 15, 16, and 18 from the same source are queued for later release-gates: P15 for v1.5.3 once within-version variance language lands; P16 and P18 for v1.6.x once replicate data accumulates and a HIGH-severity operational definition exists.)
+(Personas 14 and 17 added at the v1.5.2 release-gate, sourced from the 2026-04-25 cross-repo analysis. Persona 19 added at the v1.5.3 release-gate to test skill-as-code awareness. Personas 15, 16, and 18 from the v1.5.2 source remain queued for later release-gates: P15 deferred to v1.5.4+ (within-version variance language did not land in v1.5.3 — it requires the regression-replay machinery scheduled for v1.5.4); P16 and P18 for v1.6.x once replicate data accumulates and a HIGH-severity operational definition exists.)
 
 ## Rubric
 

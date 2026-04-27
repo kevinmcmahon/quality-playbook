@@ -98,9 +98,19 @@ New levers are added to the inventory when they ship — not when they're planne
 
 **Decoupled?** **Not cleanly today.** This is the worst-decoupled lever in the inventory. Pulling it means editing both sides in lockstep — change a mechanical-extraction rule in `SKILL.md` and you usually need to update the validator in code, or vice versa. A future feature release may pull the prompt-side rules into a single `references/mechanical_extraction.md` and consolidate validation into a single choke-point in code; that refactor would convert this lever from "tunable but coupled" to "tunable and decoupled" without changing what the lever does.
 
+### Lever 6 — Skill-derivation pipeline (Skill / Hybrid projects)
+
+**Home:** `bin/skill_derivation/` package. The four-pass generate-then-verify modules (`pass_a.py` naive coverage, `pass_b.py` mechanical citation extraction with token-overlap pre-filter, `pass_c.py` formal REQ + UC production, `pass_d.py` coverage audit) plus the Phase 4 divergence-detection modules (`divergence_internal.py`, `divergence_prose_to_code_mechanical.py`, `divergence_prose_to_code_llm.py`, `divergence_execution.py`, `divergence_to_bugs.py`, `phase4_inbox.py`).
+
+**What it controls:** How the playbook finds defects in AI skills (SKILL.md prose plus reference files) when the project classifies as Skill or Hybrid. Tunable surfaces inside this lever: section-enumeration partition rules (`sections.py`), the four-pronged precision filter for internal-prose detection (ordinal context, artifact-name proximity, hedge / parenthetical filter, candidate demotion), the UC anchor verification threshold, and the curation algorithm that produces the bootstrap REQUIREMENTS.md (`curate_requirements.py`).
+
+**Decoupled?** Yes — the package is self-contained. It reads SKILL.md / references/ / project_type.json as inputs and writes to `quality/phase3/` as outputs. Phase 4 detection consumes Phase 3 artifacts; both are gated independently of the v1.5.0 code-project pipeline (`check_v1_5_3_*` functions in `quality_gate.py` SKIP for Code projects). Pulling this lever doesn't require touching the v1.5.0 levers above.
+
+**Added in v1.5.3** as the skill-as-code feature complete pass. Originating evidence: 2026-04-19 Haiku demonstration. The lever exists today as a tunable surface (the Phase 5 detector-precision pass tightened the four-pronged filter from ~70% FP rate to plausibly-real on QPB; the K-iteration cap in the curation algorithm is a tunable knob).
+
 ### Adding new levers
 
-Discovered through regression replay (next section). When a missed-bug investigation cannot be cleanly attributed to one of the existing levers, that's a candidate new lever — name it, find its home in the codebase, document it here, and update the inventory. Levers that are *planned* but not yet built (e.g., a categorization tier policy that would let runs surface standout findings if such a feature existed) belong in feature-release design docs, not in this inventory.
+Discovered through regression replay (next section). When a missed-bug investigation cannot be cleanly attributed to one of the existing levers, that's a candidate new lever — name it, find its home in the codebase, document it here, and update the inventory. Levers that are *planned* but not yet built (e.g., a categorization tier policy that would let runs surface standout findings — tracked as v1.5.4 backlog item B-13 in `Quality Playbook/Reviews/v1.5.4_backlog.md`) belong in feature-release design docs, not in this inventory.
 
 ## Regression replay (lever calibration runs)
 
