@@ -2675,5 +2675,266 @@ class TestV153CouncilInboxValidation(unittest.TestCase):
         self.assertIn("tier-5", out)
 
 
+class _Phase4FixtureBase(unittest.TestCase):
+    """Common setup: a tmpdir with quality/ + phase3/ structure and
+    a writable project_type.json."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self._tmp.name)
+        self.q = self.repo / "quality"
+        self.phase3 = self.q / "phase3"
+        self.phase3.mkdir(parents=True)
+        quality_gate.FAIL = 0
+        quality_gate.WARN = 0
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _write_project_type(self, classification: str, *,
+                             override_applied: bool = False,
+                             override_rationale: str = "") -> None:
+        (self.q / "project_type.json").write_text(
+            json.dumps({
+                "schema_version": "1.1",
+                "classification": classification,
+                "rationale": "fixture",
+                "confidence": "high",
+                "evidence": {},
+                "classified_at": "2026-04-27T00:00:00Z",
+                "classifier_version": "1.0",
+                "override_applied": override_applied,
+                "override_rationale": override_rationale or None,
+            }),
+            encoding="utf-8",
+        )
+
+
+class TestCheckSkillSectionReqCoverage(_Phase4FixtureBase):
+    """Phase 4 Part C check_skill_section_req_coverage."""
+
+    def _write_coverage(self, sections: list) -> None:
+        (self.phase3 / "pass_d_section_coverage.json").write_text(
+            json.dumps({
+                "schema_version": "1.0",
+                "generated_at": "2026-04-27T00:00:00Z",
+                "sections": sections,
+                "completeness_gaps": [],
+            }),
+            encoding="utf-8",
+        )
+
+    def test_skill_project_section_with_zero_promoted_fails(self):
+        self._write_project_type("Skill")
+        self._write_coverage([
+            {"section_idx": 1, "document": "SKILL.md",
+             "heading": "Phase 1", "section_kind": "operational",
+             "drafts_total": 0, "drafts_promoted": 0,
+             "drafts_pending_council": 0, "marker": None,
+             "skip_reason": None},
+        ])
+        fails, out = _capture_fail_output(
+            quality_gate.check_skill_section_req_coverage, self.repo, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("Phase 1", out)
+        self.assertIn("0 promoted REQs", out)
+
+    def test_skill_project_all_sections_covered_passes(self):
+        self._write_project_type("Skill")
+        self._write_coverage([
+            {"section_idx": 1, "document": "SKILL.md",
+             "heading": "Phase 1", "section_kind": "operational",
+             "drafts_total": 5, "drafts_promoted": 3,
+             "drafts_pending_council": 2, "marker": None,
+             "skip_reason": None},
+        ])
+        fails, _ = _capture_fail_output(
+            quality_gate.check_skill_section_req_coverage, self.repo, self.q
+        )
+        self.assertEqual(fails, 0)
+
+    def test_code_project_skips(self):
+        self._write_project_type("Code")
+        # Don't even write coverage; should skip on Code.
+        fails, out = _capture_fail_output(
+            quality_gate.check_skill_section_req_coverage, self.repo, self.q
+        )
+        self.assertEqual(fails, 0)
+        self.assertIn("skip", out)
+
+    def test_meta_section_with_zero_promoted_does_not_fail(self):
+        self._write_project_type("Skill")
+        self._write_coverage([
+            {"section_idx": 0, "document": "SKILL.md",
+             "heading": "Why This Exists", "section_kind": "meta",
+             "drafts_total": 0, "drafts_promoted": 0,
+             "drafts_pending_council": 0, "marker": None,
+             "skip_reason": "meta-allowlist"},
+        ])
+        fails, _ = _capture_fail_output(
+            quality_gate.check_skill_section_req_coverage, self.repo, self.q
+        )
+        self.assertEqual(fails, 0)
+
+
+class TestCheckReferenceFileReqCoverage(_Phase4FixtureBase):
+    """Phase 4 Part C check_reference_file_req_coverage."""
+
+    def _make_references(self, refs: dict) -> None:
+        ref_dir = self.repo / "references"
+        ref_dir.mkdir(parents=True, exist_ok=True)
+        for name, head_text in refs.items():
+            (ref_dir / name).write_text(head_text, encoding="utf-8")
+
+    def _write_formal(self, records: list) -> None:
+        with (self.phase3 / "pass_c_formal.jsonl").open(
+            "w", encoding="utf-8"
+        ) as fh:
+            for rec in records:
+                fh.write(json.dumps(rec) + "\n")
+
+    def test_skill_project_uncited_normative_reference_fails(self):
+        self._write_project_type("Skill")
+        self._make_references({"a.md": "# A\nbody\n"})
+        self._write_formal([])
+        fails, out = _capture_fail_output(
+            quality_gate.check_reference_file_req_coverage, self.repo, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("references/a.md", out)
+
+    def test_non_normative_marker_passes(self):
+        self._write_project_type("Skill")
+        self._make_references({"a.md": "<!-- non-normative -->\n# A\n"})
+        self._write_formal([])
+        fails, _ = _capture_fail_output(
+            quality_gate.check_reference_file_req_coverage, self.repo, self.q
+        )
+        self.assertEqual(fails, 0)
+
+    def test_cited_reference_passes(self):
+        self._write_project_type("Skill")
+        self._make_references({"a.md": "# A\nbody\n"})
+        self._write_formal([
+            {"id": "REQ-001", "source_document": "references/a.md"},
+        ])
+        fails, _ = _capture_fail_output(
+            quality_gate.check_reference_file_req_coverage, self.repo, self.q
+        )
+        self.assertEqual(fails, 0)
+
+    def test_code_project_skips(self):
+        self._write_project_type("Code")
+        fails, out = _capture_fail_output(
+            quality_gate.check_reference_file_req_coverage, self.repo, self.q
+        )
+        self.assertEqual(fails, 0)
+        self.assertIn("skip", out)
+
+
+class TestCheckHybridCrossCuttingReqs(_Phase4FixtureBase):
+    """Phase 4 Part C check_hybrid_cross_cutting_reqs."""
+
+    def _write_formal(self, records: list) -> None:
+        with (self.phase3 / "pass_c_formal.jsonl").open(
+            "w", encoding="utf-8"
+        ) as fh:
+            for rec in records:
+                fh.write(json.dumps(rec) + "\n")
+
+    def test_hybrid_with_triangulated_pair_passes(self):
+        self._write_project_type("Hybrid")
+        self._write_formal([
+            {"id": "REQ-001", "source_type": "code-derived",
+             "acceptance_criteria": "bin/quality_gate.py runs the gate"},
+            {"id": "REQ-002", "source_type": "skill-section",
+             "acceptance_criteria":
+                 "the gate at bin/quality_gate.py is invoked from Phase 5"},
+        ])
+        fails, _ = _capture_fail_output(
+            quality_gate.check_hybrid_cross_cutting_reqs, self.repo, self.q
+        )
+        self.assertEqual(fails, 0)
+
+    def test_hybrid_without_code_derived_skips(self):
+        self._write_project_type("Hybrid")
+        self._write_formal([
+            {"id": "REQ-002", "source_type": "skill-section",
+             "acceptance_criteria": "skill prose only"},
+        ])
+        fails, out = _capture_fail_output(
+            quality_gate.check_hybrid_cross_cutting_reqs, self.repo, self.q
+        )
+        self.assertEqual(fails, 0)
+        self.assertIn("no code-derived REQs", out)
+
+    def test_skill_project_skips(self):
+        self._write_project_type("Skill")
+        fails, out = _capture_fail_output(
+            quality_gate.check_hybrid_cross_cutting_reqs, self.repo, self.q
+        )
+        self.assertEqual(fails, 0)
+        self.assertIn("skip", out)
+
+    def test_code_project_skips(self):
+        self._write_project_type("Code")
+        fails, _ = _capture_fail_output(
+            quality_gate.check_hybrid_cross_cutting_reqs, self.repo, self.q
+        )
+        self.assertEqual(fails, 0)
+
+
+class TestCheckProjectTypeConsistency(_Phase4FixtureBase):
+    """Phase 4 Part C check_project_type_consistency.
+
+    Runs for all projects but skips silently on missing
+    project_type.json (pre-Phase-1 fixture)."""
+
+    def test_skill_project_type_passes(self):
+        self._write_project_type("Skill")
+        fails, _ = _capture_fail_output(
+            quality_gate.check_project_type_consistency, self.repo, self.q
+        )
+        self.assertEqual(fails, 0)
+
+    def test_invalid_classification_fails(self):
+        (self.q / "project_type.json").write_text(
+            json.dumps({"classification": "Other"}), encoding="utf-8"
+        )
+        fails, out = _capture_fail_output(
+            quality_gate.check_project_type_consistency, self.repo, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("Other", out)
+
+    def test_override_without_rationale_fails(self):
+        self._write_project_type("Hybrid", override_applied=True,
+                                  override_rationale="")
+        fails, out = _capture_fail_output(
+            quality_gate.check_project_type_consistency, self.repo, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("override_rationale", out)
+
+    def test_override_with_rationale_passes(self):
+        self._write_project_type(
+            "Hybrid", override_applied=True,
+            override_rationale="Council determined Hybrid based on code+SKILL.md",
+        )
+        fails, _ = _capture_fail_output(
+            quality_gate.check_project_type_consistency, self.repo, self.q
+        )
+        self.assertEqual(fails, 0)
+
+    def test_missing_project_type_skips_silently(self):
+        # Pre-Phase-1 fixture: project_type.json absent.
+        fails, out = _capture_fail_output(
+            quality_gate.check_project_type_consistency, self.repo, self.q
+        )
+        self.assertEqual(fails, 0)
+        self.assertIn("skip", out)
+
+
 if __name__ == "__main__":
     unittest.main()
