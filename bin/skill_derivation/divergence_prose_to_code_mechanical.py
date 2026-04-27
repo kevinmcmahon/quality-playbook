@@ -63,7 +63,9 @@ _CODE_PATTERNS: dict[str, tuple[str, str, int]] = {
     ),
     "test": (
         "bin/tests/",  # directory; resolver counts def test_ across all .py
-        r"^def test_",
+        # Tests are methods inside unittest.TestCase classes (indented);
+        # the leading \s* matches both top-level and indented forms.
+        r"^\s*def test_",
         re.MULTILINE,
     ),
     "pass": (
