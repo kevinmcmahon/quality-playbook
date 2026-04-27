@@ -481,7 +481,7 @@ git apply quality/patches/BUG-NNN-fix.patch
 
 ### quality_gate.py
 
-The gate script validates all artifacts mechanically. It is the sole mechanical gate — the legacy `quality_gate.sh` was retired in v1.4.5. Target repos install the standalone module at `.github/skills/quality_gate.py` (in the source tree this is a symlink into the `.github/skills/quality_gate/` package, which also ships the 171-test unit-test suite in `quality_gate/tests/`). Run it after the playbook completes:
+The gate script validates all artifacts mechanically. It is the sole mechanical gate — the legacy `quality_gate.sh` was retired in v1.4.5. Target repos install the standalone module at `.github/skills/quality_gate.py` (in the source tree this is a symlink into the `.github/skills/quality_gate/` package, which also ships the 177-test unit-test suite in `quality_gate/tests/`). Run it after the playbook completes:
 
 ```bash
 python3 .github/skills/quality_gate.py .

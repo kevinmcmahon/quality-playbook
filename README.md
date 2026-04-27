@@ -67,6 +67,7 @@ Copy the skill files into your project:
 mkdir -p .claude/skills/quality-playbook/references
 cp SKILL.md .claude/skills/quality-playbook/SKILL.md
 cp references/* .claude/skills/quality-playbook/references/
+cp .github/skills/quality_gate/quality_gate.py .claude/skills/quality-playbook/quality_gate.py
 # v1.5.2: single reference_docs/ tree at the target repo root.
 # No README ships — cite/ contents are adopter-provided plaintext.
 mkdir -p reference_docs reference_docs/cite
@@ -81,6 +82,7 @@ cat skill-template.gitignore >> .gitignore
 mkdir -p .github/skills/references
 cp SKILL.md .github/skills/SKILL.md
 cp references/* .github/skills/references/
+cp .github/skills/quality_gate/quality_gate.py .github/skills/quality_gate.py
 # v1.5.2: single reference_docs/ tree at the target repo root.
 mkdir -p reference_docs reference_docs/cite
 cat skill-template.gitignore >> .gitignore
@@ -91,6 +93,7 @@ cat skill-template.gitignore >> .gitignore
 mkdir -p .github/skills/quality-playbook/references
 cp SKILL.md .github/skills/quality-playbook/SKILL.md
 cp references/* .github/skills/quality-playbook/references/
+cp .github/skills/quality_gate/quality_gate.py .github/skills/quality-playbook/quality_gate.py
 # v1.5.2: single reference_docs/ tree at the target repo root.
 mkdir -p reference_docs reference_docs/cite
 cat skill-template.gitignore >> .gitignore
@@ -452,7 +455,7 @@ quality-playbook/
 │   └── quality_gate/        # Gate script package (sole mechanical gate; bash version retired in v1.4.5)
 │       ├── __init__.py
 │       ├── quality_gate.py  # Mechanical validation script (14 check sections, 1100+ lines)
-│       └── tests/           # 108 stdlib-only unit tests for the gate
+│       └── tests/           # 177 stdlib-only unit tests for the gate
 ├── pytest/                  # Local stdlib-only shim (python3 -m pytest works without installs)
 ├── ai_context/              # AI-readable context files (orientation docs)
 │   ├── TOOLKIT.md           # For users' AI assistants (setup, run, interpret, recheck)

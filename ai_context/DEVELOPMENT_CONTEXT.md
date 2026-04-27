@@ -19,7 +19,7 @@ quality-playbook/
 │   └── quality-playbook.agent.md          ← Copilot / generic orchestrator
 ├── bin/                               ← Standard-library benchmark automation package
 │   ├── __init__.py                    ← Package marker
-│   ├── benchmark_lib.py               ← Shared helpers (versioned from repos/_benchmark_lib.sh)
+│   ├── benchmark_lib.py               ← Shared helpers for benchmark automation
 │   ├── run_playbook.py                ← Main runner — positional args are target directories (python3 bin/run_playbook.py)
 │   ├── classify_project.py            ← v1.5.3 Phase 0 project-type classifier (Code / Skill / Hybrid)
 │   ├── citation_verifier.py           ← v1.5.0 byte-deterministic citation excerpt extractor
@@ -70,14 +70,14 @@ quality-playbook/
 │   ├── DEVELOPMENT_CONTEXT.md         ← For maintainers' AI assistants (this file)
 │   └── BENCHMARK_PROTOCOL.md          ← Clean-folder run protocol for contamination-free benchmarks
 ├── repos/                             ← Benchmark repos and setup tooling
-│   ├── setup_repos.sh                 ← Copies skill files into target repos
-│   ├── _benchmark_lib.sh              ← Shell helpers shared by setup_repos.sh, run_tdd.sh, etc.
+│   ├── setup_repos.sh                 ← Self-contained benchmark repo setup script
+│   ├── create_clean_repos.sh          ← Creates clean benchmark source checkouts
 │   └── clean/                         ← Clean clones of benchmark repos
 ├── quality/                           ← Bootstrap artifacts (playbook run against QPB itself)
 └── council-reviews/                   ← Council review briefings and responses (not distributed)
 ```
 
-**Automation note:** benchmark automation lives in `bin/` and uses only the Python standard library so sandboxed AI agents can run it without creating a virtual environment or installing packages. The shell scripts remaining in `repos/` (`setup_repos.sh`, `_benchmark_lib.sh`, `run_tdd.sh`) handle repo setup and TDD plumbing — they no longer include a runner.
+**Automation note:** benchmark automation lives in `bin/` and uses only the Python standard library so sandboxed AI agents can run it without creating a virtual environment or installing packages. The shell scripts remaining in `repos/` (`setup_repos.sh`, `create_clean_repos.sh`) handle benchmark repo setup — they no longer include a runner.
 
 **Running the tests:**
 
@@ -252,7 +252,7 @@ Council review artifacts go in `council-reviews/`. Each review has:
 - **v1.4.3:** Challenge gate added for false-positive detection — forces triage to reconsider CRITICAL findings with common-sense review before closure (motivated by edgequake benchmarking where 6/7 "CRITICAL" findings turned out to be documented feature gaps or placeholders). Functional-test reference refactored: split into per-language files, then re-merged into a single `references/functional_tests.md` with import patterns folded in. First pass of orchestrator hardening: `references/orchestrator_protocol.md` extracted as a shared reference imported by both agent files, with critical rules duplicated inline for safety.
 - **v1.4.4:** Orchestrator hardening pass — "You are the orchestrator" architecture. Fixes three failure modes observed on casbin benchmarking: (1) single-context collapse (all six phases executed in one context, producing shallow summaries and zero files on disk), (2) `claude -p` subprocess spawning (orchestrator trying to fork fresh CLI processes instead of using the Agent tool), (3) nested Agent-tool stripping (Claude Code strips the Agent tool from nested sub-agents, so the orchestrator must be single-level). The session that reads the agent file IS the orchestrator — it never spawns a new session, only sub-agents. Protocol lives at `references/orchestrator_protocol.md`; critical rules are duplicated inline in each agent file.
 - **v1.4.5:** Tooling rebuild plus surface cleanup:
-    - **Runner rewritten in Python.** `bin/run_playbook.py` + `bin/benchmark_lib.py` replace the old `repos/run_playbook.sh` (deleted). `repos/_benchmark_lib.sh` remains in use by `setup_repos.sh` and `run_tdd.sh`. Standard library only, Python 3.8+, 36 stdlib-only tests at release (grew to 92 with v1.4.6 regression coverage).
+    - **Runner rewritten in Python.** `bin/run_playbook.py` + `bin/benchmark_lib.py` replace the old `repos/run_playbook.sh` (deleted). Standard library only, Python 3.8+, 36 stdlib-only tests at release (grew to 92 with v1.4.6 regression coverage).
     - **Runner interface redesign.** Positional args are directory paths, not short names. Default is the current directory. No more `DEFAULT_REPO_NAMES`, `REPOS_DIR`, `SHORT_VERSIONED_DIR_PATTERN`, `find_repo_dir`, `resolve_repos`, `repo_short_name`, or version-resolution logic. Missing SKILL.md is a warning rather than a fatal error. Log files live beside each target at `{parent}/{target-name}-playbook-{timestamp}.log` instead of being forced into `repos/`. A narrow **version-append fallback** retries `<name>-<skill_version>` once when a bare name doesn't resolve — lets `cd repos/ && python3 ../bin/run_playbook.py chi` pick up `chi-<version>` without reintroducing the old short-name tables.
     - **Python gate is sole mechanical gate.** `quality_gate.sh` retired; `quality_gate.py` handles JSON via `json.load` instead of grep-style parsing. Moved to `.github/skills/quality_gate/` as a proper package with `__init__.py` and a 108-test `tests/` subdirectory. The stable invocation path `.github/skills/quality_gate.py` is a symlink to the package module.
     - **Benchmark set reduced to four targets.** bootstrap, chi, cobra, virtio — down from 10. Bootstrap runs last because fixes from the first three land before the playbook audits itself. 60+ additional repos remain in `repos/clean/` for expanded benchmarking but aren't part of the default validation loop.

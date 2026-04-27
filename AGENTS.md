@@ -12,7 +12,7 @@ The Quality Playbook is a skill for AI coding agents that explores any codebase 
 |------|---------|-------------|
 | `SKILL.md` | Full operational instructions for running the playbook | When executing the playbook on a target repo |
 | `references/iteration.md` | Iteration strategy reference (gap, unfiltered, parity, adversarial) | When running iteration mode |
-| `quality_gate.sh` | Mechanical validation script | After playbook completes, to validate artifacts |
+| `.github/skills/quality_gate/quality_gate.py` | Mechanical validation script | After playbook completes, to validate artifacts |
 | `references/*.md` | Phase-specific reference files (review protocols, spec audit, etc.) | During specific phases as directed by SKILL.md |
 | `bin/skill_derivation/` | Phase 3 four-pass derivation pipeline + Phase 4 divergence detection (Skill / Hybrid projects only) | When working on the v1.5.3 skill-as-code surface |
 | `bin/skill_derivation/runners.py` | LLM runner abstraction — three concrete runners: `ClaudeRunner` (`claude --print`), `CopilotRunner` (`gh copilot --prompt`), `CodexRunner` (`codex exec --full-auto`, codex-cli 0.125+) | When adding a new LLM backend or tuning subprocess invocation |
@@ -23,26 +23,46 @@ The Quality Playbook is a skill for AI coding agents that explores any codebase 
 
 ## Installing the skill
 
-Copy the skill into your AI coding tool's skill directory in the target repo:
+Use the canonical installer from this checkout:
 
-**GitHub Copilot:**
+```bash
+./install-quality-playbook.sh /path/to/target-project
+```
+
+Default `--layout auto` updates detected existing layouts and installs the
+Claude layout for a fresh target. Use `--layout all` to install Claude, Copilot
+flat, and Copilot nested layouts; use `--dry-run` to preview changes. The
+installer preserves `quality/`, root `AGENTS.md`, existing `reference_docs/`
+contents, and `.gitignore`, and backs up locally modified installed files under
+`.quality-playbook-backups/`.
+
+`install-claude-code.sh` remains as a compatibility wrapper for Claude-only
+installs:
+
+```bash
+./install-claude-code.sh /path/to/target-project
+```
+
+Manual copy commands are fallback-only when the installer cannot be run:
+
+**GitHub Copilot fallback:**
 ```bash
 mkdir -p .github/skills/references
 cp SKILL.md .github/skills/SKILL.md
-cp quality_gate.sh .github/skills/quality_gate.sh
 cp references/* .github/skills/references/
+cp .github/skills/quality_gate/quality_gate.py .github/skills/quality_gate.py
 # v1.5.2+: single reference_docs/ tree at the target repo root.
 mkdir -p reference_docs reference_docs/cite
 # Optional: append suggested .gitignore rules for adopters.
 cat skill-template.gitignore >> .gitignore
 ```
 
-**Claude Code:**
+**Claude Code fallback:**
 ```bash
 mkdir -p .claude/skills/quality-playbook/references
 cp SKILL.md .claude/skills/quality-playbook/SKILL.md
-cp quality_gate.sh .claude/skills/quality-playbook/quality_gate.sh
 cp references/* .claude/skills/quality-playbook/references/
+cp .github/skills/quality_gate/quality_gate.py .claude/skills/quality-playbook/quality_gate.py
 # v1.5.2+: single reference_docs/ tree at the target repo root.
 mkdir -p reference_docs reference_docs/cite
 cat skill-template.gitignore >> .gitignore
@@ -58,7 +78,7 @@ Run the quality playbook on this project.
 ```
 AGENTS.md                ← you are here
 SKILL.md                 ← the skill (operational instructions)
-quality_gate.sh          ← artifact validation script
+.github/skills/quality_gate/quality_gate.py ← artifact validation script
 LICENSE.txt
 references/              ← phase-specific reference documents
 agents/
