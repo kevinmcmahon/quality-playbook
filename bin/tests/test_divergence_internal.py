@@ -96,17 +96,24 @@ class IntraSectionDetectionTests(unittest.TestCase):
 
 
 class CrossSectionCountableTests(unittest.TestCase):
-    def test_two_reqs_different_sections_conflict_on_count(self) -> None:
+    def test_two_reqs_different_sections_conflict_routes_to_candidates(self) -> None:
+        """Phase 5 Stage 1 (DQ-5-4): cross-section-countable matches
+        emit to pass_e_internal_candidates.jsonl, NOT the divergences
+        file. Prong 2 also requires both excerpts to share an artifact
+        name in proximity to the matched number — the fixture mentions
+        SKILL.md in both excerpts to satisfy that."""
         with TemporaryDirectory() as tmp_str:
             tmp = Path(tmp_str)
             cfg = _make_config(tmp)
             _write_jsonl(cfg.formal_path, [
                 {"id": "REQ-PHASE3-001", "section_idx": 1,
                  "source_document": "SKILL.md",
-                 "citation_excerpt": "the gate runs 45 checks today"},
+                 "citation_excerpt":
+                     "SKILL.md says the gate runs 45 checks today"},
                 {"id": "REQ-PHASE3-002", "section_idx": 5,
                  "source_document": "SKILL.md",
-                 "citation_excerpt": "we run 43 checks against the manifest"},
+                 "citation_excerpt":
+                     "we run 43 checks against the SKILL.md manifest"},
             ])
             _write_jsonl(cfg.formal_use_cases_path, [])
             _write_sections(cfg.sections_path, [
@@ -116,9 +123,26 @@ class CrossSectionCountableTests(unittest.TestCase):
                  "heading": "S5", "line_start": 50, "line_end": 60},
             ])
             run_divergence_internal(cfg)
-            recs = _read_output(cfg.output_path)
-            crosses = [r for r in recs if r["subtype"] == "cross-section-countable"]
-            self.assertEqual(len(crosses), 1)
+            # Divergences file: zero cross-section records (Stage 3
+            # demoted to candidates per prong 4).
+            divs = _read_output(cfg.output_path)
+            cross_in_divs = [
+                r for r in divs
+                if r["subtype"].startswith("cross-section")
+            ]
+            self.assertEqual(len(cross_in_divs), 0)
+            # Candidates file: one record with subtype
+            # "cross-section-countable-candidate" and shared SKILL.md
+            # artifact context.
+            candidates_path = cfg.output_path.with_name(
+                "pass_e_internal_candidates.jsonl"
+            )
+            cands = _read_output(candidates_path)
+            self.assertEqual(len(cands), 1)
+            self.assertEqual(
+                cands[0]["subtype"], "cross-section-countable-candidate"
+            )
+            self.assertIn("SKILL.md", cands[0]["shared_artifacts"])
 
 
 class PrecedenceTests(unittest.TestCase):
@@ -278,23 +302,26 @@ class Stage3DedupeTests(unittest.TestCase):
     identical divergences (DIV-INT-016 / DIV-INT-017 in the QPB
     live run). The dedupe fix collapses them to one."""
 
-    def test_repeated_token_in_excerpt_emits_exactly_one_divergence(self) -> None:
+    def test_repeated_token_in_excerpt_emits_exactly_one_candidate(self) -> None:
+        """Phase 5 Stage 1 (DQ-5-4): Stage 3 candidates land in
+        pass_e_internal_candidates.jsonl. The Round 8 dedupe still
+        applies — repeated (value, noun) tokens within one excerpt
+        do not duplicate the cross-section pair."""
         with TemporaryDirectory() as tmp_str:
             tmp = Path(tmp_str)
             cfg = _make_config(tmp)
-            # REQ-001 says "7 use cases ... 7 use cases" (the same
-            # (value, noun) token appears twice). REQ-002 in another
-            # section says "2 use cases". Without the dedupe, Stage 3
-            # would emit two records for REQ-001 × REQ-002.
+            # Both excerpts cite SKILL.md so prong 2 (shared artifact
+            # name) is satisfied.
             _write_jsonl(cfg.formal_path, [
                 {"id": "REQ-PHASE3-001", "section_idx": 1,
                  "source_document": "SKILL.md",
                  "citation_excerpt":
-                     "between 5 and 7 use cases ... more than 7 use cases"},
+                     "SKILL.md says between 5 and 7 use cases; "
+                     "more than 7 use cases per SKILL.md"},
                 {"id": "REQ-PHASE3-002", "section_idx": 5,
                  "source_document": "SKILL.md",
                  "citation_excerpt":
-                     "the integration tests run with 2 use cases per group"},
+                     "SKILL.md integration tests run with 2 use cases per group"},
             ])
             _write_jsonl(cfg.formal_use_cases_path, [])
             _write_sections(cfg.sections_path, [
@@ -306,12 +333,18 @@ class Stage3DedupeTests(unittest.TestCase):
                  "line_start": 50, "line_end": 60},
             ])
             run_divergence_internal(cfg)
-            recs = _read_output(cfg.output_path)
-            cross = [r for r in recs if r["subtype"] == "cross-section-countable"]
+            candidates_path = cfg.output_path.with_name(
+                "pass_e_internal_candidates.jsonl"
+            )
+            cands = _read_output(candidates_path)
+            cross = [
+                r for r in cands
+                if r["subtype"] == "cross-section-countable-candidate"
+            ]
             self.assertEqual(
                 len(cross), 1,
-                f"Stage 3 dedupe failed: expected 1 divergence for the "
-                f"REQ-001 x REQ-002 pair (despite the repeated token in "
+                f"Stage 3 dedupe failed: expected 1 candidate for the "
+                f"REQ-001 x REQ-002 pair (despite repeated token in "
                 f"REQ-001's excerpt), got {len(cross)}: "
                 f"{[(r['req_a_id'], r['req_b_id']) for r in cross]}",
             )

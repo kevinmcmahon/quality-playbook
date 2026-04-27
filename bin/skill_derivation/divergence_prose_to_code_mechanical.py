@@ -36,11 +36,14 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 
-# Re-use the countable-noun regex from divergence_internal so the two
-# modules see the same set of countable claims.
+# Re-use the countable-noun regex + Phase 5 Stage 1 precision filters
+# from divergence_internal so the two modules see the same set of
+# countable claims AND the same hedge / parenthetical / ordinal
+# context filters.
 from bin.skill_derivation.divergence_internal import (
     _COUNTABLE_RE,
     _normalize_token,
+    _filtered_countable_matches,
 )
 
 
@@ -164,12 +167,18 @@ def run_divergence_prose_to_code_mechanical(
             or req.get("acceptance_criteria", "")
             or ""
         )
-        matches = list(_COUNTABLE_RE.findall(excerpt))
+        # Phase 5 Stage 1 (DQ-5-4): use filtered matches. Drops
+        # ordinal-context numbers ("Tier 2 REQ"), hedge words
+        # ("typically 50 tests"), and parenthetical conditions
+        # ("(5-15 source files)"). Each entry is (num: int, noun: str,
+        # match_start: int, artifacts: set).
+        matches = _filtered_countable_matches(excerpt)
         if not matches:
             continue
         examined += 1
 
-        for num_str, noun in matches:
+        for num_int, noun, _match_start, _artifacts in matches:
+            num_str = str(num_int)
             token = _normalize_token(noun)
             artifact_spec = _CODE_PATTERNS.get(token)
             if artifact_spec is None:

@@ -20,7 +20,11 @@ from bin.skill_derivation.divergence_internal import (
 
 
 class Phase4F1IntegrationTests(unittest.TestCase):
-    def test_two_sections_with_45_vs_43_emits_one_cross_section_divergence(self):
+    def test_two_sections_with_45_vs_43_emits_one_cross_section_candidate(self):
+        """Phase 5 Stage 1 (DQ-5-4): Stage 3 cross-section-countable
+        matches now route to pass_e_internal_candidates.jsonl. Both
+        excerpts cite quality_gate.py so prong 2 (shared artifact)
+        is satisfied."""
         with TemporaryDirectory() as tmp_str:
             tmp = Path(tmp_str)
             formal = tmp / "pass_c_formal.jsonl"
@@ -28,7 +32,8 @@ class Phase4F1IntegrationTests(unittest.TestCase):
                 fh.write(json.dumps({
                     "id": "REQ-PHASE3-001", "section_idx": 1,
                     "source_document": "SKILL.md",
-                    "citation_excerpt": "the gate runs 45 checks across artifacts",
+                    "citation_excerpt":
+                        "quality_gate.py runs 45 checks across artifacts",
                 }) + "\n")
                 fh.write(json.dumps({
                     "id": "REQ-PHASE3-002", "section_idx": 1,
@@ -38,7 +43,8 @@ class Phase4F1IntegrationTests(unittest.TestCase):
                 fh.write(json.dumps({
                     "id": "REQ-PHASE3-003", "section_idx": 5,
                     "source_document": "SKILL.md",
-                    "citation_excerpt": "the gate runs 43 checks today",
+                    "citation_excerpt":
+                        "quality_gate.py runs 43 checks today",
                 }) + "\n")
                 fh.write(json.dumps({
                     "id": "REQ-PHASE3-004", "section_idx": 5,
@@ -66,17 +72,21 @@ class Phase4F1IntegrationTests(unittest.TestCase):
                 output_path=tmp / "pass_e_internal_divergences.jsonl",
             )
             result = run_divergence_internal(cfg)
-
-            recs = [
+            candidates_path = tmp / "pass_e_internal_candidates.jsonl"
+            cands = [
                 json.loads(line)
-                for line in (cfg.output_path).read_text().splitlines()
+                for line in candidates_path.read_text().splitlines()
                 if line.strip()
             ]
-            cross = [r for r in recs if r["subtype"] == "cross-section-countable"]
+            cross = [
+                r for r in cands
+                if r["subtype"] == "cross-section-countable-candidate"
+            ]
             self.assertEqual(len(cross), 1)
             r = cross[0]
             self.assertIn("45", r["rationale"])
             self.assertIn("43", r["rationale"])
+            self.assertIn("quality_gate.py", r["shared_artifacts"])
             # Both REQs are referenced.
             self.assertIn(r["req_a_id"], ("REQ-PHASE3-001", "REQ-PHASE3-003"))
             self.assertIn(r["req_b_id"], ("REQ-PHASE3-001", "REQ-PHASE3-003"))

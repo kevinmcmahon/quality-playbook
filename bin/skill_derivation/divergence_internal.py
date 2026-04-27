@@ -97,6 +97,69 @@ _COUNTABLE_RE = re.compile(
 _TOKEN_NORMALIZE_RE = re.compile(r"s\b", re.IGNORECASE)  # crude singularization
 
 
+# Phase 5 Stage 1 (DQ-5-4) precision-fix support:
+#
+# Prong 1 — ordinal-context numbers. The 20 chars before the number
+# match are inspected; if they end with `\b(Tier|tier|section|
+# Section|Phase|phase)\s*$` the match is skipped. Numbered-list
+# prefixes (`^\s*N\.\s+` or `^\s*N\)`) suppress matches anchored on
+# the list number itself (the regex captures e.g. `1. Read SKILL.md`
+# as `('1', 'read')` only when `read` is in the noun list — but the
+# defensive check is here regardless).
+_ORDINAL_CONTEXT_RE = re.compile(
+    r"\b(?:Tier|tier|section|Section|Phase|phase)\s*$"
+)
+_NUMBERED_LIST_LINE_RE = re.compile(r"(?m)^\s*\d+[.)]\s")
+
+# Prong 2 — artifact-name proximity. A cross-section-countable match
+# fires only when at least one of these artifact names appears within
+# ±100 characters of the number AND the SAME artifact name appears
+# in the other excerpt of the pair. Hardcoded list keeps the rule
+# scope tight; new artifacts get added here as they surface.
+_ARTIFACT_NAMES: tuple = (
+    "REQUIREMENTS.md", "EXPLORATION.md", "BUGS.md", "PROGRESS.md",
+    "QUALITY.md", "CONTRACTS.md", "COVERAGE_MATRIX.md",
+    "COMPLETENESS_REPORT.md", "INDEX.md", "SKILL.md", "schemas.md",
+    "AGENTS.md", "TOOLKIT.md",
+    "project_type.json",
+    "pass_a_drafts.jsonl", "pass_a_use_case_drafts.jsonl",
+    "pass_a_sections.json", "pass_b_citations.jsonl",
+    "pass_c_formal.jsonl", "pass_c_formal_use_cases.jsonl",
+    "pass_d_audit.json", "pass_d_council_inbox.json",
+    "pass_d_section_coverage.json",
+    "pass_e_internal_divergences.jsonl",
+    "pass_e_internal_candidates.jsonl",
+    "pass_e_prose_to_code_divergences.jsonl",
+    "pass_e_execution_divergences.jsonl",
+    "pass_e_bugs.jsonl", "pass_e_council_inbox.json",
+    "quality_gate.py", "run_playbook.py",
+    "benchmark_lib.py", "classify_project.py",
+    "citation_search.py", "citation_verifier.py",
+    "divergence_internal.py", "divergence_to_bugs.py",
+    "phase4_inbox.py",
+)
+_ARTIFACT_PROXIMITY_CHARS = 100
+
+# Prong 3 — context-qualified claims. Hedge words within 30 chars
+# BEFORE the number, OR a parenthetical condition within ±50 chars,
+# both filter the match. Examples that should be filtered:
+#   "the gate typically yields 35-50 tests"
+#   "≈50 tests for a medium project (5-15 source files)"
+_HEDGE_WORDS_RE = re.compile(
+    r"\b(?:typically|roughly|approximately|approx\.?|about|usually|"
+    r"often|commonly|generally|sometimes|may|might)\b",
+    re.IGNORECASE,
+)
+_HEDGE_SYMBOL_RE = re.compile(r"[~≈]")
+_PARENTHETICAL_CONDITION_RE = re.compile(
+    r"\(\s*[\d\-–]+\s+[a-z]+\s*(?:files?|projects?|modules?|sources?|"
+    r"lines?|repos?|targets?)\s*\)",
+    re.IGNORECASE,
+)
+_HEDGE_LOOKBEHIND_CHARS = 30
+_PARENTHETICAL_LOOKAROUND_CHARS = 50
+
+
 # ---------------------------------------------------------------------------
 # Anchor-verification (DQ-4-6).
 # ---------------------------------------------------------------------------
@@ -106,6 +169,97 @@ def _normalize_token(noun: str) -> str:
     """Strip trailing 's' so "checks" / "check" group together for
     the cross-section index."""
     return _TOKEN_NORMALIZE_RE.sub("", noun.lower()).strip()
+
+
+def _is_ordinal_context(excerpt: str, match_start: int) -> bool:
+    """Phase 5 Stage 1 prong 1: True iff the 20 chars before the
+    matched number end with a Tier/Section/Phase keyword (so the
+    number is an ordinal index, not a countable claim).
+
+    Also returns True when the matched number is the leading number
+    of a numbered-list line — `^\\s*N[.)]\\s+...` means N is the
+    list ordinal, not a quantity claim.
+    """
+    look_start = max(0, match_start - 20)
+    prefix = excerpt[look_start:match_start]
+    if _ORDINAL_CONTEXT_RE.search(prefix):
+        return True
+    # Numbered-list ordinal: walk back to the line start; if the line
+    # starts with the number we just matched followed by `.` or `)`,
+    # this is a list ordinal.
+    line_start = excerpt.rfind("\n", 0, match_start) + 1
+    line_prefix = excerpt[line_start:match_start]
+    # Strip leading whitespace; everything else before the number on
+    # this line must be empty for the number to be the list ordinal.
+    if not line_prefix.strip():
+        # The match starts at (or just after) the line's leading whitespace.
+        # Check the first character AFTER the match's number for `.` or `)`.
+        # _COUNTABLE_RE matches `\b(\d+)\s+<noun>` — the digit run is
+        # match_start..match_start+len(digits), then whitespace, then noun.
+        # We don't have the match end here; for the conservative case we
+        # accept "list ordinal" only when the line prefix is purely
+        # whitespace (the number IS the first token on the line) AND a
+        # `.` or `)` appears immediately after the digit run in the
+        # original excerpt. Find the digit run length:
+        m = re.match(r"\d+", excerpt[match_start:])
+        if m:
+            after_idx = match_start + m.end()
+            if after_idx < len(excerpt) and excerpt[after_idx] in ".)":
+                return True
+    return False
+
+
+def _has_hedge_or_parenthetical(excerpt: str, match_start: int) -> bool:
+    """Phase 5 Stage 1 prong 3: True iff a hedge word
+    (typically/roughly/approximately/about/etc.) or symbol (~/≈)
+    appears within 30 chars BEFORE the number, OR a parenthetical
+    condition like `(5-15 source files)` appears within ±50 chars."""
+    hedge_start = max(0, match_start - _HEDGE_LOOKBEHIND_CHARS)
+    hedge_window = excerpt[hedge_start:match_start]
+    if _HEDGE_WORDS_RE.search(hedge_window):
+        return True
+    if _HEDGE_SYMBOL_RE.search(hedge_window):
+        return True
+    paren_start = max(0, match_start - _PARENTHETICAL_LOOKAROUND_CHARS)
+    paren_end = min(
+        len(excerpt), match_start + _PARENTHETICAL_LOOKAROUND_CHARS,
+    )
+    paren_window = excerpt[paren_start:paren_end]
+    if _PARENTHETICAL_CONDITION_RE.search(paren_window):
+        return True
+    return False
+
+
+def _artifact_names_in_proximity(
+    excerpt: str, match_start: int,
+) -> set:
+    """Phase 5 Stage 1 prong 2: return the set of artifact names that
+    appear within ±100 characters of the matched number. The artifact
+    list is _ARTIFACT_NAMES."""
+    win_start = max(0, match_start - _ARTIFACT_PROXIMITY_CHARS)
+    win_end = min(
+        len(excerpt), match_start + _ARTIFACT_PROXIMITY_CHARS,
+    )
+    window = excerpt[win_start:win_end]
+    return {name for name in _ARTIFACT_NAMES if name in window}
+
+
+def _filtered_countable_matches(excerpt: str) -> list:
+    """Return [(num: int, noun: str, match_start: int, artifacts:
+    set), ...] for every _COUNTABLE_RE match that survives prongs 1
+    (ordinal-context skip) and 3 (hedge/parenthetical skip). Prong 2
+    (artifact proximity) is applied at pair-time, not per-match —
+    callers consume the artifacts set returned here.
+    """
+    out = []
+    for m in _COUNTABLE_RE.finditer(excerpt):
+        if _is_ordinal_context(excerpt, m.start()):
+            continue
+        if _has_hedge_or_parenthetical(excerpt, m.start()):
+            continue
+        artifacts = _artifact_names_in_proximity(excerpt, m.start())
+        out.append((int(m.group(1)), m.group(2), m.start(), artifacts))
+    return out
 
 
 def _read_jsonl(path: Path) -> list[dict]:
@@ -228,19 +382,24 @@ def _excerpts_contradict(rec_a: dict, rec_b: dict) -> Optional[str]:
     says "MUST" and the other "MUST NOT" about the same subject) are
     not detected here — they're surfaced by Council triage on the
     section-batched inbox.
+
+    Phase 5 Stage 1 (DQ-5-4): each match is filtered against prongs
+    1 (ordinal context) and 3 (hedge/parenthetical). Prong 2
+    (artifact-name proximity) does NOT apply intra-section — when two
+    records share a section, the section context implicitly grounds
+    the claim. Cross-section pairs (Stage 3) DO require artifact
+    proximity.
     """
     excerpt_a = _record_excerpt(rec_a)
     excerpt_b = _record_excerpt(rec_b)
     if not excerpt_a or not excerpt_b:
         return None
-    claims_a = {
-        _normalize_token(noun): int(num)
-        for num, noun in _COUNTABLE_RE.findall(excerpt_a)
-    }
-    claims_b = {
-        _normalize_token(noun): int(num)
-        for num, noun in _COUNTABLE_RE.findall(excerpt_b)
-    }
+    claims_a: dict = {}
+    for num, noun, _, _ in _filtered_countable_matches(excerpt_a):
+        claims_a.setdefault(_normalize_token(noun), num)
+    claims_b: dict = {}
+    for num, noun, _, _ in _filtered_countable_matches(excerpt_b):
+        claims_b.setdefault(_normalize_token(noun), num)
     common = set(claims_a) & set(claims_b)
     for token in sorted(common):
         if claims_a[token] != claims_b[token]:
@@ -295,6 +454,10 @@ class InternalDivergenceConfig:
     sections_path: Path
     document_root: Path  # repo root for reading section text on UC anchor verification
     output_path: Path
+    # Phase 5 Stage 1 (DQ-5-4 prong 4): Stage 3 cross-section
+    # countable matches now emit to a separate candidates file. If
+    # None, defaults to <output_path with stem replaced>.
+    candidates_path: Optional[Path] = None
     starting_div_idx: int = 1
 
 
@@ -438,15 +601,26 @@ def run_divergence_internal(
     # (source_document, normalized_token). Only REQs participate (UCs
     # don't carry numeric claims in their acceptance fields).
     # ------------------------------------------------------------------
-    # Round 8 Finding 1 (Stage 3 dedupe bug): if a single excerpt
-    # contains the same (value, noun) token twice, _COUNTABLE_RE.findall
-    # returns it twice, the token_index appended the same (rec, value)
-    # twice, and the cross-pair loop emitted byte-identical divergence
-    # records under different divergence_ids. Two-layer dedupe:
-    #   (a) drop duplicate (rec_id, value) entries within each token
-    #       bucket so each REQ contributes one (value) per token;
-    #   (b) maintain a (req_a_id, req_b_id, document, token) seen-set
-    #       in the emission loop as belt-and-suspenders.
+    # Round 8 Finding 1 + Phase 5 Stage 1 (DQ-5-4) Stage 3 emission:
+    #
+    # The token_index is populated from _filtered_countable_matches
+    # (prongs 1 + 3 applied per-match). Each (rec, value, artifacts)
+    # entry is deduped by (rec_id, token, value) within an excerpt
+    # (Round 8 fix).
+    #
+    # Stage 3 emissions go to a SEPARATE candidates file
+    # (pass_e_internal_candidates.jsonl) with subtype
+    # "cross-section-countable-candidate" — divergence_to_bugs.py
+    # reads only the divergences file, so candidates do not produce
+    # BUG records by default. Council can promote candidates to
+    # divergences manually.
+    #
+    # Prong 2 (artifact-name proximity) applies pair-wise: a Stage 3
+    # candidate fires only when both excerpts share at least one
+    # artifact name within ±100 chars of their respective number
+    # matches.
+    candidates_lines: list[str] = []
+    candidate_idx = 1
     token_index: dict = {}
     for rec in reqs:
         document = _normalize_source_document(rec, is_uc=False)
@@ -454,31 +628,32 @@ def run_divergence_internal(
         if not excerpt:
             continue
         seen_in_excerpt: set = set()
-        for num_str, noun in _COUNTABLE_RE.findall(excerpt):
+        for value, noun, _, artifacts in _filtered_countable_matches(excerpt):
             token = _normalize_token(noun)
-            value = int(num_str)
             dedupe_key = (rec.get("id"), token, value)
             if dedupe_key in seen_in_excerpt:
                 continue
             seen_in_excerpt.add(dedupe_key)
             token_index.setdefault((document, token), []).append(
-                (rec, value)
+                (rec, value, artifacts)
             )
 
-    for (document, token), pairs in token_index.items():
-        if len(pairs) < 2:
+    for (document, token), entries in token_index.items():
+        if len(entries) < 2:
             continue
         emitted_pairs: set = set()
-        # Compare every pair within this token bucket. Skip pairs that
-        # share the same section_idx (already covered by Stage 2).
-        for i in range(len(pairs)):
-            for j in range(i + 1, len(pairs)):
+        for i in range(len(entries)):
+            for j in range(i + 1, len(entries)):
                 counts.stage3_pairs += 1
-                rec_a, num_a = pairs[i]
-                rec_b, num_b = pairs[j]
+                rec_a, num_a, artifacts_a = entries[i]
+                rec_b, num_b, artifacts_b = entries[j]
                 if num_a == num_b:
                     continue
                 if rec_a.get("section_idx") == rec_b.get("section_idx"):
+                    continue
+                # Prong 2: require shared artifact name in proximity.
+                shared_artifacts = artifacts_a & artifacts_b
+                if not shared_artifacts:
                     continue
                 pair_key = (
                     rec_a.get("id"), rec_b.get("id"), document, token,
@@ -492,9 +667,9 @@ def run_divergence_internal(
                     rec_a, rec_b, doc_a=doc_a, doc_b=doc_b,
                 )
                 rec_dict = {
-                    "divergence_id": _div_id(div_idx),
+                    "divergence_id": f"DIV-INT-CAND-{candidate_idx:03d}",
                     "divergence_type": "internal-prose",
-                    "subtype": "cross-section-countable",
+                    "subtype": "cross-section-countable-candidate",
                     "req_a_id": rec_a.get("id"),
                     "req_b_id": rec_b.get("id"),
                     "source_document": document,
@@ -505,22 +680,28 @@ def run_divergence_internal(
                     "excerpt_a": _record_excerpt(rec_a),
                     "excerpt_b": _record_excerpt(rec_b),
                     "rationale": (
-                        f"Records in different sections of {document} claim "
-                        f"different counts for {token!r}: "
-                        f"{rec_a.get('id')} (section {rec_a.get('section_idx')}) "
-                        f"says {num_a}; {rec_b.get('id')} "
-                        f"(section {rec_b.get('section_idx')}) says {num_b}."
+                        f"Cross-section candidate (Phase 5 Stage 1 "
+                        f"prong 4 — Council triage required): records "
+                        f"in different sections of {document} claim "
+                        f"different counts for {token!r} sharing "
+                        f"artifact context "
+                        f"{sorted(shared_artifacts)!r}. "
+                        f"{rec_a.get('id')} (section "
+                        f"{rec_a.get('section_idx')}) says {num_a}; "
+                        f"{rec_b.get('id')} (section "
+                        f"{rec_b.get('section_idx')}) says {num_b}."
                     ),
-                    "provisional_disposition": disp,
-                    "provisional_disposition_target": target,
-                    "triage_batch_key": "cross-section",
+                    "provisional_disposition": None,
+                    "provisional_disposition_target": None,
+                    "shared_artifacts": sorted(shared_artifacts),
+                    "triage_batch_key": "cross-section-candidate",
                     "comparison_count_by_stage": None,
                 }
-                output_lines.append(json.dumps(rec_dict, sort_keys=False))
-                div_idx += 1
+                candidates_lines.append(json.dumps(rec_dict, sort_keys=False))
+                candidate_idx += 1
 
     # ------------------------------------------------------------------
-    # Atomic write.
+    # Atomic write — divergences AND candidates (Phase 5 Stage 1).
     # ------------------------------------------------------------------
     config.output_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = config.output_path.with_name(config.output_path.name + ".tmp")
@@ -530,8 +711,24 @@ def run_divergence_internal(
     )
     os.replace(tmp, config.output_path)
 
+    # Candidates file: derived from output_path stem if not specified.
+    candidates_path = (
+        config.candidates_path
+        if config.candidates_path is not None
+        else config.output_path.with_name(
+            "pass_e_internal_candidates.jsonl"
+        )
+    )
+    candidates_tmp = candidates_path.with_name(candidates_path.name + ".tmp")
+    candidates_tmp.write_text(
+        ("\n".join(candidates_lines) + "\n") if candidates_lines else "",
+        encoding="utf-8",
+    )
+    os.replace(candidates_tmp, candidates_path)
+
     return {
         "divergences_emitted": len(output_lines),
+        "candidates_emitted": len(candidates_lines),
         "un_anchored_uc_ids": sorted(un_anchored_uc_ids),
         "comparison_count_by_stage": {
             "stage1_partitions": counts.stage1_partitions,
