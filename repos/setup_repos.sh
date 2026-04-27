@@ -42,7 +42,17 @@
 #   python3 bin/run_playbook.py repos/chi-1.5.7          # equivalent script form
 
 set -euo pipefail
-source "$(dirname "$0")/_benchmark_lib.sh"
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+QPB_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+log() { echo "$(date +%H:%M:%S) $1"; }
+
+detect_skill_version() {
+    local skill_file="${QPB_DIR}/SKILL.md"
+    [ -f "$skill_file" ] || return 0
+    sed -nE 's/^[[:space:]]*(version:|\*\*Version:\*\*)[[:space:]]*([0-9]+(\.[0-9]+)+).*/\2/ip' "$skill_file" | head -1
+}
 
 ALL_REPOS=(chi cobra express gson httpx javalin serde zod virtio okhttp axum pydantic)
 FROM_PRIOR=false

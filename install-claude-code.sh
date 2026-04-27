@@ -18,10 +18,20 @@ if [[ ! -d "$target" ]]; then
     exit 1
 fi
 
-# Resolve the playbook source directory (where this script actually lives,
-# following symlinks so this works from ~/tools or anywhere on PATH).
-resolved="$(readlink -f "${BASH_SOURCE[0]}")"
-src="$(dirname "$resolved")"
+# Resolve the playbook source directory (where this script actually lives),
+# following symlinks so this works from ~/tools or anywhere on PATH. Avoid
+# readlink -f because macOS readlink does not support it.
+script="${BASH_SOURCE[0]}"
+while [[ -L "$script" ]]; do
+    script_dir="$(cd -P "$(dirname "$script")" >/dev/null 2>&1 && pwd)"
+    link="$(readlink "$script")"
+    if [[ "$link" == /* ]]; then
+        script="$link"
+    else
+        script="$script_dir/$link"
+    fi
+done
+src="$(cd -P "$(dirname "$script")" >/dev/null 2>&1 && pwd)"
 
 if [[ ! -d "$src" ]]; then
     cat >&2 <<EOF
@@ -40,7 +50,7 @@ EOF
     exit 1
 fi
 
-for required in SKILL.md references agents repos/quality_gate.sh; do
+for required in SKILL.md references agents .github/skills/quality_gate/quality_gate.py; do
     if [[ ! -e "$src/$required" ]]; then
         echo "Error: missing source file: $src/$required" >&2
         exit 1
@@ -49,6 +59,7 @@ done
 
 skill_dir="$target/.claude/skills/quality-playbook"
 agents_dir="$target/agents"
+reference_docs_dir="$target/reference_docs"
 
 # Clean-and-replace: wipe anything we own so stale files from a previous
 # install can't contradict the new upstream content. User state — the
@@ -70,20 +81,19 @@ fi
 
 mkdir -p "$skill_dir/references"
 mkdir -p "$agents_dir"
+mkdir -p "$reference_docs_dir/cite"
 
 cp "$src/SKILL.md" "$skill_dir/SKILL.md"
 cp "$src/references/"* "$skill_dir/references/"
 cp "$src/agents/"* "$agents_dir/"
-# quality_gate.sh lives at repos/quality_gate.sh in the source repo but SKILL.md
-# (line 1811) and AGENTS.md (line 38) expect it alongside SKILL.md in the
-# installed skill directory. Copy it to the path those docs assume.
-cp "$src/repos/quality_gate.sh" "$skill_dir/quality_gate.sh"
-chmod +x "$skill_dir/quality_gate.sh"
+cp "$src/.github/skills/quality_gate/quality_gate.py" "$skill_dir/quality_gate.py"
+chmod +x "$skill_dir/quality_gate.py"
 
 echo "Installed Quality Playbook into: $target"
 echo "  skill:  $skill_dir"
 echo "  agents: $agents_dir"
-echo "  gate:   $skill_dir/quality_gate.sh"
+echo "  gate:   $skill_dir/quality_gate.py"
+echo "  docs:   $reference_docs_dir"
 if [[ "$removed_skill" = true ]] || [[ ${#removed_agents[@]} -gt 0 ]]; then
     echo ""
     echo "Replaced from previous install:"
