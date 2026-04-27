@@ -350,6 +350,213 @@ class Stage3DedupeTests(unittest.TestCase):
             )
 
 
+class PrecisionProng1OrdinalContextTests(unittest.TestCase):
+    """Phase 5 Stage 1 (DQ-5-4 prong 1): "Tier 1/2 REQ" should NOT
+    produce a divergence — the digit is an ordinal index, not a
+    countable claim."""
+
+    def test_tier_digit_does_not_produce_intra_section_divergence(self) -> None:
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            cfg = _make_config(tmp)
+            _write_jsonl(cfg.formal_path, [
+                {"id": "REQ-PHASE3-001", "section_idx": 1,
+                 "source_document": "SKILL.md",
+                 "citation_excerpt": "Tier 1 REQ describes the spec"},
+                {"id": "REQ-PHASE3-002", "section_idx": 1,
+                 "source_document": "SKILL.md",
+                 "citation_excerpt": "Tier 2 REQ extracts contracts"},
+            ])
+            _write_jsonl(cfg.formal_use_cases_path, [])
+            _write_sections(cfg.sections_path, [
+                {"section_idx": 1, "document": "SKILL.md",
+                 "heading": "Tier System", "line_start": 1,
+                 "line_end": 5},
+            ])
+            run_divergence_internal(cfg)
+            recs = _read_output(cfg.output_path)
+            # No divergence should fire — both digits are ordinal.
+            self.assertEqual(
+                [r for r in recs if r["subtype"] == "intra-section"],
+                [],
+                "Tier-ordinal digits must not produce intra-section "
+                "divergences (Phase 5 Stage 1 prong 1).",
+            )
+
+    def test_legitimate_count_in_same_excerpt_still_fires(self) -> None:
+        """The string "Tier 2 REQ ... 50 tests" contains two matches:
+        the ordinal-context one is filtered, the legitimate "50 tests"
+        survives. Two REQs both saying "50 tests" vs "43 tests"
+        produce a divergence."""
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            cfg = _make_config(tmp)
+            _write_jsonl(cfg.formal_path, [
+                {"id": "REQ-PHASE3-001", "section_idx": 1,
+                 "source_document": "SKILL.md",
+                 "citation_excerpt":
+                     "Tier 2 REQ requires 50 tests covering the contract"},
+                {"id": "REQ-PHASE3-002", "section_idx": 1,
+                 "source_document": "SKILL.md",
+                 "citation_excerpt": "Phase 5 produces 43 tests"},
+            ])
+            _write_jsonl(cfg.formal_use_cases_path, [])
+            _write_sections(cfg.sections_path, [
+                {"section_idx": 1, "document": "SKILL.md",
+                 "heading": "Test Counts", "line_start": 1,
+                 "line_end": 5},
+            ])
+            run_divergence_internal(cfg)
+            recs = _read_output(cfg.output_path)
+            intra = [r for r in recs if r["subtype"] == "intra-section"]
+            self.assertEqual(len(intra), 1)
+            self.assertIn("test", intra[0]["rationale"])
+
+
+class PrecisionProng3HedgeTests(unittest.TestCase):
+    """Phase 5 Stage 1 prong 3: hedge-qualified claims and
+    parenthetical conditions are filtered."""
+
+    def test_typically_50_tests_does_not_produce_divergence(self) -> None:
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            cfg = _make_config(tmp)
+            _write_jsonl(cfg.formal_path, [
+                {"id": "REQ-PHASE3-001", "section_idx": 1,
+                 "source_document": "SKILL.md",
+                 "citation_excerpt":
+                     "the gate typically yields 50 tests in a medium project"},
+                {"id": "REQ-PHASE3-002", "section_idx": 1,
+                 "source_document": "SKILL.md",
+                 "citation_excerpt":
+                     "running 43 tests covers the suite"},
+            ])
+            _write_jsonl(cfg.formal_use_cases_path, [])
+            _write_sections(cfg.sections_path, [
+                {"section_idx": 1, "document": "SKILL.md",
+                 "heading": "Test Counts", "line_start": 1,
+                 "line_end": 5},
+            ])
+            run_divergence_internal(cfg)
+            recs = _read_output(cfg.output_path)
+            self.assertEqual(
+                [r for r in recs if r["subtype"] == "intra-section"], [],
+                "Hedge-qualified claim (typically) should be filtered.",
+            )
+
+    def test_parenthetical_condition_filters_match(self) -> None:
+        """`50 tests for a medium project (5-15 source files)` is
+        skipped because of the parenthetical condition."""
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            cfg = _make_config(tmp)
+            _write_jsonl(cfg.formal_path, [
+                {"id": "REQ-PHASE3-001", "section_idx": 1,
+                 "source_document": "SKILL.md",
+                 "citation_excerpt":
+                     "50 tests for a medium project (5-15 source files)"},
+                {"id": "REQ-PHASE3-002", "section_idx": 1,
+                 "source_document": "SKILL.md",
+                 "citation_excerpt": "43 tests cover the suite"},
+            ])
+            _write_jsonl(cfg.formal_use_cases_path, [])
+            _write_sections(cfg.sections_path, [
+                {"section_idx": 1, "document": "SKILL.md",
+                 "heading": "Test Counts", "line_start": 1,
+                 "line_end": 5},
+            ])
+            run_divergence_internal(cfg)
+            recs = _read_output(cfg.output_path)
+            self.assertEqual(
+                [r for r in recs if r["subtype"] == "intra-section"], [],
+                "Parenthetical-conditioned claim should be filtered.",
+            )
+
+
+class PrecisionProng2ArtifactProximityTests(unittest.TestCase):
+    """Phase 5 Stage 1 prong 2: cross-section-countable candidates
+    require shared artifact-name context. Two excerpts mentioning
+    different topics (no shared artifact name) MUST NOT produce a
+    candidate, even if they share a token bucket."""
+
+    def test_no_shared_artifact_no_candidate(self) -> None:
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            cfg = _make_config(tmp)
+            _write_jsonl(cfg.formal_path, [
+                {"id": "REQ-PHASE3-001", "section_idx": 1,
+                 "source_document": "SKILL.md",
+                 "citation_excerpt":
+                     "5 use cases generated for the operator"},
+                {"id": "REQ-PHASE3-002", "section_idx": 5,
+                 "source_document": "SKILL.md",
+                 "citation_excerpt":
+                     "2 use cases per integration test group"},
+            ])
+            _write_jsonl(cfg.formal_use_cases_path, [])
+            _write_sections(cfg.sections_path, [
+                {"section_idx": 1, "document": "SKILL.md",
+                 "heading": "Operator UC", "line_start": 1,
+                 "line_end": 5},
+                {"section_idx": 5, "document": "SKILL.md",
+                 "heading": "Integration UC", "line_start": 50,
+                 "line_end": 60},
+            ])
+            run_divergence_internal(cfg)
+            candidates_path = cfg.output_path.with_name(
+                "pass_e_internal_candidates.jsonl"
+            )
+            cands = _read_output(candidates_path)
+            # No shared artifact name in proximity → no candidate.
+            self.assertEqual(
+                [r for r in cands
+                 if r["subtype"] == "cross-section-countable-candidate"],
+                [],
+                "Pair without shared artifact context must not surface "
+                "as a Stage 3 candidate (Phase 5 prong 2).",
+            )
+
+
+class PrecisionProng4DemotionToCandidatesTests(unittest.TestCase):
+    """Phase 5 Stage 1 prong 4: Stage 3 emissions land in
+    pass_e_internal_candidates.jsonl, NOT pass_e_internal_divergences
+    .jsonl. divergence_to_bugs.py reads only the divergences file,
+    so candidates do not produce BUG records by default."""
+
+    def test_genuine_intra_section_still_lands_in_divergences(self) -> None:
+        """Intra-section (Stage 2) divergences still land in the
+        divergences file unchanged. Only Stage 3 (cross-section)
+        is demoted."""
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            cfg = _make_config(tmp)
+            _write_jsonl(cfg.formal_path, [
+                {"id": "REQ-PHASE3-001", "section_idx": 1,
+                 "source_document": "SKILL.md",
+                 "citation_excerpt": "produces 8 findings minimum"},
+                {"id": "REQ-PHASE3-002", "section_idx": 1,
+                 "source_document": "SKILL.md",
+                 "citation_excerpt": "produces 6 findings minimum"},
+            ])
+            _write_jsonl(cfg.formal_use_cases_path, [])
+            _write_sections(cfg.sections_path, [
+                {"section_idx": 1, "document": "SKILL.md",
+                 "heading": "Phase 1 Output", "line_start": 1,
+                 "line_end": 5},
+            ])
+            run_divergence_internal(cfg)
+            recs = _read_output(cfg.output_path)
+            intra = [r for r in recs if r["subtype"] == "intra-section"]
+            self.assertEqual(len(intra), 1)
+            # Candidates file is empty for this fixture (no
+            # cross-section-countable matches).
+            candidates_path = cfg.output_path.with_name(
+                "pass_e_internal_candidates.jsonl"
+            )
+            cands = _read_output(candidates_path)
+            self.assertEqual(cands, [])
+
+
 class PerformanceTests(unittest.TestCase):
     def test_200_reqs_complete_under_30s_with_bounded_pair_count(self) -> None:
         with TemporaryDirectory() as tmp_str:
