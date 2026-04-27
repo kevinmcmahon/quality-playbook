@@ -388,8 +388,8 @@
       "heading_level": 2,
       "line_start": 3,
       "line_end": 11,
-      "skip_reason": null,
-      "section_kind": "operational"
+      "skip_reason": "meta-allowlist",
+      "section_kind": "meta"
     },
     {
       "section_idx": 39,
@@ -438,8 +438,8 @@
       "heading_level": 2,
       "line_start": 5,
       "line_end": 90,
-      "skip_reason": null,
-      "section_kind": "operational"
+      "skip_reason": "meta-allowlist",
+      "section_kind": "meta"
     },
     {
       "section_idx": 44,
@@ -998,8 +998,8 @@
       "heading_level": 2,
       "line_start": 7,
       "line_end": 70,
-      "skip_reason": null,
-      "section_kind": "operational"
+      "skip_reason": "meta-allowlist",
+      "section_kind": "meta"
     },
     {
       "section_idx": 100,
@@ -1028,8 +1028,8 @@
       "heading_level": 2,
       "line_start": 7,
       "line_end": 100,
-      "skip_reason": null,
-      "section_kind": "operational"
+      "skip_reason": "meta-allowlist",
+      "section_kind": "meta"
     },
     {
       "section_idx": 103,
@@ -1178,8 +1178,8 @@
       "heading_level": 2,
       "line_start": 9,
       "line_end": 105,
-      "skip_reason": null,
-      "section_kind": "operational"
+      "skip_reason": "meta-allowlist",
+      "section_kind": "meta"
     },
     {
       "section_idx": 118,

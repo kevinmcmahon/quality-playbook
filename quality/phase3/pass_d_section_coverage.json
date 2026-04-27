@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "generated_at": "2026-04-27T08:16:36Z",
+  "generated_at": "2026-04-27T08:20:04Z",
   "sections": [
     {
       "section_idx": 0,
@@ -438,8 +438,8 @@
       "section_idx": 38,
       "document": "references/challenge_gate.md",
       "heading": "Purpose",
-      "section_kind": "operational",
-      "skip_reason": null,
+      "section_kind": "meta",
+      "skip_reason": "meta-allowlist",
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
@@ -493,8 +493,8 @@
       "section_idx": 43,
       "document": "references/constitution.md",
       "heading": "Template",
-      "section_kind": "operational",
-      "skip_reason": null,
+      "section_kind": "meta",
+      "skip_reason": "meta-allowlist",
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
@@ -1109,8 +1109,8 @@
       "section_idx": 99,
       "document": "references/requirements_refinement.md",
       "heading": "Generated file template",
-      "section_kind": "operational",
-      "skip_reason": null,
+      "section_kind": "meta",
+      "skip_reason": "meta-allowlist",
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
@@ -1142,8 +1142,8 @@
       "section_idx": 102,
       "document": "references/requirements_review.md",
       "heading": "Generated file template",
-      "section_kind": "operational",
-      "skip_reason": null,
+      "section_kind": "meta",
+      "skip_reason": "meta-allowlist",
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
@@ -1307,8 +1307,8 @@
       "section_idx": 117,
       "document": "references/spec_audit.md",
       "heading": "Template",
-      "section_kind": "operational",
-      "skip_reason": null,
+      "section_kind": "meta",
+      "skip_reason": "meta-allowlist",
       "drafts_total": 0,
       "drafts_promoted": 0,
       "drafts_pending_council": 0,
@@ -1454,11 +1454,6 @@
       "heading": "Fixture Strategy"
     },
     {
-      "section_idx": 38,
-      "document": "references/challenge_gate.md",
-      "heading": "Purpose"
-    },
-    {
       "section_idx": 39,
       "document": "references/challenge_gate.md",
       "heading": "The two-round challenge"
@@ -1477,11 +1472,6 @@
       "section_idx": 42,
       "document": "references/challenge_gate.md",
       "heading": "Token budget"
-    },
-    {
-      "section_idx": 43,
-      "document": "references/constitution.md",
-      "heading": "Template"
     },
     {
       "section_idx": 44,
@@ -1739,19 +1729,9 @@
       "heading": "After the pipeline: review and refinement"
     },
     {
-      "section_idx": 99,
-      "document": "references/requirements_refinement.md",
-      "heading": "Generated file template"
-    },
-    {
       "section_idx": 100,
       "document": "references/requirements_refinement.md",
       "heading": "Refinement Pass \u2014 v[new version]"
-    },
-    {
-      "section_idx": 102,
-      "document": "references/requirements_review.md",
-      "heading": "Generated file template"
     },
     {
       "section_idx": 103,
@@ -1822,11 +1802,6 @@
       "section_idx": 116,
       "document": "references/spec_audit.md",
       "heading": "Why Three Models?"
-    },
-    {
-      "section_idx": 117,
-      "document": "references/spec_audit.md",
-      "heading": "Template"
     },
     {
       "section_idx": 118,

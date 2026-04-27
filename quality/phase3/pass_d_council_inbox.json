@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "generated_at": "2026-04-27T08:16:36Z",
+  "generated_at": "2026-04-27T08:20:04Z",
   "items": [
     {
       "item_type": "rejected-draft",
@@ -1202,15 +1202,6 @@
     {
       "item_type": "zero-req-section",
       "draft_idx": null,
-      "section_idx": 38,
-      "section_heading": "Purpose",
-      "rationale": "Operational section 'Purpose' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
-      "context_excerpt": "",
-      "provisional_disposition": "needs-council-review"
-    },
-    {
-      "item_type": "zero-req-section",
-      "draft_idx": null,
       "section_idx": 39,
       "section_heading": "The two-round challenge",
       "rationale": "Operational section 'The two-round challenge' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
@@ -1241,15 +1232,6 @@
       "section_idx": 42,
       "section_heading": "Token budget",
       "rationale": "Operational section 'Token budget' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
-      "context_excerpt": "",
-      "provisional_disposition": "needs-council-review"
-    },
-    {
-      "item_type": "zero-req-section",
-      "draft_idx": null,
-      "section_idx": 43,
-      "section_heading": "Template",
-      "rationale": "Operational section 'Template' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
       "context_excerpt": "",
       "provisional_disposition": "needs-council-review"
     },
@@ -1715,27 +1697,9 @@
     {
       "item_type": "zero-req-section",
       "draft_idx": null,
-      "section_idx": 99,
-      "section_heading": "Generated file template",
-      "rationale": "Operational section 'Generated file template' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
-      "context_excerpt": "",
-      "provisional_disposition": "needs-council-review"
-    },
-    {
-      "item_type": "zero-req-section",
-      "draft_idx": null,
       "section_idx": 100,
       "section_heading": "Refinement Pass \u2014 v[new version]",
       "rationale": "Operational section 'Refinement Pass \u2014 v[new version]' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
-      "context_excerpt": "",
-      "provisional_disposition": "needs-council-review"
-    },
-    {
-      "item_type": "zero-req-section",
-      "draft_idx": null,
-      "section_idx": 102,
-      "section_heading": "Generated file template",
-      "rationale": "Operational section 'Generated file template' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
       "context_excerpt": "",
       "provisional_disposition": "needs-council-review"
     },
@@ -1862,15 +1826,6 @@
       "section_idx": 116,
       "section_heading": "Why Three Models?",
       "rationale": "Operational section 'Why Three Models?' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
-      "context_excerpt": "",
-      "provisional_disposition": "needs-council-review"
-    },
-    {
-      "item_type": "zero-req-section",
-      "draft_idx": null,
-      "section_idx": 117,
-      "section_heading": "Template",
-      "rationale": "Operational section 'Template' produced no promoted REQs and was not marked as skipped. Council should review whether the section was correctly iterated and whether the LLM under-produced.",
       "context_excerpt": "",
       "provisional_disposition": "needs-council-review"
     },

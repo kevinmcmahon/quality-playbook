@@ -48,6 +48,16 @@ META_SECTION_ALLOWLIST = frozenset({
     "Terminology",
     "Principles",
     "Reference Files",  # index of references; the references themselves carry the claims
+    # Phase 3c live-run additions: surfaced as flagged completeness
+    # gaps that on inspection are descriptive/structural, not
+    # testable. "Purpose" sections describe what a reference file is
+    # for (rationale, not behavior). "Template" and "Generated file
+    # template" sections are fenced template snippets showing the
+    # shape of an output artifact, not rules an implementation
+    # follows.
+    "Purpose",
+    "Template",
+    "Generated file template",
 })
 
 # All-caps screaming-section pattern (template-output markers like
