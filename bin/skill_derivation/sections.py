@@ -97,6 +97,51 @@ class Section:
     section_kind: str = "operational"
 
 
+# Phase 3b A.3: regex for detecting cross-references to reference
+# files inside section body text. Matches both "references/foo.md"
+# (path-form) and "foo.md" (bare filename when paired with a hint
+# like "see foo.md"). The regex captures the filename component;
+# resolution to a repo-relative path is the caller's job.
+_CROSS_REF_PATTERN_PATHED = re.compile(r"references/([a-zA-Z0-9_\-]+\.md)")
+_CROSS_REF_PATTERN_BARE = re.compile(
+    r"\b(?:see|cf\.?|per|in|from)\s+`?([a-zA-Z0-9_\-]+\.md)`?",
+    re.IGNORECASE,
+)
+
+
+def detect_cross_references(
+    section_text: str, *, references_basenames: frozenset[str]
+) -> list[str]:
+    """Return repo-relative paths to reference files cited in the
+    section text.
+
+    references_basenames is the set of valid reference-file basenames
+    (e.g., {"exploration_patterns.md", "verification.md"}); only
+    matches in this set are returned. This avoids false positives on
+    casual mentions of unrelated .md files.
+
+    Returns deduplicated list of "references/<filename>" strings,
+    sorted for determinism.
+    """
+    found: set[str] = set()
+    for match in _CROSS_REF_PATTERN_PATHED.findall(section_text):
+        if match in references_basenames:
+            found.add(f"references/{match}")
+    for match in _CROSS_REF_PATTERN_BARE.findall(section_text):
+        if match in references_basenames:
+            found.add(f"references/{match}")
+    return sorted(found)
+
+
+def collect_reference_basenames(references_dir: Optional[Path]) -> frozenset[str]:
+    """Return the set of .md basenames in references_dir, or empty
+    frozenset if the directory is absent. Used by detect_cross_references
+    to avoid false positives on unrelated .md mentions."""
+    if references_dir is None or not references_dir.is_dir():
+        return frozenset()
+    return frozenset(p.name for p in references_dir.glob("*.md"))
+
+
 def is_meta_heading(heading: str) -> Optional[str]:
     """Return a skip_reason string if the heading is meta, else None."""
     stripped = heading.strip()

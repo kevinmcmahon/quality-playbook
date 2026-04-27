@@ -346,5 +346,97 @@ class ReferenceFileIterationTests(unittest.TestCase):
         )
 
 
+class CrossReferenceDetectionTests(unittest.TestCase):
+    """Phase 3b A.3: detect_cross_references finds reference-file
+    citations in section text without firing on unrelated .md mentions."""
+
+    def _basenames(self, *names: str) -> frozenset[str]:
+        return frozenset(names)
+
+    def test_detects_pathed_form(self) -> None:
+        text = "see references/exploration_patterns.md for the pattern list"
+        refs = sections.detect_cross_references(
+            text,
+            references_basenames=self._basenames("exploration_patterns.md"),
+        )
+        self.assertEqual(refs, ["references/exploration_patterns.md"])
+
+    def test_detects_bare_form_with_see_hint(self) -> None:
+        text = "See verification.md for the per-pass protocol."
+        refs = sections.detect_cross_references(
+            text, references_basenames=self._basenames("verification.md")
+        )
+        self.assertEqual(refs, ["references/verification.md"])
+
+    def test_detects_per_hint_form(self) -> None:
+        text = "Per iteration.md, the strategy taxonomy has four entries."
+        refs = sections.detect_cross_references(
+            text, references_basenames=self._basenames("iteration.md")
+        )
+        self.assertEqual(refs, ["references/iteration.md"])
+
+    def test_does_not_fire_on_unrelated_md_mention(self) -> None:
+        # README.md is not in the references basenames -> no match.
+        text = "See the project's README.md for setup instructions."
+        refs = sections.detect_cross_references(
+            text,
+            references_basenames=self._basenames(
+                "exploration_patterns.md", "verification.md"
+            ),
+        )
+        self.assertEqual(refs, [])
+
+    def test_deduplicates_repeated_references(self) -> None:
+        text = (
+            "See exploration_patterns.md. Also see "
+            "references/exploration_patterns.md for the same."
+        )
+        refs = sections.detect_cross_references(
+            text,
+            references_basenames=self._basenames("exploration_patterns.md"),
+        )
+        self.assertEqual(refs, ["references/exploration_patterns.md"])
+
+    def test_multiple_references_returned_sorted(self) -> None:
+        text = (
+            "See references/verification.md. Also see "
+            "references/exploration_patterns.md."
+        )
+        refs = sections.detect_cross_references(
+            text,
+            references_basenames=self._basenames(
+                "exploration_patterns.md", "verification.md"
+            ),
+        )
+        self.assertEqual(
+            refs,
+            [
+                "references/exploration_patterns.md",
+                "references/verification.md",
+            ],
+        )
+
+    def test_collect_reference_basenames_handles_missing_dir(self) -> None:
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            self.assertEqual(
+                sections.collect_reference_basenames(tmp / "missing"),
+                frozenset(),
+            )
+            self.assertEqual(
+                sections.collect_reference_basenames(None), frozenset()
+            )
+
+    def test_collect_reference_basenames_filters_to_md(self) -> None:
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            refs = tmp / "references"
+            refs.mkdir()
+            (refs / "patterns.md").write_text("x", encoding="utf-8")
+            (refs / "ignore.txt").write_text("y", encoding="utf-8")
+            names = sections.collect_reference_basenames(refs)
+            self.assertEqual(names, frozenset({"patterns.md"}))
+
+
 if __name__ == "__main__":
     unittest.main()

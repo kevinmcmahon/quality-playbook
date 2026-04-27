@@ -30,6 +30,27 @@ from bin.skill_derivation import protocol, sections
 from bin.skill_derivation.runners import LLMRunner, RunnerResult
 
 
+def _tag_cross_references(
+    records: list[dict],
+    section_text: str,
+    references_basenames: "frozenset[str]",
+) -> None:
+    """Phase 3b A.3: tag REQ records with detected cross-references
+    to reference files. Mutates records in place. UC records and
+    skip/no_reqs accounting markers are left untouched.
+    """
+    if not references_basenames:
+        return
+    refs = sections.detect_cross_references(
+        section_text, references_basenames=references_basenames
+    )
+    if not refs:
+        return
+    for rec in records:
+        if "draft_idx" in rec:  # REQ records only; UCs and markers skipped
+            rec["cross_references"] = refs
+
+
 # Throughput tripwire threshold. Sub-this elapsed time on a
 # substantive section indicates stub generation under context pressure.
 MIN_PLAUSIBLE_ELAPSED_MS = 12_000
@@ -59,6 +80,13 @@ class PassAConfig:
     # "execution-mode" -> uc template).
     req_template_path: Optional[Path] = None
     uc_template_path: Optional[Path] = None
+    # Phase 3b A.3: cross-reference detection. The driver runs the
+    # regex over each section's body text and tags REQ records with
+    # the list of referenced files. Pass C uses this to flag
+    # potential internal-prose divergences for Phase 4. Pass the
+    # references_dir (e.g., target_dir/references); the driver
+    # collects basenames for the false-positive filter.
+    references_dir: Optional[Path] = None
 
 
 def _utc_now_iso() -> str:
@@ -251,6 +279,12 @@ def run_pass_a(
     req_template = config.req_template_path or template_path
     uc_template = config.uc_template_path  # may be None for operational-only runs
 
+    # Phase 3b A.3: collect reference-file basenames once for the
+    # cross-reference detection's false-positive filter.
+    references_basenames = sections.collect_reference_basenames(
+        config.references_dir
+    )
+
     processed = 0
     for section in section_list:
         if section["section_idx"] < cursor:
@@ -312,6 +346,9 @@ def run_pass_a(
                     },
                 )
             else:
+                _tag_cross_references(
+                    records, section_text, references_basenames
+                )
                 for rec in records:
                     rec.setdefault("_metadata", {})
                     rec["_metadata"]["elapsed_ms"] = result.elapsed_ms
