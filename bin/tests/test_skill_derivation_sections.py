@@ -207,7 +207,7 @@ class WriteSectionsJsonTests(unittest.TestCase):
             sections.write_sections_json(secs, out_path)
             import json
             payload = json.loads(out_path.read_text())
-            self.assertEqual(payload["schema_version"], "1.0")
+            self.assertEqual(payload["schema_version"], "1.1")
             self.assertEqual(len(payload["sections"]), len(secs))
 
 

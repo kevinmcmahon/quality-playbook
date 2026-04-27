@@ -55,6 +55,25 @@ META_SECTION_ALLOWLIST = frozenset({
 # block). Conservative: only fires on plain UPPER_SNAKE.
 _ALL_CAPS_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
+# Phase 3b A.1: keywords that mark a section as describing an
+# execution mode (Pass A produces UC drafts in addition to REQ
+# drafts for these sections). Verified against QPB's actual SKILL.md
+# `##` headings; tune by adding/removing entries before the live
+# Pass A run and verifying that 8-12 sections fire (target = Haiku's
+# 10 use cases ± 20%).
+EXECUTION_MODE_KEYWORDS = frozenset({
+    "how to use",
+    "phase 0",
+    "phase 1", "phase 2", "phase 3", "phase 4",
+    "phase 5", "phase 6", "phase 7",
+    "recheck",
+    "bootstrap",
+    "iteration",
+    "convergence",
+    "interactive",
+    "non-interactive",
+})
+
 # Top-level section split threshold (lines). A `##` section longer
 # than this is split at the next `###` heading down so each
 # subsection becomes its own iteration unit -- keeps per-call prompt
@@ -71,6 +90,11 @@ class Section:
     line_start: int  # 1-based line number of the heading line
     line_end: int    # 1-based, INCLUSIVE; the last line that belongs to this section
     skip_reason: Optional[str]  # "meta-allowlist" / "screaming" / None when not skipped
+    # Phase 3b A.1/A.2: section_kind drives Pass A's prompt selection.
+    # "operational" = REQ-only; "execution-mode" = REQ + UC; "meta" =
+    # skipped (no LLM call). Computed at enumeration time so all
+    # downstream passes agree on the kind.
+    section_kind: str = "operational"
 
 
 def is_meta_heading(heading: str) -> Optional[str]:
@@ -81,6 +105,34 @@ def is_meta_heading(heading: str) -> Optional[str]:
     if _ALL_CAPS_RE.match(stripped):
         return "screaming"
     return None
+
+
+def is_execution_mode_heading(heading: str) -> bool:
+    """Return True iff the heading matches an EXECUTION_MODE_KEYWORDS entry.
+
+    Case-insensitive substring match per the brief A.1 matching rules:
+    `.lower()` both sides, match the keyword anywhere in the heading
+    text. Heading-only -- callers must NOT pass section body text.
+    """
+    lowered = heading.lower()
+    for keyword in EXECUTION_MODE_KEYWORDS:
+        if keyword in lowered:
+            return True
+    return False
+
+
+def classify_section_kind(heading: str, skip_reason: Optional[str]) -> str:
+    """Three-way classification: meta / execution-mode / operational.
+
+    Order matters: meta wins over execution-mode. A section in the
+    META_SECTION_ALLOWLIST is never an execution-mode section even if
+    its heading happens to contain an execution-mode keyword.
+    """
+    if skip_reason is not None:
+        return "meta"
+    if is_execution_mode_heading(heading):
+        return "execution-mode"
+    return "operational"
 
 
 def _iter_top_level_headings(text: str) -> Iterator[tuple]:
@@ -177,6 +229,7 @@ def enumerate_sections(
                 for inner_idx_0, inner_level, _ in headings
             )
             if not should_split:
+                skip_reason = is_meta_heading(heading)
                 sections.append(
                     Section(
                         section_idx=next_idx,
@@ -185,7 +238,8 @@ def enumerate_sections(
                         heading_level=2,
                         line_start=line_start_1,
                         line_end=line_end_1,
-                        skip_reason=is_meta_heading(heading),
+                        skip_reason=skip_reason,
+                        section_kind=classify_section_kind(heading, skip_reason),
                     )
                 )
                 next_idx += 1
@@ -212,6 +266,7 @@ def enumerate_sections(
             parent_section_lines = parent_end_idx_0 - parent_line_idx_0
             if parent_section_lines <= SECTION_SPLIT_LINE_THRESHOLD:
                 continue  # parent fits in one unit; subsection isn't enumerated
+            skip_reason = is_meta_heading(heading)
             sections.append(
                 Section(
                     section_idx=next_idx,
@@ -220,7 +275,8 @@ def enumerate_sections(
                     heading_level=3,
                     line_start=line_start_1,
                     line_end=line_end_1,
-                    skip_reason=is_meta_heading(heading),
+                    skip_reason=skip_reason,
+                    section_kind=classify_section_kind(heading, skip_reason),
                 )
             )
             next_idx += 1
@@ -228,9 +284,15 @@ def enumerate_sections(
 
 
 def write_sections_json(sections: List[Section], out_path: Path) -> None:
-    """Emit pass_a_sections.json (the deterministic enumeration artifact)."""
+    """Emit pass_a_sections.json (the deterministic enumeration artifact).
+
+    schema_version bumped 1.0 -> 1.1 in Phase 3b: the Section
+    dataclass gained a `section_kind` field. Purely additive (existing
+    consumers reading the prior 1.0 keys still work; new consumers
+    reading section_kind get the classification).
+    """
     payload = {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "sections": [asdict(s) for s in sections],
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)

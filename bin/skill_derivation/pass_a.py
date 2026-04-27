@@ -50,6 +50,15 @@ class PassAConfig:
     document_root: Path  # repo root; documents are read by joining their relative paths
     starting_draft_idx: int = 0
     tail_context_lines: int = DEFAULT_TAIL_CONTEXT_LINES
+    # Phase 3b A.1: parallel JSONL artifact for UC drafts. Default
+    # convention: pass_a_use_case_drafts.jsonl next to the REQ drafts.
+    uc_drafts_path: Optional[Path] = None
+    starting_uc_draft_idx: int = 0
+    # Per-section-kind prompt template paths. The driver picks based
+    # on the section's section_kind ("operational" -> req template;
+    # "execution-mode" -> uc template).
+    req_template_path: Optional[Path] = None
+    uc_template_path: Optional[Path] = None
 
 
 def _utc_now_iso() -> str:
@@ -96,13 +105,19 @@ def _render_prompt(
     tail_context: str,
     starting_draft_idx: int,
     config: PassAConfig,
+    starting_uc_draft_idx: int = 0,
 ) -> str:
     template = template_path.read_text(encoding="utf-8")
     recovery = protocol.render_recovery_preamble(
         pass_spec_path=config.pass_spec_path,
         progress_file_path=config.progress_path,
     )
-    return template.format(
+    # Both REQ and UC templates accept the same kwargs; UC template
+    # additionally substitutes {starting_uc_draft_idx}. The REQ
+    # template ignores extra kwargs because str.format is permissive
+    # only when the unused kwarg name doesn't appear; safest to call
+    # .format() with the union of fields and let the template pick.
+    fields = dict(
         recovery_preamble=recovery,
         document=section["document"],
         section_heading=section["heading"],
@@ -113,7 +128,20 @@ def _render_prompt(
         section_text=section_text,
         tail_context=tail_context,
         starting_draft_idx=starting_draft_idx,
+        starting_uc_draft_idx=starting_uc_draft_idx,
     )
+    # Use a forgiving format so a template that doesn't reference
+    # starting_uc_draft_idx (the REQ template) doesn't break.
+    return template.format_map(_PermissiveDict(fields))
+
+
+class _PermissiveDict(dict):
+    """Format-mapping that returns the keyed value if present, else
+    the placeholder verbatim. Lets the REQ template ignore the UC-only
+    `starting_uc_draft_idx` placeholder without erroring."""
+
+    def __missing__(self, key):
+        return "{" + key + "}"
 
 
 def _parse_jsonl_response(stdout: str, *, expected_section_idx: int) -> list[dict]:
@@ -174,6 +202,14 @@ def run_pass_a(
     Returns the number of sections processed in this invocation
     (including skipped sections, which are emitted as records but do
     not fire the LLM).
+
+    Phase 3b A.1: when the section's section_kind == "execution-mode"
+    AND config.uc_template_path is set, the UC prompt template is
+    used (which produces both REQ and UC records). Records are
+    routed to two JSONL streams by shape: records with `draft_idx`
+    -> drafts_path; records with `uc_draft_idx` -> uc_drafts_path.
+    Sections with section_kind == "operational" use the standard REQ
+    template (the original Phase 3a behavior).
     """
     sections_data = json.loads(config.sections_path.read_text(encoding="utf-8"))
     section_list = sections_data["sections"]
@@ -188,8 +224,6 @@ def run_pass_a(
         else 0
     )
 
-    # Initialize / refresh progress at the starting cursor so the
-    # caller can observe progress.json from the start.
     state = protocol.ProgressState(
         pass_="A",
         unit="section",
@@ -200,19 +234,33 @@ def run_pass_a(
     )
     protocol.write_progress_atomic(config.progress_path, state)
 
-    # Recompute next draft_idx from disk: count of all draft records
-    # currently in pass_a_drafts.jsonl that have a draft_idx field.
+    # Recompute next draft_idx and uc_draft_idx from disk so resumes
+    # produce a consistent index space.
     next_draft_idx = config.starting_draft_idx + _count_existing_draft_idxs(
         config.drafts_path
     )
+    next_uc_draft_idx = config.starting_uc_draft_idx + (
+        _count_existing_uc_draft_idxs(config.uc_drafts_path)
+        if config.uc_drafts_path is not None
+        else 0
+    )
+
+    # Pick the actual prompt template per call. config.req_template_path
+    # / uc_template_path take precedence over the legacy positional
+    # `template_path` argument so tests can pass paths via config.
+    req_template = config.req_template_path or template_path
+    uc_template = config.uc_template_path  # may be None for operational-only runs
 
     processed = 0
     for section in section_list:
         if section["section_idx"] < cursor:
-            continue  # already done in a prior run
+            continue
+
+        # section_kind defaults to "operational" if absent (older
+        # pass_a_sections.json files at schema_version 1.0).
+        section_kind = section.get("section_kind", "operational")
 
         if section.get("skip_reason"):
-            # Emit the skip marker without firing the LLM.
             protocol.append_jsonl(
                 config.drafts_path,
                 {
@@ -228,12 +276,21 @@ def run_pass_a(
                 section,
                 tail_context_lines=config.tail_context_lines,
             )
+
+            use_uc_template = (
+                section_kind == "execution-mode"
+                and uc_template is not None
+                and config.uc_drafts_path is not None
+            )
+            chosen_template = uc_template if use_uc_template else req_template
+
             prompt = _render_prompt(
-                template_path,
+                chosen_template,
                 section=section,
                 section_text=section_text,
                 tail_context=tail_context,
                 starting_draft_idx=next_draft_idx,
+                starting_uc_draft_idx=next_uc_draft_idx,
                 config=config,
             )
             result = runner.run(prompt)
@@ -242,8 +299,6 @@ def run_pass_a(
                 result.stdout, expected_section_idx=section["section_idx"]
             )
             if not records:
-                # Model produced no parseable output. Emit a no_reqs
-                # marker so Pass D sees the section was visited.
                 protocol.append_jsonl(
                     config.drafts_path,
                     {
@@ -260,11 +315,25 @@ def run_pass_a(
                 for rec in records:
                     rec.setdefault("_metadata", {})
                     rec["_metadata"]["elapsed_ms"] = result.elapsed_ms
-                    if "draft_idx" in rec and isinstance(rec["draft_idx"], int):
-                        next_draft_idx = max(next_draft_idx, rec["draft_idx"] + 1)
-                    protocol.append_jsonl(config.drafts_path, rec)
+                    # Route by record shape: uc_draft_idx -> UC stream;
+                    # draft_idx -> REQ stream; neither -> REQ stream
+                    # (e.g., no_reqs markers).
+                    if (
+                        "uc_draft_idx" in rec
+                        and isinstance(rec["uc_draft_idx"], int)
+                        and config.uc_drafts_path is not None
+                    ):
+                        next_uc_draft_idx = max(
+                            next_uc_draft_idx, rec["uc_draft_idx"] + 1
+                        )
+                        protocol.append_jsonl(config.uc_drafts_path, rec)
+                    else:
+                        if "draft_idx" in rec and isinstance(rec["draft_idx"], int):
+                            next_draft_idx = max(
+                                next_draft_idx, rec["draft_idx"] + 1
+                            )
+                        protocol.append_jsonl(config.drafts_path, rec)
 
-        # Advance cursor AFTER the per-section record(s) are flushed.
         cursor = section["section_idx"] + 1
         state = protocol.ProgressState(
             pass_="A",
@@ -277,7 +346,6 @@ def run_pass_a(
         protocol.write_progress_atomic(config.progress_path, state)
         processed += 1
 
-    # Mark complete.
     state = protocol.ProgressState(
         pass_="A",
         unit="section",
@@ -306,5 +374,22 @@ def _count_existing_draft_idxs(drafts_path: Path) -> int:
         except json.JSONDecodeError:
             continue
         if isinstance(rec, dict) and "draft_idx" in rec:
+            count += 1
+    return count
+
+
+def _count_existing_uc_draft_idxs(uc_drafts_path: Optional[Path]) -> int:
+    """Count UC records on disk. Symmetric to _count_existing_draft_idxs."""
+    if uc_drafts_path is None or not uc_drafts_path.is_file():
+        return 0
+    count = 0
+    for line in uc_drafts_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(rec, dict) and "uc_draft_idx" in rec:
             count += 1
     return count
