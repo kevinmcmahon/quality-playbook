@@ -272,6 +272,51 @@ class SourceDocumentNoneHandlingTests(unittest.TestCase):
             self.assertEqual(recs[0]["source_document"], "SKILL.md")
 
 
+class Stage3DedupeTests(unittest.TestCase):
+    """Round 8 Finding 1: when a REQ excerpt repeats the same
+    (value, noun) token twice, Stage 3 used to emit two byte-
+    identical divergences (DIV-INT-016 / DIV-INT-017 in the QPB
+    live run). The dedupe fix collapses them to one."""
+
+    def test_repeated_token_in_excerpt_emits_exactly_one_divergence(self) -> None:
+        with TemporaryDirectory() as tmp_str:
+            tmp = Path(tmp_str)
+            cfg = _make_config(tmp)
+            # REQ-001 says "7 use cases ... 7 use cases" (the same
+            # (value, noun) token appears twice). REQ-002 in another
+            # section says "2 use cases". Without the dedupe, Stage 3
+            # would emit two records for REQ-001 × REQ-002.
+            _write_jsonl(cfg.formal_path, [
+                {"id": "REQ-PHASE3-001", "section_idx": 1,
+                 "source_document": "SKILL.md",
+                 "citation_excerpt":
+                     "between 5 and 7 use cases ... more than 7 use cases"},
+                {"id": "REQ-PHASE3-002", "section_idx": 5,
+                 "source_document": "SKILL.md",
+                 "citation_excerpt":
+                     "the integration tests run with 2 use cases per group"},
+            ])
+            _write_jsonl(cfg.formal_use_cases_path, [])
+            _write_sections(cfg.sections_path, [
+                {"section_idx": 1, "document": "SKILL.md",
+                 "heading": "Use Cases (Overview)",
+                 "line_start": 1, "line_end": 5},
+                {"section_idx": 5, "document": "SKILL.md",
+                 "heading": "Integration Tests",
+                 "line_start": 50, "line_end": 60},
+            ])
+            run_divergence_internal(cfg)
+            recs = _read_output(cfg.output_path)
+            cross = [r for r in recs if r["subtype"] == "cross-section-countable"]
+            self.assertEqual(
+                len(cross), 1,
+                f"Stage 3 dedupe failed: expected 1 divergence for the "
+                f"REQ-001 x REQ-002 pair (despite the repeated token in "
+                f"REQ-001's excerpt), got {len(cross)}: "
+                f"{[(r['req_a_id'], r['req_b_id']) for r in cross]}",
+            )
+
+
 class PerformanceTests(unittest.TestCase):
     def test_200_reqs_complete_under_30s_with_bounded_pair_count(self) -> None:
         with TemporaryDirectory() as tmp_str:

@@ -438,21 +438,37 @@ def run_divergence_internal(
     # (source_document, normalized_token). Only REQs participate (UCs
     # don't carry numeric claims in their acceptance fields).
     # ------------------------------------------------------------------
+    # Round 8 Finding 1 (Stage 3 dedupe bug): if a single excerpt
+    # contains the same (value, noun) token twice, _COUNTABLE_RE.findall
+    # returns it twice, the token_index appended the same (rec, value)
+    # twice, and the cross-pair loop emitted byte-identical divergence
+    # records under different divergence_ids. Two-layer dedupe:
+    #   (a) drop duplicate (rec_id, value) entries within each token
+    #       bucket so each REQ contributes one (value) per token;
+    #   (b) maintain a (req_a_id, req_b_id, document, token) seen-set
+    #       in the emission loop as belt-and-suspenders.
     token_index: dict = {}
     for rec in reqs:
         document = _normalize_source_document(rec, is_uc=False)
         excerpt = _record_excerpt(rec)
         if not excerpt:
             continue
+        seen_in_excerpt: set = set()
         for num_str, noun in _COUNTABLE_RE.findall(excerpt):
             token = _normalize_token(noun)
+            value = int(num_str)
+            dedupe_key = (rec.get("id"), token, value)
+            if dedupe_key in seen_in_excerpt:
+                continue
+            seen_in_excerpt.add(dedupe_key)
             token_index.setdefault((document, token), []).append(
-                (rec, int(num_str))
+                (rec, value)
             )
 
     for (document, token), pairs in token_index.items():
         if len(pairs) < 2:
             continue
+        emitted_pairs: set = set()
         # Compare every pair within this token bucket. Skip pairs that
         # share the same section_idx (already covered by Stage 2).
         for i in range(len(pairs)):
@@ -464,6 +480,12 @@ def run_divergence_internal(
                     continue
                 if rec_a.get("section_idx") == rec_b.get("section_idx"):
                     continue
+                pair_key = (
+                    rec_a.get("id"), rec_b.get("id"), document, token,
+                )
+                if pair_key in emitted_pairs:
+                    continue
+                emitted_pairs.add(pair_key)
                 doc_a = _normalize_source_document(rec_a, is_uc=False)
                 doc_b = _normalize_source_document(rec_b, is_uc=False)
                 disp, target = _resolve_provisional_disposition(

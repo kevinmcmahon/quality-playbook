@@ -34,11 +34,15 @@ implementation per the Phase 4 brief. Phase 4 commits land on the
 | Suite | Pre-Phase-4 | Post-Phase-4 | Delta |
 |---|---:|---:|---:|
 | `bin/tests/` | 602 | **631** | +29 |
-| `.github/skills/quality_gate/tests/test_quality_gate.py` | 198 | **215** | +17 |
+| `.github/skills/quality_gate/tests/test_quality_gate.py` | 204 | **221** | +17 |
 | `.github/skills/quality_gate/tests/test_req_pattern.py` | 6 | 6 | 0 |
-| **Total** | 806 | **852** | **+46** |
+| **Total** | 812 | **858** | **+46** |
 
-All 852 tests green at Phase 4 HEAD.
+All 858 tests green at Phase 4 HEAD. *(Round 8 follow-up
+correction: the prior version of this table reported `pre=198,
+post=215` for the gate suite; the actual baseline carried forward
+from Round 7 was 204, and post-Phase-4 is 221. The +17 delta is
+unchanged.)*
 
 ## 3. QPB self-audit results
 

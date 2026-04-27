@@ -217,21 +217,100 @@ def _bug_for_execution(div: dict, idx: int) -> dict:
     }
 
 
+def _consolidate_prose_to_code(divs: list[dict]) -> list[list[dict]]:
+    """Round 8 Finding 2 / schemas.md §8.1: prose-to-code divergence
+    records that share the same (code_artifact, claimed_count,
+    actual_count, code_count_pattern) tuple represent the same
+    underlying prose-vs-code mismatch surfaced from multiple REQs (the
+    same prose phrase repeated across sections). Consolidate them into
+    a single BUG with a `covers` array per the cell-identity rules.
+
+    Returns a list of groups; each group is a list of divergence dicts
+    that share the consolidation key. Single-divergence groups are
+    preserved (they emit a normal BUG without `covers`).
+
+    llm-judged divergences are kept ungrouped — the LLM verdict +
+    rationale is per-call, not per-prose-phrase.
+    """
+    groups: dict = {}
+    standalone: list[dict] = []
+    for div in divs:
+        if div.get("subtype") != "mechanical-countable":
+            standalone.append(div)
+            continue
+        key = (
+            div.get("code_artifact"),
+            div.get("claimed_count"),
+            div.get("actual_count"),
+            div.get("code_count_pattern"),
+        )
+        groups.setdefault(key, []).append(div)
+    out: list[list[dict]] = []
+    for key in groups:
+        out.append(groups[key])
+    for div in standalone:
+        out.append([div])
+    return out
+
+
+def _consolidated_bug_for_prose_to_code(
+    group: list[dict], idx: int,
+) -> dict:
+    """Build a single BUG record covering all divergences in `group`.
+    When len(group) == 1 the result is the normal per-divergence BUG.
+    When len(group) >= 2 the BUG carries `covers` (the list of
+    DIV-P2C-* IDs in the group) and `consolidation_rationale` per
+    schemas.md §8.1."""
+    if len(group) == 1:
+        return _bug_for_prose_to_code(group[0], idx)
+    primary = group[0]
+    bug = _bug_for_prose_to_code(primary, idx)
+    covers = [d.get("divergence_id") for d in group if d.get("divergence_id")]
+    bug["covers"] = covers
+    bug["consolidation_rationale"] = (
+        f"{len(group)} prose-to-code divergence records share the "
+        f"same (code_artifact={primary.get('code_artifact')!r}, "
+        f"claimed_count={primary.get('claimed_count')}, "
+        f"actual_count={primary.get('actual_count')}, "
+        f"code_count_pattern={primary.get('code_count_pattern')!r}) "
+        "tuple — the same prose-vs-code mismatch surfaced via multiple "
+        "REQs. Per schemas.md §8.1 cell-identity rules, consolidated "
+        "into one BUG."
+    )
+    # Aggregate the secondary REQ ids so triage can see every site.
+    secondary_req_ids = []
+    for d in group[1:]:
+        rid = d.get("req_id")
+        if rid and rid != bug.get("req_id"):
+            secondary_req_ids.append(rid)
+    if secondary_req_ids:
+        bug["secondary_req_ids"] = secondary_req_ids
+    return bug
+
+
 def run_divergence_to_bugs(config: DivergenceToBugsConfig) -> dict:
-    """Drive Part D.1 end-to-end. Returns summary dict."""
+    """Drive Part D.1 end-to-end. Returns summary dict.
+
+    Round 8 Finding 2: prose-to-code divergence records sharing
+    (code_artifact, claimed_count, actual_count, code_count_pattern)
+    consolidate into one BUG with a `covers` array.
+    """
     internals = _read_jsonl(config.internal_path)
     prose_to_codes = _read_jsonl(config.prose_to_code_path)
     executions = _read_jsonl(config.execution_path)
 
     output_lines: list[str] = []
     bug_idx = config.starting_bug_idx
+    consolidated_groups = 0
 
     for div in internals:
         bug = _bug_for_internal(div, bug_idx)
         output_lines.append(json.dumps(bug, sort_keys=False))
         bug_idx += 1
-    for div in prose_to_codes:
-        bug = _bug_for_prose_to_code(div, bug_idx)
+    for group in _consolidate_prose_to_code(prose_to_codes):
+        if len(group) >= 2:
+            consolidated_groups += 1
+        bug = _consolidated_bug_for_prose_to_code(group, bug_idx)
         output_lines.append(json.dumps(bug, sort_keys=False))
         bug_idx += 1
     for div in executions:
@@ -247,9 +326,14 @@ def run_divergence_to_bugs(config: DivergenceToBugsConfig) -> dict:
     )
     os.replace(tmp, config.output_path)
 
+    prose_to_code_bug_count = sum(
+        1 for g in _consolidate_prose_to_code(prose_to_codes)
+    )
     return {
         "bugs_emitted": len(output_lines),
         "internal_bugs": len(internals),
-        "prose_to_code_bugs": len(prose_to_codes),
+        "prose_to_code_bugs": prose_to_code_bug_count,
+        "prose_to_code_divergences_in": len(prose_to_codes),
+        "prose_to_code_groups_consolidated": consolidated_groups,
         "execution_bugs": len(executions),
     }
