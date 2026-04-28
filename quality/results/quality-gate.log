@@ -1,5 +1,5 @@
 === Quality Gate — Post-Run Validation ===
-Version:    1.4.5
+Version:    1.5.3
 Strictness: benchmark
 Repos:      1
 
@@ -21,12 +21,12 @@ Repos:      1
   PASS: EXPLORATION.md exists
   PASS: code_reviews/ has .md files
   PASS: spec_audits/ has triage file
-  PASS: spec_audits/ has 15 auditor file(s)
+  PASS: spec_audits/ has 4 auditor file(s)
   PASS: triage_probes.sh exists (executable triage evidence)
 [BUGS.md Heading Format]
-  PASS: All 27 bug headings use ### BUG-NNN format
+  PASS: All 11 bug headings use ### BUG-NNN format
 [TDD Sidecar JSON]
-  PASS: tdd-results.json exists (27 bugs)
+  PASS: tdd-results.json exists (11 bugs)
   PASS: has 'schema_version'
   PASS: has 'skill_version'
   PASS: has 'date'
@@ -34,27 +34,27 @@ Repos:      1
   PASS: has 'bugs'
   PASS: has 'summary'
   PASS: schema_version is '1.1'
-  PASS: per-bug field 'id' present (27x)
-  PASS: per-bug field 'requirement' present (27x)
-  PASS: per-bug field 'red_phase' present (27x)
-  PASS: per-bug field 'green_phase' present (27x)
-  PASS: per-bug field 'verdict' present (27x)
-  PASS: per-bug field 'fix_patch_present' present (27x)
-  PASS: per-bug field 'writeup_path' present (27x)
+  PASS: per-bug field 'id' present (11x)
+  PASS: per-bug field 'requirement' present (11x)
+  PASS: per-bug field 'red_phase' present (11x)
+  PASS: per-bug field 'green_phase' present (11x)
+  PASS: per-bug field 'verdict' present (11x)
+  PASS: per-bug field 'fix_patch_present' present (11x)
+  PASS: per-bug field 'writeup_path' present (11x)
   PASS: summary has 'total'
   PASS: summary has 'verified'
   PASS: summary has 'confirmed_open'
   PASS: summary has 'red_failed'
   PASS: summary has 'green_failed'
-  PASS: tdd-results.json date '2026-04-19' is valid
+  PASS: tdd-results.json date '2026-04-28' is valid
   PASS: all verdict values are canonical
 [TDD Log Files]
-  PASS: All 27 confirmed bug(s) have red-phase logs
-  PASS: All 27 bug(s) with fix patches have green-phase logs
+  PASS: All 11 confirmed bug(s) have red-phase logs
+  PASS: All 7 bug(s) with fix patches have green-phase logs
   PASS: All red-phase logs have valid status tags
   PASS: All green-phase logs have valid status tags
-  PASS: Sidecar-to-log cross-validation passed (54 checks)
-  PASS: TDD_TRACEABILITY.md exists (27 bugs with red-phase results)
+  PASS: Sidecar-to-log cross-validation passed (18 checks)
+  PASS: TDD_TRACEABILITY.md exists (11 bugs with red-phase results)
 [Integration Sidecar JSON]
   PASS: has 'schema_version'
   PASS: has 'skill_version'
@@ -69,37 +69,66 @@ Repos:      1
   PASS: integration summary has 'failed'
   PASS: integration summary has 'skipped'
   PASS: integration schema_version is '1.1'
-  PASS: integration-results.json date '2026-04-18' is valid
-  PASS: recommendation 'FIX BEFORE MERGE' is canonical
+  PASS: integration-results.json date '2026-04-28' is valid
+  PASS: recommendation 'BLOCK' is canonical
   PASS: all groups[].result values are canonical
   PASS: all uc_coverage values are canonical
 [Recheck Sidecar JSON]
   INFO: recheck-results.json not present (only required when recheck mode was run)
 [Use Cases]
-  PASS: Found 12 distinct UC identifiers (14 total references, 14167 source files)
+  PASS: Found 10 distinct UC identifiers (21 total references, 8292 source files)
 [Test File Extension]
-  FAIL: test_functional.py does not match project language (go) — expected .go
-  PASS: test_regression.go matches project language (go)
+  PASS: test_functional.py matches project language (py)
+  PASS: test_regression.py matches project language (py)
 [Terminal Gate]
   PASS: PROGRESS.md has Terminal Gate section
 [Mechanical Verification]
   PASS: verify.sh exists
   PASS: mechanical-verify.exit is 0
 [Patches]
-  PASS: test_regression.* exists (27 confirmed bugs require it)
-  PASS: 27 regression-test patch(es) for 27 bug(s)
-  PASS: 27 fix patch(es)
-  INFO: Total: 54 patch file(s) in quality/patches/
+  PASS: test_regression.* exists (11 confirmed bugs require it)
+  PASS: 11 regression-test patch(es) for 11 bug(s)
+  PASS: 7 fix patch(es)
+  INFO: Total: 18 patch file(s) in quality/patches/
 [Bug Writeups]
-  PASS: 27 writeup(s) for 27 bug(s)
-  PASS: All 27 writeup(s) have inline fix diffs
+  PASS: 11 writeup(s) for 11 bug(s)
+  PASS: All 11 writeup(s) have inline fix diffs
+  PASS: All writeup ```diff blocks contain unified-diff content
+  PASS: No writeups contain unfilled template sentinels
 [Version Stamps]
-  PASS: PROGRESS.md version matches (1.4.5)
+  PASS: PROGRESS.md version matches (1.5.3)
   PASS: tdd-results.json skill_version matches
 [Cross-Run Contamination]
   PASS: No version mismatch detected
+[Run Metadata]
+  PASS: run-metadata JSON present
+  reference_docs/cite/.gitkeep: unsupported extension (none) under reference_docs/cite/ (schemas.md §2 allows only .txt, .md; §10 invariant #9)
+  PASS: reference_docs/cite/: all files use supported extensions
+  PASS: formal_docs_manifest.json: manifest wrapper valid
+  PASS: requirements_manifest.json: manifest wrapper valid
+  PASS: use_cases_manifest.json: manifest wrapper valid
+  PASS: bugs_manifest.json: manifest wrapper valid
+  PASS: citation_semantic_check.json: manifest wrapper valid
+  PASS: requirements_manifest.json: v1.5.1 Layer-1 REQ checks complete
+  PASS: bugs_manifest.json: v1.5.1 Layer-1 BUG checks complete
+  PASS: quality/INDEX.md: §11 fields present
+  PASS: citation_semantic_check.json: no Tier 1/2 REQs to review (invariant #17 vacuously satisfied)
+  PASS: challenge gate coverage: 11 triggered bug(s) all have valid challenge records
+  PASS: compensation_grid.json: v1.5.2 cardinality gate clean
+  WARN: formal_docs_manifest.json: legacy manifest detected; treating absent FORMAL_DOC.role as 'external-spec' per schemas.md §3.10 backward-compat rule
+  PASS: requirements_manifest.json: v1.5.3 source_type validation complete
+  PASS: requirements_manifest.json: v1.5.3 skill_section consistency complete
+  PASS: bugs_manifest.json: v1.5.3 divergence_type validation complete
+[Phase 4: skill-section REQ coverage]
+  INFO: check_skill_section_req_coverage: skip (project_type=None)
+[Phase 4: reference-file REQ coverage]
+  INFO: check_reference_file_req_coverage: skip (project_type=None)
+[Phase 4: hybrid cross-cutting REQs]
+  INFO: check_hybrid_cross_cutting_reqs: skip (project_type=None)
+[Phase 4: project-type consistency]
+  INFO: check_project_type_consistency: skip (project_type.json absent — Phase 1 classifier not run yet)
 
 
 ===========================================
-Total: 1 FAIL, 0 WARN
+Total: 1 FAIL, 1 WARN
 RESULT: GATE FAILED — 1 check(s) must be fixed

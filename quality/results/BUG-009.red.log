@@ -1,16 +1,38 @@
 RED
-Date: 2026-04-18
-Bug: BUG-009
-Test: quality.test_regression.RegressionTests.test_reg_cb9_pkill_misses_copilot
-Runner: python3 -m unittest quality.test_regression.RegressionTests.test_reg_cb9_pkill_misses_copilot -v
+Command: python3 -m unittest quality.test_regression.CodeReviewRegressionTests.test_bug_009_skill_detection_uses_documented_four_path_order
 
-  no processes matched: bin/run_playbook.py
-  no processes matched: claude -p
-  no processes matched: claude --model
-test_reg_cb9_pkill_misses_copilot (quality.test_regression.RegressionTests.test_reg_cb9_pkill_misses_copilot)
-BUG-009 / REQ-012: _pkill_fallback patterns must include "gh copilot -p". ... expected failure
+Traceback (most recent call last):
+  File "<stdin>", line 20, in <module>
+  File "/Users/andrewstellman/Documents/QPB/quality/test_regression.py", line 161, in test_bug_009_skill_detection_uses_documented_four_path_order
+    self.assertEqual(
+    ~~~~~~~~~~~~~~~~^
+        tuple(str(path) for path in benchmark_lib.SKILL_INSTALL_LOCATIONS),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+        ),
+        ^^
+    )
+    ^
+  File "/opt/homebrew/Cellar/python@3.13/3.13.1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/unittest/case.py", line 907, in assertEqual
+    assertion_func(first, second, msg=msg)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.13/3.13.1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/unittest/case.py", line 1124, in assertTupleEqual
+    self.assertSequenceEqual(tuple1, tuple2, msg, seq_type=tuple)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.13/3.13.1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/unittest/case.py", line 1095, in assertSequenceEqual
+    self.fail(msg)
+    ~~~~~~~~~^^^^^
+  File "/opt/homebrew/Cellar/python@3.13/3.13.1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/unittest/case.py", line 732, in fail
+    raise self.failureException(msg)
+AssertionError: Tuples differ: ('.github/skills/SKILL.md', '.claude/skills[79 chars].md') != ('SKILL.md', '.claude/skills/quality-playbo[79 chars].md')
 
-----------------------------------------------------------------------
-Ran 1 test in 0.001s
+First differing element 0:
+'.github/skills/SKILL.md'
+'SKILL.md'
 
-OK (expected failures=1)
+- ('.github/skills/SKILL.md',
++ ('SKILL.md',
+   '.claude/skills/quality-playbook/SKILL.md',
+-  'SKILL.md',
++  '.github/skills/SKILL.md',
+   '.github/skills/quality-playbook/SKILL.md')
