@@ -12,8 +12,26 @@
 #   ./setup_repos.sh chi httpx    # Specific repos
 #   ./setup_repos.sh --from-prior chi httpx   # Force old copy-from-latest behavior
 #
+#   # Override destination (e.g., to set up a single repo into a harness run dir):
+#   ./setup_repos.sh --target-folder runs/cross_v1.4.5/casbin/replicate-1/ --replace casbin
+#
+# Flags:
+#   --from-prior          Force copy-from-latest-prior-version fallback path
+#   --target-folder PATH  Override destination from default repos/<repo>-<version>/.
+#                         Requires exactly one positional repo argument. If PATH
+#                         already exists, --replace must also be given.
+#   --replace             Allow overwriting an existing --target-folder. (Default
+#                         behavior without --target-folder always replaces the
+#                         conventional repos/<repo>-<version>/ destination; this
+#                         flag is required only with --target-folder, to prevent
+#                         accidental overwrite of harness run directories.)
+#
 # Prerequisites:
 #   ./create_clean_repos.sh       # Populate clean/ (one-time)
+#
+# Version-pinned source override:
+#   QPB_SKILL_DIR=/path/to/version-pinned-qpb ./setup_repos.sh ...
+#       (recognized by _benchmark_lib.sh; defaults to the parent of repos/)
 #
 # After setup, run (defaults: Copilot, gpt-5.4, parallel, single-pass, no seeds):
 #   python3 ../bin/run_playbook.py chi httpx        # bare names → version-append fallback
@@ -24,15 +42,29 @@ source "$(dirname "$0")/_benchmark_lib.sh"
 
 ALL_REPOS=(chi cobra express gson httpx javalin serde zod virtio okhttp axum pydantic)
 FROM_PRIOR=false
+TARGET_FOLDER=""
+REPLACE=false
 
 # Parse flags
 POSITIONAL=()
-for arg in "$@"; do
-    case "$arg" in
-        --from-prior) FROM_PRIOR=true ;;
-        *) POSITIONAL+=("$arg") ;;
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --from-prior)    FROM_PRIOR=true ;;
+        --target-folder) TARGET_FOLDER="$2"; shift ;;
+        --replace)       REPLACE=true ;;
+        *)               POSITIONAL+=("$1") ;;
     esac
+    shift
 done
+
+# --target-folder requires exactly one repo argument (so we know which clean/<short>
+# and docs_gathered/<short> to source from). Without --target-folder, the script
+# falls back to the conventional repos/<repo>-<version>/ destination per repo.
+if [ -n "$TARGET_FOLDER" ] && [ ${#POSITIONAL[@]} -ne 1 ]; then
+    echo "ERROR: --target-folder requires exactly one positional repo argument" >&2
+    echo "Usage:  ./setup_repos.sh --target-folder PATH [--replace] <repo>" >&2
+    exit 2
+fi
 
 if [ ${#POSITIONAL[@]} -gt 0 ]; then
     REPOS=("${POSITIONAL[@]}")
@@ -84,8 +116,29 @@ find_prior_version() {
 }
 
 for short in "${REPOS[@]}"; do
-    dst="${SCRIPT_DIR}/${short}-${VERSION}"
-    [ -d "$dst" ] && log "EXISTS: removing ${dst}" && rm -rf "$dst"
+    if [ -n "$TARGET_FOLDER" ]; then
+        # Resolve to absolute path so subsequent operations are unambiguous.
+        # Strip any trailing slash for clean dirname/basename behavior.
+        case "$TARGET_FOLDER" in
+            /*) dst="${TARGET_FOLDER%/}" ;;
+            *)  dst="${PWD}/${TARGET_FOLDER%/}" ;;
+        esac
+        if [ -d "$dst" ]; then
+            if [ "$REPLACE" != true ]; then
+                echo "ERROR: target folder already exists: $dst" >&2
+                echo "Pass --replace to overwrite." >&2
+                exit 3
+            fi
+            log "EXISTS (--replace): removing ${dst}"
+            rm -rf "$dst"
+        fi
+        # Make sure the parent exists (for paths like runs/cross_v1.4.5/casbin/replicate-1
+        # where the harness's runs/ tree hasn't been pre-created for this cell).
+        mkdir -p "$(dirname "$dst")"
+    else
+        dst="${SCRIPT_DIR}/${short}-${VERSION}"
+        [ -d "$dst" ] && log "EXISTS: removing ${dst}" && rm -rf "$dst"
+    fi
 
     if [ "$FROM_PRIOR" = false ] && [ -d "${CLEAN_DIR}/${short}" ]; then
         # --- Clean source (preferred) ---
