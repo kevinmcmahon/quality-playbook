@@ -158,13 +158,43 @@ def _phase3_dir(target_dir: Path) -> Path:
     return target_dir / "quality" / "phase3"
 
 
+# Role-map roles that legitimately contribute to Pass A's skill-derivation
+# input set. Anything else (code, test, docs, config, fixture, formal-spec,
+# playbook-output, future additions) is silently excluded — but B1-F4 says
+# "silently" is the wrong UX, so unexpected entries get a one-line diagnostic
+# on stderr (no gate failure).
+_PASS_A_INPUT_ROLES = ("skill-prose", "skill-reference")
+
+
 def _role_map_skill_prose_files(
     role_map: Optional[dict], target_dir: Path
 ) -> Optional[list[Path]]:
     """Return the list of absolute paths the Phase-1 role map tagged as
-    ``skill-prose`` or ``skill-reference``, in role-map order. Returns
-    ``None`` when the role map is absent — callers fall back to the
-    v1.5.3 hardcoded enumeration. v1.5.4 Phase 2.1 (Round 4 finding C1)."""
+    ``skill-prose`` or ``skill-reference``, in role-map order.
+
+    Return values, by case:
+
+    - **``None``** — the role map is absent or unparseable. Callers
+      pass ``None`` through to ``sections.enumerate_skill_and_references``,
+      which falls back to the v1.5.3 hardcoded enumeration (SKILL.md
+      plus ``references/*.md``).
+    - **``[]``** — the role map exists but contains zero files tagged
+      ``skill-prose`` or ``skill-reference``. ``enumerate_skill_and_references``
+      will produce an empty section list. The activation predicate
+      (``has_skill_prose``) gates this case before it reaches Pass A,
+      but the asymmetry is here so callers that bypass the predicate
+      get a deterministic empty result rather than the v1.5.3 fallback.
+    - **non-empty list[Path]** — every absolute path the role map
+      tagged ``skill-prose`` or ``skill-reference``.
+
+    v1.5.4 Phase 3 Stage 3 (Round 5 finding B1-F4): files tagged with
+    roles outside ``_PASS_A_INPUT_ROLES`` are silently dropped from the
+    return list, but each one prints a single ``[role-map] note:``
+    line on stderr naming the file path and its actual role so an
+    operator who tagged something ``docs`` and expected Pass A to read
+    it has a signal. No gate failure, no exception — the diagnostic is
+    advisory.
+    """
     if not isinstance(role_map, dict):
         return None
     files = role_map.get("files") or []
@@ -174,10 +204,25 @@ def _role_map_skill_prose_files(
     for entry in files:
         if not isinstance(entry, dict):
             continue
-        if entry.get("role") in ("skill-prose", "skill-reference"):
-            path = entry.get("path")
+        role = entry.get("role")
+        path = entry.get("path")
+        if role in _PASS_A_INPUT_ROLES:
             if isinstance(path, str) and path.strip():
                 out.append((target_dir / path).resolve())
+            continue
+        # B1-F4 diagnostic: tell the operator that a role-map entry
+        # with an "interesting" role (anything not in the Pass A input
+        # set AND not in the conventional infrastructure-bucket roles)
+        # was excluded. The check fires for every non-input role so
+        # `code`, `test`, `docs`, etc. all get a line — adopters who
+        # tag intentionally see a single advisory line per file rather
+        # than a silent black hole.
+        if isinstance(path, str) and path.strip() and role is not None:
+            print(
+                f"[role-map] note: {path!r} tagged {role!r}; excluded "
+                "from Pass A input (skill-prose / skill-reference only)",
+                file=sys.stderr,
+            )
     return out
 
 

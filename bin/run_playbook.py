@@ -2291,7 +2291,23 @@ def run_one_phase_group(
         phase = group[0]
         # Flatten every phase across all groups into the counter list so
         # single-phase groups keep their historical "Phase X/Y" header.
-        flat = [p for g in phase_groups for p in g]
+        # v1.5.4 Phase 3 Stage 3 (Round 5 finding B3-F2): when a multi-
+        # phase group has been collapsed by the no-code filter (Phase 3
+        # dropped because the role map shows zero code), apply the same
+        # filter across every group so the X/Y counter reflects the
+        # post-filter run shape rather than the pre-filter one. The
+        # role-map condition is the same for the whole run, so any
+        # other group containing Phase 3 would also drop it.
+        if skip_reason is not None:
+            flat = [
+                p
+                for g in phase_groups
+                for p in (
+                    _filter_group_for_code_review_skip(repo_dir, g)[0]
+                )
+            ]
+        else:
+            flat = [p for g in phase_groups for p in g]
         monitor.set_transcript_path(_group_transcript_path(repo_dir, [phase]))
         return run_one_phase(repo_dir, phase, flat, args, log_file, timestamp)
 

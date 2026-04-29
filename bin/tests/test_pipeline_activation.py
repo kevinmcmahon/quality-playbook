@@ -824,5 +824,225 @@ class SentinelLifecycleTests(unittest.TestCase):
             )
 
 
+class B1F4UnexpectedRoleDiagnosticTests(unittest.TestCase):
+    """v1.5.4 Phase 3 Stage 3 (Round 5 finding B1-F4): files tagged
+    with a role outside the Pass A input set (skill-prose,
+    skill-reference) are silently dropped from enumeration. That's
+    the right runtime behaviour, but operators who tagged something
+    `docs` and expected Pass A to read it deserve a signal. Each
+    excluded file logs a single `[role-map] note:` line on stderr."""
+
+    def test_unexpected_roles_are_excluded_and_logged(self) -> None:
+        from contextlib import redirect_stderr
+        from io import StringIO
+        from bin.skill_derivation import __main__ as sd_main
+        with TemporaryDirectory() as tmp:
+            target_dir = Path(tmp)
+            role_map = _make_role_map([
+                _entry("SKILL.md", "skill-prose", 1000),
+                _entry("references/exp.md", "skill-reference", 500),
+                _entry("docs/design.md", "docs", 800),
+                _entry("config.toml", "config", 100),
+                _entry("bin/main.py", "code", 5000),
+            ])
+            buf = StringIO()
+            with redirect_stderr(buf):
+                files = sd_main._role_map_skill_prose_files(role_map, target_dir)
+            stderr = buf.getvalue()
+            # Result list excludes docs / config / code.
+            names = {p.name for p in files}
+            self.assertEqual(names, {"SKILL.md", "exp.md"})
+            # Diagnostics name each excluded file + its role.
+            self.assertIn("docs/design.md", stderr)
+            self.assertIn("'docs'", stderr)
+            self.assertIn("config.toml", stderr)
+            self.assertIn("'config'", stderr)
+            self.assertIn("bin/main.py", stderr)
+            self.assertIn("'code'", stderr)
+            # Every diagnostic line carries the [role-map] tag.
+            note_lines = [
+                ln for ln in stderr.splitlines() if "[role-map]" in ln
+            ]
+            self.assertEqual(
+                len(note_lines), 3,
+                f"expected 3 [role-map] note lines (docs, config, code); "
+                f"got {len(note_lines)}: {note_lines}",
+            )
+
+    def test_no_diagnostic_when_only_skill_inputs_present(self) -> None:
+        from contextlib import redirect_stderr
+        from io import StringIO
+        from bin.skill_derivation import __main__ as sd_main
+        with TemporaryDirectory() as tmp:
+            role_map = _make_role_map([
+                _entry("SKILL.md", "skill-prose", 1000),
+                _entry("references/exp.md", "skill-reference", 500),
+            ])
+            buf = StringIO()
+            with redirect_stderr(buf):
+                sd_main._role_map_skill_prose_files(role_map, Path(tmp))
+            self.assertNotIn("[role-map]", buf.getvalue())
+
+
+class B1F6RoleMapFilesRoutingTests(unittest.TestCase):
+    """v1.5.4 Phase 3 Stage 3 (Round 5 finding B1-F6): pin the
+    asymmetric routing of ``role_map_files``. ``None`` falls back to
+    the v1.5.3 hardcoded SKILL.md + references/*.md walk; ``[]``
+    returns an empty section list deterministically. The activation
+    predicate normally guards the empty case before Pass A reaches
+    here, but the asymmetry is intentional for direct callers."""
+
+    def _make_skill_repo(self, repo_dir: Path) -> Path:
+        (repo_dir / "SKILL.md").write_text(
+            "# Skill\n\n## P1\nbody\n", encoding="utf-8"
+        )
+        refs_dir = repo_dir / "references"
+        refs_dir.mkdir()
+        (refs_dir / "exp.md").write_text(
+            "# Exp\n\n## E1\nbody\n", encoding="utf-8"
+        )
+        return repo_dir
+
+    def test_enumerate_with_none_uses_v1_5_3_fallback(self) -> None:
+        from bin.skill_derivation import sections as sd_sections
+        with TemporaryDirectory() as tmp:
+            repo_dir = self._make_skill_repo(Path(tmp))
+            secs = sd_sections.enumerate_skill_and_references(
+                repo_dir / "SKILL.md",
+                repo_dir / "references",
+                repo_dir,
+                role_map_files=None,
+            )
+            docs = sorted({s.document for s in secs})
+            # SKILL.md + references/exp.md (relative path may render as
+            # "references/exp.md"; test tolerates either form).
+            self.assertIn("SKILL.md", docs)
+            self.assertTrue(
+                any("exp.md" in d for d in docs),
+                f"expected exp.md in fallback enumeration, got {docs}",
+            )
+
+    def test_enumerate_with_empty_list_returns_empty(self) -> None:
+        from bin.skill_derivation import sections as sd_sections
+        with TemporaryDirectory() as tmp:
+            repo_dir = self._make_skill_repo(Path(tmp))
+            secs = sd_sections.enumerate_skill_and_references(
+                repo_dir / "SKILL.md",
+                repo_dir / "references",
+                repo_dir,
+                role_map_files=[],
+            )
+            self.assertEqual(
+                secs, [],
+                "empty role_map_files must produce empty enumeration; "
+                "the v1.5.3 fallback must NOT fire on []",
+            )
+
+
+class B3F2MultiPhaseCounterTests(unittest.TestCase):
+    """v1.5.4 Phase 3 Stage 3 (Round 5 finding B3-F2): when a
+    multi-phase group like ['2','3'] collapses to ['2'] because
+    Phase 3 was filtered on a no-code target, the operator-facing
+    X/Y counter must reflect the post-filter size, not the
+    pre-filter one."""
+
+    def _seed_phase2_prereqs(self, repo_dir: Path) -> Path:
+        q = repo_dir / "quality"
+        q.mkdir(parents=True, exist_ok=True)
+        (q / "EXPLORATION.md").write_text("x\n" * 200, encoding="utf-8")
+        return q
+
+    def test_collapsed_group_shows_post_filter_counter(self) -> None:
+        """A 2+3 group on a no-code target collapses to just Phase 2.
+        The X/Y counter must read 1/1, not 1/2."""
+        from unittest import mock
+        from io import StringIO
+        with TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp)
+            self._seed_phase2_prereqs(repo_dir)
+            _write_role_map(repo_dir, _make_role_map([
+                _entry("SKILL.md", "skill-prose", 1000),
+            ]))
+            captured: list[str] = []
+
+            def _fake_log(msg):
+                captured.append(msg)
+                return msg
+
+            def _fake_logboth(_log_file, msg):
+                # logboth's second arg is what was logged; record it.
+                if isinstance(msg, str):
+                    captured.append(msg)
+
+            monitor = mock.MagicMock()
+            with mock.patch.object(
+                run_playbook.lib, "log", side_effect=_fake_log
+            ), mock.patch.object(
+                run_playbook.lib, "logboth", side_effect=_fake_logboth
+            ), mock.patch.object(
+                run_playbook, "run_prompt", return_value=0
+            ), mock.patch.object(run_playbook, "_log_phase_completion"):
+                ok = run_playbook.run_one_phase_group(
+                    repo_dir, ["2", "3"], [["2", "3"]], _StubArgs(),
+                    repo_dir / "phase23.log",
+                    "20260429T000000Z",
+                    monitor,
+                )
+            self.assertTrue(ok)
+            joined = "\n".join(captured)
+            self.assertIn(
+                "Phase 1/1",
+                joined,
+                f"expected post-filter counter 'Phase 1/1' (only Phase 2 "
+                f"survived the no-code filter); got log:\n{joined}",
+            )
+            self.assertNotIn(
+                "Phase 1/2",
+                joined,
+                "pre-filter counter 'Phase 1/2' must not appear once the "
+                "no-code filter has collapsed the group",
+            )
+
+    def test_uncollapsed_group_keeps_full_counter(self) -> None:
+        """Negative control: when no filter applies (target HAS code),
+        the X/Y counter stays at the pre-filter total. Confirms the
+        fix doesn't shrink the counter unconditionally."""
+        from unittest import mock
+        with TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp)
+            self._seed_phase2_prereqs(repo_dir)
+            _write_role_map(repo_dir, _make_role_map([
+                _entry("SKILL.md", "skill-prose", 1000),
+                _entry("bin/main.py", "code", 500),
+            ]))
+            captured: list[str] = []
+
+            def _fake_logboth(_log_file, msg):
+                if isinstance(msg, str):
+                    captured.append(msg)
+
+            monitor = mock.MagicMock()
+            # Single-phase invocation so we still hit the X/Y counter
+            # path, but with no filter dropping anything.
+            with mock.patch.object(
+                run_playbook.lib, "logboth", side_effect=_fake_logboth
+            ), mock.patch.object(
+                run_playbook, "run_prompt", return_value=0
+            ), mock.patch.object(run_playbook, "_log_phase_completion"):
+                run_playbook.run_one_phase_group(
+                    repo_dir, ["2"], [["2", "3"]], _StubArgs(),
+                    repo_dir / "phase2.log",
+                    "20260429T000000Z",
+                    monitor,
+                )
+            joined = "\n".join(captured)
+            self.assertIn(
+                "Phase 1/2",
+                joined,
+                f"target has code → no filter → counter must show full "
+                f"'Phase 1/2'; got log:\n{joined}",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

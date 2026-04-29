@@ -372,10 +372,22 @@ def enumerate_skill_and_references(
     FORMS.md + REFERENCE.md, not the conventional `references/*.md`
     layout) be enumerated correctly.
 
-    Backward-compat: when ``role_map_files`` is ``None`` (pre-Phase-1
-    targets, or callers that haven't been migrated), the function
-    falls back to the v1.5.3 behaviour — SKILL.md plus
-    ``references_dir/*.md`` in sorted-by-name order.
+    ``role_map_files`` routing (v1.5.4 Phase 3 Stage 3, finding B1-F6):
+
+      - **``None``** — backward-compat path. The role map is absent or
+        unparseable. Enumeration falls back to the v1.5.3 behaviour:
+        SKILL.md plus ``references_dir/*.md`` in sorted-by-name order.
+        Pre-Phase-1 / pre-iteration targets land here.
+      - **``[]``** (empty list) — role-map path with zero matches. The
+        role map exists, was parsed cleanly, and reported zero files
+        tagged ``skill-prose`` or ``skill-reference``. Enumeration
+        returns an empty section list; the v1.5.3 fallback does NOT
+        fire. The activation predicate ``has_skill_prose`` normally
+        gates this case before Pass A is invoked, but the asymmetry
+        is intentional so direct callers that bypass the predicate
+        get a deterministic empty result rather than a fallback walk.
+      - **non-empty list** — role-map walk over the supplied files,
+        SKILL.md first, in role-map order otherwise.
 
     Reference files are markdown by convention; non-markdown files
     are skipped. Pass C uses the `document` field on each draft to
@@ -411,7 +423,21 @@ def _enumerate_role_map_files(
     (its sections must occupy section_idx 0..N so Pass C's source_type
     routing keeps working); the rest follow in role-map order. Files
     that don't exist on disk or aren't markdown are skipped silently —
-    the role map is the spec, but enumeration still requires bytes."""
+    the role map is the spec, but enumeration still requires bytes.
+
+    v1.5.4 Phase 3 Stage 3 (Round 5 finding B1-F6): when
+    ``role_map_files`` is the empty list, this function returns an
+    empty section list — SKILL.md is NOT auto-enumerated. The empty
+    list means "the role map exists and reports zero skill-prose /
+    skill-reference files," and per the v1.5.4 architecture the role
+    map IS the spec. SKILL.md present on disk but not tagged
+    skill-prose is by definition not a skill input. The activation
+    predicate ``has_skill_prose`` normally guards this case before
+    Pass A reaches here, but the deterministic empty result protects
+    direct callers."""
+    if not role_map_files:
+        return []
+
     out: List[Section] = []
     seen: set = set()
     skill_resolved = skill_md_path.resolve() if skill_md_path.is_file() else None
@@ -425,7 +451,9 @@ def _enumerate_role_map_files(
         return starting_idx + len(secs)
 
     next_idx = 0
-    if skill_resolved is not None:
+    if skill_resolved is not None and skill_resolved in {
+        p.resolve() for p in role_map_files if p.is_file()
+    }:
         next_idx = _enum(skill_md_path, next_idx)
         seen.add(skill_resolved)
 
