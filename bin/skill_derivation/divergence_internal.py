@@ -122,7 +122,7 @@ _ARTIFACT_NAMES: tuple = (
     "QUALITY.md", "CONTRACTS.md", "COVERAGE_MATRIX.md",
     "COMPLETENESS_REPORT.md", "INDEX.md", "SKILL.md", "schemas.md",
     "AGENTS.md", "TOOLKIT.md",
-    "project_type.json",
+    "exploration_role_map.json",
     "pass_a_drafts.jsonl", "pass_a_use_case_drafts.jsonl",
     "pass_a_sections.json", "pass_b_citations.jsonl",
     "pass_c_formal.jsonl", "pass_c_formal_use_cases.jsonl",

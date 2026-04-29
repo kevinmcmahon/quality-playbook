@@ -11,27 +11,62 @@ from bin.skill_derivation import pass_c, protocol
 
 
 def _write_project_type(tmp: Path, classification: str) -> Path:
+    """Write a v1.5.4 role map shaped to derive the requested legacy
+    project type via bin.role_map.derive_legacy_project_type. Skill
+    => skill-prose only; Hybrid => skill-prose + code; Code => code
+    only."""
     qd = tmp / "quality"
     qd.mkdir(parents=True, exist_ok=True)
-    out = qd / "project_type.json"
+    out = qd / "exploration_role_map.json"
+    files: list[dict] = []
+    if classification in ("Skill", "Hybrid"):
+        files.append({
+            "path": "SKILL.md",
+            "role": "skill-prose",
+            "size_bytes": 1000,
+            "rationale": "fixture skill prose",
+        })
+    if classification in ("Code", "Hybrid"):
+        files.append({
+            "path": "lib/main.py",
+            "role": "code",
+            "size_bytes": 500,
+            "rationale": "fixture code surface",
+        })
+    total = sum(int(f["size_bytes"]) for f in files) or 1
+    skill_size = sum(
+        int(f["size_bytes"]) for f in files
+        if f["role"] in ("skill-prose", "skill-reference")
+    )
+    code_size = sum(
+        int(f["size_bytes"]) for f in files if f["role"] == "code"
+    )
     out.write_text(
         json.dumps({
-            "schema_version": "1.1",
-            "classification": classification,
-            "rationale": "fixture",
-            "confidence": "high",
-            "evidence": {
-                "skill_md_present": classification != "Code",
-                "skill_md_path": "SKILL.md" if classification != "Code" else None,
-                "skill_md_word_count": 1000 if classification != "Code" else None,
-                "total_code_loc": 500 if classification != "Skill" else 0,
-                "code_languages": [],
-                "confidence_reason": "unambiguous",
+            "schema_version": "1.0",
+            "timestamp_start": "2026-04-27T00:00:00Z",
+            "files": files,
+            "breakdown": {
+                "files_by_role": {
+                    f["role"]: sum(1 for x in files if x["role"] == f["role"])
+                    for f in files
+                },
+                "size_by_role": {
+                    f["role"]: sum(
+                        int(x["size_bytes"]) for x in files
+                        if x["role"] == f["role"]
+                    )
+                    for f in files
+                },
+                "percentages": {
+                    "skill_share": skill_size / total,
+                    "code_share": code_size / total,
+                    "tool_share": 0.0,
+                    "other_share": max(
+                        0.0, 1.0 - (skill_size / total) - (code_size / total)
+                    ),
+                },
             },
-            "classified_at": "2026-04-27T00:00:00Z",
-            "classifier_version": "1.0",
-            "override_applied": False,
-            "override_rationale": None,
         }),
         encoding="utf-8",
     )
@@ -62,7 +97,7 @@ def _make_config(tmp: Path) -> pass_c.PassCConfig:
         formal_use_cases_path=p3 / "pass_c_formal_use_cases.jsonl",
         progress_path=p3 / "pass_c_progress.json",
         pass_b_progress_path=p3 / "pass_b_progress.json",
-        project_type_path=tmp / "quality" / "project_type.json",
+        role_map_path=tmp / "quality" / "exploration_role_map.json",
     )
 
 
@@ -370,7 +405,9 @@ class ProjectTypeFileTests(unittest.TestCase):
             (config.citations_path).write_text("", encoding="utf-8")
             with self.assertRaises(FileNotFoundError) as cm:
                 pass_c.run_pass_c(config)
-            self.assertIn("classify_project", str(cm.exception))
+            # v1.5.4: pass_c reads the Phase-1 role map; the error names
+            # the missing artifact so the operator knows what to run.
+            self.assertIn("exploration_role_map.json", str(cm.exception))
 
 
 class SkillSectionGuardTests(unittest.TestCase):

@@ -100,7 +100,16 @@ class RunIndexRenderingTests(unittest.TestCase):
     def test_run_index_row_counts_bugs(self) -> None:
         payload = {
             "qpb_version": "1.5.1",
-            "target_project_type": "Code",
+            "target_role_breakdown": {
+                "files_by_role": {"code": 1},
+                "size_by_role": {"code": 100},
+                "percentages": {
+                    "skill_share": 0.0,
+                    "code_share": 1.0,
+                    "tool_share": 0.0,
+                    "other_share": 0.0,
+                },
+            },
             "summary": {
                 "bugs": {"HIGH": 2, "MEDIUM": 3, "LOW": 1, "code-fix": 0, "spec-fix": 0},
                 "gate_verdict": "pass",
@@ -109,14 +118,26 @@ class RunIndexRenderingTests(unittest.TestCase):
         row = al.render_run_index_row("20260419T143022Z", payload)
         self.assertIn("| 20260419T143022Z ", row)
         self.assertIn("| 1.5.1 ", row)
-        self.assertIn("| Code ", row)
+        # v1.5.4 Part 1: project-type column replaced by role-breakdown
+        # summary derived from target_role_breakdown.percentages.
+        self.assertIn("skill 0% / code 100% / tool 0% / other 0%", row)
         self.assertIn("| pass ", row)
         self.assertIn("| 6 ", row)  # 2+3+1
         self.assertIn("[INDEX.md](quality/runs/20260419T143022Z/INDEX.md)", row)
 
+    def test_run_index_row_falls_back_to_na_when_role_map_absent(self) -> None:
+        payload = {
+            "qpb_version": "1.5.1",
+            "target_role_breakdown": None,
+            "summary": {"bugs": {"HIGH": 1}, "gate_verdict": "partial"},
+        }
+        row = al.render_run_index_row("20260419T143022Z", payload)
+        self.assertIn("| n/a ", row)
+
     def test_run_index_header_has_columns(self) -> None:
         h = al.render_run_index_header()
         self.assertIn("| Run | QPB version |", h)
+        self.assertIn("Role breakdown", h)
 
     def test_index_markdown_contains_provenance(self) -> None:
         rendered = al.render_index_markdown(
@@ -133,7 +154,7 @@ class AppendRunIndexRowTests(unittest.TestCase):
     def _payload(self, verdict: str = "pass") -> dict:
         return {
             "qpb_version": "1.5.1",
-            "target_project_type": "Code",
+            "target_role_breakdown": None,
             "summary": {"bugs": {"HIGH": 1}, "gate_verdict": verdict},
         }
 

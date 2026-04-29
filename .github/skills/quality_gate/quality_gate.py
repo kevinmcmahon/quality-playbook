@@ -1597,7 +1597,10 @@ _V150_REQUIRED_INDEX_FIELDS = (
     "qpb_version",
     "target_repo_path",
     "target_repo_git_sha",
-    "target_project_type",
+    # v1.5.4 Part 1: target_project_type was retired in favour of the
+    # Phase-1 role map. The new field is populated from the breakdown
+    # subtree of quality/exploration_role_map.json by run_playbook.
+    "target_role_breakdown",
     "phases_executed",
     "summary",
     "artifacts",
@@ -2744,25 +2747,60 @@ def check_v1_5_3_council_inbox_validation(q):
 # ---------------------------------------------------------------------------
 # Phase 4 skill-project gate enforcement checks (DQ-4-4).
 #
-# These four checks fire on Skill / Hybrid projects only; they SKIP
-# (informational `INFO: skipped` line, no fail counter increment) on
-# Code projects. The only check that runs for all projects is
-# check_project_type_consistency.
+# These four checks fire when the target's role map shows skill-prose
+# surface; they SKIP (informational `INFO: skipped` line, no fail
+# counter increment) on pure-code targets. The check that always runs
+# is check_role_map_consistency.
 #
-# Project type is read from <q>/project_type.json (the Phase 1
-# classifier output). If the file is missing, all four checks SKIP
-# silently — Phase 1 has not been run yet on this target.
+# v1.5.4 Part 1: the legacy Code/Skill/Hybrid string is now derived
+# from the Phase-1 role map at <q>/exploration_role_map.json. The
+# mapping mirrors bin/role_map.py::derive_legacy_project_type. If the
+# role map is absent, all four checks SKIP silently — Phase 1 has not
+# been run yet on this target. The gate ships into target repos as a
+# stdlib-only script and cannot import bin/role_map; the small amount
+# of role-map awareness it needs is inlined below.
 # ---------------------------------------------------------------------------
 
 
+def _load_role_map(q):
+    """Return the parsed exploration_role_map.json dict, or None when
+    absent / unparseable. v1.5.4 inline replacement for the prior
+    project_type.json reader."""
+    return load_json(q / "exploration_role_map.json")
+
+
+def _role_map_has_role(role_map, role_set):
+    if not isinstance(role_map, dict):
+        return False
+    files = role_map.get("files") or []
+    if not isinstance(files, list):
+        return False
+    for entry in files:
+        if isinstance(entry, dict) and entry.get("role") in role_set:
+            return True
+    return False
+
+
 def _phase4_project_type(q):
-    """Return the project's classification ('Code'/'Skill'/'Hybrid')
-    or None if project_type.json is absent or unparseable."""
-    pt_path = q / "project_type.json"
-    data = load_json(pt_path)
-    if not isinstance(data, dict):
+    """Return the v1.5.3-equivalent classification string ('Code' /
+    'Skill' / 'Hybrid') derived from the Phase-1 role map, or None
+    when the role map is absent / unparseable.
+
+    Mapping (mirrors bin/role_map.derive_legacy_project_type):
+      - has skill-prose AND has code  -> 'Hybrid'
+      - has skill-prose, no code      -> 'Skill'
+      - no skill-prose                -> 'Code'
+    """
+    role_map = _load_role_map(q)
+    if role_map is None:
         return None
-    return data.get("classification")
+    skill = _role_map_has_role(role_map, ("skill-prose", "skill-reference"))
+    code = _role_map_has_role(role_map, ("code",))
+    if skill and code:
+        return "Hybrid"
+    if skill:
+        return "Skill"
+    return "Code"
 
 
 def check_skill_section_req_coverage(repo_dir, q):
@@ -2935,53 +2973,76 @@ def check_hybrid_cross_cutting_reqs(repo_dir, q):
         )
 
 
-def check_project_type_consistency(repo_dir, q):
-    """All projects: project_type.json exists; classification is one
-    of {Code, Skill, Hybrid}; if override_applied, override_rationale
-    is non-empty.
+def check_role_map_consistency(repo_dir, q):
+    """All projects: exploration_role_map.json (when present) parses as
+    a JSON object, declares schema_version '1.0', carries a 'files'
+    list and a 'breakdown.percentages' dict with the four expected
+    share keys.
 
-    Runs for every project (no skip)."""
-    print("[Phase 4: project-type consistency]")
-    pt_path = q / "project_type.json"
-    if not pt_path.is_file():
-        # If the fixture / target has not been classified yet (Phase 1
-        # not run), skip silently. Phase 4's own self-audit on QPB
-        # populates project_type.json before the gate runs; pre-Phase-1
-        # fixtures (the existing TestAllPassBaseline-style tests) don't
-        # have it and shouldn't fail this check just because Phase 4
-        # landed.
+    SKIPS silently when the role map is absent — Phase 1 has not been
+    run yet on this target. v1.5.4 Part 1 replacement for the v1.5.3
+    check_project_type_consistency, which keyed on
+    quality/project_type.json (now retired)."""
+    print("[Phase 4: role-map consistency]")
+    rm_path = q / "exploration_role_map.json"
+    if not rm_path.is_file():
         info(
-            "check_project_type_consistency: skip "
-            "(project_type.json absent — Phase 1 classifier not run yet)"
+            "check_role_map_consistency: skip "
+            "(exploration_role_map.json absent — Phase 1 not run yet)"
         )
         return
-    data = load_json(pt_path)
+    data = load_json(rm_path)
     if not isinstance(data, dict):
         fail(
-            f"{pt_path.relative_to(q.parent)}",
-            "project_type.json is not a valid JSON object",
+            f"{rm_path.relative_to(q.parent)}",
+            "exploration_role_map.json is not a valid JSON object",
         )
         return
-    classification = data.get("classification")
-    if classification not in ("Code", "Skill", "Hybrid"):
+    if data.get("schema_version") != "1.0":
         fail(
-            f"{pt_path.relative_to(q.parent)}",
-            f"classification {classification!r} is not in "
-            "{Code, Skill, Hybrid} (check_project_type_consistency)",
+            f"{rm_path.relative_to(q.parent)}",
+            f"schema_version {data.get('schema_version')!r} is not '1.0' "
+            "(check_role_map_consistency)",
         )
         return
-    if data.get("override_applied"):
-        rationale = data.get("override_rationale")
-        if not isinstance(rationale, str) or not rationale.strip():
-            fail(
-                f"{pt_path.relative_to(q.parent)}",
-                "override_applied is true but override_rationale is "
-                "empty / missing (check_project_type_consistency)",
-            )
-            return
+    files = data.get("files")
+    if not isinstance(files, list):
+        fail(
+            f"{rm_path.relative_to(q.parent)}",
+            "'files' is not a list (check_role_map_consistency)",
+        )
+        return
+    breakdown = data.get("breakdown")
+    if not isinstance(breakdown, dict):
+        fail(
+            f"{rm_path.relative_to(q.parent)}",
+            "'breakdown' is not an object (check_role_map_consistency)",
+        )
+        return
+    percentages = breakdown.get("percentages")
+    if not isinstance(percentages, dict):
+        fail(
+            f"{rm_path.relative_to(q.parent)}",
+            "'breakdown.percentages' is not an object "
+            "(check_role_map_consistency)",
+        )
+        return
+    missing = [
+        k for k in ("skill_share", "code_share", "tool_share", "other_share")
+        if k not in percentages
+    ]
+    if missing:
+        fail(
+            f"{rm_path.relative_to(q.parent)}",
+            f"breakdown.percentages missing keys: {missing} "
+            "(check_role_map_consistency)",
+        )
+        return
+    derived = _phase4_project_type(q) or "Unknown"
     pass_(
-        f"{pt_path.relative_to(q.parent)}: project type "
-        f"{classification!r} consistent (check_project_type_consistency)"
+        f"{rm_path.relative_to(q.parent)}: role map well-formed "
+        f"(legacy-derived project type {derived!r}; "
+        "check_role_map_consistency)"
     )
 
 
@@ -3026,12 +3087,14 @@ def check_v1_5_0_gate_invariants(repo_dir, q):
     # directory is absent).
     check_v1_5_3_council_inbox_validation(q)
     # v1.5.3 Phase 4 (DQ-4-4): skill-project gate enforcement. The
-    # first three SKIP for Code projects;
-    # check_project_type_consistency runs for all projects.
+    # first three SKIP for code-only projects (no skill-prose surface
+    # in the role map); check_role_map_consistency runs for all
+    # projects. v1.5.4 Part 1: project_type derived from the Phase-1
+    # role map instead of the retired project_type.json.
     check_skill_section_req_coverage(repo_dir, q)
     check_reference_file_req_coverage(repo_dir, q)
     check_hybrid_cross_cutting_reqs(repo_dir, q)
-    check_project_type_consistency(repo_dir, q)
+    check_role_map_consistency(repo_dir, q)
 
 
 def check_repo(repo_dir, version_arg, strictness):

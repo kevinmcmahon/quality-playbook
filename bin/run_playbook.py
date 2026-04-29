@@ -27,10 +27,12 @@ try:
     from . import benchmark_lib as lib
     from . import archive_lib
     from . import progress_monitor
+    from . import role_map as role_map_lib
 except ImportError:
     import benchmark_lib as lib
     import archive_lib
     import progress_monitor
+    import role_map as role_map_lib
 
 
 ALL_STRATEGIES = ["gap", "unfiltered", "parity", "adversarial"]
@@ -629,6 +631,65 @@ def phase1_prompt(no_seeds: bool) -> str:
 
 Execute Phase 1: Explore the codebase. The reference_docs/ directory contains gathered documentation - read it to supplement your exploration. Top-level files are Tier 4 context (AI chats, design notes, retrospectives). Files under reference_docs/cite/ are citable sources (project specs, RFCs). If reference_docs/ is missing or empty, proceed with Tier 3 evidence (source tree) alone and note this in EXPLORATION.md.
 
+### MANDATORY FILE-ROLE TAGGING (v1.5.4 Part 1)
+
+Before (or as part of) writing EXPLORATION.md, produce `quality/exploration_role_map.json`. Begin by reading `SKILL.md` at the repository root if present (also check for any other top-level skill-shaped entry file — the indicator is content + name, not extension; a `README.md` is NOT a skill-shaped entry just because it sits at the root). The prose context informs every subsequent file's role tag.
+
+Then walk the target tree (respect the same ignore conventions used elsewhere — `.git/`, build outputs, vendored dependencies — and tag every file QPB would otherwise consider in scope). For each file, emit a record with the role taxonomy below. The judgment is content-based: read the file (or enough of it to judge), do NOT pattern-match on extension or directory name alone.
+
+Role taxonomy:
+- `skill-prose` — SKILL.md, agents/* — the skill's declarative content.
+- `skill-reference` — additional reference docs the skill names (e.g., `references/exploration_patterns.md`).
+- `skill-tool` — a script the skill prose explicitly references AND tells the agent to invoke. The distinguishing test: does SKILL.md (or a referenced doc) contain prose that names this script and tells the agent to call it for a specific subtask? If yes, `skill-tool`. If the script is independent code with its own behavior contract that the SKILL.md doesn't reference, it's `code`. (Worked example: QPB's `bin/run_playbook.py` is `code`, NOT `skill-tool` — SKILL.md does not direct agents to invoke it; it has its own contract.)
+- `code` — independent orchestrator/library code (carries its own behavior contract; not subordinate to SKILL.md prose).
+- `test` — test files and test harnesses.
+- `docs` — README, CHANGELOG, design docs, anything in `docs/`.
+- `config` — `.gitignore`, `pyproject.toml`, settings.
+- `fixture` — test fixtures or example data used by tests.
+- `formal-spec` — RFCs, external specifications, citable sources.
+- `playbook-output` — files inside the target's `quality/` subtree, or QPB-managed installations like `.github/skills/quality_gate.py`, that came from a prior playbook run rather than the target's intrinsic surface.
+
+If a file genuinely doesn't fit any of these, you may add a new role — but document the addition in your role map's first entry as a comment-style rationale.
+
+The output file `quality/exploration_role_map.json` MUST conform to this schema:
+
+```
+{{
+  "schema_version": "1.0",
+  "timestamp_start": "<ISO 8601 UTC timestamp at the start of Phase 1>",
+  "files": [
+    {{
+      "path": "<repo-relative POSIX path>",
+      "role": "<one of the role taxonomy values>",
+      "size_bytes": <int>,
+      "rationale": "<one or two sentences justifying the tag, content-based>"
+    }}
+    // ... one entry per in-scope file. When role == "skill-tool", also
+    // include a "skill_prose_reference" string pointing at the SKILL.md /
+    // reference-file location that names this script (e.g., "SKILL.md:47"
+    // or "references/forms.md:section-3"); the prose-to-code divergence
+    // check in Phase 4 reads this back to find the cited prose.
+  ],
+  "breakdown": {{
+    "files_by_role": {{ "<role>": <count>, ... }},
+    "size_by_role":  {{ "<role>": <total bytes>, ... }},
+    "percentages": {{
+      "skill_share": <skill-prose + skill-reference share of total bytes>,
+      "code_share":  <code share of total bytes>,
+      "tool_share":  <skill-tool share of total bytes>,
+      "other_share": <remainder>
+    }}
+  }}
+}}
+```
+
+The `breakdown` is YOUR aggregation — compute it from the per-file entries. Percentages are floats in [0, 1] and must sum to ~1.0 when total size > 0. The four shares are: skill_share = (skill-prose + skill-reference) bytes / total; code_share = code bytes / total; tool_share = skill-tool bytes / total; other_share = the remainder (test, docs, config, fixture, formal-spec, playbook-output).
+
+Tagging discipline:
+1. `skill-tool` and `code` is the load-bearing distinction. A script is only `skill-tool` if SKILL.md (or a doc SKILL.md cites) explicitly names it and tells the agent to invoke it. Independent code modules — even small ones in a `scripts/` directory — are `code` if no SKILL.md prose directs the agent to use them.
+2. Anything that came from a prior playbook run (the target's `quality/` subtree, an installed `.github/skills/quality_gate.py` from QPB itself) is `playbook-output`, never the role it would have if it were the target's own surface. This prevents the v1.5.3 LOC-pollution failure mode where a target's apparent code surface was inflated by QPB's own infrastructure.
+3. If SKILL.md is absent at the root and no other skill-shaped entry file exists, the role map will have zero `skill-prose` entries. That's fine — the four-pass derivation pipeline will no-op for this target.
+
 When Phase 1 is complete, write your full exploration findings to quality/EXPLORATION.md. This file must contain:
 - Domain and stack identification
 - Architecture map (key modules, entry points, data flow)
@@ -638,6 +699,7 @@ When Phase 1 is complete, write your full exploration findings to quality/EXPLOR
 - Skeleton/dispatch/state-machine analysis (if applicable)
 - Testable requirements derived (REQ-NNN format)
 - Use cases derived (UC-NN format)
+- A "File-role tagging" section that confirms `quality/exploration_role_map.json` was produced and summarizes the breakdown (the four `percentages` shares plus `files_by_role`). If you tagged any file with a role outside the documented taxonomy, list that file and explain why a new role was warranted.
 
 ### MANDATORY CARTESIAN UC RULE (Lever 1, v1.5.2)
 
@@ -1823,7 +1885,11 @@ def write_live_index_stub(
         "qpb_version": lib.detect_skill_version() or "unknown",
         "target_repo_path": ".",
         "target_repo_git_sha": archive_lib._git_head_sha(repo_dir),
-        "target_project_type": "Code",  # TODO(v1.5.2): Code/Skill/Hybrid detector.
+        # v1.5.4 Part 1: target_project_type was retired in favour of the
+        # Phase-1 role map. The stub runs BEFORE Phase 1 so the role map
+        # does not yet exist; the field is null until write_live_index_final
+        # re-renders the INDEX with the produced map.
+        "target_role_breakdown": None,
         "phases_executed": [],
         "summary": {"requirements": {}, "bugs": {}, "gate_verdict": "partial"},
         "artifacts": [],
@@ -1885,11 +1951,15 @@ def write_live_index_final(
         pace_seconds=pace_seconds,
         full_run=full_run,
     )
+    # v1.5.4 Part 1: read the Phase-1 role map (if present) and pass it
+    # through; build_index_payload populates target_role_breakdown from
+    # whatever the LLM emitted. None ⇒ Phase 1 didn't run for this target.
+    role_map = role_map_lib.load_role_map(role_map_lib.default_path(repo_dir))
     payload = archive_lib.build_index_payload(
         repo_dir,
         quality_dir,
         target_repo_path=".",
-        target_project_type="Code",
+        target_role_breakdown=role_map_lib.role_breakdown_for_index(role_map),
         gate_verdict_override=gate_verdict,
         invocation_flags=flags,
     )

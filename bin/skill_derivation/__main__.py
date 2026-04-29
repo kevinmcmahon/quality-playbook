@@ -15,8 +15,9 @@ Options:
     --pace-seconds N            Sleep N seconds between LLM calls in
                                 Pass A. Used to throttle against rate
                                 limits.
-    --project-type-path PATH    Path to project_type.json. Default:
-                                <target_dir>/quality/project_type.json.
+    --role-map-path PATH        Path to exploration_role_map.json
+                                (v1.5.4). Default:
+                                <target_dir>/quality/exploration_role_map.json.
                                 Required by Pass C.
     --skill-md PATH             Path to SKILL.md. Default:
                                 <target_dir>/SKILL.md.
@@ -104,7 +105,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         default=0,
         help="Sleep N seconds between Pass A LLM calls.",
     )
-    parser.add_argument("--project-type-path", type=Path, default=None)
+    parser.add_argument("--role-map-path", type=Path, default=None)
     parser.add_argument("--skill-md", type=Path, default=None)
     parser.add_argument("--references-dir", type=Path, default=None)
     parser.add_argument(
@@ -245,10 +246,10 @@ def _run_pass_b(args: argparse.Namespace, target_dir: Path) -> int:
 
 def _run_pass_c(args: argparse.Namespace, target_dir: Path) -> int:
     p3 = _phase3_dir(target_dir)
-    project_type_path = (
-        args.project_type_path
-        if args.project_type_path is not None
-        else target_dir / "quality" / "project_type.json"
+    role_map_path = (
+        args.role_map_path
+        if args.role_map_path is not None
+        else target_dir / "quality" / "exploration_role_map.json"
     )
     config = pass_c.PassCConfig(
         citations_path=p3 / "pass_b_citations.jsonl",
@@ -257,7 +258,7 @@ def _run_pass_c(args: argparse.Namespace, target_dir: Path) -> int:
         formal_use_cases_path=p3 / "pass_c_formal_use_cases.jsonl",
         progress_path=p3 / "pass_c_progress.json",
         pass_b_progress_path=p3 / "pass_b_progress.json",
-        project_type_path=project_type_path,
+        role_map_path=role_map_path,
     )
     return pass_c.run_pass_c(config, resume=args.resume)
 
@@ -346,18 +347,18 @@ def _run_phase4(args: argparse.Namespace, target_dir: Path) -> int:
                 "=== Phase 4 Part A.3: LLM-driven prose-to-code ===",
                 file=sys.stderr,
             )
-            project_type_path = (
-                args.project_type_path
-                if args.project_type_path is not None
-                else target_dir / "quality" / "project_type.json"
+            from bin import role_map as _role_map
+            role_map_path = (
+                args.role_map_path
+                if args.role_map_path is not None
+                else _role_map.default_path(target_dir)
             )
-            import json as _json
-            try:
-                project_type = _json.loads(
-                    project_type_path.read_text(encoding="utf-8")
-                ).get("classification", "Unknown")
-            except (OSError, _json.JSONDecodeError):
-                project_type = "Unknown"
+            loaded = _role_map.load_role_map(role_map_path)
+            project_type = (
+                _role_map.derive_legacy_project_type(loaded)
+                if loaded is not None
+                else "Unknown"
+            )
             cfg = divergence_prose_to_code_llm.ProseToCodeLLMConfig(
                 formal_path=formal_path,
                 output_path=p3 / "pass_e_prose_to_code_divergences.jsonl",

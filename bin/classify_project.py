@@ -1,18 +1,37 @@
-"""classify_project.py — QPB v1.5.3 Phase 1 project-type classifier.
+"""classify_project.py — DEBUG UTILITY ONLY (v1.5.4 status).
 
-QPB v1.5.3 introduces a Phase 0 step that classifies a target repository
+**v1.5.4 Part 1 status: this module is no longer part of the playbook
+run path.** QPB v1.5.4 replaced the mechanical Code/Skill/Hybrid
+classifier with AI-driven file-by-file role tagging during Phase 1
+exploration; the run path now reads `quality/exploration_role_map.json`
+(produced by the Phase 1 LLM agent) and consumers (pass_c, quality_gate)
+derive any legacy "project type" label they need from the role map's
+breakdown via `bin.role_map.derive_legacy_project_type`. See
+`docs/design/QPB_v1.5.4_Design.md` Part 1 for the rationale (the v1.5.3
+LOC-based heuristic was both never wired into run_playbook AND silently
+polluted by QPB infrastructure shipped into benchmark targets).
+
+The module is retained as a debug utility:
+  - `python3 -m bin.classify_project --target <repo>` prints what the
+    v1.5.3 mechanical heuristic WOULD say about a target. Useful when
+    triaging whether a target's surface looks code-shaped vs
+    skill-shaped before manually inspecting the role map.
+  - The `--override` / `--override-rationale` flags can still be used
+    for ad-hoc manual classification during Council review.
+
+Nothing in the v1.5.4 run path reads `quality/project_type.json` any
+longer; calling `--write` only produces a debugging artifact that other
+tooling ignores.
+
+Original v1.5.3 docstring preserved below for historical context.
+
+QPB v1.5.3 introduced a Phase 0 step that classifies a target repository
 as Code, Skill, or Hybrid before the playbook's exploration phase begins.
-Code projects keep the v1.5.0 divergence pipeline; Skill and Hybrid projects
-get the skill-specific four-pass derivation pipeline added in later v1.5.3
-phases (Phases 2-7). See `docs/design/QPB_v1.5.3_Design.md` for the full
-design and `docs/design/QPB_v1.5.3_Implementation_Plan.md` for the phase
-sequencing.
-
-This module is the Phase 1 deliverable: the classifier itself plus a JSON
-writer that emits `<target>/quality/project_type.json`. Schema extensions
-that wire this output into the broader requirements pipeline come in
-Phase 2; divergence detection that consumes the classification comes in
-Phases 4-5.
+Code projects kept the v1.5.0 divergence pipeline; Skill and Hybrid
+projects got the skill-specific four-pass derivation pipeline added in
+later v1.5.3 phases (Phases 2-7). The classifier emitted
+`<target>/quality/project_type.json`; pass_c and quality_gate read it.
+Both consumers were rewired to the role map in v1.5.4.
 
 Heuristic (per QPB_v1.5.3_Design.md "Classification Mechanism"):
 

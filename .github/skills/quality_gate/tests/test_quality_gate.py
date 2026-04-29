@@ -1692,7 +1692,11 @@ class TestV150IndexMd(V150FixtureBase):
                     "qpb_version": "1.4.6",
                     "target_repo_path": ".",
                     "target_repo_git_sha": "abc123",
-                    "target_project_type": "Code",
+                    # v1.5.4 Part 1: target_project_type retired in
+                    # favour of target_role_breakdown sourced from the
+                    # Phase 1 role map. Null is the legitimate value
+                    # before Phase 1 has produced the map.
+                    "target_role_breakdown": None,
                     "phases_executed": [],
                     "summary": {"requirements": {}, "bugs": {}, "gate_verdict": "pass"},
                     "artifacts": [],
@@ -2677,7 +2681,13 @@ class TestV153CouncilInboxValidation(unittest.TestCase):
 
 class _Phase4FixtureBase(unittest.TestCase):
     """Common setup: a tmpdir with quality/ + phase3/ structure and
-    a writable project_type.json."""
+    a writable role map (v1.5.4 Part 1 replacement for project_type.json).
+
+    The legacy `classification` argument is preserved on the test
+    surface; under the hood we synthesize a role map shape that
+    derives the same legacy classification via
+    quality_gate._phase4_project_type. This keeps the existing
+    test cases readable while migrating their underlying contract."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -2694,17 +2704,59 @@ class _Phase4FixtureBase(unittest.TestCase):
     def _write_project_type(self, classification: str, *,
                              override_applied: bool = False,
                              override_rationale: str = "") -> None:
-        (self.q / "project_type.json").write_text(
+        # Override flags are no longer represented in the role map (the
+        # v1.5.3 override-rationale path moved to the debug-utility
+        # classifier). Tests that previously exercised override behaviour
+        # have been migrated to assert role-map-shape failures instead.
+        del override_applied, override_rationale
+        files: list[dict] = []
+        if classification in ("Skill", "Hybrid"):
+            files.append({
+                "path": "SKILL.md",
+                "role": "skill-prose",
+                "size_bytes": 1000,
+                "rationale": "fixture skill prose",
+            })
+        if classification in ("Code", "Hybrid"):
+            files.append({
+                "path": "lib/main.py",
+                "role": "code",
+                "size_bytes": 500,
+                "rationale": "fixture code surface",
+            })
+        total = sum(int(f["size_bytes"]) for f in files) or 1
+        skill_size = sum(
+            int(f["size_bytes"]) for f in files
+            if f["role"] in ("skill-prose", "skill-reference")
+        )
+        code_size = sum(
+            int(f["size_bytes"]) for f in files if f["role"] == "code"
+        )
+        files_by_role: dict = {}
+        size_by_role: dict = {}
+        for f in files:
+            files_by_role[f["role"]] = files_by_role.get(f["role"], 0) + 1
+            size_by_role[f["role"]] = (
+                size_by_role.get(f["role"], 0) + int(f["size_bytes"])
+            )
+        (self.q / "exploration_role_map.json").write_text(
             json.dumps({
-                "schema_version": "1.1",
-                "classification": classification,
-                "rationale": "fixture",
-                "confidence": "high",
-                "evidence": {},
-                "classified_at": "2026-04-27T00:00:00Z",
-                "classifier_version": "1.0",
-                "override_applied": override_applied,
-                "override_rationale": override_rationale or None,
+                "schema_version": "1.0",
+                "timestamp_start": "2026-04-27T00:00:00Z",
+                "files": files,
+                "breakdown": {
+                    "files_by_role": files_by_role,
+                    "size_by_role": size_by_role,
+                    "percentages": {
+                        "skill_share": skill_size / total,
+                        "code_share": code_size / total,
+                        "tool_share": 0.0,
+                        "other_share": max(
+                            0.0,
+                            1.0 - (skill_size / total) - (code_size / total),
+                        ),
+                    },
+                },
             }),
             encoding="utf-8",
         )
@@ -2885,52 +2937,77 @@ class TestCheckHybridCrossCuttingReqs(_Phase4FixtureBase):
         self.assertEqual(fails, 0)
 
 
-class TestCheckProjectTypeConsistency(_Phase4FixtureBase):
-    """Phase 4 Part C check_project_type_consistency.
+class TestCheckRoleMapConsistency(_Phase4FixtureBase):
+    """Phase 4 Part C check_role_map_consistency (v1.5.4 Part 1
+    replacement for check_project_type_consistency).
 
     Runs for all projects but skips silently on missing
-    project_type.json (pre-Phase-1 fixture)."""
+    exploration_role_map.json (pre-Phase-1 fixture)."""
 
-    def test_skill_project_type_passes(self):
+    def test_skill_role_map_passes(self):
         self._write_project_type("Skill")
         fails, _ = _capture_fail_output(
-            quality_gate.check_project_type_consistency, self.repo, self.q
+            quality_gate.check_role_map_consistency, self.repo, self.q
         )
         self.assertEqual(fails, 0)
 
-    def test_invalid_classification_fails(self):
-        (self.q / "project_type.json").write_text(
-            json.dumps({"classification": "Other"}), encoding="utf-8"
+    def test_non_object_fails(self):
+        (self.q / "exploration_role_map.json").write_text(
+            json.dumps([1, 2, 3]), encoding="utf-8"
         )
         fails, out = _capture_fail_output(
-            quality_gate.check_project_type_consistency, self.repo, self.q
+            quality_gate.check_role_map_consistency, self.repo, self.q
         )
         self.assertGreaterEqual(fails, 1)
-        self.assertIn("Other", out)
+        self.assertIn("not a valid JSON object", out)
 
-    def test_override_without_rationale_fails(self):
-        self._write_project_type("Hybrid", override_applied=True,
-                                  override_rationale="")
+    def test_wrong_schema_version_fails(self):
+        (self.q / "exploration_role_map.json").write_text(
+            json.dumps({
+                "schema_version": "9.9",
+                "files": [],
+                "breakdown": {
+                    "files_by_role": {},
+                    "size_by_role": {},
+                    "percentages": {
+                        "skill_share": 0,
+                        "code_share": 0,
+                        "tool_share": 0,
+                        "other_share": 0,
+                    },
+                },
+            }),
+            encoding="utf-8",
+        )
         fails, out = _capture_fail_output(
-            quality_gate.check_project_type_consistency, self.repo, self.q
+            quality_gate.check_role_map_consistency, self.repo, self.q
         )
         self.assertGreaterEqual(fails, 1)
-        self.assertIn("override_rationale", out)
+        self.assertIn("schema_version", out)
 
-    def test_override_with_rationale_passes(self):
-        self._write_project_type(
-            "Hybrid", override_applied=True,
-            override_rationale="Council determined Hybrid based on code+SKILL.md",
+    def test_missing_breakdown_keys_fails(self):
+        (self.q / "exploration_role_map.json").write_text(
+            json.dumps({
+                "schema_version": "1.0",
+                "files": [],
+                "breakdown": {
+                    "files_by_role": {},
+                    "size_by_role": {},
+                    "percentages": {"skill_share": 0},  # only one of four
+                },
+            }),
+            encoding="utf-8",
         )
-        fails, _ = _capture_fail_output(
-            quality_gate.check_project_type_consistency, self.repo, self.q
-        )
-        self.assertEqual(fails, 0)
-
-    def test_missing_project_type_skips_silently(self):
-        # Pre-Phase-1 fixture: project_type.json absent.
         fails, out = _capture_fail_output(
-            quality_gate.check_project_type_consistency, self.repo, self.q
+            quality_gate.check_role_map_consistency, self.repo, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("missing keys", out)
+
+    def test_missing_role_map_skips_silently(self):
+        # Pre-Phase-1 fixture: exploration_role_map.json absent.
+        fails, out = _capture_fail_output(
+            quality_gate.check_role_map_consistency, self.repo, self.q
         )
         self.assertEqual(fails, 0)
         self.assertIn("skip", out)

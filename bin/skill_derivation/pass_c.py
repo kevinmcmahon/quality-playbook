@@ -44,6 +44,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from bin import role_map as role_map_lib
 from bin.skill_derivation import protocol
 
 
@@ -61,7 +62,7 @@ class PassCConfig:
     formal_use_cases_path: Path  # output: pass_c_formal_use_cases.jsonl
     progress_path: Path  # output: pass_c_progress.json
     pass_b_progress_path: Path  # input: upstream-status check
-    project_type_path: Path  # input: quality/project_type.json
+    role_map_path: Path  # input: quality/exploration_role_map.json (v1.5.4)
     starting_req_idx: int = 1  # REQ-PHASE3-001 ...
     starting_uc_idx: int = 1   # UC-PHASE3-01 ...
 
@@ -70,17 +71,34 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _load_project_type(project_type_path: Path) -> str:
-    """Return the classification string ("Code"/"Skill"/"Hybrid")
-    from quality/project_type.json. Raises FileNotFoundError with a
-    clear message if absent."""
-    if not project_type_path.is_file():
+def _load_project_type(role_map_path: Path) -> str:
+    """Return the v1.5.3-equivalent project type string ("Code" / "Skill"
+    / "Hybrid") derived from the v1.5.4 role map at ``role_map_path``.
+
+    The v1.5.4 redesign replaced the standalone Code/Skill/Hybrid
+    classifier with file-by-file role tagging during Phase 1. Pass C's
+    six-row disposition table still needs the legacy label internally
+    (Branch 5 demotes a behavioral claim to Tier 5 ``code-derived`` only
+    when the project has code authority; Branch 6 routes to council
+    review when it does not). The mapping lives in
+    :func:`bin.role_map.derive_legacy_project_type`.
+
+    Raises FileNotFoundError when the role map is absent — Phase 1 must
+    run before Pass C.
+    """
+    if not role_map_path.is_file():
         raise FileNotFoundError(
-            f"Phase 1 classifier output not found at {project_type_path}; "
-            f"run `python3 -m bin.classify_project <target_dir>` first"
+            f"Phase 1 role map not found at {role_map_path}; Phase 1 "
+            "exploration must produce quality/exploration_role_map.json "
+            "before Pass C runs"
         )
-    data = json.loads(project_type_path.read_text(encoding="utf-8"))
-    return data["classification"]
+    role_map = role_map_lib.load_role_map(role_map_path)
+    if role_map is None:
+        raise FileNotFoundError(
+            f"Phase 1 role map at {role_map_path} could not be parsed as "
+            "JSON; rerun Phase 1 to regenerate it"
+        )
+    return role_map_lib.derive_legacy_project_type(role_map)
 
 
 def _read_citations(path: Path) -> list[dict]:
@@ -331,7 +349,7 @@ def run_pass_c(config: PassCConfig, *, resume: bool = True) -> int:
         config.pass_b_progress_path, downstream_pass_name="Pass C"
     )
 
-    project_type = _load_project_type(config.project_type_path)
+    project_type = _load_project_type(config.role_map_path)
     citations = _read_citations(config.citations_path)
     uc_drafts = _read_uc_drafts(config.uc_drafts_path)
     total = len(citations) + len(uc_drafts)

@@ -111,7 +111,7 @@ class Phase7EmptyInformalDocs(unittest.TestCase):
                 '"run_timestamp_end": "2026-04-20T12:00:00Z",'
                 '"duration_seconds": 0,"qpb_version": "1.4.6",'
                 '"target_repo_path": ".","target_repo_git_sha": "unknown",'
-                '"target_project_type": "Code","phases_executed": [],'
+                '"target_role_breakdown": null,"phases_executed": [],'
                 '"summary": {"requirements": {}, "bugs": {}, "gate_verdict": "pass"},'
                 '"artifacts": []}'
                 "\n```\n",

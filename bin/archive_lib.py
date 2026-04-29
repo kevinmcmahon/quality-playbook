@@ -398,7 +398,7 @@ def build_index_payload(
     run_folder: Path,
     *,
     target_repo_path: str = ".",
-    target_project_type: str = "Code",
+    target_role_breakdown: Optional[Dict[str, object]] = None,
     target_repo_git_sha: Optional[str] = None,
     gate_verdict_override: Optional[str] = None,
     invocation_flags: Optional[Dict[str, object]] = None,
@@ -406,8 +406,10 @@ def build_index_payload(
     """Assemble the §11 `INDEX.md` payload for an archived or live run folder.
 
     Fields that cannot be recovered from git log or the surviving artifacts
-    are stored as the literal string `"unknown"`. `target_project_type` is
-    a placeholder until the v1.5.2 Code/Skill/Hybrid detector lands.
+    are stored as the literal string `"unknown"`. ``target_role_breakdown``
+    is the v1.5.4 replacement for the v1.5.3 ``target_project_type`` field;
+    it carries the breakdown subtree of ``quality/exploration_role_map.json``
+    (or ``None`` if Phase 1 hasn't produced a role map yet).
 
     ``invocation_flags`` is an additive v1.5.1 field (Council — gpt-5.4
     blocker 2) that captures run-configuration flags a later auditor needs
@@ -430,7 +432,7 @@ def build_index_payload(
         "qpb_version": _extract_qpb_version(run_folder),
         "target_repo_path": target_repo_path,
         "target_repo_git_sha": target_repo_git_sha or _git_head_sha(repo),
-        "target_project_type": target_project_type,  # TODO(v1.5.2): Code/Skill/Hybrid detector.
+        "target_role_breakdown": target_role_breakdown,
         "phases_executed": _extract_phases_executed(run_folder),
         "summary": {
             "requirements": _extract_req_tier_counts(run_folder),
@@ -473,9 +475,30 @@ def render_run_index_header() -> str:
         "per archived run. Maintained by `bin/migrate_v1_5_0_layout.py` at\n"
         "migration time and by `bin/archive_lib.archive_run` at end of every\n"
         "successful run. Rows are never rewritten; a run's `INDEX.md` is the\n"
-        "authoritative per-run record.\n\n"
-        "| Run | QPB version | Project type | Gate verdict | Bug count | Per-run INDEX |\n"
-        "|-----|-------------|--------------|--------------|-----------|----------------|\n"
+        "authoritative per-run record. The Role breakdown column summarises\n"
+        "the four shares from `quality/exploration_role_map.json` (skill /\n"
+        "code / tool / other) — `n/a` when Phase 1 produced no role map.\n\n"
+        "| Run | QPB version | Role breakdown | Gate verdict | Bug count | Per-run INDEX |\n"
+        "|-----|-------------|----------------|--------------|-----------|----------------|\n"
+    )
+
+
+def _format_role_breakdown_summary(payload: Dict[str, object]) -> str:
+    """Render the role breakdown into the compact RUN_INDEX cell. Falls
+    back to ``n/a`` when the field is absent or the breakdown carries no
+    percentages (e.g. stub INDEX written before Phase 1 produced the
+    role map)."""
+    breakdown = payload.get("target_role_breakdown")
+    if not isinstance(breakdown, dict):
+        return "n/a"
+    pcts = breakdown.get("percentages")
+    if not isinstance(pcts, dict):
+        return "n/a"
+    return (
+        f"skill {float(pcts.get('skill_share', 0)) * 100:.0f}% / "
+        f"code {float(pcts.get('code_share', 0)) * 100:.0f}% / "
+        f"tool {float(pcts.get('tool_share', 0)) * 100:.0f}% / "
+        f"other {float(pcts.get('other_share', 0)) * 100:.0f}%"
     )
 
 
@@ -486,7 +509,7 @@ def render_run_index_row(run_id: str, payload: Dict[str, object]) -> str:
     return (
         f"| {run_id} "
         f"| {payload.get('qpb_version', 'unknown')} "
-        f"| {payload.get('target_project_type', 'Code')} "
+        f"| {_format_role_breakdown_summary(payload)} "
         f"| {summary.get('gate_verdict', 'partial')} "
         f"| {bug_count} "
         f"| [INDEX.md](quality/runs/{run_id}/INDEX.md) |"
@@ -544,7 +567,7 @@ def archive_run(
     *,
     status: str = "success",
     target_repo_path: str = ".",
-    target_project_type: str = "Code",
+    target_role_breakdown: Optional[Dict[str, object]] = None,
     gate_verdict_override: Optional[str] = None,
     now: Optional[datetime] = None,
 ) -> Path:
@@ -555,7 +578,10 @@ def archive_run(
       timestamp — run start timestamp, basic ISO 8601 (YYYYMMDDTHHMMSSZ).
       status — one of "success" (no suffix), "failed" (-FAILED suffix),
                "partial" (-PARTIAL suffix).
-      target_project_type — placeholder until v1.5.2.
+      target_role_breakdown — v1.5.4 INDEX field; the breakdown subtree
+               of `quality/exploration_role_map.json`. Auto-loaded from
+               the repo if not supplied; pass ``None`` explicitly to
+               skip loading.
       gate_verdict_override — force a specific gate_verdict value when the
                caller already knows the outcome (end-of-run hook path).
 
@@ -595,11 +621,17 @@ def archive_run(
         "partial": "partial",
     }[status]
     effective_override = gate_verdict_override or status_verdict
+    if target_role_breakdown is None:
+        # Auto-discover the live role map from quality/. Avoid a top-level
+        # import cycle: archive_lib has no other dependency on role_map.
+        from . import role_map as _role_map  # noqa: WPS433
+        loaded = _role_map.load_role_map(_role_map.default_path(repo_dir))
+        target_role_breakdown = _role_map.role_breakdown_for_index(loaded)
     payload = build_index_payload(
         repo_dir,
         archive_root,
         target_repo_path=target_repo_path,
-        target_project_type=target_project_type,
+        target_role_breakdown=target_role_breakdown,
         gate_verdict_override=effective_override,
     )
     index_path = archive_root / "INDEX.md"

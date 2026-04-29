@@ -282,10 +282,14 @@ class _MockRunner:
 
 
 def _build_synthetic_fixture(root: Path) -> None:
-    """Build a small Skill-shaped fixture (SKILL.md + project_type.json)
+    """Build a small Skill-shaped fixture (SKILL.md + role map)
     suitable for an end-to-end --pass all run. No reference files; the
     integration test focuses on orchestration, not reference-file
-    iteration coverage (which has its own targeted tests)."""
+    iteration coverage (which has its own targeted tests).
+
+    v1.5.4 Part 1: emits the new exploration_role_map.json artifact
+    (a single skill-prose entry covering SKILL.md) instead of the
+    retired project_type.json."""
     skill_text = """\
 # Synthetic Skill
 
@@ -310,24 +314,28 @@ Operational prose. The build must run all unit tests.
 
     quality = root / "quality"
     quality.mkdir(parents=True, exist_ok=True)
-    (quality / "project_type.json").write_text(
+    (quality / "exploration_role_map.json").write_text(
         json.dumps({
-            "schema_version": "1.1",
-            "classification": "Skill",
-            "rationale": "synthetic fixture for integration test",
-            "confidence": "high",
-            "evidence": {
-                "skill_md_present": True,
-                "skill_md_path": "SKILL.md",
-                "skill_md_word_count": 200,
-                "total_code_loc": 0,
-                "code_languages": [],
-                "confidence_reason": "fixture",
+            "schema_version": "1.0",
+            "timestamp_start": "2026-04-27T00:00:00Z",
+            "files": [
+                {
+                    "path": "SKILL.md",
+                    "role": "skill-prose",
+                    "size_bytes": len(skill_text.encode("utf-8")),
+                    "rationale": "synthetic fixture skill prose",
+                },
+            ],
+            "breakdown": {
+                "files_by_role": {"skill-prose": 1},
+                "size_by_role": {"skill-prose": len(skill_text.encode("utf-8"))},
+                "percentages": {
+                    "skill_share": 1.0,
+                    "code_share": 0.0,
+                    "tool_share": 0.0,
+                    "other_share": 0.0,
+                },
             },
-            "classified_at": "2026-04-27T00:00:00Z",
-            "classifier_version": "1.0",
-            "override_applied": False,
-            "override_rationale": None,
         }),
         encoding="utf-8",
     )
