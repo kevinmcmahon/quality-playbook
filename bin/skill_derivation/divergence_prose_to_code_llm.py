@@ -196,6 +196,14 @@ def run_divergence_prose_to_code_llm(
     v1.5.4 Phase 2 Site 3: no-op when ``config.should_run`` is False,
     which the caller derives from ``role_map.has_skill_tools(...)``.
     Resumable via per-REQ cursor.
+
+    Backward-compat asymmetry (Phase 2.1 / Round 4 finding A3): Site 3
+    (here) and Site 1 (the four-pass pipeline) treat a missing role
+    map as "skip" — the dispatcher passes ``should_run=False`` when
+    ``has_skill_tools`` returns False on a None / unparseable map.
+    Site 2 (run_playbook Phase 3 code review) preserves v1.5.3
+    behaviour on missing role maps. See
+    ``docs/design/QPB_v1.5.4_Implementation_Plan.md`` Phase 2.
     """
     if not config.should_run:
         return {

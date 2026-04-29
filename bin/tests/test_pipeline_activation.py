@@ -345,5 +345,340 @@ class ProseToCodeLLMActivationTests(unittest.TestCase):
         self.assertIn("skill-tool", result["skipped_reason"])
 
 
+class _StubArgs:
+    """Lightweight argparse.Namespace stand-in for run_one_phase tests.
+    Only the attributes run_one_phase / build_phase_prompt actually
+    read need to exist."""
+
+    def __init__(self, **kwargs) -> None:
+        # Defaults that satisfy run_one_phase + build_phase_prompt.
+        self.no_seeds = False
+        self.runner = "claude"
+        self.model = None
+        self.iterations = None
+        self.phase_groups = None
+        self.pace_seconds = 0
+        self.full_run = False
+        self.no_formal_docs = False
+        self.no_stdout_echo = True
+        self.verbose = False
+        self.quiet = True
+        self.progress_interval = 2
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+# ---------------------------------------------------------------------------
+# Site 1 — mock-based integration tests (Round 4 finding B2 closure).
+# These confirm Pass A's run function is actually invoked / not invoked
+# based on the role-map activation predicate, not just that the
+# predicate returned True/False.
+# ---------------------------------------------------------------------------
+
+
+class Site1PassAInvocationTests(unittest.TestCase):
+    """v1.5.4 Phase 2.1 — pin actual Pass A invocation against the role
+    map so a regression that drops the activation guard fails the
+    test, not just changes the predicate."""
+
+    def _write_skill_md(self, repo_dir: Path) -> None:
+        (repo_dir / "SKILL.md").write_text(
+            "# Skill\n\n## Phase 1\nbody\n", encoding="utf-8"
+        )
+
+    def test_pure_code_target_skips_pass_a(self) -> None:
+        from unittest import mock
+        from bin.skill_derivation import __main__ as sd_main
+        with TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp)
+            role_map = _make_role_map([
+                _entry("src/main.go", "code", 100),
+            ])
+            _write_role_map(repo_dir, role_map)
+            with mock.patch.object(sd_main, "_run_pass_a") as ma, \
+                 mock.patch.object(sd_main, "_run_pass_b") as mb, \
+                 mock.patch.object(sd_main, "_run_pass_c") as mc, \
+                 mock.patch.object(sd_main, "_run_pass_d") as md:
+                exit_code = sd_main._main([str(repo_dir), "--pass", "all"])
+            self.assertEqual(exit_code, 0)
+            ma.assert_not_called()
+            mb.assert_not_called()
+            mc.assert_not_called()
+            md.assert_not_called()
+
+    def test_pdf_style_target_invokes_pass_a_with_role_map_files(self) -> None:
+        """The role map enumerates SKILL.md + FORMS.md + REFERENCE.md
+        at the repo root (no `references/` directory). Pass A's
+        section enumerator must walk those role-map-tagged files
+        rather than the conventional `references/*.md` glob.
+
+        The test patches sections.enumerate_skill_and_references to
+        capture its kwargs, runs the orchestrator's _main with
+        --pass A so _enumerate_for_pass_a fires, and asserts the
+        captured role_map_files list contains the tagged surface
+        without the un-tagged one."""
+        from unittest import mock
+        from bin.skill_derivation import __main__ as sd_main
+        from bin.skill_derivation import sections as sd_sections
+        with TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp)
+            self._write_skill_md(repo_dir)
+            (repo_dir / "FORMS.md").write_text(
+                "# Forms\n\n## Form intro\nbody\n", encoding="utf-8"
+            )
+            (repo_dir / "REFERENCE.md").write_text(
+                "# Reference\n\n## Ref intro\nbody\n", encoding="utf-8"
+            )
+            (repo_dir / "NOT_TAGGED.md").write_text(
+                "# Untagged\n\n## body\n", encoding="utf-8"
+            )
+            role_map = _make_role_map([
+                _entry("SKILL.md", "skill-prose", 200),
+                _entry("FORMS.md", "skill-reference", 100),
+                _entry("REFERENCE.md", "skill-reference", 100),
+            ])
+            _write_role_map(repo_dir, role_map)
+
+            captured: dict = {"role_map_files": None}
+
+            def _capture_enum(skill_md, refs, repo_root, *, role_map_files=None):
+                captured["role_map_files"] = role_map_files
+                return []
+
+            # Let _run_pass_a invoke _enumerate_for_pass_a (which is
+            # the function under test) but block both
+            # enumerate_skill_and_references' real work and the
+            # downstream LLM call inside pass_a.run_pass_a so the test
+            # stays deterministic and offline.
+            with mock.patch.object(
+                sd_sections, "enumerate_skill_and_references", _capture_enum
+            ), mock.patch(
+                "bin.skill_derivation.pass_a.run_pass_a", return_value=0
+            ) as mock_pass_a:
+                exit_code = sd_main._main([str(repo_dir), "--pass", "A"])
+            self.assertEqual(exit_code, 0)
+            mock_pass_a.assert_called_once()
+            self.assertIsNotNone(captured["role_map_files"])
+            tagged = {p.name for p in captured["role_map_files"]}
+            # FORMS.md and REFERENCE.md must be in the role-map list
+            # (SKILL.md is also tagged but is enumerated first via the
+            # skill_md_path argument; either inclusion is acceptable as
+            # the helper de-duplicates).
+            self.assertIn("FORMS.md", tagged)
+            self.assertIn("REFERENCE.md", tagged)
+            self.assertNotIn("NOT_TAGGED.md", tagged)
+
+
+# ---------------------------------------------------------------------------
+# Site 2 — mock-based integration tests for Phase 3 invocation.
+# ---------------------------------------------------------------------------
+
+
+class Site2CodeReviewInvocationTests(unittest.TestCase):
+    """Pin actual run_prompt invocation when Phase 3 runs / doesn't
+    run, not just the predicate."""
+
+    def _make_args(self) -> _StubArgs:
+        return _StubArgs()
+
+    def _phase3_log(self, repo_dir: Path) -> Path:
+        return repo_dir / "phase3.log"
+
+    def test_pure_skill_target_skips_phase_3_runner(self) -> None:
+        from unittest import mock
+        with TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp)
+            quality = repo_dir / "quality"
+            quality.mkdir()
+            # Phase 3 gate prerequisites — these allow the gate to
+            # pass; the role-map skip then short-circuits the LLM.
+            for name in (
+                "REQUIREMENTS.md", "QUALITY.md", "CONTRACTS.md",
+                "RUN_CODE_REVIEW.md", "COVERAGE_MATRIX.md",
+                "COMPLETENESS_REPORT.md", "RUN_INTEGRATION_TESTS.md",
+                "RUN_SPEC_AUDIT.md", "RUN_TDD_TESTS.md",
+            ):
+                (quality / name).write_text("ok", encoding="utf-8")
+            _write_role_map(repo_dir, _make_role_map([
+                _entry("SKILL.md", "skill-prose", 1000),
+            ]))
+            with mock.patch.object(run_playbook, "run_prompt") as mp:
+                ok = run_playbook.run_one_phase(
+                    repo_dir, "3", ["3"], self._make_args(),
+                    self._phase3_log(repo_dir), "20260429T000000Z",
+                )
+            self.assertTrue(ok)
+            mp.assert_not_called()
+
+    def test_mixed_target_invokes_phase_3_runner(self) -> None:
+        """When the role map carries code files, run_prompt must be
+        called — confirms the skip predicate isn't over-firing."""
+        from unittest import mock
+        with TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp)
+            quality = repo_dir / "quality"
+            quality.mkdir()
+            for name in (
+                "REQUIREMENTS.md", "QUALITY.md", "CONTRACTS.md",
+                "RUN_CODE_REVIEW.md", "COVERAGE_MATRIX.md",
+                "COMPLETENESS_REPORT.md", "RUN_INTEGRATION_TESTS.md",
+                "RUN_SPEC_AUDIT.md", "RUN_TDD_TESTS.md",
+            ):
+                (quality / name).write_text("ok", encoding="utf-8")
+            _write_role_map(repo_dir, _make_role_map([
+                _entry("SKILL.md", "skill-prose", 1000),
+                _entry("bin/main.py", "code", 500),
+            ]))
+            with mock.patch.object(
+                run_playbook, "run_prompt", return_value=0
+            ) as mp, mock.patch.object(run_playbook, "_log_phase_completion"):
+                ok = run_playbook.run_one_phase(
+                    repo_dir, "3", ["3"], self._make_args(),
+                    self._phase3_log(repo_dir), "20260429T000000Z",
+                )
+            self.assertTrue(ok)
+            mp.assert_called_once()
+
+
+class Phase5SkippedReconciliationTests(unittest.TestCase):
+    """v1.5.4 Phase 2.1 (Round 4 finding A3): when Site 2 skips
+    Phase 3 on a no-code target, the Phase-3-skipped sentinel
+    suppresses the Phase 4 / Phase 5 gate WARNs about missing
+    code_reviews/ and BUGS.md."""
+
+    def _quality(self, repo_dir: Path) -> Path:
+        q = repo_dir / "quality"
+        q.mkdir(parents=True, exist_ok=True)
+        return q
+
+    def test_phase3_skip_drops_sentinel_under_quality(self) -> None:
+        """run_one_phase for Phase 3 against a no-code role map
+        creates the sentinel; Phase 4 and Phase 5 gates read it."""
+        from unittest import mock
+        with TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp)
+            q = self._quality(repo_dir)
+            for name in (
+                "REQUIREMENTS.md", "QUALITY.md", "CONTRACTS.md",
+                "RUN_CODE_REVIEW.md", "COVERAGE_MATRIX.md",
+                "COMPLETENESS_REPORT.md", "RUN_INTEGRATION_TESTS.md",
+                "RUN_SPEC_AUDIT.md", "RUN_TDD_TESTS.md",
+            ):
+                (q / name).write_text("ok", encoding="utf-8")
+            _write_role_map(repo_dir, _make_role_map([
+                _entry("SKILL.md", "skill-prose", 1000),
+            ]))
+            with mock.patch.object(run_playbook, "run_prompt"):
+                run_playbook.run_one_phase(
+                    repo_dir, "3", ["3"], _StubArgs(),
+                    repo_dir / "phase3.log", "20260429T000000Z",
+                )
+            self.assertTrue(
+                run_playbook._phase3_skipped_sentinel(repo_dir).is_file(),
+                "Phase 3 skip path must drop the sentinel",
+            )
+
+    def test_phase5_gate_suppresses_bugs_md_warn_on_no_code_target(self) -> None:
+        with TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp)
+            q = self._quality(repo_dir)
+            (q / "PROGRESS.md").write_text(
+                "- [x] Phase 4\n", encoding="utf-8"
+            )
+            sa = q / "spec_audits"
+            sa.mkdir()
+            (sa / "20260429-triage.md").write_text("ok", encoding="utf-8")
+            (sa / "20260429-auditor-1.md").write_text("ok", encoding="utf-8")
+            # No BUGS.md — but the sentinel says Phase 3 was correctly
+            # skipped on a no-code target.
+            run_playbook._phase3_skipped_sentinel(repo_dir).write_text(
+                "skipped\n", encoding="utf-8"
+            )
+            gate = run_playbook.check_phase_gate(repo_dir, "5")
+            self.assertTrue(gate.ok)
+            joined = "\n".join(gate.messages)
+            self.assertNotIn("no BUGS.md", joined)
+
+    def test_phase5_gate_still_warns_when_sentinel_absent(self) -> None:
+        """Negative control: without the sentinel, the gate must still
+        WARN about missing BUGS.md so a genuinely-skipped Phase 3 on
+        a code target is still surfaced."""
+        with TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp)
+            q = self._quality(repo_dir)
+            (q / "PROGRESS.md").write_text(
+                "- [x] Phase 4\n", encoding="utf-8"
+            )
+            sa = q / "spec_audits"
+            sa.mkdir()
+            (sa / "20260429-triage.md").write_text("ok", encoding="utf-8")
+            (sa / "20260429-auditor-1.md").write_text("ok", encoding="utf-8")
+            gate = run_playbook.check_phase_gate(repo_dir, "5")
+            self.assertTrue(gate.ok)
+            joined = "\n".join(gate.messages)
+            self.assertIn("no BUGS.md", joined)
+
+    def test_phase4_gate_suppresses_code_reviews_warn_on_no_code_target(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp)
+            q = self._quality(repo_dir)
+            (q / "REQUIREMENTS.md").write_text("ok", encoding="utf-8")
+            (q / "RUN_SPEC_AUDIT.md").write_text("ok", encoding="utf-8")
+            run_playbook._phase3_skipped_sentinel(repo_dir).write_text(
+                "skipped\n", encoding="utf-8"
+            )
+            gate = run_playbook.check_phase_gate(repo_dir, "4")
+            self.assertTrue(gate.ok)
+            joined = "\n".join(gate.messages)
+            self.assertNotIn("no code_reviews/", joined)
+
+
+class MultiPhaseGroupCodeReviewSkipTests(unittest.TestCase):
+    """v1.5.4 Phase 2.1 (Round 4 polish): when a multi-phase group
+    such as `2+3` lands on a no-code target, run_one_phase_group drops
+    Phase 3 BEFORE building the combined prompt and writes the
+    Phase-3-skipped sentinel."""
+
+    def test_filter_group_drops_phase_3_when_no_code(self) -> None:
+        with TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp)
+            _write_role_map(repo_dir, _make_role_map([
+                _entry("SKILL.md", "skill-prose", 1000),
+            ]))
+            filtered, reason = run_playbook._filter_group_for_code_review_skip(
+                repo_dir, ["2", "3", "4"]
+            )
+            self.assertEqual(filtered, ["2", "4"])
+            self.assertIsNotNone(reason)
+            self.assertIn("Phase 3", reason)
+
+    def test_filter_group_preserves_when_code_present(self) -> None:
+        with TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp)
+            _write_role_map(repo_dir, _make_role_map([
+                _entry("SKILL.md", "skill-prose", 1000),
+                _entry("bin/x.py", "code", 500),
+            ]))
+            filtered, reason = run_playbook._filter_group_for_code_review_skip(
+                repo_dir, ["2", "3", "4"]
+            )
+            self.assertEqual(filtered, ["2", "3", "4"])
+            self.assertIsNone(reason)
+
+    def test_filter_group_no_phase_3_is_passthrough(self) -> None:
+        with TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp)
+            _write_role_map(repo_dir, _make_role_map([
+                _entry("SKILL.md", "skill-prose", 1000),
+            ]))
+            filtered, reason = run_playbook._filter_group_for_code_review_skip(
+                repo_dir, ["4", "5"]
+            )
+            self.assertEqual(filtered, ["4", "5"])
+            self.assertIsNone(reason)
+
+
 if __name__ == "__main__":
     unittest.main()

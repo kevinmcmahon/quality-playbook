@@ -353,20 +353,39 @@ def enumerate_skill_and_references(
     skill_md_path: Path,
     references_dir: Optional[Path],
     repo_root: Path,
+    *,
+    role_map_files: Optional[List[Path]] = None,
 ) -> List[Section]:
     """Phase 3b A.2: enumerate SKILL.md AND every references/*.md file.
 
     Iteration units are chained with monotonic `section_idx` across
-    all documents (SKILL.md first, then each reference in
-    sorted-by-name order). Pass A reads the chained list and runs
-    the LLM once per non-skipped section.
+    all documents. Pass A reads the chained list and runs the LLM
+    once per non-skipped section.
 
-    Reference files are markdown by convention; non-markdown files in
-    references/ are skipped. Missing references_dir is silently empty.
-    Pass C uses the `document` field on each draft to set source_type
-    correctly (skill-section for SKILL.md; reference-file for
-    references/*.md).
+    v1.5.4 Phase 2.1 (Round 4 Council finding C1): when ``role_map_files``
+    is provided, enumeration walks exactly that list (the absolute paths
+    of every file the Phase-1 role map tagged ``skill-prose`` or
+    ``skill-reference``). Order is the role-map order, with SKILL.md
+    pulled to the front when present so Pass A's contract — SKILL.md
+    sections enumerated first — is preserved. This is what lets a
+    target like pdf-1.5.3 (whose skill-prose surface is SKILL.md +
+    FORMS.md + REFERENCE.md, not the conventional `references/*.md`
+    layout) be enumerated correctly.
+
+    Backward-compat: when ``role_map_files`` is ``None`` (pre-Phase-1
+    targets, or callers that haven't been migrated), the function
+    falls back to the v1.5.3 behaviour — SKILL.md plus
+    ``references_dir/*.md`` in sorted-by-name order.
+
+    Reference files are markdown by convention; non-markdown files
+    are skipped. Pass C uses the `document` field on each draft to
+    set source_type correctly (skill-section for SKILL.md;
+    reference-file for everything else).
     """
+    if role_map_files is not None:
+        return _enumerate_role_map_files(
+            role_map_files, skill_md_path, repo_root
+        )
     out: List[Section] = []
     if skill_md_path.is_file():
         out.extend(
@@ -380,6 +399,50 @@ def enumerate_skill_and_references(
             )
             out.extend(ref_secs)
             next_idx += len(ref_secs)
+    return out
+
+
+def _enumerate_role_map_files(
+    role_map_files: List[Path],
+    skill_md_path: Path,
+    repo_root: Path,
+) -> List[Section]:
+    """Walk a role-map-supplied file list. SKILL.md is enumerated first
+    (its sections must occupy section_idx 0..N so Pass C's source_type
+    routing keeps working); the rest follow in role-map order. Files
+    that don't exist on disk or aren't markdown are skipped silently —
+    the role map is the spec, but enumeration still requires bytes."""
+    out: List[Section] = []
+    seen: set = set()
+    skill_resolved = skill_md_path.resolve() if skill_md_path.is_file() else None
+
+    def _enum(path: Path, starting_idx: int) -> int:
+        nonlocal out
+        secs = enumerate_sections(
+            path, repo_root=repo_root, starting_idx=starting_idx
+        )
+        out.extend(secs)
+        return starting_idx + len(secs)
+
+    next_idx = 0
+    if skill_resolved is not None:
+        next_idx = _enum(skill_md_path, next_idx)
+        seen.add(skill_resolved)
+
+    for entry in role_map_files:
+        try:
+            resolved = entry.resolve()
+        except OSError:
+            continue
+        if resolved in seen:
+            continue
+        if not resolved.is_file():
+            continue
+        if resolved.suffix.lower() != ".md":
+            continue
+        next_idx = _enum(resolved, next_idx)
+        seen.add(resolved)
+
     return out
 
 

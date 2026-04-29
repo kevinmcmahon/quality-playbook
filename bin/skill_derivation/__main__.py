@@ -158,9 +158,41 @@ def _phase3_dir(target_dir: Path) -> Path:
     return target_dir / "quality" / "phase3"
 
 
+def _role_map_skill_prose_files(
+    role_map: Optional[dict], target_dir: Path
+) -> Optional[list[Path]]:
+    """Return the list of absolute paths the Phase-1 role map tagged as
+    ``skill-prose`` or ``skill-reference``, in role-map order. Returns
+    ``None`` when the role map is absent — callers fall back to the
+    v1.5.3 hardcoded enumeration. v1.5.4 Phase 2.1 (Round 4 finding C1)."""
+    if not isinstance(role_map, dict):
+        return None
+    files = role_map.get("files") or []
+    if not isinstance(files, list):
+        return None
+    out: list[Path] = []
+    for entry in files:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("role") in ("skill-prose", "skill-reference"):
+            path = entry.get("path")
+            if isinstance(path, str) and path.strip():
+                out.append((target_dir / path).resolve())
+    return out
+
+
 def _enumerate_for_pass_a(args: argparse.Namespace, target_dir: Path) -> Path:
-    """Run section enumeration over SKILL.md + references/ and write
-    pass_a_sections.json. Returns the path to the sections JSON.
+    """Run section enumeration over the role-map's skill-prose +
+    skill-reference surface and write pass_a_sections.json. Returns
+    the path to the sections JSON.
+
+    v1.5.4 Phase 2.1 (Round 4 Council finding C1): file enumeration is
+    driven by ``quality/exploration_role_map.json`` so targets whose
+    skill surface lives outside the conventional ``references/``
+    directory (e.g. pdf-1.5.3's FORMS.md and REFERENCE.md at the
+    repository root) are correctly walked. When the role map is absent
+    (pre-Phase-1 / pre-iteration targets), enumeration falls back to
+    the v1.5.3 behaviour: SKILL.md plus ``references/*.md``.
     """
     skill_md = args.skill_md or (target_dir / "SKILL.md")
     refs = (
@@ -168,8 +200,13 @@ def _enumerate_for_pass_a(args: argparse.Namespace, target_dir: Path) -> Path:
         if args.references_dir is not None
         else target_dir / "references"
     )
+    role_map_data = _resolve_role_map_for_dispatch(args, target_dir)
+    role_map_files = _role_map_skill_prose_files(role_map_data, target_dir)
     secs = sections.enumerate_skill_and_references(
-        skill_md, refs if refs.is_dir() else None, target_dir
+        skill_md,
+        refs if refs.is_dir() else None,
+        target_dir,
+        role_map_files=role_map_files,
     )
     out = _phase3_dir(target_dir) / "pass_a_sections.json"
     sections.write_sections_json(secs, out)
@@ -462,6 +499,15 @@ def _main(argv: Optional[list[str]] = None) -> int:
     # When the target has zero skill-prose files (e.g. a pure-code
     # benchmark), the pipeline no-ops cleanly without invoking any
     # LLM passes.
+    #
+    # Backward-compat asymmetry (Phase 2.1 / Round 4 finding A3):
+    # Site 1 (here) and Site 3 (Phase 4 prose-to-code) treat "no role
+    # map" as "skip" — the four-pass pipeline is new in v1.5.4 and
+    # has no v1.5.3 behaviour to preserve. Site 2 (run_playbook Phase 3
+    # code review) treats "no role map" as "run as before" so v1.5.3
+    # pre-iteration targets keep producing BUGS.md without operator
+    # intervention. See docs/design/QPB_v1.5.4_Implementation_Plan.md
+    # Phase 2 for the contract.
     from bin import role_map as _role_map  # noqa: WPS433
     role_map_data = _resolve_role_map_for_dispatch(args, target_dir)
     if not _role_map.has_skill_prose(role_map_data):

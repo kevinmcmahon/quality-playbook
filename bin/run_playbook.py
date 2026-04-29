@@ -1289,7 +1289,10 @@ def check_phase_gate(repo_dir: Path, phase: str) -> GateCheck:
             return GateCheck(ok=False, messages=["GATE FAIL Phase 4: RUN_SPEC_AUDIT.md missing - run Phase 2 first"])
         code_reviews = quality_dir / "code_reviews"
         if not code_reviews.is_dir() or not any(code_reviews.iterdir()):
-            messages.append("GATE WARN Phase 4: no code_reviews/ - Phase 3 may not have run")
+            # v1.5.4 Phase 2.1 (Round 4 finding A3): suppress when
+            # Phase 3 was correctly skipped on a no-code target.
+            if not _phase3_skipped_sentinel(repo_dir).is_file():
+                messages.append("GATE WARN Phase 4: no code_reviews/ - Phase 3 may not have run")
         return GateCheck(ok=True, messages=messages)
     if phase == "5":
         if not (quality_dir / "PROGRESS.md").is_file():
@@ -1307,7 +1310,11 @@ def check_phase_gate(repo_dir: Path, phase: str) -> GateCheck:
         if "- [x] Phase 4" not in progress_content:
             return GateCheck(ok=False, messages=["GATE FAIL Phase 5: Phase 4 not marked complete in PROGRESS.md"])
         if not (quality_dir / "BUGS.md").is_file():
-            messages.append("GATE WARN Phase 5: no BUGS.md - Phase 3 may not have run")
+            # v1.5.4 Phase 2.1 (Round 4 finding A3): suppress when
+            # Phase 3 was correctly skipped on a no-code target —
+            # there's no code to find bugs in.
+            if not _phase3_skipped_sentinel(repo_dir).is_file():
+                messages.append("GATE WARN Phase 5: no BUGS.md - Phase 3 may not have run")
         return GateCheck(ok=True, messages=messages)
     if phase == "6":
         if not (quality_dir / "PROGRESS.md").is_file():
@@ -2050,6 +2057,18 @@ def final_artifact_gaps(repo_dir: Path) -> List[str]:
     return missing
 
 
+# v1.5.4 Phase 2.1 (Round 4 finding A3): Site 2's Phase 3 skip writes
+# this sentinel to quality/ so Phase 4 and Phase 5 gates can
+# distinguish "Phase 3 was correctly skipped on a no-code target" from
+# "Phase 3 never ran" — without the sentinel the downstream WARNs about
+# missing BUGS.md / code_reviews/ are misleading on a pure-skill run.
+PHASE3_SKIPPED_SENTINEL_NAME = ".phase3-skipped-no-code-files"
+
+
+def _phase3_skipped_sentinel(repo_dir: Path) -> Path:
+    return repo_dir / "quality" / PHASE3_SKIPPED_SENTINEL_NAME
+
+
 def _code_review_should_skip(repo_dir: Path) -> Optional[str]:
     """v1.5.4 Phase 2 Site 2: the code-review pipeline (Phase 3) no-ops
     when the Phase-1 role map shows zero ``code`` files. Returns a
@@ -2059,7 +2078,13 @@ def _code_review_should_skip(repo_dir: Path) -> Optional[str]:
     Pre-Phase-1 invocations (no role map yet) and pre-iteration
     targets that never produced one return ``None`` — Phase 3 runs as
     before so existing behaviour is preserved on any target that
-    hasn't yet been classified."""
+    hasn't yet been classified.
+
+    Asymmetry note (Phase 2.1): Sites 1 and 3 treat "no role map" as
+    "skip"; Site 2 treats "no role map" as "run as before" so v1.5.3
+    pre-iteration targets keep producing BUGS.md without operator
+    intervention. See docs/design/QPB_v1.5.4_Implementation_Plan.md
+    Phase 2 for the contract."""
     role_map_path = role_map_lib.default_path(repo_dir)
     if not role_map_path.is_file():
         return None
@@ -2093,6 +2118,14 @@ def run_one_phase(
         skip_reason = _code_review_should_skip(repo_dir)
         if skip_reason is not None:
             lib.logboth(log_file, lib.log(f"  {skip_reason}"))
+            # Drop the Phase-3-skipped sentinel so Phase 4 and Phase 5
+            # gates can distinguish "correctly skipped" from "never
+            # ran" (Round 4 finding A3).
+            sentinel = _phase3_skipped_sentinel(repo_dir)
+            sentinel.parent.mkdir(parents=True, exist_ok=True)
+            sentinel.write_text(
+                f"{skip_reason}\nat {timestamp}\n", encoding="utf-8"
+            )
             _log_phase_completion(repo_dir, phase, log_file, args, timestamp)
             return True
 
@@ -2168,6 +2201,22 @@ def _build_group_prompt(phases: Sequence[str], no_seeds: bool) -> str:
     return "".join(parts)
 
 
+def _filter_group_for_code_review_skip(
+    repo_dir: Path, group: Sequence[str]
+) -> Tuple[List[str], Optional[str]]:
+    """v1.5.4 Phase 2.1 (Round 4 polish, Step 4): drop Phase 3 from a
+    multi-phase group when Site 2's code-review skip applies. Returns
+    ``(filtered_group, skip_reason)`` where ``skip_reason`` is non-None
+    iff Phase 3 was filtered out (caller should log it once)."""
+    if "3" not in group:
+        return list(group), None
+    reason = _code_review_should_skip(repo_dir)
+    if reason is None:
+        return list(group), None
+    filtered = [p for p in group if p != "3"]
+    return filtered, reason
+
+
 def _group_transcript_path(repo_dir: Path, phases: Sequence[str]) -> Path:
     """Transcript file for a group. Single-phase groups reuse the
     legacy phaseN.output.txt name; multi-phase groups join with '-'
@@ -2207,6 +2256,30 @@ def run_one_phase_group(
     """
     if not group:
         return True
+
+    # v1.5.4 Phase 2.1 (Round 4 polish): on a no-code target, drop
+    # Phase 3 from this group BEFORE building the combined prompt so
+    # multi-phase invocations like `--phase-groups '2+3'` don't pay an
+    # LLM round-trip for code review the role map says to skip. Drop
+    # the sentinel for the same reason the single-phase path does so
+    # downstream Phase 4 / 5 gates suppress their own WARNs.
+    filtered_group, skip_reason = _filter_group_for_code_review_skip(
+        repo_dir, group
+    )
+    if skip_reason is not None:
+        lib.logboth(log_file, lib.log(f"  {skip_reason}"))
+        sentinel = _phase3_skipped_sentinel(repo_dir)
+        sentinel.parent.mkdir(parents=True, exist_ok=True)
+        sentinel.write_text(
+            f"{skip_reason}\nat {timestamp}\n", encoding="utf-8"
+        )
+        if not filtered_group:
+            # Phase 3 was the only phase in the group; record the
+            # phase-3 completion and exit cleanly.
+            _log_phase_completion(repo_dir, "3", log_file, args, timestamp)
+            return True
+        # Otherwise carry on with the surviving phases as the new group.
+        group = filtered_group
 
     if len(group) == 1:
         phase = group[0]
