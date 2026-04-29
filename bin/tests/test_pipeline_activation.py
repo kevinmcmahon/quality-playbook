@@ -680,5 +680,149 @@ class MultiPhaseGroupCodeReviewSkipTests(unittest.TestCase):
             self.assertIsNone(reason)
 
 
+class SentinelLifecycleTests(unittest.TestCase):
+    """v1.5.4 Phase 2.2 (Round 5 Panel B2): the
+    quality/.phase3-skipped-no-code-files sentinel is written when
+    Phase 3 skips. It MUST be removed when Phase 3 subsequently runs
+    against an updated role map that has code, otherwise downstream
+    Phase 4 / 5 gates silently suppress their WARNs against this
+    session's real artifacts."""
+
+    def _seed_phase3_prereqs(self, repo_dir: Path) -> Path:
+        q = repo_dir / "quality"
+        q.mkdir(parents=True, exist_ok=True)
+        for name in (
+            "REQUIREMENTS.md", "QUALITY.md", "CONTRACTS.md",
+            "RUN_CODE_REVIEW.md", "COVERAGE_MATRIX.md",
+            "COMPLETENESS_REPORT.md", "RUN_INTEGRATION_TESTS.md",
+            "RUN_SPEC_AUDIT.md", "RUN_TDD_TESTS.md",
+        ):
+            (q / name).write_text("ok", encoding="utf-8")
+        return q
+
+    def _write_stale_sentinel(self, repo_dir: Path) -> Path:
+        sentinel = run_playbook._phase3_skipped_sentinel(repo_dir)
+        sentinel.parent.mkdir(parents=True, exist_ok=True)
+        sentinel.write_text(
+            "Phase 3 skipped (stale from prior run)\n", encoding="utf-8"
+        )
+        return sentinel
+
+    def test_phase3_run_removes_stale_sentinel_in_run_one_phase(self) -> None:
+        from unittest import mock
+        with TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp)
+            self._seed_phase3_prereqs(repo_dir)
+            sentinel = self._write_stale_sentinel(repo_dir)
+            self.assertTrue(sentinel.exists())
+            # Role map carries code surface, so Phase 3 must run, not skip.
+            _write_role_map(repo_dir, _make_role_map([
+                _entry("SKILL.md", "skill-prose", 1000),
+                _entry("bin/main.py", "code", 500),
+            ]))
+            with mock.patch.object(
+                run_playbook, "run_prompt", return_value=0
+            ), mock.patch.object(run_playbook, "_log_phase_completion"):
+                ok = run_playbook.run_one_phase(
+                    repo_dir, "3", ["3"], _StubArgs(),
+                    repo_dir / "phase3.log", "20260429T000000Z",
+                )
+            self.assertTrue(ok)
+            self.assertFalse(
+                sentinel.exists(),
+                "run_one_phase must remove the stale sentinel before "
+                "Phase 3's LLM invocation",
+            )
+
+    def test_phase3_run_removes_stale_sentinel_in_run_one_phase_group(
+        self,
+    ) -> None:
+        """The multi-phase group path lands here when --phase-groups
+        wires Phase 3 alongside another phase (e.g. '2+3'). The
+        cleanup must fire on this path too."""
+        from unittest import mock
+        with TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp)
+            self._seed_phase3_prereqs(repo_dir)
+            sentinel = self._write_stale_sentinel(repo_dir)
+            self.assertTrue(sentinel.exists())
+            _write_role_map(repo_dir, _make_role_map([
+                _entry("SKILL.md", "skill-prose", 1000),
+                _entry("bin/main.py", "code", 500),
+            ]))
+            monitor = mock.MagicMock()
+            with mock.patch.object(
+                run_playbook, "run_prompt", return_value=0
+            ), mock.patch.object(run_playbook, "_log_phase_completion"):
+                ok = run_playbook.run_one_phase_group(
+                    repo_dir, ["3", "4"], [["3", "4"]], _StubArgs(),
+                    repo_dir / "phase34.log",
+                    "20260429T000000Z",
+                    monitor,
+                )
+            self.assertTrue(ok)
+            self.assertFalse(
+                sentinel.exists(),
+                "run_one_phase_group must remove the stale sentinel "
+                "when Phase 3 survives the filter and the LLM runs",
+            )
+
+    def test_stale_sentinel_does_not_suppress_phase5_warn_after_phase3_run(
+        self,
+    ) -> None:
+        """Regression pin for Round 5 Panel B2 finding.
+
+        Reproduces the operator-impact scenario:
+          1. Prior run: no-code role map → Phase 3 skipped → sentinel written.
+          2. Role map updated to include code (operator added code).
+          3. Phase 3 runs successfully (this iteration, mocked LLM).
+          4. BUGS.md is genuinely missing (the mocked LLM didn't write one).
+          5. Phase 5 gate runs.
+
+        Without the cleanup, the stale sentinel from step 1 silently
+        suppresses the BUGS.md WARN at step 5 and the operator
+        advances through Phase 5 with no warning. With the cleanup,
+        the sentinel is removed at step 3 and the gate WARNs
+        correctly at step 5."""
+        from unittest import mock
+        with TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp)
+            self._seed_phase3_prereqs(repo_dir)
+            self._write_stale_sentinel(repo_dir)
+            _write_role_map(repo_dir, _make_role_map([
+                _entry("SKILL.md", "skill-prose", 1000),
+                _entry("bin/main.py", "code", 500),
+            ]))
+            with mock.patch.object(
+                run_playbook, "run_prompt", return_value=0
+            ), mock.patch.object(run_playbook, "_log_phase_completion"):
+                run_playbook.run_one_phase(
+                    repo_dir, "3", ["3"], _StubArgs(),
+                    repo_dir / "phase3.log", "20260429T000000Z",
+                )
+            # Set up the rest of Phase 5 gate's prerequisites so the
+            # only remaining variable is BUGS.md presence.
+            q = repo_dir / "quality"
+            (q / "PROGRESS.md").write_text(
+                "- [x] Phase 4\n", encoding="utf-8"
+            )
+            sa = q / "spec_audits"
+            sa.mkdir()
+            (sa / "20260429-triage.md").write_text("ok", encoding="utf-8")
+            (sa / "20260429-auditor-1.md").write_text("ok", encoding="utf-8")
+            # BUGS.md is deliberately missing — the mocked LLM never
+            # wrote one. The Phase 5 gate must surface that.
+            gate = run_playbook.check_phase_gate(repo_dir, "5")
+            self.assertTrue(gate.ok)
+            joined = "\n".join(gate.messages)
+            self.assertIn(
+                "no BUGS.md",
+                joined,
+                "Phase 5 gate must WARN about missing BUGS.md once "
+                "the stale sentinel is removed; otherwise operators "
+                "advance silently through a broken run.",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

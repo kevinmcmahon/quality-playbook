@@ -2128,6 +2128,12 @@ def run_one_phase(
             )
             _log_phase_completion(repo_dir, phase, log_file, args, timestamp)
             return True
+        # v1.5.4 Phase 2.2 (Round 5 Panel B2): Phase 3 IS running this
+        # session, so any sentinel left behind by a prior no-code run
+        # is stale and would silently suppress Phase 4/5 WARNs about
+        # missing code_reviews/ and BUGS.md. Remove it before the LLM
+        # is invoked so the rest of the run sees a clean slate.
+        _phase3_skipped_sentinel(repo_dir).unlink(missing_ok=True)
 
     phase_index = phase_list.index(phase) + 1 if phase in phase_list else 1
     prompt = build_phase_prompt(phase, no_seeds=args.no_seeds)
@@ -2290,6 +2296,14 @@ def run_one_phase_group(
         return run_one_phase(repo_dir, phase, flat, args, log_file, timestamp)
 
     # Multi-phase group path.
+    # v1.5.4 Phase 2.2 (Round 5 Panel B2): if Phase 3 is in this
+    # surviving group, the role map currently reports code surface
+    # (otherwise the filter above would have dropped Phase 3). Remove
+    # any stale Phase-3-skipped sentinel left by a prior no-code run
+    # so downstream Phase 4 / 5 gates don't silently suppress their
+    # WARNs against this session's actual artifacts.
+    if "3" in group:
+        _phase3_skipped_sentinel(repo_dir).unlink(missing_ok=True)
     gate = check_phase_gate(repo_dir, group[0])
     for message in gate.messages:
         lib.logboth(log_file, lib.log(f"  {message}"))
