@@ -7,6 +7,7 @@ from the archived content.
 
 ```json
 {
+  "schema_version": "1.0",
   "run_timestamp_start": "2026-04-16T03:03:30Z",
   "run_timestamp_end": "2026-04-16T16:03:01Z",
   "duration_seconds": 46771,

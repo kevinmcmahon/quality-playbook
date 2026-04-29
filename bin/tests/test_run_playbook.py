@@ -4,12 +4,34 @@ import argparse
 import os
 import unittest
 
-from bin import run_playbook
+from bin import role_map, run_playbook
 
 
 def write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
+
+
+def write_role_map(quality_dir: Path, files=None) -> Path:
+    """Write a valid quality/exploration_role_map.json into quality_dir.
+    Used by Phase 2 gate tests (v1.5.4 Round 1 Council finding A1/B1/C1)
+    that need a role map present on disk."""
+    import json
+    if files is None:
+        files = [{
+            "path": "src/main.py", "role": "code",
+            "size_bytes": 100, "rationale": "fixture",
+        }]
+    payload = {
+        "schema_version": role_map.SCHEMA_VERSION,
+        "timestamp_start": "2026-04-29T00:00:00Z",
+        "files": files,
+        "breakdown": role_map.compute_breakdown(files),
+    }
+    quality_dir.mkdir(parents=True, exist_ok=True)
+    out = quality_dir / "exploration_role_map.json"
+    out.write_text(json.dumps(payload), encoding="utf-8")
+    return out
 
 
 class RunPlaybookTests(unittest.TestCase):
@@ -118,6 +140,47 @@ class RunPlaybookTests(unittest.TestCase):
             gate = run_playbook.check_phase_gate(Path(temp_dir), "2")
             self.assertFalse(gate.ok)
             self.assertIn("EXPLORATION.md missing", gate.messages[0])
+
+    def test_phase2_gate_requires_role_map(self) -> None:
+        """v1.5.4 Round 1 Council finding A1/B1/C1: Phase 2 gate fails
+        if Phase 1 produced EXPLORATION.md but no role map. Without
+        this check the L1 'classifier never wired in' failure mode
+        partially re-emerges."""
+        with TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            quality_dir = temp_path / "quality"
+            write(quality_dir / "EXPLORATION.md", "x\n" * 200)
+            gate = run_playbook.check_phase_gate(temp_path, "2")
+            self.assertFalse(gate.ok)
+            self.assertIn("exploration_role_map.json", gate.messages[0])
+            self.assertIn("Phase 1", gate.messages[0])
+
+    def test_phase2_gate_passes_with_role_map(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            quality_dir = temp_path / "quality"
+            write(quality_dir / "EXPLORATION.md", "x\n" * 200)
+            write_role_map(quality_dir)
+            gate = run_playbook.check_phase_gate(temp_path, "2")
+            self.assertTrue(gate.ok, msg=gate.messages)
+
+    def test_phase2_gate_fails_on_invalid_role_map(self) -> None:
+        """Bubble validation errors up through the gate so the operator
+        knows what's wrong with the role map without grepping logs."""
+        import json
+        with TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            quality_dir = temp_path / "quality"
+            write(quality_dir / "EXPLORATION.md", "x\n" * 200)
+            # Role map missing required keys.
+            (quality_dir / "exploration_role_map.json").write_text(
+                json.dumps({"schema_version": role_map.SCHEMA_VERSION}),
+                encoding="utf-8",
+            )
+            gate = run_playbook.check_phase_gate(temp_path, "2")
+            self.assertFalse(gate.ok)
+            self.assertIn("failed validation", gate.messages[0])
+            self.assertIn("files", gate.messages[0])
 
     def test_phase3_gate_requires_phase2_artifacts(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -429,8 +492,10 @@ class RunPlaybookTests(unittest.TestCase):
             self.assertIn("expected 120+", phase2_fail.messages[0])
 
             write(quality_dir / "EXPLORATION.md", "x\n" * 200)
+            # v1.5.4 Phase 2 gate also requires the role map.
+            write_role_map(quality_dir)
             phase2_ok = run_playbook.check_phase_gate(temp_path, "2")
-            self.assertTrue(phase2_ok.ok)
+            self.assertTrue(phase2_ok.ok, msg=phase2_ok.messages)
             self.assertEqual(phase2_ok.messages, [])
 
             for name in [

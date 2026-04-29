@@ -6,6 +6,7 @@ from the run's artifacts.
 
 ```json
 {
+  "schema_version": "1.0",
   "run_timestamp_start": "2026-04-26T01:50:45Z",
   "run_timestamp_end": "2026-04-28T17:00:27Z",
   "duration_seconds": 227382,

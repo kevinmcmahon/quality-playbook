@@ -426,6 +426,12 @@ def build_index_payload(
     if invocation_flags:
         merged_flags.update(invocation_flags)
     return {
+        # v1.5.4 Part 1 / Round 1 Council finding C2-1: explicit INDEX
+        # schema_version routes the gate between the legacy
+        # target_project_type contract (1.0, archived runs) and the
+        # current target_role_breakdown contract (2.0, current runs).
+        # See schemas.md §11 and the v1.5.4 Design Part 1.
+        "schema_version": "2.0",
         "run_timestamp_start": start,
         "run_timestamp_end": end,
         "duration_seconds": duration,

@@ -20,7 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from bin import benchmark_lib, citation_verifier, classify_project, run_playbook
+from bin import benchmark_lib, citation_verifier, classify_project, role_map, run_playbook
 
 
 def _extract_index_payload(index_text: str) -> dict:
@@ -74,18 +74,38 @@ class RequirementAssertionsMixin:
             )
 
     def assert_req_004_live_index_preserves_project_type(self) -> None:
-        """[Req: inferred — REQ-004] live INDEX.md preserves the computed project type."""
+        """[Req: inferred — REQ-004] live INDEX.md carries the v1.5.4
+        target_role_breakdown sourced from the Phase-1 role map.
+
+        v1.5.4 Part 1 / Round 1 Council finding C2-3: target_project_type
+        was retired in favour of target_role_breakdown. The stub INDEX
+        runs before Phase 1 produces the role map, so target_role_breakdown
+        is null in the stub; the final INDEX (re-rendered after Phase 6)
+        reads the role map and populates the field. This test asserts
+        the stub-side contract; the final-side contract is asserted in
+        quality/test_regression.py::test_bug_003_live_index_carries_role_breakdown."""
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            (repo / "SKILL.md").write_text("# Skill\n\n" + ("word " * 500), encoding="utf-8")
+            (repo / "SKILL.md").write_text(
+                "# Skill\n\n" + ("word " * 500), encoding="utf-8"
+            )
             (repo / "bin").mkdir()
-            (repo / "bin" / "tool.py").write_text("print('hello')\n", encoding="utf-8")
-            record = classify_project.classify_project(repo, override="Hybrid", override_rationale="test fixture")
-            self.assertEqual(record["classification"], "Hybrid")
-            with mock.patch.object(run_playbook.archive_lib, "_git_head_sha", return_value="deadbeef"):
+            (repo / "bin" / "tool.py").write_text(
+                "print('hello')\n", encoding="utf-8"
+            )
+            with mock.patch.object(
+                run_playbook.archive_lib,
+                "_git_head_sha",
+                return_value="deadbeef",
+            ):
                 run_playbook.write_live_index_stub(repo, "20260428-131715")
-            payload = _extract_index_payload((repo / "quality" / "INDEX.md").read_text(encoding="utf-8"))
-            self.assertEqual(payload["target_project_type"], record["classification"])
+            payload = _extract_index_payload(
+                (repo / "quality" / "INDEX.md").read_text(encoding="utf-8")
+            )
+            self.assertEqual(payload["schema_version"], "2.0")
+            self.assertIn("target_role_breakdown", payload)
+            self.assertIsNone(payload["target_role_breakdown"])
+            self.assertNotIn("target_project_type", payload)
 
     def assert_req_005_cleanup_without_pid_files_stays_run_scoped(self) -> None:
         """[Req: inferred — REQ-005] missing PID files must not widen cleanup scope."""
@@ -300,12 +320,34 @@ class BoundaryAndEdgeCaseTests(unittest.TestCase):
             gate = run_playbook.check_phase_gate(repo, "2")
             self.assertFalse(gate.ok)
 
-    def test_boundary_5_project_type_closed_set_survives_into_index_writers(self) -> None:
-        """[Req: inferred — from project-type whitelist] live index writers preserve all allowed values."""
-        self.assertEqual(set(classify_project.VALID_CLASSIFICATIONS), {"Code", "Skill", "Hybrid"})
-        run_playbook_text = (REPO_ROOT / "bin" / "run_playbook.py").read_text(encoding="utf-8")
-        self.assertIn('"target_project_type": "Hybrid"', run_playbook_text)
-        self.assertIn('target_project_type="Hybrid"', run_playbook_text)
+    def test_boundary_5_role_taxonomy_closed_set_survives_into_index_writers(self) -> None:
+        """[Req: inferred — from role-taxonomy whitelist] live index
+        writers carry the v1.5.4 role-breakdown contract.
+
+        v1.5.4 Part 1 / Round 1 Council finding C2-3: the v1.5.3
+        Code/Skill/Hybrid trichotomy was replaced by the Phase-1 role
+        taxonomy; the stub INDEX writer emits target_role_breakdown
+        (null until Phase 1 produces the role map). The classify_project
+        module retains its VALID_CLASSIFICATIONS as a debug utility but
+        the run path no longer references it."""
+        # Debug utility still exposes the legacy classification set.
+        self.assertEqual(
+            set(classify_project.VALID_CLASSIFICATIONS),
+            {"Code", "Skill", "Hybrid"},
+        )
+        # Live writers carry the v1.5.4 role-map field, not the
+        # retired target_project_type.
+        run_playbook_text = (
+            REPO_ROOT / "bin" / "run_playbook.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"target_role_breakdown"', run_playbook_text)
+        self.assertNotIn(
+            '"target_project_type": "Hybrid"', run_playbook_text
+        )
+        # The role taxonomy itself is a closed set in bin/role_map.
+        self.assertIn("skill-prose", role_map.VALID_ROLES)
+        self.assertIn("skill-tool", role_map.VALID_ROLES)
+        self.assertIn("code", role_map.VALID_ROLES)
 
 
 if __name__ == "__main__":

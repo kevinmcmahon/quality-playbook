@@ -1590,20 +1590,32 @@ _V150_ILLEGAL_FIX_PAIRS = {
     ("mis-read", "both"),
 }
 _V150_SUPPORTED_EXTENSIONS = (".txt", ".md")
-_V150_REQUIRED_INDEX_FIELDS = (
+# v1.5.4 Part 1 / Round 1 Council finding C2-1: INDEX schema is now
+# version-routed. New runs MUST emit schema_version "2.0" with
+# target_role_breakdown; legacy archives carry schema_version "1.0"
+# (or no schema_version at all) with target_project_type. The fields
+# common to both schemas live in _V150_INDEX_COMMON_FIELDS; the
+# version-specific fields live in their own tuples and are picked at
+# validation time.
+_V150_INDEX_COMMON_FIELDS = (
     "run_timestamp_start",
     "run_timestamp_end",
     "duration_seconds",
     "qpb_version",
     "target_repo_path",
     "target_repo_git_sha",
-    # v1.5.4 Part 1: target_project_type was retired in favour of the
-    # Phase-1 role map. The new field is populated from the breakdown
-    # subtree of quality/exploration_role_map.json by run_playbook.
-    "target_role_breakdown",
     "phases_executed",
     "summary",
     "artifacts",
+)
+_V150_INDEX_LEGACY_FIELDS = ("target_project_type",)
+_V154_INDEX_CURRENT_FIELDS = ("target_role_breakdown",)
+# Legacy alias: a small number of pre-iteration tests still import
+# _V150_REQUIRED_INDEX_FIELDS expecting a single tuple. Preserve the
+# alias under the v1.5.4-current contract; the version-routed
+# enforcement happens inside check_v1_5_0_index_md.
+_V150_REQUIRED_INDEX_FIELDS = (
+    _V150_INDEX_COMMON_FIELDS + _V154_INDEX_CURRENT_FIELDS
 )
 _V150_REQUIRED_SUMMARY_KEYS = ("requirements", "bugs", "gate_verdict")
 
@@ -1985,7 +1997,18 @@ def check_v1_5_0_bugs_manifest(q):
 
 
 def check_v1_5_0_index_md(q):
-    """§10 invariant #10 — quality/INDEX.md exists with all §11 required fields."""
+    """§10 invariant #10 — quality/INDEX.md exists with all §11 required fields.
+
+    v1.5.4 Part 1 / Round 1 Council finding C2-1: routes by INDEX
+    payload.schema_version. ``"2.0"`` (or missing on a fresh run from
+    v1.5.4+ tooling) requires the v1.5.4 contract
+    (target_role_breakdown). ``"1.0"`` (or any pre-2.0 string) is
+    treated as a legacy archive: target_project_type is required, a
+    single WARN is emitted noting the legacy schema, and
+    target_role_breakdown is not required. This keeps historical
+    archives under quality/previous_runs/ legible without rewriting
+    them retroactively while keeping the gate strict on current runs.
+    """
     path = q / "INDEX.md"
     v150_artifacts = (
         "formal_docs_manifest.json",
@@ -2015,7 +2038,31 @@ def check_v1_5_0_index_md(q):
     if not isinstance(payload, dict):
         fail("quality/INDEX.md: fenced JSON block is not a JSON object")
         return
-    for key in _V150_REQUIRED_INDEX_FIELDS:
+
+    # Schema routing: pre-2.0 strings (or absent schema_version on an
+    # archive that pre-dates v1.5.4) follow the legacy contract.
+    schema_version = payload.get("schema_version")
+    is_legacy = schema_version != "2.0" and schema_version not in (None, "")
+    # When schema_version is absent/empty, treat as v1.5.4-current ONLY
+    # if the payload already carries the v1.5.4 fields; otherwise
+    # treat as legacy (this catches archived v1.5.3 INDEX files that
+    # were written before schema_version became part of the contract).
+    if schema_version in (None, ""):
+        is_legacy = "target_project_type" in payload and (
+            "target_role_breakdown" not in payload
+        )
+
+    if is_legacy:
+        warn(
+            f"quality/INDEX.md: schema_version={schema_version!r} treated as "
+            "legacy v1.5.3 archive (target_project_type contract). v1.5.4+ "
+            "runs MUST emit schema_version='2.0' with target_role_breakdown."
+        )
+        required = _V150_INDEX_COMMON_FIELDS + _V150_INDEX_LEGACY_FIELDS
+    else:
+        required = _V150_INDEX_COMMON_FIELDS + _V154_INDEX_CURRENT_FIELDS
+
+    for key in required:
         if key not in payload:
             fail(f"quality/INDEX.md: missing required field {key!r} (schemas.md §11)")
             continue

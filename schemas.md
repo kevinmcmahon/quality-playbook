@@ -1091,20 +1091,46 @@ which alone knows phase timing and model assignments. The gate validates
 that the file exists and that every required field below is present and
 non-empty.
 
-| Field                   | Type            | Required | Notes                                                                                   |
-|-------------------------|-----------------|----------|------------------------------------------------------------------------------------------|
-| `run_timestamp_start`   | string          | yes      | ISO 8601 with explicit timezone. Run start.                                              |
-| `run_timestamp_end`     | string          | yes      | ISO 8601 with explicit timezone. Run end.                                                |
-| `duration_seconds`      | integer         | yes      | End minus start, rounded to whole seconds.                                               |
-| `qpb_version`           | string          | yes      | Playbook version that produced the run, e.g. `"1.5.3"`.                                  |
-| `target_repo_path`      | string          | yes      | Absolute or repo-root-relative path to the target repo.                                  |
-| `target_repo_git_sha`   | string          | yes      | Git SHA of the target repo HEAD at run start. May be `"unknown"` for non-git targets.    |
-| `target_project_type`   | string          | yes      | One of `Code`, `Skill`, `Hybrid` (per v1.5.2 project-type taxonomy).                     |
-| `phases_executed`       | array of object | yes      | One entry per phase run. Each: `{phase_id, model, start, end, exit_status}`.             |
-| `summary.requirements`  | object          | yes      | Counts by tier — keys `"1"`..`"5"`, integer values.                                      |
-| `summary.bugs`          | object          | yes      | Counts by severity and disposition. Keys include every enum value from §3.2 and §3.3; integer values. |
-| `summary.gate_verdict`  | string          | yes      | One of `"pass"`, `"fail"`, `"partial"`.                                                  |
-| `artifacts`             | array of string | yes      | Relative paths (within the run folder) to every artifact produced during this run.       |
+| Field                    | Type            | Required | Notes                                                                                                                       |
+|--------------------------|-----------------|----------|------------------------------------------------------------------------------------------------------------------------------|
+| `schema_version`         | string          | yes (v1.5.4+) | INDEX schema generation. `"2.0"` for v1.5.4+ runs (carries `target_role_breakdown`); `"1.0"` (or absent) for legacy v1.5.3 runs that carried `target_project_type`. |
+| `run_timestamp_start`    | string          | yes      | ISO 8601 with explicit timezone. Run start.                                                                                  |
+| `run_timestamp_end`      | string          | yes      | ISO 8601 with explicit timezone. Run end.                                                                                    |
+| `duration_seconds`       | integer         | yes      | End minus start, rounded to whole seconds.                                                                                   |
+| `qpb_version`            | string          | yes      | Playbook version that produced the run, e.g. `"1.5.4"`.                                                                      |
+| `target_repo_path`       | string          | yes      | Absolute or repo-root-relative path to the target repo.                                                                      |
+| `target_repo_git_sha`    | string          | yes      | Git SHA of the target repo HEAD at run start. May be `"unknown"` for non-git targets.                                        |
+| `target_role_breakdown`  | object \| null  | yes (v1.5.4+) | Phase-1 role-map breakdown subtree (`files_by_role`, `size_by_role`, `percentages` with `skill_share`/`code_share`/`tool_share`/`other_share`). `null` is legitimate for the stub INDEX written before Phase 1 has produced `quality/exploration_role_map.json`. |
+| `phases_executed`        | array of object | yes      | One entry per phase run. Each: `{phase_id, model, start, end, exit_status}`.                                                  |
+| `summary.requirements`   | object          | yes      | Counts by tier — keys `"1"`..`"5"`, integer values.                                                                          |
+| `summary.bugs`           | object          | yes      | Counts by severity and disposition. Keys include every enum value from §3.2 and §3.3; integer values.                        |
+| `summary.gate_verdict`   | string          | yes      | One of `"pass"`, `"fail"`, `"partial"`.                                                                                      |
+| `artifacts`              | array of string | yes      | Relative paths (within the run folder) to every artifact produced during this run.                                           |
+
+**INDEX schema migration (v1.5.3 → v1.5.4).** v1.5.3 INDEX files
+required `target_project_type` (a `Code` / `Skill` / `Hybrid` enum
+string); v1.5.4 retired that field in favor of `target_role_breakdown`,
+which carries the per-role file counts and percentage shares emerging
+from the Phase-1 file role tagging (`quality/exploration_role_map.json`,
+described in `docs/design/QPB_v1.5.4_Design.md` Part 1). Both shapes
+remain readable by the gate:
+
+  - **`schema_version: "2.0"`** (or missing on a NEW run produced by
+    v1.5.4+ tooling) → the gate requires `target_role_breakdown` and
+    accepts `null` for the stub INDEX written before Phase 1 produces
+    the role map.
+  - **`schema_version: "1.0"`** (or any pre-2.0 string) → the gate
+    treats the file as a legacy archive, accepts `target_project_type`
+    in place of `target_role_breakdown`, and emits a single WARN per
+    file noting that the schema is frozen at the v1.5.3 shape. This
+    path exists exclusively to keep historical archives under
+    `quality/previous_runs/` legible to today's tooling without
+    rewriting them retroactively.
+
+New runs MUST emit `schema_version: "2.0"`. Migrating an archived
+INDEX in place is OPTIONAL (the schema-routing path covers reads); if
+it happens, the file becomes a v1.5.4 INDEX and gains the
+`target_role_breakdown` field.
 
 The format is markdown with a fenced JSON block carrying the structured
 fields (the gate parses the JSON block, not the surrounding prose). The

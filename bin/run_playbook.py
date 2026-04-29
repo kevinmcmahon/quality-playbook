@@ -620,10 +620,22 @@ SKILL_FALLBACK_GUIDE = (
 )
 
 
+def _role_taxonomy_block() -> str:
+    """Build the Phase 1 prompt's role-taxonomy section from
+    bin.role_map.ROLE_DESCRIPTIONS so adding a role to that dict
+    automatically updates the prompt. v1.5.4 Round 1 Council finding
+    C3-1 (single source of truth)."""
+    return "\n".join(
+        f"- `{role}` — {desc}"
+        for role, desc in role_map_lib.ROLE_DESCRIPTIONS.items()
+    )
+
+
 def phase1_prompt(no_seeds: bool) -> str:
     seed_instruction = ""
     if no_seeds:
         seed_instruction = "Skip Phase 0 and Phase 0b entirely - do not look for quality/runs/ or sibling versioned directories. This is a clean benchmark run. Start directly at Phase 1."
+    role_taxonomy = _role_taxonomy_block()
 
     return f"""You are a quality engineer. {SKILL_FALLBACK_GUIDE} For this phase read ONLY the sections up through Phase 1 (stop at the \"---\" line before \"Phase 2\"). Also read the reference files (under whichever references/ directory matches the install path you resolved) that are relevant to exploration.
 
@@ -637,17 +649,8 @@ Before (or as part of) writing EXPLORATION.md, produce `quality/exploration_role
 
 Then walk the target tree (respect the same ignore conventions used elsewhere — `.git/`, build outputs, vendored dependencies — and tag every file QPB would otherwise consider in scope). For each file, emit a record with the role taxonomy below. The judgment is content-based: read the file (or enough of it to judge), do NOT pattern-match on extension or directory name alone.
 
-Role taxonomy:
-- `skill-prose` — SKILL.md, agents/* — the skill's declarative content.
-- `skill-reference` — additional reference docs the skill names (e.g., `references/exploration_patterns.md`).
-- `skill-tool` — a script the skill prose explicitly references AND tells the agent to invoke. The distinguishing test: does SKILL.md (or a referenced doc) contain prose that names this script and tells the agent to call it for a specific subtask? If yes, `skill-tool`. If the script is independent code with its own behavior contract that the SKILL.md doesn't reference, it's `code`. (Worked example: QPB's `bin/run_playbook.py` is `code`, NOT `skill-tool` — SKILL.md does not direct agents to invoke it; it has its own contract.)
-- `code` — independent orchestrator/library code (carries its own behavior contract; not subordinate to SKILL.md prose).
-- `test` — test files and test harnesses.
-- `docs` — README, CHANGELOG, design docs, anything in `docs/`.
-- `config` — `.gitignore`, `pyproject.toml`, settings.
-- `fixture` — test fixtures or example data used by tests.
-- `formal-spec` — RFCs, external specifications, citable sources.
-- `playbook-output` — files inside the target's `quality/` subtree, or QPB-managed installations like `.github/skills/quality_gate.py`, that came from a prior playbook run rather than the target's intrinsic surface.
+Role taxonomy (single source of truth: `bin/role_map.py::ROLE_DESCRIPTIONS`):
+{role_taxonomy}
 
 If a file genuinely doesn't fit any of these, you may add a new role — but document the addition in your role map's first entry as a comment-style rationale.
 
@@ -689,6 +692,13 @@ Tagging discipline:
 1. `skill-tool` and `code` is the load-bearing distinction. A script is only `skill-tool` if SKILL.md (or a doc SKILL.md cites) explicitly names it and tells the agent to invoke it. Independent code modules — even small ones in a `scripts/` directory — are `code` if no SKILL.md prose directs the agent to use them.
 2. Anything that came from a prior playbook run (the target's `quality/` subtree, an installed `.github/skills/quality_gate.py` from QPB itself) is `playbook-output`, never the role it would have if it were the target's own surface. This prevents the v1.5.3 LOC-pollution failure mode where a target's apparent code surface was inflated by QPB's own infrastructure.
 3. If SKILL.md is absent at the root and no other skill-shaped entry file exists, the role map will have zero `skill-prose` entries. That's fine — the four-pass derivation pipeline will no-op for this target.
+
+Handling edge cases (v1.5.4 Phase 1 edge-case discipline):
+- **No SKILL.md at root, no other skill-shaped entry.** Tag every file by content as usual. The role map will carry zero `skill-prose` and `skill-reference` entries; the four-pass pipeline will no-op. Do NOT invent a synthetic SKILL.md or label something `skill-prose` for a project that genuinely has no skill surface.
+- **SKILL.md references a script that does not exist.** Add a top-level `broken_references` array to the role map carrying `{{"prose_location": "<file>:<line>", "missing_script": "<path-as-cited>"}}` entries. Do NOT add a synthetic file entry for the missing script. Note the broken reference in EXPLORATION.md so Phase 4's prose-to-code divergence check can register it as a known gap. (This field is additive; the gate's role-map validator does not require it.)
+- **Target with a very large file count (1000+).** Process in batches. The `files` array can grow incrementally as you walk the tree; once you've made all per-file judgments, compute `breakdown` from the full set and write the file once. Do not write a partial role map mid-walk — the validator considers the file complete when it appears.
+- **Ambiguous prose ("the helper script", "the validator").** Default to `code`. `skill-tool` requires an unambiguous citation: SKILL.md or a referenced doc must name the file (or a path-suffix that uniquely identifies it) AND direct the agent to invoke it. When in doubt, tag `code` and capture the ambiguity in `rationale` — it's better to under-tag `skill-tool` than to inflate the surface area Phase 4's prose-to-code check operates on.
+- **Generated files (build outputs, vendored dependencies, lockfiles).** Skip them at the ignore-rule layer; do not include them in the role map. If you can't tell whether a file is generated, look for a generation marker (header comment naming the generator, sibling `.generated` file, presence in `.gitignore`); if generated, omit from the role map.
 
 When Phase 1 is complete, write your full exploration findings to quality/EXPLORATION.md. This file must contain:
 - Domain and stack identification
@@ -1224,6 +1234,43 @@ def check_phase_gate(repo_dir: Path, phase: str) -> GateCheck:
         line_count = count_lines(exploration)
         if line_count < 120:
             return GateCheck(ok=False, messages=[f"GATE FAIL Phase 2: EXPLORATION.md is only {line_count} lines (expected 120+)"])
+        # v1.5.4 Round 1 Council finding A1/B1/C1: Phase 2 gate must
+        # also enforce the role-map presence + validity. Without this
+        # check the L1 "classifier never wired in" failure mode
+        # partially re-emerges — an LLM that writes a long
+        # EXPLORATION.md but skips role tagging would otherwise pass
+        # Phase 1 with no classification.
+        role_map_path = role_map_lib.default_path(repo_dir)
+        if not role_map_path.is_file():
+            return GateCheck(
+                ok=False,
+                messages=[
+                    "GATE FAIL Phase 2: quality/exploration_role_map.json "
+                    "missing. Phase 1 must produce the role map before "
+                    "Phase 2 begins. If Phase 1 ran with an LLM that "
+                    "skipped role tagging, re-run Phase 1."
+                ],
+            )
+        role_map_data = role_map_lib.load_role_map(role_map_path)
+        if role_map_data is None:
+            return GateCheck(
+                ok=False,
+                messages=[
+                    f"GATE FAIL Phase 2: {role_map_path} could not be "
+                    "loaded as a JSON object. Re-run Phase 1 to "
+                    "regenerate it."
+                ],
+            )
+        validation_errors = role_map_lib.validate_role_map(role_map_data)
+        if validation_errors:
+            joined = "\n".join(f"  - {err}" for err in validation_errors)
+            return GateCheck(
+                ok=False,
+                messages=[
+                    "GATE FAIL Phase 2: quality/exploration_role_map.json "
+                    f"failed validation:\n{joined}"
+                ],
+            )
         return GateCheck(ok=True, messages=messages)
     if phase == "3":
         required = [
@@ -1879,6 +1926,10 @@ def write_live_index_stub(
         full_run=full_run,
     )
     payload = {
+        # v1.5.4 Part 1 / Round 1 Council finding C2-1: schema_version
+        # routes the gate between target_project_type (1.0 legacy) and
+        # target_role_breakdown (2.0 current).
+        "schema_version": "2.0",
         "run_timestamp_start": start_ext,
         "run_timestamp_end": start_ext,
         "duration_seconds": 0,

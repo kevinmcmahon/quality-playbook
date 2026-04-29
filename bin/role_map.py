@@ -100,18 +100,48 @@ SKILL_PROSE_ROLES = frozenset({"skill-prose", "skill-reference"})
 SKILL_TOOL_ROLES = frozenset({"skill-tool"})
 CODE_ROLES = frozenset({"code"})
 
-VALID_ROLES = frozenset({
-    "skill-prose",
-    "skill-reference",
-    "skill-tool",
-    "code",
-    "test",
-    "docs",
-    "config",
-    "fixture",
-    "formal-spec",
-    "playbook-output",
-})
+# ROLE_DESCRIPTIONS is the single source of truth for the role taxonomy.
+# Both VALID_ROLES (the gate-side enum check) and the Phase 1 prompt's
+# role-taxonomy section (constructed in run_playbook.phase1_prompt) read
+# from this dict. Adding a new role here automatically updates both.
+# v1.5.4 Round 1 Council finding C3-1.
+ROLE_DESCRIPTIONS: dict = {
+    "skill-prose": (
+        "SKILL.md / agents/* / declarative skill content."
+    ),
+    "skill-reference": (
+        "Additional reference docs the skill names "
+        "(e.g., references/exploration_patterns.md)."
+    ),
+    "skill-tool": (
+        "A script the skill prose explicitly references AND tells the "
+        "agent to invoke. The distinguishing test: does SKILL.md (or a "
+        "referenced doc) contain prose that names this script and tells "
+        "the agent to call it for a specific subtask? If yes, "
+        "skill-tool. If the script is independent code with its own "
+        "behavior contract that the SKILL.md doesn't reference, it's "
+        "code. (Worked example: QPB's bin/run_playbook.py is code, NOT "
+        "skill-tool — SKILL.md does not direct agents to invoke it; it "
+        "has its own contract.)"
+    ),
+    "code": (
+        "Independent orchestrator/library code (carries its own behavior "
+        "contract; not subordinate to SKILL.md prose)."
+    ),
+    "test": "Test files and test harnesses.",
+    "docs": "README, CHANGELOG, design docs, anything in docs/.",
+    "config": ".gitignore, pyproject.toml, settings.",
+    "fixture": "Test fixtures or example data used by tests.",
+    "formal-spec": "RFCs, external specifications, citable sources.",
+    "playbook-output": (
+        "Files inside the target's quality/ subtree, or QPB-managed "
+        "installations like .github/skills/quality_gate.py, that came "
+        "from a prior playbook run rather than the target's intrinsic "
+        "surface."
+    ),
+}
+
+VALID_ROLES = frozenset(ROLE_DESCRIPTIONS.keys())
 
 # Required top-level keys in a role map document.
 _REQUIRED_TOP_KEYS = ("schema_version", "files", "breakdown")
@@ -199,12 +229,18 @@ def validate_role_map(data: dict) -> list[str]:
                 f"files[{idx}] size_bytes must be a non-negative int "
                 f"(got {size!r})"
             )
-        if role == "skill-tool" and "skill_prose_reference" in entry:
-            ref = entry["skill_prose_reference"]
-            if not isinstance(ref, str) or not ref.strip():
+        # v1.5.4 Round 1 Council finding A2/B2/C1: skill_prose_reference
+        # is REQUIRED on every skill-tool entry, not merely validated when
+        # present. Without it, the Phase 4 prose-to-code divergence check
+        # has no anchor to look up — the cited prose location is the
+        # entire point of distinguishing skill-tool from code.
+        if role == "skill-tool":
+            ref = entry.get("skill_prose_reference")
+            if ref is None or not isinstance(ref, str) or not ref.strip():
                 errors.append(
-                    f"files[{idx}] skill_prose_reference must be a non-empty "
-                    "string when present"
+                    f"file {entry.get('path')!r} has role='skill-tool' but "
+                    "missing or empty 'skill_prose_reference'; required for "
+                    "Phase 4 prose-to-code divergence checks"
                 )
 
     breakdown = data.get("breakdown")

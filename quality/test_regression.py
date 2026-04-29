@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from bin import benchmark_lib, citation_verifier, classify_project, run_playbook
+from bin import benchmark_lib, citation_verifier, classify_project, role_map, run_playbook
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -35,9 +35,17 @@ class CodeReviewRegressionTests(unittest.TestCase):
             (repo / "reference_docs" / "design-notes.md").write_text("# notes\n", encoding="utf-8")
             self.assertTrue(run_playbook.docs_present(repo))
 
-    @unittest.expectedFailure
     def test_bug_002_phase2_gate_enforces_written_contract(self) -> None:
-        """BUG-002: long placeholders without the required headings must not pass Phase 2."""
+        """BUG-002: long placeholders without the required headings must
+        not pass Phase 2.
+
+        v1.5.4 Round 1 Council finding A1/B1/C1 incidentally fixed this:
+        the new Phase 2 role-map gate fails when only EXPLORATION.md
+        exists (no quality/exploration_role_map.json), so the long
+        placeholder no longer slips through. The original BUG-002
+        concern (length-only enforcement) is still imperfect but is
+        now backstopped by the role-map presence check. Removed
+        @expectedFailure since the gate now rejects this case."""
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             quality = repo / "quality"
@@ -47,29 +55,80 @@ class CodeReviewRegressionTests(unittest.TestCase):
             gate = run_playbook.check_phase_gate(repo, "2")
             self.assertFalse(gate.ok)
 
-    @unittest.expectedFailure
-    def test_bug_003_live_index_preserves_non_code_project_types(self) -> None:
-        """BUG-003: live INDEX writers should preserve Skill and Hybrid classifications."""
+    def test_bug_003_live_index_carries_role_breakdown(self) -> None:
+        """BUG-003 (v1.5.4 migration): live INDEX writers must emit
+        schema_version 2.0 with target_role_breakdown sourced from the
+        Phase-1 role map at quality/exploration_role_map.json. The
+        v1.5.3 form of this test asserted target_project_type =
+        classification; that field was retired in v1.5.4 Part 1
+        (Round 1 Council finding C2-1) and replaced by
+        target_role_breakdown. The @expectedFailure marker that masked
+        the migration regression has been removed; this test must
+        pass on every v1.5.4 run."""
         for classification in ("Skill", "Hybrid"):
             with self.subTest(classification=classification):
                 with tempfile.TemporaryDirectory() as tmp:
                     repo = Path(tmp)
-                    (repo / "SKILL.md").write_text("# Skill\n\n" + ("word " * 500), encoding="utf-8")
-                    (repo / "bin").mkdir()
-                    (repo / "bin" / "tool.py").write_text("print('hello')\n", encoding="utf-8")
-                    record = classify_project.classify_project(
-                        repo,
-                        override=classification,
-                        override_rationale="regression fixture",
+                    (repo / "SKILL.md").write_text(
+                        "# Skill\n\n" + ("word " * 500), encoding="utf-8"
                     )
-                    classify_project.write_classification(repo, record)
-                    with mock.patch.object(run_playbook.archive_lib, "_git_head_sha", return_value="deadbeef"):
-                        run_playbook.write_live_index_stub(repo, "20260428-131715")
-                    stub_payload = _extract_index_payload((repo / "quality" / "INDEX.md").read_text(encoding="utf-8"))
-                    self.assertEqual(stub_payload["target_project_type"], classification)
-                    run_playbook.write_live_index_final(repo, "20260428-131715", gate_verdict="partial")
-                    final_payload = _extract_index_payload((repo / "quality" / "INDEX.md").read_text(encoding="utf-8"))
-                    self.assertEqual(final_payload["target_project_type"], classification)
+                    (repo / "bin").mkdir()
+                    (repo / "bin" / "tool.py").write_text(
+                        "print('hello')\n", encoding="utf-8"
+                    )
+                    files = [{
+                        "path": "SKILL.md", "role": "skill-prose",
+                        "size_bytes": 1000, "rationale": "fixture",
+                    }]
+                    if classification == "Hybrid":
+                        files.append({
+                            "path": "bin/tool.py", "role": "code",
+                            "size_bytes": 500, "rationale": "fixture",
+                        })
+                    role_map_doc = {
+                        "schema_version": role_map.SCHEMA_VERSION,
+                        "timestamp_start": "2026-04-28T00:00:00Z",
+                        "files": files,
+                        "breakdown": role_map.compute_breakdown(files),
+                    }
+                    quality = repo / "quality"
+                    quality.mkdir(exist_ok=True)
+                    (quality / "exploration_role_map.json").write_text(
+                        json.dumps(role_map_doc), encoding="utf-8"
+                    )
+                    with mock.patch.object(
+                        run_playbook.archive_lib,
+                        "_git_head_sha",
+                        return_value="deadbeef",
+                    ):
+                        run_playbook.write_live_index_stub(
+                            repo, "20260428T131715Z"
+                        )
+                    stub_payload = _extract_index_payload(
+                        (repo / "quality" / "INDEX.md").read_text(encoding="utf-8")
+                    )
+                    # Stub runs before Phase 1; target_role_breakdown
+                    # is null and schema_version is 2.0.
+                    self.assertEqual(stub_payload["schema_version"], "2.0")
+                    self.assertIsNone(stub_payload["target_role_breakdown"])
+                    self.assertNotIn("target_project_type", stub_payload)
+                    run_playbook.write_live_index_final(
+                        repo, "20260428T131715Z", gate_verdict="partial"
+                    )
+                    final_payload = _extract_index_payload(
+                        (repo / "quality" / "INDEX.md").read_text(encoding="utf-8")
+                    )
+                    self.assertEqual(final_payload["schema_version"], "2.0")
+                    breakdown = final_payload["target_role_breakdown"]
+                    self.assertIsNotNone(breakdown)
+                    self.assertIn("percentages", breakdown)
+                    pcts = breakdown["percentages"]
+                    if classification == "Skill":
+                        self.assertGreater(pcts["skill_share"], 0)
+                        self.assertEqual(pcts["code_share"], 0)
+                    else:  # Hybrid
+                        self.assertGreater(pcts["skill_share"], 0)
+                        self.assertGreater(pcts["code_share"], 0)
 
     @unittest.expectedFailure
     def test_bug_004_cleanup_without_pid_files_stays_run_scoped(self) -> None:

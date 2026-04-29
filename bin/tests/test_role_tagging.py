@@ -406,6 +406,71 @@ class ValidateRoleMapTests(unittest.TestCase):
         self.assertTrue(any("skill_prose_reference" in e for e in errs))
 
 
+class SkillToolProseReferenceRequiredTests(unittest.TestCase):
+    """v1.5.4 Round 1 Council finding A2/B2/C1: skill_prose_reference is
+    REQUIRED on every skill-tool entry. Without it, the Phase 4
+    prose-to-code divergence check cannot anchor against the cited
+    prose location."""
+
+    def test_skill_tool_with_valid_prose_reference_passes(self) -> None:
+        ok = _make_role_map([
+            _entry(
+                "scripts/x.py",
+                "skill-tool",
+                500,
+                skill_prose_reference="SKILL.md:42",
+            ),
+        ])
+        self.assertEqual(rm.validate_role_map(ok), [])
+
+    def test_skill_tool_missing_prose_reference_rejected(self) -> None:
+        # Construct entry WITHOUT skill_prose_reference at all.
+        bad = _make_role_map([
+            _entry("scripts/x.py", "skill-tool", 500),
+        ])
+        errs = rm.validate_role_map(bad)
+        self.assertTrue(
+            any("skill_prose_reference" in e for e in errs),
+            f"expected skill_prose_reference error, got {errs}",
+        )
+        self.assertTrue(
+            any("scripts/x.py" in e for e in errs),
+            f"expected error to name the offending path, got {errs}",
+        )
+
+    def test_skill_tool_empty_string_prose_reference_rejected(self) -> None:
+        bad = _make_role_map([
+            _entry(
+                "scripts/x.py",
+                "skill-tool",
+                500,
+                skill_prose_reference="",
+            ),
+        ])
+        errs = rm.validate_role_map(bad)
+        self.assertTrue(any("skill_prose_reference" in e for e in errs))
+
+    def test_skill_tool_non_string_prose_reference_rejected(self) -> None:
+        bad = _make_role_map([
+            _entry(
+                "scripts/x.py",
+                "skill-tool",
+                500,
+                skill_prose_reference=42,  # int, not string
+            ),
+        ])
+        errs = rm.validate_role_map(bad)
+        self.assertTrue(any("skill_prose_reference" in e for e in errs))
+
+    def test_code_entry_without_prose_reference_passes(self) -> None:
+        # The skill_prose_reference requirement applies ONLY to
+        # skill-tool entries; a code entry has no obligation to carry it.
+        ok = _make_role_map([
+            _entry("bin/run_playbook.py", "code", 90000),
+        ])
+        self.assertEqual(rm.validate_role_map(ok), [])
+
+
 class ComputeBreakdownTests(unittest.TestCase):
     def test_empty_files_yields_zero_shares(self) -> None:
         bd = rm.compute_breakdown([])
@@ -471,6 +536,30 @@ class IndexBreakdownProjectionTests(unittest.TestCase):
     def test_role_breakdown_for_index_returns_none_when_absent(self) -> None:
         self.assertIsNone(rm.role_breakdown_for_index(None))
         self.assertIsNone(rm.role_breakdown_for_index({}))
+
+
+class PromptTaxonomySingleSourceTests(unittest.TestCase):
+    """v1.5.4 Round 1 Council finding C3-1: Phase 1 prompt builds its
+    role-taxonomy section from bin.role_map.ROLE_DESCRIPTIONS rather
+    than enumerating roles in a second place. This test pins that
+    contract — adding a role to ROLE_DESCRIPTIONS without rebuilding
+    the prompt would be caught here."""
+
+    def test_phase1_prompt_contains_every_valid_role(self) -> None:
+        from bin import run_playbook
+        prompt = run_playbook.phase1_prompt(no_seeds=False)
+        for role in rm.VALID_ROLES:
+            self.assertIn(
+                f"`{role}`",
+                prompt,
+                f"role {role!r} from VALID_ROLES is missing from "
+                "phase1_prompt — single source of truth broken",
+            )
+
+    def test_role_descriptions_keys_match_valid_roles(self) -> None:
+        # If someone redefines VALID_ROLES without rebuilding it from
+        # ROLE_DESCRIPTIONS, the two will drift; pin them.
+        self.assertEqual(set(rm.ROLE_DESCRIPTIONS.keys()), set(rm.VALID_ROLES))
 
 
 if __name__ == "__main__":
