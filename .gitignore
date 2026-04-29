@@ -55,3 +55,5 @@ council-reviews/
 
 # Pattern discovery working files
 pattern-discovery/
+qpb-bootstrap-iter-remaining.log
+qpb-*.log
