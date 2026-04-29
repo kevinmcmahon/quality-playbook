@@ -347,6 +347,9 @@ def _run_phase4(args: argparse.Namespace, target_dir: Path) -> int:
                 "=== Phase 4 Part A.3: LLM-driven prose-to-code ===",
                 file=sys.stderr,
             )
+            # v1.5.4 Phase 2 Site 3: activate iff the Phase-1 role map
+            # tagged skill-tool files. Replaces the v1.5.3
+            # project_type=='Hybrid' gate.
             from bin import role_map as _role_map
             role_map_path = (
                 args.role_map_path
@@ -354,17 +357,13 @@ def _run_phase4(args: argparse.Namespace, target_dir: Path) -> int:
                 else _role_map.default_path(target_dir)
             )
             loaded = _role_map.load_role_map(role_map_path)
-            project_type = (
-                _role_map.derive_legacy_project_type(loaded)
-                if loaded is not None
-                else "Unknown"
-            )
+            should_run = _role_map.has_skill_tools(loaded)
             cfg = divergence_prose_to_code_llm.ProseToCodeLLMConfig(
                 formal_path=formal_path,
                 output_path=p3 / "pass_e_prose_to_code_divergences.jsonl",
                 progress_path=p3 / "pass_e_prose_to_code_progress.json",
                 repo_root=target_dir,
-                project_type=project_type,
+                should_run=should_run,
                 sections_path=sections_path,
                 pass_spec_path=args.pass_spec_path,
                 skipped_uc_ids=un_anchored_uc_ids,
@@ -431,6 +430,24 @@ def _run_phase4(args: argparse.Namespace, target_dir: Path) -> int:
     return 0
 
 
+def _resolve_role_map_for_dispatch(args: argparse.Namespace, target_dir: Path):
+    """Load the Phase-1 role map for dispatch-time activation decisions.
+
+    Returns the parsed role-map dict, or ``None`` when the role map is
+    absent or unparseable. Pass-specific runners may still raise their
+    own errors when they require the role map (Pass C does); this helper
+    only services activation gates that need to short-circuit cleanly
+    on empty-side targets.
+    """
+    from bin import role_map as _role_map  # noqa: WPS433
+    role_map_path = (
+        args.role_map_path
+        if args.role_map_path is not None
+        else _role_map.default_path(target_dir)
+    )
+    return _role_map.load_role_map(role_map_path)
+
+
 def _main(argv: Optional[list[str]] = None) -> int:
     args = _parse_args(sys.argv[1:] if argv is None else argv)
     target_dir = args.target_dir.resolve()
@@ -439,6 +456,21 @@ def _main(argv: Optional[list[str]] = None) -> int:
 
     if args.phase == 4:
         return _run_phase4(args, target_dir)
+
+    # v1.5.4 Phase 2 Site 1: four-pass skill-derivation pipeline
+    # activates iff the Phase-1 role map reports a skill-prose surface.
+    # When the target has zero skill-prose files (e.g. a pure-code
+    # benchmark), the pipeline no-ops cleanly without invoking any
+    # LLM passes.
+    from bin import role_map as _role_map  # noqa: WPS433
+    role_map_data = _resolve_role_map_for_dispatch(args, target_dir)
+    if not _role_map.has_skill_prose(role_map_data):
+        print(
+            "=== bin.skill_derivation: role map shows no skill-prose "
+            "surface; four-pass pipeline no-ops ===",
+            file=sys.stderr,
+        )
+        return 0
 
     if args.pass_choice in ("A", "all"):
         print(f"=== Pass A: naive coverage on {target_dir} ===", file=sys.stderr)

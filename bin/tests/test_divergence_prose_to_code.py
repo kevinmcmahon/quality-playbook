@@ -190,7 +190,10 @@ class LLMJudgedTests(unittest.TestCase):
             output_path=tmp / "pass_e_p2c.jsonl",
             progress_path=tmp / "pass_e_p2c_progress.json",
             repo_root=tmp,
-            project_type="Hybrid",
+            # v1.5.4 Phase 2 Site 3: should_run replaces the legacy
+            # project_type=="Hybrid" guard. The hybrid-shaped fixture
+            # carries skill-tool surface in spirit, so should_run=True.
+            should_run=True,
             sections_path=sections,
             pass_spec_path=spec_stub,
         )
@@ -227,10 +230,14 @@ class LLMJudgedTests(unittest.TestCase):
             self.assertEqual(recs[0]["provisional_disposition"], "code-fix")
 
     def test_skill_project_a3_is_noop(self) -> None:
+        """v1.5.4 Phase 2 Site 3: a target whose role map reports zero
+        skill-tool files (e.g. a pure-Markdown skill) flips should_run
+        to False; Part A.3 must no-op regardless of what the LLM
+        runner would have produced."""
         with TemporaryDirectory() as tmp_str:
             tmp = Path(tmp_str)
             cfg = self._make_hybrid_fixture(tmp)
-            cfg.project_type = "Skill"
+            cfg.should_run = False
             runner = _MockRunner(
                 response_for=lambda p: json.dumps(
                     {"verdict": "diverges", "rationale": "x"}
@@ -240,6 +247,7 @@ class LLMJudgedTests(unittest.TestCase):
             self.assertEqual(result["calls_made"], 0)
             self.assertEqual(result["divergences_emitted"], 0)
             self.assertEqual(runner.call_log, [])
+            self.assertIn("skill-tool", result["skipped_reason"])
 
     def test_un_anchored_uc_skipped_at_a2_and_a3(self) -> None:
         """DQ-4-6: REQs flagged as derived from an un-anchored UC are

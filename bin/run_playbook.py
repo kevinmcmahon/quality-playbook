@@ -2050,6 +2050,31 @@ def final_artifact_gaps(repo_dir: Path) -> List[str]:
     return missing
 
 
+def _code_review_should_skip(repo_dir: Path) -> Optional[str]:
+    """v1.5.4 Phase 2 Site 2: the code-review pipeline (Phase 3) no-ops
+    when the Phase-1 role map shows zero ``code`` files. Returns a
+    human-readable reason string when Phase 3 should skip, or ``None``
+    when it should run normally.
+
+    Pre-Phase-1 invocations (no role map yet) and pre-iteration
+    targets that never produced one return ``None`` — Phase 3 runs as
+    before so existing behaviour is preserved on any target that
+    hasn't yet been classified."""
+    role_map_path = role_map_lib.default_path(repo_dir)
+    if not role_map_path.is_file():
+        return None
+    role_map_data = role_map_lib.load_role_map(role_map_path)
+    if role_map_data is None:
+        return None
+    if role_map_lib.has_code(role_map_data):
+        return None
+    return (
+        "Phase 3 (Code Review) skipped: role map reports zero `code` "
+        "files. The four-pass skill-derivation pipeline still runs "
+        "over the skill-side surface."
+    )
+
+
 def run_one_phase(
     repo_dir: Path,
     phase: str,
@@ -2063,6 +2088,13 @@ def run_one_phase(
         lib.logboth(log_file, lib.log(f"  {message}"))
     if not gate.ok:
         return False
+
+    if phase == "3":
+        skip_reason = _code_review_should_skip(repo_dir)
+        if skip_reason is not None:
+            lib.logboth(log_file, lib.log(f"  {skip_reason}"))
+            _log_phase_completion(repo_dir, phase, log_file, args, timestamp)
+            return True
 
     phase_index = phase_list.index(phase) + 1 if phase in phase_list else 1
     prompt = build_phase_prompt(phase, no_seeds=args.no_seeds)

@@ -92,9 +92,16 @@ class ProseToCodeLLMConfig:
     output_path: Path  # output: pass_e_prose_to_code_divergences.jsonl (append)
     progress_path: Path  # cursor file
     repo_root: Path
-    project_type: str  # "Code" / "Skill" / "Hybrid"
     sections_path: Path
     pass_spec_path: Path  # for the recovery preamble
+    # v1.5.4 Phase 2 Site 3: the prose-to-code LLM divergence check
+    # activates iff the Phase-1 role map reports skill-tool files —
+    # scripts the skill prose explicitly invokes, which are the only
+    # subjects of the prose-to-code claim. Replaces the v1.5.3
+    # project_type=='Hybrid' gate, which keyed on a label that no
+    # longer exists in the run path. Defaults to False so an empty
+    # config short-circuits to a clean no-op.
+    should_run: bool = False
     skipped_uc_ids: tuple = ()
     starting_div_idx: int = 1
     pace_seconds: int = 0
@@ -186,12 +193,15 @@ def run_divergence_prose_to_code_llm(
 ) -> dict:
     """Drive Part A.3 end-to-end. Returns summary dict.
 
-    No-op for non-Hybrid projects. Resumable via per-REQ cursor.
+    v1.5.4 Phase 2 Site 3: no-op when ``config.should_run`` is False,
+    which the caller derives from ``role_map.has_skill_tools(...)``.
+    Resumable via per-REQ cursor.
     """
-    if config.project_type != "Hybrid":
+    if not config.should_run:
         return {
             "skipped_reason": (
-                f"project_type={config.project_type!r}; A.3 only runs on Hybrid"
+                "role map reports no skill-tool files; Part A.3 "
+                "prose-to-code LLM divergence has no subjects to check"
             ),
             "divergences_emitted": 0,
             "calls_made": 0,
