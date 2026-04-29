@@ -1743,6 +1743,140 @@ class TestV150IndexMd(V150FixtureBase):
         self.assertEqual(fails, 0)
 
 
+class TestV150IndexMdSchemaRouting(V150FixtureBase):
+    """v1.5.4 Round 2 Council finding C1 + C3: INDEX.md schema_version
+    routing. Each of the four legitimate routing paths plus the
+    "future schema, refuse explicitly" path has its own test, exercising
+    check_v1_5_0_index_md directly via on-disk INDEX.md fixtures.
+
+    Path inventory:
+      1. schema 2.0 + target_role_breakdown            -> ship
+      2. schema 2.0 missing target_role_breakdown       -> FAIL
+      3. schema 1.0 + target_project_type               -> legacy WARN
+      4. absent schema + target_project_type only       -> legacy WARN (heuristic)
+      5. absent schema + neither field                  -> FAIL (current path)
+      6. schema 3.0 (future)                            -> explicit FAIL
+    """
+
+    _BASE_FIELDS = {
+        "run_timestamp_start": "2026-04-29T12:00:00Z",
+        "run_timestamp_end": "2026-04-29T12:15:00Z",
+        "duration_seconds": 900,
+        "qpb_version": "1.5.4",
+        "target_repo_path": ".",
+        "target_repo_git_sha": "abc123",
+        "phases_executed": [],
+        "summary": {"requirements": {}, "bugs": {}, "gate_verdict": "pass"},
+        "artifacts": [],
+    }
+
+    def _write_index(self, payload: dict) -> None:
+        text = (
+            "# Run Index — routing-test\n\n```json\n"
+            + json.dumps(payload)
+            + "\n```\n"
+        )
+        (self.q / "INDEX.md").write_text(text, encoding="utf-8")
+
+    def test_schema_2_0_with_role_breakdown_passes(self) -> None:
+        """Path 1: current schema with the v1.5.4 field. FAIL=0, WARN=0."""
+        payload = dict(self._BASE_FIELDS)
+        payload["schema_version"] = "2.0"
+        payload["target_role_breakdown"] = {
+            "files_by_role": {"code": 1},
+            "size_by_role": {"code": 100},
+            "percentages": {
+                "skill_share": 0.0, "code_share": 1.0,
+                "tool_share": 0.0, "other_share": 0.0,
+            },
+        }
+        self._write_index(payload)
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_index_md, self.q
+        )
+        self.assertEqual(fails, 0, out)
+        self.assertEqual(quality_gate.WARN, 0, out)
+
+    def test_schema_2_0_missing_role_breakdown_fails(self) -> None:
+        """Path 2: schema 2.0 with target_role_breakdown absent."""
+        payload = dict(self._BASE_FIELDS)
+        payload["schema_version"] = "2.0"
+        # Note: target_role_breakdown deliberately omitted.
+        self._write_index(payload)
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_index_md, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("target_role_breakdown", out)
+
+    def test_schema_1_0_with_project_type_passes_with_warn(self) -> None:
+        """Path 3: legacy archive accepted with one WARN."""
+        payload = dict(self._BASE_FIELDS)
+        payload["schema_version"] = "1.0"
+        payload["target_project_type"] = "Code"
+        self._write_index(payload)
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_index_md, self.q
+        )
+        self.assertEqual(fails, 0, out)
+        self.assertGreaterEqual(quality_gate.WARN, 1, out)
+        self.assertIn("legacy", out.lower())
+
+    def test_schema_absent_with_project_type_passes_with_warn(self) -> None:
+        """Path 4: pre-schema-version archive carrying only the legacy
+        field. Heuristic fallback routes to legacy + WARN."""
+        payload = dict(self._BASE_FIELDS)
+        # No schema_version field.
+        payload["target_project_type"] = "Code"
+        self._write_index(payload)
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_index_md, self.q
+        )
+        self.assertEqual(fails, 0, out)
+        self.assertGreaterEqual(quality_gate.WARN, 1, out)
+        self.assertIn("legacy", out.lower())
+
+    def test_schema_absent_with_neither_field_fails(self) -> None:
+        """Path 5: ambiguous payload — no schema_version, no
+        target_project_type, no target_role_breakdown. The heuristic
+        falls through to the current path which then FAILs on the
+        missing target_role_breakdown."""
+        payload = dict(self._BASE_FIELDS)
+        # No schema_version, no target_project_type, no target_role_breakdown.
+        self._write_index(payload)
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_index_md, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("target_role_breakdown", out)
+
+    def test_future_schema_version_fails_explicit(self) -> None:
+        """Path 6 (Round 2 finding C1 regression pin): a payload from a
+        future gate version (schema 3.0) carrying target_role_breakdown
+        must NOT be silently misrouted to the legacy path. The gate
+        refuses with an explicit "newer than supported" error."""
+        payload = dict(self._BASE_FIELDS)
+        payload["schema_version"] = "3.0"
+        payload["target_role_breakdown"] = {
+            "files_by_role": {"code": 1},
+            "size_by_role": {"code": 100},
+            "percentages": {
+                "skill_share": 0.0, "code_share": 1.0,
+                "tool_share": 0.0, "other_share": 0.0,
+            },
+        }
+        self._write_index(payload)
+        fails, out = _capture_fail_output(
+            quality_gate.check_v1_5_0_index_md, self.q
+        )
+        self.assertGreaterEqual(fails, 1)
+        self.assertIn("newer than", out.lower())
+        self.assertIn("3.0", out)
+        # And specifically: the gate must NOT also FAIL with "missing
+        # target_project_type", which would mean it routed to legacy.
+        self.assertNotIn("missing required field 'target_project_type'", out)
+
+
 class TestV150LegacyRunGracefulSkip(V150FixtureBase):
     """A repo with no v1.5.1 manifests should generate zero new FAILs."""
 

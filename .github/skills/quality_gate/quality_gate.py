@@ -1597,6 +1597,13 @@ _V150_SUPPORTED_EXTENSIONS = (".txt", ".md")
 # common to both schemas live in _V150_INDEX_COMMON_FIELDS; the
 # version-specific fields live in their own tuples and are picked at
 # validation time.
+#
+# v1.5.4 Round 2 Council finding C1: SCHEMA_VERSION_CURRENT pins the
+# version this gate understands. Future schemas (>2.0) refuse with an
+# explicit error rather than silently downgrading to legacy. When a
+# v1.5.5+ run bumps the schema, also bump this constant; otherwise the
+# new gate version will reject the new INDEX shape on purpose.
+SCHEMA_VERSION_CURRENT = "2.0"
 _V150_INDEX_COMMON_FIELDS = (
     "run_timestamp_start",
     "run_timestamp_end",
@@ -1999,15 +2006,29 @@ def check_v1_5_0_bugs_manifest(q):
 def check_v1_5_0_index_md(q):
     """§10 invariant #10 — quality/INDEX.md exists with all §11 required fields.
 
-    v1.5.4 Part 1 / Round 1 Council finding C2-1: routes by INDEX
-    payload.schema_version. ``"2.0"`` (or missing on a fresh run from
-    v1.5.4+ tooling) requires the v1.5.4 contract
-    (target_role_breakdown). ``"1.0"`` (or any pre-2.0 string) is
-    treated as a legacy archive: target_project_type is required, a
-    single WARN is emitted noting the legacy schema, and
-    target_role_breakdown is not required. This keeps historical
-    archives under quality/previous_runs/ legible without rewriting
-    them retroactively while keeping the gate strict on current runs.
+    v1.5.4 Part 1 / Round 1 Council finding C2-1 + Round 2 Council
+    finding C1: routes by INDEX payload.schema_version with explicit
+    handling for each case so future schemas don't silently downgrade.
+
+      - ``schema_version == SCHEMA_VERSION_CURRENT`` (currently
+        ``"2.0"``) → the v1.5.4 contract; target_role_breakdown
+        required (null is legitimate for the stub before Phase 1).
+      - ``schema_version == "1.0"`` → legacy v1.5.3 archive;
+        target_project_type required; one WARN emitted.
+      - ``schema_version`` absent/empty AND payload carries
+        target_project_type without target_role_breakdown → legacy
+        WARN (heuristic fallback for pre-schema-version archives).
+      - ``schema_version`` absent/empty AND payload doesn't match the
+        legacy heuristic → current path; the run is treated as a
+        v1.5.4 stub that simply hasn't populated schema_version yet,
+        and target_role_breakdown is required.
+      - any other ``schema_version`` (e.g. ``"3.0"`` from a future
+        gate) → explicit FAIL "newer than supported" so the operator
+        knows to upgrade the gate or downgrade the run.
+
+    This keeps historical archives under quality/previous_runs/
+    legible without rewriting them retroactively while keeping the
+    gate strict on current runs.
     """
     path = q / "INDEX.md"
     v150_artifacts = (
@@ -2039,24 +2060,55 @@ def check_v1_5_0_index_md(q):
         fail("quality/INDEX.md: fenced JSON block is not a JSON object")
         return
 
-    # Schema routing: pre-2.0 strings (or absent schema_version on an
-    # archive that pre-dates v1.5.4) follow the legacy contract.
+    # Schema-version routing for INDEX.md (v1.5.4 Round 2 Council
+    # finding C1). Four cases, handled explicitly so future schemas
+    # don't silently downgrade to legacy:
+    #   1. schema_version == "1.0"                       -> legacy WARN
+    #   2. schema_version absent/empty AND the payload   -> legacy WARN
+    #      carries target_project_type but not              (heuristic
+    #      target_role_breakdown                             fallback for
+    #                                                        pre-schema-
+    #                                                        version
+    #                                                        archives)
+    #   3. schema_version == SCHEMA_VERSION_CURRENT      -> current path
+    #   4. schema_version absent/empty AND the payload
+    #      doesn't fit case 2                            -> current path
+    #                                                       (FAIL on
+    #                                                        missing
+    #                                                        target_role_breakdown
+    #                                                        because the
+    #                                                        run is
+    #                                                        ambiguous and
+    #                                                        v1.5.4 is the
+    #                                                        live shape)
+    #   5. any other schema_version                      -> explicit FAIL
+    #                                                       "newer than
+    #                                                        supported"
     schema_version = payload.get("schema_version")
-    is_legacy = schema_version != "2.0" and schema_version not in (None, "")
-    # When schema_version is absent/empty, treat as v1.5.4-current ONLY
-    # if the payload already carries the v1.5.4 fields; otherwise
-    # treat as legacy (this catches archived v1.5.3 INDEX files that
-    # were written before schema_version became part of the contract).
-    if schema_version in (None, ""):
-        is_legacy = "target_project_type" in payload and (
-            "target_role_breakdown" not in payload
+    if schema_version == "1.0":
+        is_legacy = True
+    elif schema_version in (None, ""):
+        is_legacy = (
+            "target_project_type" in payload
+            and "target_role_breakdown" not in payload
         )
+    elif schema_version == SCHEMA_VERSION_CURRENT:
+        is_legacy = False
+    else:
+        fail(
+            f"quality/INDEX.md: schema_version {schema_version!r} is "
+            f"newer than this gate supports (current: "
+            f"{SCHEMA_VERSION_CURRENT!r}). Upgrade the gate or "
+            "downgrade the run."
+        )
+        return
 
     if is_legacy:
         warn(
             f"quality/INDEX.md: schema_version={schema_version!r} treated as "
             "legacy v1.5.3 archive (target_project_type contract). v1.5.4+ "
-            "runs MUST emit schema_version='2.0' with target_role_breakdown."
+            f"runs MUST emit schema_version={SCHEMA_VERSION_CURRENT!r} with "
+            "target_role_breakdown."
         )
         required = _V150_INDEX_COMMON_FIELDS + _V150_INDEX_LEGACY_FIELDS
     else:

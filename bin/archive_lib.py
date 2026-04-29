@@ -425,13 +425,18 @@ def build_index_payload(
     merged_flags: Dict[str, object] = {"no_formal_docs": False}
     if invocation_flags:
         merged_flags.update(invocation_flags)
+    # v1.5.4 Round 2 Council Step 5 polish: pull the canonical INDEX
+    # schema_version from bin.role_map so the two bin-side emission
+    # sites (here and run_playbook.write_live_index_stub) cannot drift
+    # against each other on a future schema bump.
+    from . import role_map as _role_map  # noqa: WPS433
     return {
         # v1.5.4 Part 1 / Round 1 Council finding C2-1: explicit INDEX
         # schema_version routes the gate between the legacy
         # target_project_type contract (1.0, archived runs) and the
         # current target_role_breakdown contract (2.0, current runs).
         # See schemas.md §11 and the v1.5.4 Design Part 1.
-        "schema_version": "2.0",
+        "schema_version": _role_map.INDEX_SCHEMA_VERSION_CURRENT,
         "run_timestamp_start": start,
         "run_timestamp_end": end,
         "duration_seconds": duration,

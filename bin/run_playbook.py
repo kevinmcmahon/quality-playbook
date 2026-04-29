@@ -1928,8 +1928,10 @@ def write_live_index_stub(
     payload = {
         # v1.5.4 Part 1 / Round 1 Council finding C2-1: schema_version
         # routes the gate between target_project_type (1.0 legacy) and
-        # target_role_breakdown (2.0 current).
-        "schema_version": "2.0",
+        # target_role_breakdown (2.0 current). Round 2 Step 5 polish:
+        # the canonical version lives in bin.role_map so this site and
+        # archive_lib.build_index_payload cannot drift apart.
+        "schema_version": role_map_lib.INDEX_SCHEMA_VERSION_CURRENT,
         "run_timestamp_start": start_ext,
         "run_timestamp_end": start_ext,
         "duration_seconds": 0,

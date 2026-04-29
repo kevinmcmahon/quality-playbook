@@ -194,6 +194,46 @@ class DeriveLegacyProjectTypeDriftTests(unittest.TestCase):
         # No intrinsic skill-prose AND no intrinsic code.
         self._assert_agree(rmap, "Code")
 
+    def test_index_schema_version_current_pinned_across_bin_and_gate(
+        self,
+    ) -> None:
+        """v1.5.4 Round 2 Council Step 5 polish: the INDEX
+        schema_version constant is duplicated across the bin/gate
+        boundary (the gate ships as a stdlib-only script and cannot
+        import bin.role_map). Pin them equal so a v1.5.5+ schema bump
+        cannot land on one side without the other."""
+        self.assertEqual(
+            rm.INDEX_SCHEMA_VERSION_CURRENT,
+            self.gate.SCHEMA_VERSION_CURRENT,
+            "DRIFT: bin.role_map.INDEX_SCHEMA_VERSION_CURRENT and "
+            "quality_gate.SCHEMA_VERSION_CURRENT disagree. Both must "
+            "bump in lockstep when the INDEX schema is versioned up.",
+        )
+
+    def test_drift_assertion_fires_on_synthetic_disagreement(self) -> None:
+        """Negative control (Round 2 Step 5 polish): prove that the
+        agreement-checking machinery actually catches drift. We
+        monkey-patch the gate's _phase4_project_type to deliberately
+        return a wrong label for a known input, then call
+        _assert_agree and confirm it raises AssertionError. Without
+        this control, the agreement tests above could be vacuously
+        correct (e.g. if both implementations had the same bug)."""
+        rmap = _make_role_map([_entry("SKILL.md", "skill-prose", 1000)])
+        # Sanity: real implementations agree on this fixture.
+        self.assertEqual(self._bin_side(rmap), "Skill")
+        self.assertEqual(self._gate_side(rmap), "Skill")
+        # Inject drift on the gate side and confirm _assert_agree
+        # catches it.
+        real_phase4 = self.gate._phase4_project_type
+        self.gate._phase4_project_type = lambda q: "Hybrid"
+        try:
+            with self.assertRaises(AssertionError):
+                self._assert_agree(rmap, "Skill")
+        finally:
+            self.gate._phase4_project_type = real_phase4
+        # Sanity: after restoring, the real check passes again.
+        self._assert_agree(rmap, "Skill")
+
 
 if __name__ == "__main__":
     unittest.main()

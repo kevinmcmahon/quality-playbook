@@ -94,6 +94,19 @@ from typing import Iterable, Optional
 SCHEMA_VERSION = "1.0"
 DEFAULT_FILENAME = "exploration_role_map.json"
 
+# v1.5.4 Round 2 Council finding C1 + Panel A polish (Step 5):
+# the canonical INDEX.md schema_version that bin-side emitters
+# (archive_lib.build_index_payload, run_playbook.write_live_index_stub)
+# stamp on every fresh INDEX. The gate ships into target repos as a
+# stdlib-only script and cannot import this module, so it carries its
+# own ``SCHEMA_VERSION_CURRENT`` constant (in
+# .github/skills/quality_gate/quality_gate.py) — but the cross-check
+# in bin/tests/test_legacy_project_type_consistency.py pins them
+# equal so a v1.5.5+ schema bump cannot land on one side without
+# the other. This is distinct from ``SCHEMA_VERSION`` above, which
+# is the role-map JSON schema version, not the INDEX schema version.
+INDEX_SCHEMA_VERSION_CURRENT = "2.0"
+
 # Roles that count toward the skill's declarative surface (numerator of
 # skill_share in the breakdown percentages).
 SKILL_PROSE_ROLES = frozenset({"skill-prose", "skill-reference"})

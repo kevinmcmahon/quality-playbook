@@ -561,6 +561,34 @@ class PromptTaxonomySingleSourceTests(unittest.TestCase):
         # ROLE_DESCRIPTIONS, the two will drift; pin them.
         self.assertEqual(set(rm.ROLE_DESCRIPTIONS.keys()), set(rm.VALID_ROLES))
 
+    def test_skill_tool_description_anchors_load_bearing_example(self) -> None:
+        """v1.5.4 Round 2 Council finding C3: the skill-tool description
+        must include the bin/run_playbook.py worked example.
+
+        This worked example is the load-bearing distinction between
+        skill-tool and code: bin/run_playbook.py IS code, NOT skill-tool,
+        even though SKILL.md mentions it. test_phase1_prompt_contains_every_valid_role
+        only checks role names; a description-trimming refactor that
+        drops this example would silently regress role-tagging quality.
+        This test pins the example so such a refactor fails here first.
+        If you ever change the wording, update both this test and the
+        ROLE_DESCRIPTIONS entry together."""
+        description = rm.ROLE_DESCRIPTIONS["skill-tool"]
+        self.assertIn(
+            "bin/run_playbook.py",
+            description,
+            "skill-tool description must reference the bin/run_playbook.py "
+            "worked example as the canonical 'this is code, not skill-tool' "
+            "case. If you removed this example, restore it; the role-tagging "
+            "prompt loses its load-bearing distinction without it.",
+        )
+        self.assertIn(
+            "code",
+            description.lower(),
+            "skill-tool description should explicitly contrast skill-tool "
+            "with the code role.",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
