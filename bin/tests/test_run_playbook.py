@@ -25,9 +25,11 @@ def write_role_map(quality_dir: Path, files=None) -> Path:
     payload = {
         "schema_version": role_map.SCHEMA_VERSION,
         "timestamp_start": "2026-04-29T00:00:00Z",
+        "provenance": "git-ls-files",
         "files": files,
         "breakdown": role_map.compute_breakdown(files),
     }
+    payload["summary"] = role_map.summarize_role_map(payload)
     quality_dir.mkdir(parents=True, exist_ok=True)
     out = quality_dir / "exploration_role_map.json"
     out.write_text(json.dumps(payload), encoding="utf-8")
@@ -2228,6 +2230,176 @@ class SkillVersionStampTests(unittest.TestCase):
         from bin import benchmark_lib as lib
         detected = lib.detect_repo_skill_version(lib.QPB_DIR)
         self.assertEqual(detected, lib.RELEASE_VERSION)
+
+
+class CodexPreventionScriptInvocationGuardTests(unittest.TestCase):
+    """v1.5.4 Phase 3.6.1 Section A.2: refuse direct script-style
+    invocation. The module relies on relative imports that fail under
+    `python bin/run_playbook.py`; codex's 2026-04-29 self-audit
+    attempt hit this and proceeded to patch QPB source. Now we
+    refuse early with EX_USAGE (64)."""
+
+    def test_script_style_invocation_exits_64(self) -> None:
+        import subprocess
+        repo_root = Path(__file__).resolve().parents[2]
+        script = repo_root / "bin" / "run_playbook.py"
+        result = subprocess.run(
+            ["python3", str(script)],
+            capture_output=True, text=True, cwd=str(repo_root),
+        )
+        self.assertEqual(
+            result.returncode, 64,
+            f"expected EX_USAGE (64), got {result.returncode}; "
+            f"stderr={result.stderr!r}",
+        )
+        self.assertIn(
+            "package module", result.stderr,
+            f"stderr must explain the fix; got: {result.stderr!r}",
+        )
+        self.assertIn(
+            "python -m bin.run_playbook", result.stderr,
+            "stderr must show the correct invocation form",
+        )
+
+
+class CodexPreventionSentinelTests(unittest.TestCase):
+    """v1.5.4 Phase 3.6.1 Section A.3: sentinel-file preservation.
+    `.gitignore !`-rule sentinels (.gitkeep files) keep otherwise-
+    empty tracked directories present. Codex's 2026-04-29 self-audit
+    attempt deleted `reference_docs/.gitkeep` and
+    `reference_docs/cite/.gitkeep` despite the explicit `!`-rules."""
+
+    def test_discover_sentinels_from_gitignore(self) -> None:
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / ".gitignore").write_text(
+                "# comment\n"
+                "node_modules/\n"
+                "*.log\n"
+                "!reference_docs/.gitkeep\n"
+                "!reference_docs/cite/.gitkeep\n"
+                "!**/*-keep.md\n"  # globs are skipped
+                "\n",
+                encoding="utf-8",
+            )
+            sentinels = run_playbook._discover_sentinel_files(repo)
+            posixes = {s.as_posix() for s in sentinels}
+            self.assertIn("reference_docs/.gitkeep", posixes)
+            self.assertIn("reference_docs/cite/.gitkeep", posixes)
+            # Glob negation pattern is correctly skipped (no concrete path).
+            self.assertEqual(len(sentinels), 2)
+
+    def test_verify_sentinels_fails_when_missing(self) -> None:
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / ".gitignore").write_text(
+                "!reference_docs/.gitkeep\n", encoding="utf-8"
+            )
+            # Don't create the sentinel.
+            missing = run_playbook._verify_sentinels(repo)
+            self.assertEqual(missing, ["reference_docs/.gitkeep"])
+
+    def test_verify_sentinels_passes_when_all_present(self) -> None:
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / ".gitignore").write_text(
+                "!reference_docs/.gitkeep\n", encoding="utf-8"
+            )
+            (repo / "reference_docs").mkdir()
+            (repo / "reference_docs" / ".gitkeep").write_text("")
+            self.assertEqual(run_playbook._verify_sentinels(repo), [])
+
+    def test_no_gitignore_yields_empty_sentinel_list(self) -> None:
+        with TemporaryDirectory() as tmp:
+            self.assertEqual(
+                run_playbook._discover_sentinel_files(Path(tmp)), []
+            )
+
+
+class CodexPreventionSourceBackstopTests(unittest.TestCase):
+    """v1.5.4 Phase 3.6.1 Section A.4: structural backstop. If an LLM
+    autonomously patches QPB source mid-run, the post-phase verifier
+    detects the diff against the run-start baseline SHA and aborts.
+    Codex's 2026-04-29 attempt patched bin/archive_lib.py; this is
+    the regression pin."""
+
+    def test_baseline_capture_returns_qpb_head_sha(self) -> None:
+        # The QPB checkout is itself a git repo; the helper should
+        # return the current HEAD SHA.
+        qpb_dir = Path(__file__).resolve().parents[2]
+        sha = run_playbook._qpb_source_baseline_sha(qpb_dir)
+        self.assertIsNotNone(sha)
+        # SHA-1 hex strings are 40 chars; allow Git's short-form just
+        # in case (defensive).
+        self.assertGreaterEqual(len(sha), 7)
+        self.assertTrue(all(c in "0123456789abcdef" for c in sha))
+
+    def test_baseline_returns_none_for_non_git(self) -> None:
+        with TemporaryDirectory() as tmp:
+            self.assertIsNone(
+                run_playbook._qpb_source_baseline_sha(Path(tmp))
+            )
+
+    def test_verify_unchanged_returns_empty_on_clean_baseline(self) -> None:
+        """When the working tree is clean (HEAD == working state),
+        the diff against HEAD should be empty. Skipped on a dirty
+        development checkout — that's the *expected* non-empty case
+        the structural backstop is designed to catch."""
+        import subprocess
+        qpb_dir = Path(__file__).resolve().parents[2]
+        # Detect dirty tree on the source paths; skip if dirty.
+        dirty_check = subprocess.run(
+            ["git", "status", "--porcelain", "--"]
+            + list(run_playbook._QPB_SOURCE_PATHS),
+            cwd=str(qpb_dir), capture_output=True, text=True, check=False,
+        )
+        if dirty_check.stdout.strip():
+            self.skipTest(
+                "working tree has pending changes on QPB source paths; "
+                "the verifier correctly reports them as modified. The "
+                "clean-baseline case is exercised in CI / by ops."
+            )
+        sha = run_playbook._qpb_source_baseline_sha(qpb_dir)
+        modified = run_playbook._verify_qpb_source_unchanged(qpb_dir, sha)
+        self.assertEqual(modified, [])
+
+    def test_verify_unchanged_no_baseline_short_circuits(self) -> None:
+        # When there's no baseline to compare against, the helper
+        # returns [] (the structural backstop simply no-ops rather
+        # than blocking development clones without git).
+        qpb_dir = Path(__file__).resolve().parents[2]
+        self.assertEqual(
+            run_playbook._verify_qpb_source_unchanged(qpb_dir, None),
+            [],
+        )
+
+    def test_verify_detects_committed_modification(self) -> None:
+        """Construct a synthetic 'baseline' SHA that predates the
+        latest commit touching bin/; the diff must include some
+        bin/ file that changed since then. This proves the detector
+        actually fires on non-empty diffs (the regression pin)."""
+        import subprocess
+        qpb_dir = Path(__file__).resolve().parents[2]
+        # Find a SHA from before the most recent bin/ commit.
+        result = subprocess.run(
+            ["git", "log", "--format=%H", "-n", "20", "--", "bin/"],
+            cwd=str(qpb_dir), capture_output=True, text=True, check=True,
+        )
+        commits = [c for c in result.stdout.splitlines() if c.strip()]
+        if len(commits) < 2:
+            self.skipTest(
+                "need at least 2 historical bin/ commits for diff test"
+            )
+        # commits[0] is HEAD-most-recent for bin/; commits[1] is older.
+        old_sha = commits[1]
+        modified = run_playbook._verify_qpb_source_unchanged(
+            qpb_dir, old_sha
+        )
+        self.assertGreater(
+            len(modified), 0,
+            f"diff against {old_sha[:7]} must surface at least one "
+            f"bin/ change (or this test fixture needs updating)",
+        )
 
 
 if __name__ == "__main__":

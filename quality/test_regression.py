@@ -88,9 +88,15 @@ class CodeReviewRegressionTests(unittest.TestCase):
                     role_map_doc = {
                         "schema_version": role_map.SCHEMA_VERSION,
                         "timestamp_start": "2026-04-28T00:00:00Z",
+                        # v1.5.4 Phase 3.6.1: provenance + summary
+                        # required.
+                        "provenance": "git-ls-files",
                         "files": files,
                         "breakdown": role_map.compute_breakdown(files),
                     }
+                    role_map_doc["summary"] = role_map.summarize_role_map(
+                        role_map_doc
+                    )
                     quality = repo / "quality"
                     quality.mkdir(exist_ok=True)
                     (quality / "exploration_role_map.json").write_text(

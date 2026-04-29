@@ -314,30 +314,38 @@ Operational prose. The build must run all unit tests.
 
     quality = root / "quality"
     quality.mkdir(parents=True, exist_ok=True)
-    (quality / "exploration_role_map.json").write_text(
-        json.dumps({
-            "schema_version": "1.0",
-            "timestamp_start": "2026-04-27T00:00:00Z",
-            "files": [
-                {
-                    "path": "SKILL.md",
-                    "role": "skill-prose",
-                    "size_bytes": len(skill_text.encode("utf-8")),
-                    "rationale": "synthetic fixture skill prose",
-                },
-            ],
-            "breakdown": {
-                "files_by_role": {"skill-prose": 1},
-                "size_by_role": {"skill-prose": len(skill_text.encode("utf-8"))},
-                "percentages": {
-                    "skill_share": 1.0,
-                    "code_share": 0.0,
-                    "tool_share": 0.0,
-                    "other_share": 0.0,
-                },
+    payload = {
+        "schema_version": "1.0",
+        "timestamp_start": "2026-04-27T00:00:00Z",
+        # v1.5.4 Phase 3.6.1: provenance + summary required.
+        "provenance": "git-ls-files",
+        "files": [
+            {
+                "path": "SKILL.md",
+                "role": "skill-prose",
+                "size_bytes": len(skill_text.encode("utf-8")),
+                "rationale": "synthetic fixture skill prose",
             },
-        }),
-        encoding="utf-8",
+        ],
+        "breakdown": {
+            "files_by_role": {"skill-prose": 1},
+            "size_by_role": {"skill-prose": len(skill_text.encode("utf-8"))},
+            "percentages": {
+                "skill_share": 1.0,
+                "code_share": 0.0,
+                "tool_share": 0.0,
+                "other_share": 0.0,
+            },
+        },
+    }
+    payload["summary"] = {
+        "file_count": 1,
+        "role_breakdown": {"skill-prose": 1},
+        "percentages": dict(payload["breakdown"]["percentages"]),
+        "provenance": "git-ls-files",
+    }
+    (quality / "exploration_role_map.json").write_text(
+        json.dumps(payload), encoding="utf-8"
     )
 
 

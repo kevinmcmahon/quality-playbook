@@ -410,6 +410,48 @@ def build_parser() -> argparse.ArgumentParser:
         help="Target directories to run against (relative or absolute paths). Defaults to the current directory.",
     )
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
+
+    # v1.5.4 Phase 3.6.1 Section A.1.a / A.3.a (codex-prevention):
+    # operator overrides for the role-map validator and sentinel
+    # pre-flight check. Use only when you know your target really
+    # requires the bypass; the defaults exist for a reason.
+    parser.add_argument(
+        "--allow-disallowed-prefix",
+        action="append",
+        default=[],
+        metavar="PREFIX",
+        help=(
+            "Suppress role-map validation errors for paths starting "
+            "with PREFIX (e.g. 'dist/'). Repeatable. Use only when "
+            "your target legitimately commits content under a "
+            "normally-disallowed prefix. Default: none."
+        ),
+    )
+    parser.add_argument(
+        "--max-role-map-entries",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Override the role-map entry-count ceiling (default: "
+            "2000). Use only when your target genuinely has more "
+            "than 2000 in-scope files; a role map exceeding the "
+            "default usually indicates Phase 1 walked .gitignored "
+            "content."
+        ),
+    )
+    parser.add_argument(
+        "--allow-missing-sentinels",
+        action="store_true",
+        default=False,
+        help=(
+            "Proceed despite missing .gitignore !-rule sentinels "
+            "(.gitkeep files etc.). Logs a warning per missing "
+            "sentinel but does not abort. Use only when you "
+            "intentionally removed a sentinel and haven't yet "
+            "updated .gitignore."
+        ),
+    )
     return parser
 
 
@@ -647,7 +689,25 @@ Execute Phase 1: Explore the codebase. The reference_docs/ directory contains ga
 
 Before (or as part of) writing EXPLORATION.md, produce `quality/exploration_role_map.json`. Begin by reading `SKILL.md` at the repository root if present (also check for any other top-level skill-shaped entry file — the indicator is content + name, not extension; a `README.md` is NOT a skill-shaped entry just because it sits at the root). The prose context informs every subsequent file's role tag.
 
-Then walk the target tree (respect the same ignore conventions used elsewhere — `.git/`, build outputs, vendored dependencies — and tag every file QPB would otherwise consider in scope). For each file, emit a record with the role taxonomy below. The judgment is content-based: read the file (or enough of it to judge), do NOT pattern-match on extension or directory name alone.
+**File source (v1.5.4 Phase 3.6.1, codex-prevention).** Use `git ls-files` as the canonical file list when the target is a git repo — this respects `.gitignore` automatically and is the ONLY supported enumeration source. Do NOT use `os.walk`, `find`, `os.listdir`, or any recursive directory walker — those will pull in `.git/`, `.venv/`, `node_modules/`, build outputs, and vendored dependencies, all of which are FORBIDDEN in the role map (the validator rejects them and aborts the run). When the target is not a git repo, use a filesystem walk that explicitly skips the disallowed paths listed below; record this fallback in the role map's `provenance` field.
+
+**Disallowed paths (MUST NOT appear in the role map under any role):** `.git/`, `.venv/`, `venv/`, `node_modules/`, `__pycache__/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `.tox/`, plus any path with a component ending in `.egg-info` or `.dist-info`. The validator at `bin/role_map.py::DISALLOWED_PATH_PREFIXES` enforces this — if your role map contains any such path, the run aborts. There is also a hard ceiling of 2000 entries; a role map with more is treated as evidence Phase 1 walked .gitignored content.
+
+**Provenance (v1.5.4 Phase 3.6.1).** The role map's top-level `provenance` field MUST be one of:
+- `"git-ls-files"` — preferred. Target is a git repo; you ran `git ls-files` to enumerate.
+- `"filesystem-walk-with-skips"` — fallback. Target is not a git repo; you walked the filesystem with explicit skips for every entry in the disallowed-paths list above.
+- `"unknown"` — accepted only on legacy role maps; do NOT emit this for fresh runs.
+
+For each in-scope file, emit a record with the role taxonomy below. The judgment is content-based: read the file (or enough of it to judge), do NOT pattern-match on extension or directory name alone.
+
+**Sentinel files (v1.5.4 Phase 3.6.1).** Files named `.gitkeep` (or similar empty-directory markers) in the repository's tracked tree MUST NOT be deleted. They keep otherwise-empty directories present in git history. If you find such a file and don't understand its purpose, leave it alone. The pre-flight check verifies all `.gitignore !`-rule sentinels are present and aborts the run if any are missing.
+
+**If you encounter a bug in QPB itself during this run** (e.g., an exception from `bin/run_playbook.py`, a missing import, a broken assertion in QPB source), STOP the run immediately and report:
+1. The exact error and where it occurred (file:line + traceback)
+2. A diagnosis of the likely root cause
+3. A proposed fix shape (do NOT apply it)
+
+Do NOT patch QPB source code yourself. QPB source changes go through Council review (see `~/Documents/AI-Driven Development/CLAUDE.md`). A structural backstop captures the QPB source tree's git SHA at run start and verifies it unchanged at every phase boundary; an autonomous source patch will fail the gate with a diagnostic naming the modified files.
 
 Role taxonomy (single source of truth: `bin/role_map.py::ROLE_DESCRIPTIONS`):
 {role_taxonomy}
@@ -660,6 +720,7 @@ The output file `quality/exploration_role_map.json` MUST conform to this schema:
 {{
   "schema_version": "1.0",
   "timestamp_start": "<ISO 8601 UTC timestamp at the start of Phase 1>",
+  "provenance": "git-ls-files",
   "files": [
     {{
       "path": "<repo-relative POSIX path>",
@@ -682,11 +743,19 @@ The output file `quality/exploration_role_map.json` MUST conform to this schema:
       "tool_share":  <skill-tool share of total bytes>,
       "other_share": <remainder>
     }}
+  }},
+  "summary": {{
+    "file_count": <int>,
+    "role_breakdown": {{ "<role>": <count>, ... }},
+    "percentages": {{ ... same four shares as above ... }},
+    "provenance": "git-ls-files"
   }}
 }}
 ```
 
 The `breakdown` is YOUR aggregation — compute it from the per-file entries. Percentages are floats in [0, 1] and must sum to ~1.0 when total size > 0. The four shares are: skill_share = (skill-prose + skill-reference) bytes / total; code_share = code bytes / total; tool_share = skill-tool bytes / total; other_share = the remainder (test, docs, config, fixture, formal-spec, playbook-output).
+
+**Cross-artifact agreement (v1.5.4 Phase 3.6.1, codex-prevention).** The `summary` field on the role map and EXPLORATION.md's "File inventory" section MUST agree because both render from the same helper, `bin.role_map.summarize_role_map()`. The role map's `summary` field is the helper's output verbatim. EXPLORATION.md's file-inventory section is the output of `bin.role_map.render_role_map_narrative()` (which itself reads `summarize_role_map`). Do NOT write narrative file counts or percentages by hand — copy from the helper. The validator and downstream consumers cross-check the two; disagreement is a defect.
 
 Tagging discipline:
 1. `skill-tool` and `code` is the load-bearing distinction. A script is only `skill-tool` if SKILL.md (or a doc SKILL.md cites) explicitly names it and tells the agent to invoke it. Independent code modules — even small ones in a `scripts/` directory — are `code` if no SKILL.md prose directs the agent to use them.
@@ -1221,7 +1290,9 @@ def count_lines(path: Path) -> int:
     return len(path.read_text(encoding="utf-8", errors="ignore").splitlines())
 
 
-def check_phase_gate(repo_dir: Path, phase: str) -> GateCheck:
+def check_phase_gate(
+    repo_dir: Path, phase: str, *, args: Optional[argparse.Namespace] = None
+) -> GateCheck:
     quality_dir = repo_dir / "quality"
     messages: List[str] = []
 
@@ -1261,7 +1332,19 @@ def check_phase_gate(repo_dir: Path, phase: str) -> GateCheck:
                     "regenerate it."
                 ],
             )
-        validation_errors = role_map_lib.validate_role_map(role_map_data)
+        # v1.5.4 Phase 3.6.1 Section A.1.a: honour operator overrides
+        # for the disallowed-prefix list and the entry-count ceiling.
+        allowed_prefixes = (
+            frozenset(getattr(args, "allow_disallowed_prefix", None) or ())
+        )
+        max_entries_override = (
+            getattr(args, "max_role_map_entries", None) if args else None
+        )
+        validation_errors = role_map_lib.validate_role_map(
+            role_map_data,
+            allowed_disallowed_prefixes=allowed_prefixes,
+            max_role_map_entries=max_entries_override,
+        )
         if validation_errors:
             joined = "\n".join(f"  - {err}" for err in validation_errors)
             return GateCheck(
@@ -1752,6 +1835,146 @@ def _clear_live_quality(quality_dir: Path) -> None:
             child.unlink(missing_ok=True)
 
 
+# v1.5.4 Phase 3.6.1 Section A.3 (codex-prevention): sentinel-file
+# preservation. Codex's 2026-04-29 self-audit attempt deleted
+# reference_docs/.gitkeep and reference_docs/cite/.gitkeep despite
+# explicit `.gitignore !`-rules naming them as exceptions. Pre-flight
+# parses the .gitignore for `!`-rules to derive the canonical sentinel
+# list at runtime — adding a new sentinel to .gitignore automatically
+# extends this check, no hardcoded list to drift.
+
+
+def _discover_sentinel_files(repo_dir: Path) -> List[Path]:
+    """Parse .gitignore !-negations to derive the sentinel-file list.
+
+    Returns repo-relative paths matching `!path/to/.gitkeep`-style
+    explicit unignore rules. Patterns containing wildcards (``*``,
+    ``?``, ``[``) are skipped — those are negation patterns, not
+    concrete paths, and the sentinel check needs concrete paths to
+    test for existence.
+    """
+    gitignore = repo_dir / ".gitignore"
+    if not gitignore.is_file():
+        return []
+    sentinels: List[Path] = []
+    for raw in gitignore.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = raw.strip()
+        if not line.startswith("!"):
+            continue
+        candidate = line[1:].strip()
+        if not candidate:
+            continue
+        # Skip glob-pattern negations — they don't name a single file.
+        if any(ch in candidate for ch in "*?["):
+            continue
+        sentinels.append(Path(candidate))
+    return sentinels
+
+
+def _verify_sentinels(repo_dir: Path) -> List[str]:
+    """Return missing sentinel files as posix-style strings, or [] if
+    all present. v1.5.4 Phase 3.6.1 Section A.3.a."""
+    sentinels = _discover_sentinel_files(repo_dir)
+    return [
+        s.as_posix()
+        for s in sentinels
+        if not (repo_dir / s).is_file()
+    ]
+
+
+# v1.5.4 Phase 3.6.1 Section A.4 (codex-prevention): source-patching
+# structural backstop. Captures QPB source state at run start and
+# verifies it unchanged at every phase boundary. An autonomous LLM
+# patch to bin/, .github/skills/, agents/, references/, or SKILL.md
+# fails the gate with a diagnostic naming the modified files.
+
+_QPB_SOURCE_PATHS = (
+    "bin/",
+    ".github/skills/",
+    "agents/",
+    "references/",
+    "SKILL.md",
+)
+
+
+def _qpb_source_baseline_sha(qpb_dir: Path) -> Optional[str]:
+    """Return the git HEAD SHA of the QPB checkout (where this module
+    lives) at the moment of capture, or ``None`` if not a git repo
+    (the structural backstop simply no-ops in that case rather than
+    blocking development clones)."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=qpb_dir,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (OSError, FileNotFoundError):
+        return None
+    if result.returncode != 0:
+        return None
+    sha = result.stdout.strip()
+    return sha or None
+
+
+def _check_qpb_source_unchanged(
+    args: argparse.Namespace, log_file: Path, *, phase: str
+) -> bool:
+    """Per-phase wrapper around :func:`_verify_qpb_source_unchanged`.
+
+    Reads the baseline SHA stashed on ``args`` by ``execute_run``,
+    runs the diff, and on a non-empty result logs the gate-fail
+    diagnostic and returns ``False`` (so the caller aborts the run).
+    Returns ``True`` when source is unchanged or no baseline was
+    captured (e.g. QPB checkout isn't a git repo). v1.5.4 Phase
+    3.6.1 Section A.4.b.
+    """
+    baseline = getattr(args, "_qpb_source_baseline_sha", None)
+    if baseline is None:
+        return True
+    qpb_dir = Path(__file__).resolve().parents[1]
+    modified = _verify_qpb_source_unchanged(qpb_dir, baseline)
+    if not modified:
+        return True
+    lib.logboth(
+        log_file,
+        lib.log(
+            f"  GATE FAIL after Phase {phase}: QPB source files modified "
+            f"during run: {modified}. Per the source-edit lane discipline, "
+            "autonomous patches to QPB source are not permitted during a "
+            "run. The patches may be legitimate fixes — but they must be "
+            "committed separately via Council review, not applied "
+            "mid-run. Aborting."
+        ),
+    )
+    return False
+
+
+def _verify_qpb_source_unchanged(
+    qpb_dir: Path, baseline_sha: Optional[str]
+) -> List[str]:
+    """Return list of QPB source paths modified since ``baseline_sha``,
+    or [] when none changed (or when there was no baseline to compare).
+
+    Checks ``bin/``, ``.github/skills/``, ``agents/``, ``references/``,
+    and ``SKILL.md``. Non-empty return signals an autonomous source
+    patch — the run must abort. v1.5.4 Phase 3.6.1 Section A.4.b.
+    """
+    if baseline_sha is None:
+        return []
+    cmd = ["git", "diff", "--name-only", baseline_sha, "--"] + list(_QPB_SOURCE_PATHS)
+    try:
+        result = subprocess.run(
+            cmd, cwd=qpb_dir, capture_output=True, text=True, check=False
+        )
+    except (OSError, FileNotFoundError):
+        return []
+    if result.returncode != 0:
+        return []
+    return [line for line in result.stdout.splitlines() if line.strip()]
+
+
 def _prior_run_id_from_live_index(quality_dir: Path) -> Optional[str]:
     """Return the prior run's compact timestamp from quality/INDEX.md, or None."""
     index_path = quality_dir / "INDEX.md"
@@ -2108,7 +2331,7 @@ def run_one_phase(
     log_file: Path,
     timestamp: str,
 ) -> bool:
-    gate = check_phase_gate(repo_dir, phase)
+    gate = check_phase_gate(repo_dir, phase, args=args)
     for message in gate.messages:
         lib.logboth(log_file, lib.log(f"  {message}"))
     if not gate.ok:
@@ -2142,6 +2365,13 @@ def run_one_phase(
     exit_code = run_prompt(repo_dir, prompt, f"phase{phase}", output_file, log_file, args.runner, args.model)
     if exit_code:
         lib.logboth(log_file, lib.log(f"  ABORT Phase {phase}: child runner exited {exit_code}"))
+        return False
+
+    # v1.5.4 Phase 3.6.1 Section A.4.b (codex-prevention): structural
+    # backstop. If the LLM autonomously patched QPB source mid-run,
+    # the post-phase diff against the captured baseline SHA names the
+    # modified files and aborts the run.
+    if not _check_qpb_source_unchanged(args, log_file, phase=phase):
         return False
 
     _log_phase_completion(repo_dir, phase, log_file, args, timestamp)
@@ -2320,7 +2550,7 @@ def run_one_phase_group(
     # WARNs against this session's actual artifacts.
     if "3" in group:
         _phase3_skipped_sentinel(repo_dir).unlink(missing_ok=True)
-    gate = check_phase_gate(repo_dir, group[0])
+    gate = check_phase_gate(repo_dir, group[0], args=args)
     for message in gate.messages:
         lib.logboth(log_file, lib.log(f"  {message}"))
     if not gate.ok:
@@ -2364,6 +2594,11 @@ def run_one_phase_group(
     )
     if exit_code:
         lib.logboth(log_file, lib.log(f"  ABORT Phase group {group_label}: child runner exited {exit_code}"))
+        return False
+
+    # v1.5.4 Phase 3.6.1 Section A.4.b: same structural backstop as
+    # the single-phase path.
+    if not _check_qpb_source_unchanged(args, log_file, phase=group_label):
         return False
 
     # Per-phase completion summaries: walk each phase's post-hoc output
@@ -3221,6 +3456,41 @@ def execute_run(args: argparse.Namespace, repo_dirs: Sequence[Path], timestamp: 
     phase_list = [p for g in phase_groups for p in g] if phase_groups else phase_list_from_mode(args.phase)
     run_timestamp = timestamp or datetime.now().strftime("%Y%m%d-%H%M%S")
 
+    # v1.5.4 Phase 3.6.1 Section A.3.a / A.4.b (codex-prevention):
+    # pre-flight sentinel check + capture QPB source baseline SHA.
+    # The sentinel check aborts the run if any .gitignore !-rule
+    # sentinel is missing (operator override: --allow-missing-sentinels).
+    # The baseline SHA is stashed on args so per-phase verification
+    # can detect autonomous QPB-source patches mid-run.
+    qpb_dir = Path(__file__).resolve().parents[1]
+    if not getattr(args, "allow_missing_sentinels", False):
+        for repo_dir in repo_dirs:
+            missing = _verify_sentinels(repo_dir)
+            if missing:
+                print(
+                    "ERROR: Required sentinel files missing in "
+                    f"{repo_dir}: {missing}. These files keep tracked "
+                    "directories present and must not be deleted. "
+                    "Restore with: `git checkout -- " + " ".join(missing) + "`. "
+                    "Aborting run.\n\nIf you intended to remove a "
+                    "sentinel, update .gitignore to drop the "
+                    "corresponding `!`-rule and rerun. Override with "
+                    "--allow-missing-sentinels (logs a warning but "
+                    "proceeds).",
+                    file=sys.stderr,
+                )
+                return 64  # EX_USAGE
+    elif any(_verify_sentinels(rd) for rd in repo_dirs):
+        for repo_dir in repo_dirs:
+            missing = _verify_sentinels(repo_dir)
+            if missing:
+                print(
+                    f"WARN: --allow-missing-sentinels: missing in "
+                    f"{repo_dir}: {missing}. Proceeding per operator override.",
+                    file=sys.stderr,
+                )
+    args._qpb_source_baseline_sha = _qpb_source_baseline_sha(qpb_dir)
+
     # v1.5.1 Item 3.2: --full-run now produces phase_groups + iterations at
     # parse time and is dispatched through the unified worker-side path
     # (run_one handles phases then iterations under one process + one
@@ -3364,4 +3634,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
 
 if __name__ == "__main__":
+    # v1.5.4 Phase 3.6.1 Section A.2 (codex-prevention): refuse
+    # script-style invocation. The module uses relative imports
+    # (``from . import benchmark_lib as lib``) which fail with an
+    # ImportError when invoked as ``python bin/run_playbook.py``.
+    # Codex's 2026-04-29 self-audit attempt hit exactly this failure
+    # and unilaterally patched bin/archive_lib.py mid-run trying to
+    # work around it. Refuse early with a clear operator-actionable
+    # message instead. EX_USAGE (64) per sysexits.h avoids collision
+    # with argparse usage errors (which conventionally exit 2).
+    if __package__ is None or __package__ == "":
+        print(
+            "ERROR: bin/run_playbook.py must be invoked as a package module:\n"
+            "    python -m bin.run_playbook [args...]\n\n"
+            "Direct script-style invocation is not supported and will fail "
+            "with relative-import errors. Re-run with the -m flag.",
+            file=sys.stderr,
+        )
+        sys.exit(64)  # EX_USAGE per sysexits.h convention
     raise SystemExit(main())

@@ -41,35 +41,44 @@ def _write_project_type(tmp: Path, classification: str) -> Path:
     code_size = sum(
         int(f["size_bytes"]) for f in files if f["role"] == "code"
     )
-    out.write_text(
-        json.dumps({
-            "schema_version": "1.0",
-            "timestamp_start": "2026-04-27T00:00:00Z",
-            "files": files,
-            "breakdown": {
-                "files_by_role": {
-                    f["role"]: sum(1 for x in files if x["role"] == f["role"])
-                    for f in files
-                },
-                "size_by_role": {
-                    f["role"]: sum(
-                        int(x["size_bytes"]) for x in files
-                        if x["role"] == f["role"]
-                    )
-                    for f in files
-                },
-                "percentages": {
-                    "skill_share": skill_size / total,
-                    "code_share": code_size / total,
-                    "tool_share": 0.0,
-                    "other_share": max(
-                        0.0, 1.0 - (skill_size / total) - (code_size / total)
-                    ),
-                },
+    payload = {
+        "schema_version": "1.0",
+        "timestamp_start": "2026-04-27T00:00:00Z",
+        # v1.5.4 Phase 3.6.1: provenance + summary are required
+        # top-level fields. Pass C itself doesn't validate, but
+        # downstream gate paths do; populate so the fixture matches
+        # the production shape.
+        "provenance": "git-ls-files",
+        "files": files,
+        "breakdown": {
+            "files_by_role": {
+                f["role"]: sum(1 for x in files if x["role"] == f["role"])
+                for f in files
             },
-        }),
-        encoding="utf-8",
-    )
+            "size_by_role": {
+                f["role"]: sum(
+                    int(x["size_bytes"]) for x in files
+                    if x["role"] == f["role"]
+                )
+                for f in files
+            },
+            "percentages": {
+                "skill_share": skill_size / total,
+                "code_share": code_size / total,
+                "tool_share": 0.0,
+                "other_share": max(
+                    0.0, 1.0 - (skill_size / total) - (code_size / total)
+                ),
+            },
+        },
+    }
+    payload["summary"] = {
+        "file_count": len(files),
+        "role_breakdown": dict(payload["breakdown"]["files_by_role"]),
+        "percentages": dict(payload["breakdown"]["percentages"]),
+        "provenance": payload["provenance"],
+    }
+    out.write_text(json.dumps(payload), encoding="utf-8")
     return out
 
 

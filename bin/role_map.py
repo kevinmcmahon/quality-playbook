@@ -156,8 +156,56 @@ ROLE_DESCRIPTIONS: dict = {
 
 VALID_ROLES = frozenset(ROLE_DESCRIPTIONS.keys())
 
-# Required top-level keys in a role map document.
-_REQUIRED_TOP_KEYS = ("schema_version", "files", "breakdown")
+# v1.5.4 Phase 3.6.1 Section A.1 (codex-prevention): path prefixes that
+# MUST NOT appear in the role map. These are .gitignored content
+# (git internals) or vendored dependencies that should never be tagged
+# as part of the target's intrinsic surface. Codex's 2026-04-29
+# self-audit attempt walked .git/ and .venv/, inflating the role map
+# to 5287 entries and almost certainly stalling Phase 2 on context.
+DISALLOWED_PATH_PREFIXES = frozenset({
+    ".git/",
+    ".venv/",
+    "venv/",
+    "node_modules/",
+    "__pycache__/",
+    ".pytest_cache/",
+    ".mypy_cache/",
+    ".ruff_cache/",
+    ".tox/",
+})
+
+# Path components (matched against Path(path).parts) whose suffix
+# indicates generated content. ``str.startswith`` can't match
+# wildcards like ``*.egg-info/``, so we check each path segment for
+# the suffix instead.
+DISALLOWED_PATH_SUFFIXES = frozenset({
+    ".egg-info",
+    ".dist-info",
+})
+
+# Hard ceiling on role-map entry count. A role map exceeding this
+# almost certainly indicates Phase 1 walked .gitignored content. Tune
+# via Phase 1 rerun in v1.5.5+ if real-world targets need more
+# headroom; the operator override --max-role-map-entries N covers the
+# legitimate-but-large case.
+MAX_ROLE_MAP_ENTRIES = 2000
+
+# v1.5.4 Phase 3.6.1 Section A.1.b: provenance values record HOW the
+# Phase 1 file enumeration was produced. ``git-ls-files`` is the
+# preferred path (respects .gitignore automatically); the
+# filesystem-walk fallback is only acceptable when the target isn't a
+# git repo. ``unknown`` is the migration value for role maps written
+# before this field was required.
+VALID_PROVENANCE = frozenset({
+    "git-ls-files",
+    "filesystem-walk-with-skips",
+    "unknown",
+})
+
+# Required top-level keys in a role map document. ``provenance`` and
+# ``summary`` were added in v1.5.4 Phase 3.6.1; older role maps that
+# omit them get explicit migration errors from validate_role_map.
+_REQUIRED_TOP_KEYS = ("schema_version", "files", "breakdown", "provenance", "summary")
 _REQUIRED_BREAKDOWN_KEYS = ("files_by_role", "size_by_role", "percentages")
 _REQUIRED_PERCENTAGE_KEYS = (
     "skill_share",
@@ -190,15 +238,38 @@ def load_role_map(path: Path) -> Optional[dict]:
     return data
 
 
-def validate_role_map(data: dict) -> list[str]:
+def validate_role_map(
+    data: dict,
+    *,
+    allowed_disallowed_prefixes: Optional[frozenset] = None,
+    max_role_map_entries: Optional[int] = None,
+) -> list[str]:
     """Return a list of validation errors for ``data``. Empty list ==
     well-formed. Validation covers required keys, role enum, file entry
-    shape, and breakdown internal consistency (percentages sum to ~1.0
-    when total size > 0).
+    shape, breakdown internal consistency (percentages sum to ~1.0
+    when total size > 0), provenance, and v1.5.4 Phase 3.6.1
+    codex-prevention constraints (disallowed paths + entry-count
+    ceiling).
+
+    Operator overrides:
+      ``allowed_disallowed_prefixes`` — paths starting with any of
+      these prefixes will NOT trigger the disallowed-path validation
+      error. Use case: a target that legitimately commits ``dist/``
+      content. Suppresses errors for the named prefixes only.
+
+      ``max_role_map_entries`` — overrides ``MAX_ROLE_MAP_ENTRIES`` for
+      unusually large legitimate targets.
     """
     errors: list[str] = []
     if not isinstance(data, dict):
         return ["role map is not a JSON object"]
+
+    allowed_prefixes = allowed_disallowed_prefixes or frozenset()
+    effective_max = (
+        max_role_map_entries
+        if max_role_map_entries is not None
+        else MAX_ROLE_MAP_ENTRIES
+    )
 
     for key in _REQUIRED_TOP_KEYS:
         if key not in data:
@@ -212,10 +283,31 @@ def validate_role_map(data: dict) -> list[str]:
             f"expected {SCHEMA_VERSION!r}"
         )
 
+    # Provenance: v1.5.4 Phase 3.6.1 Section A.1.b. Required, must be
+    # one of the documented values.
+    provenance = data.get("provenance")
+    if not isinstance(provenance, str) or provenance not in VALID_PROVENANCE:
+        errors.append(
+            f"provenance {provenance!r} must be one of "
+            f"{sorted(VALID_PROVENANCE)!r}"
+        )
+
     files = data.get("files")
     if not isinstance(files, list):
         errors.append("'files' must be a list")
         return errors
+
+    # Entry-count ceiling check. Counts every entry whether it ends up
+    # being well-formed or not — the operator needs the signal that
+    # Phase 1 walked too much, regardless of per-entry validity.
+    if len(files) > effective_max:
+        errors.append(
+            f"role map has {len(files)} entries (limit {effective_max}); "
+            "likely walked .gitignored content. Re-run Phase 1 with "
+            "`git ls-files`-respecting enumeration. Use "
+            "--max-role-map-entries N to override the ceiling for "
+            "unusually large legitimate targets."
+        )
 
     seen_paths: set[str] = set()
     for idx, entry in enumerate(files):
@@ -230,6 +322,33 @@ def validate_role_map(data: dict) -> list[str]:
             if path in seen_paths:
                 errors.append(f"files[{idx}] duplicate path {path!r}")
             seen_paths.add(path)
+            # v1.5.4 Phase 3.6.1 Section A.1.a: disallowed-path check.
+            # Prefix match catches .git/, .venv/, etc. Suffix-on-parts
+            # catches *.egg-info/, *.dist-info/ regardless of where in
+            # the path they sit.
+            for prefix in DISALLOWED_PATH_PREFIXES:
+                if path.startswith(prefix) and prefix not in allowed_prefixes:
+                    errors.append(
+                        f"files[{idx}] path {path!r} starts with "
+                        f"disallowed prefix {prefix!r} — "
+                        ".gitignored content / vendored deps must not "
+                        "appear in the role map. Re-run Phase 1 with "
+                        "`git ls-files`-respecting enumeration. Use "
+                        "--allow-disallowed-prefix PREFIX to override "
+                        "for legitimately-tracked content."
+                    )
+                    break
+            for component in Path(path).parts:
+                for suffix in DISALLOWED_PATH_SUFFIXES:
+                    if component.endswith(suffix):
+                        errors.append(
+                            f"files[{idx}] path {path!r} contains "
+                            f"component {component!r} ending with "
+                            f"disallowed suffix {suffix!r} — generated "
+                            "content (egg-info / dist-info) must not "
+                            "appear in the role map."
+                        )
+                        break
         role = entry.get("role")
         if role not in VALID_ROLES:
             errors.append(
@@ -342,6 +461,70 @@ def compute_breakdown(files: Iterable[dict]) -> dict:
             "other_share": other,
         },
     }
+
+
+def summarize_role_map(role_map: dict) -> dict:
+    """Single-source-of-truth summary for cross-artifact agreement.
+
+    v1.5.4 Phase 3.6.1 Section A.1.c (codex-prevention M3): codex's
+    2026-04-29 self-audit attempt produced an EXPLORATION.md narrative
+    that cited a sane file count (~293) while the JSON role map held
+    5287 entries. The LLM hallucinated agreement between the two
+    artifacts. Both the role map's top-level ``summary`` field AND
+    EXPLORATION.md's "File inventory" section MUST render from this
+    helper so the agreement is mechanical, not aspirational.
+
+    Returns a dict with:
+      - ``file_count`` (int) — total entries in role_map["files"]
+      - ``role_breakdown`` (dict[str, int]) — per-role counts
+      - ``percentages`` (dict[str, float]) — the four shares
+      - ``provenance`` (str) — passed through from the role map
+
+    The ``role_breakdown`` is taken from
+    ``role_map["breakdown"]["files_by_role"]`` so the count is
+    consistent with what was previously computed; ``file_count`` is
+    the raw length of the files list (catches the "breakdown was
+    computed but new files were appended without recomputing"
+    failure mode).
+    """
+    files = role_map.get("files") or []
+    breakdown = role_map.get("breakdown") or {}
+    return {
+        "file_count": len(files) if isinstance(files, list) else 0,
+        "role_breakdown": dict(breakdown.get("files_by_role") or {}),
+        "percentages": dict(breakdown.get("percentages") or {}),
+        "provenance": role_map.get("provenance", "unknown"),
+    }
+
+
+def render_role_map_narrative(role_map: dict) -> str:
+    """Render the EXPLORATION.md "File inventory" section from the
+    role map summary. The Phase 1 prompt instructs the LLM to copy
+    this exact rendering into EXPLORATION.md, ensuring the narrative
+    cannot disagree with the JSON. v1.5.4 Phase 3.6.1 Section A.1.c."""
+    s = summarize_role_map(role_map)
+    pcts = s["percentages"]
+    lines = [
+        "## File inventory (rendered from quality/exploration_role_map.json)",
+        "",
+        f"- **Total files:** {s['file_count']}",
+        f"- **Provenance:** `{s['provenance']}`",
+        "- **Role breakdown:**",
+    ]
+    for role in sorted(s["role_breakdown"].keys()):
+        lines.append(f"  - `{role}`: {s['role_breakdown'][role]}")
+    lines.extend([
+        "- **Surface shares:**",
+        f"  - skill: {pcts.get('skill_share', 0.0):.1%}",
+        f"  - code: {pcts.get('code_share', 0.0):.1%}",
+        f"  - tool: {pcts.get('tool_share', 0.0):.1%}",
+        f"  - other: {pcts.get('other_share', 0.0):.1%}",
+        "",
+        "_If this section disagrees with `quality/exploration_role_map.json`, "
+        "the role map is authoritative. Re-render this section from "
+        "`bin.role_map.render_role_map_narrative()`._",
+    ])
+    return "\n".join(lines)
 
 
 def has_skill_prose(role_map: Optional[dict]) -> bool:

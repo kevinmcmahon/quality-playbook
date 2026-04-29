@@ -32,17 +32,24 @@ from tempfile import TemporaryDirectory
 from bin import role_map as rm
 
 
-def _make_role_map(files: list[dict]) -> dict:
+def _make_role_map(files: list[dict], *, provenance: str = "git-ls-files") -> dict:
     """Helper: assemble a complete role map from a list of file entries
     with the breakdown computed by the production helper. This is what
     Phase 1 should ultimately emit; the helper makes the fixtures
-    declarative."""
-    return {
+    declarative.
+
+    v1.5.4 Phase 3.6.1: provenance and summary are required top-level
+    fields. The helper supplies sane defaults so existing tests don't
+    have to set them explicitly."""
+    base = {
         "schema_version": rm.SCHEMA_VERSION,
         "timestamp_start": "2026-04-28T00:00:00Z",
+        "provenance": provenance,
         "files": files,
         "breakdown": rm.compute_breakdown(files),
     }
+    base["summary"] = rm.summarize_role_map(base)
+    return base
 
 
 def _entry(path: str, role: str, size: int, **extra) -> dict:
@@ -588,6 +595,173 @@ class PromptTaxonomySingleSourceTests(unittest.TestCase):
             "skill-tool description should explicitly contrast skill-tool "
             "with the code role.",
         )
+
+
+class CodexPreventionDisallowedPathTests(unittest.TestCase):
+    """v1.5.4 Phase 3.6.1 Section A.1.a (codex-prevention): the
+    role-map validator must reject paths that almost certainly came
+    from walking .gitignored content. Codex's 2026-04-29 self-audit
+    attempt produced a 5287-entry role map containing .git/ and .venv/
+    paths, blowing past Phase 2's context budget. These tests pin the
+    rejection so the failure mode can't recur silently."""
+
+    def test_validate_rejects_git_internals(self) -> None:
+        bad = _make_role_map([
+            _entry("SKILL.md", "skill-prose", 1000),
+            _entry(".git/objects/abc123", "code", 100),
+        ])
+        errs = rm.validate_role_map(bad)
+        self.assertTrue(
+            any(".git/" in e and "disallowed" in e for e in errs),
+            f"expected .git/ rejection, got: {errs}",
+        )
+
+    def test_validate_rejects_venv(self) -> None:
+        bad = _make_role_map([
+            _entry("SKILL.md", "skill-prose", 1000),
+            _entry(
+                ".venv/lib/python3.13/site-packages/x.py", "code", 100
+            ),
+        ])
+        errs = rm.validate_role_map(bad)
+        self.assertTrue(any(".venv/" in e for e in errs))
+
+    def test_validate_rejects_pycache(self) -> None:
+        bad = _make_role_map([
+            _entry("SKILL.md", "skill-prose", 1000),
+            _entry(
+                "__pycache__/role_map.cpython-313.pyc", "code", 100
+            ),
+        ])
+        errs = rm.validate_role_map(bad)
+        self.assertTrue(any("__pycache__/" in e for e in errs))
+
+    def test_validate_rejects_egg_info_via_suffix(self) -> None:
+        """Path components ending in .egg-info / .dist-info are
+        rejected via Path.parts inspection — proves the suffix path
+        works regardless of where the component sits, not only when
+        it's the leading prefix."""
+        bad = _make_role_map([
+            _entry("SKILL.md", "skill-prose", 1000),
+            _entry("src/my_pkg.egg-info/PKG-INFO", "config", 100),
+        ])
+        errs = rm.validate_role_map(bad)
+        self.assertTrue(
+            any("egg-info" in e for e in errs),
+            f"expected egg-info rejection, got: {errs}",
+        )
+
+    def test_validate_rejects_oversized_role_map(self) -> None:
+        # 2001 entries — one over the default ceiling.
+        files = [
+            _entry(f"src/file{i:04d}.py", "code", 10) for i in range(2001)
+        ]
+        bad = _make_role_map(files)
+        errs = rm.validate_role_map(bad)
+        self.assertTrue(
+            any("entries (limit" in e for e in errs),
+            f"expected entry-count ceiling rejection, got: "
+            f"{[e for e in errs if 'entries' in e or 'limit' in e]}",
+        )
+
+    def test_validate_accepts_clean_role_map(self) -> None:
+        ok = _make_role_map([
+            _entry("SKILL.md", "skill-prose", 1000),
+            _entry("bin/main.py", "code", 500),
+            _entry("README.md", "docs", 200),
+        ])
+        self.assertEqual(rm.validate_role_map(ok), [])
+
+    def test_allow_disallowed_prefix_override(self) -> None:
+        """Operator override suppresses the named prefix's rejection
+        while leaving other disallowed prefixes still rejected."""
+        bad = _make_role_map([
+            _entry("SKILL.md", "skill-prose", 1000),
+            _entry(".venv/lib/x.py", "code", 100),  # legitimately committed
+            _entry(".git/objects/abc", "code", 100),  # not overridden
+        ])
+        errs = rm.validate_role_map(
+            bad, allowed_disallowed_prefixes=frozenset({".venv/"})
+        )
+        # .venv error suppressed; .git error still fires.
+        self.assertFalse(any(".venv/" in e for e in errs))
+        self.assertTrue(any(".git/" in e for e in errs))
+
+    def test_max_role_map_entries_override(self) -> None:
+        """Operator override raises the entry-count ceiling for
+        legitimately-large targets."""
+        files = [
+            _entry(f"src/file{i:04d}.py", "code", 10) for i in range(2001)
+        ]
+        bad = _make_role_map(files)
+        errs = rm.validate_role_map(bad, max_role_map_entries=3000)
+        self.assertFalse(
+            any("entries (limit" in e for e in errs),
+            f"override must suppress ceiling error, got: "
+            f"{[e for e in errs if 'entries' in e]}",
+        )
+
+    def test_validate_rejects_missing_provenance(self) -> None:
+        bad = _make_role_map([_entry("SKILL.md", "skill-prose", 1000)])
+        del bad["provenance"]
+        errs = rm.validate_role_map(bad)
+        self.assertTrue(any("provenance" in e for e in errs))
+
+    def test_validate_rejects_invalid_provenance(self) -> None:
+        bad = _make_role_map([_entry("SKILL.md", "skill-prose", 1000)])
+        bad["provenance"] = "made-up-source"
+        errs = rm.validate_role_map(bad)
+        self.assertTrue(any("provenance" in e for e in errs))
+
+    def test_validate_accepts_filesystem_walk_provenance(self) -> None:
+        ok = _make_role_map(
+            [_entry("SKILL.md", "skill-prose", 1000)],
+            provenance="filesystem-walk-with-skips",
+        )
+        self.assertEqual(rm.validate_role_map(ok), [])
+
+
+class CodexPreventionSummaryHelperTests(unittest.TestCase):
+    """v1.5.4 Phase 3.6.1 Section A.1.c: ``summarize_role_map`` is the
+    single source of truth for cross-artifact agreement. Both the
+    role map's ``summary`` field AND EXPLORATION.md's "File inventory"
+    section render from this helper. The codex hallucination class
+    (narrative cites ~293 files while JSON holds 5287) is impossible
+    when both consume the helper."""
+
+    def test_summary_matches_breakdown(self) -> None:
+        m = _make_role_map([
+            _entry("SKILL.md", "skill-prose", 1000),
+            _entry("bin/main.py", "code", 500),
+            _entry("README.md", "docs", 200),
+        ])
+        s = rm.summarize_role_map(m)
+        self.assertEqual(s["file_count"], 3)
+        self.assertEqual(s["role_breakdown"],
+                         {"skill-prose": 1, "code": 1, "docs": 1})
+        self.assertEqual(s["provenance"], "git-ls-files")
+        # Percentages match the breakdown's percentages exactly.
+        self.assertEqual(s["percentages"],
+                         m["breakdown"]["percentages"])
+
+    def test_role_map_summary_matches_narrative_render(self) -> None:
+        """Cross-artifact agreement test (the regression pin for the
+        codex hallucination class). The narrative rendering must
+        contain the same file count and the same per-role counts as
+        the JSON ``summary`` field."""
+        m = _make_role_map([
+            _entry("SKILL.md", "skill-prose", 1000),
+            _entry("bin/a.py", "code", 100),
+            _entry("bin/b.py", "code", 100),
+            _entry("README.md", "docs", 200),
+        ])
+        narrative = rm.render_role_map_narrative(m)
+        s = rm.summarize_role_map(m)
+        self.assertIn(f"Total files:** {s['file_count']}", narrative)
+        for role, count in s["role_breakdown"].items():
+            self.assertIn(f"`{role}`: {count}", narrative)
+        # Provenance shows up under the same label.
+        self.assertIn(f"Provenance:** `{s['provenance']}`", narrative)
 
 
 if __name__ == "__main__":

@@ -64,13 +64,16 @@ def _entry(path: str, role: str, size: int, **extra) -> dict:
     return rec
 
 
-def _make_role_map(files: list[dict]) -> dict:
-    return {
+def _make_role_map(files: list[dict], *, provenance: str = "git-ls-files") -> dict:
+    base = {
         "schema_version": rm.SCHEMA_VERSION,
         "timestamp_start": "2026-04-29T00:00:00Z",
+        "provenance": provenance,
         "files": files,
         "breakdown": rm.compute_breakdown(files),
     }
+    base["summary"] = rm.summarize_role_map(base)
+    return base
 
 
 def _write_role_map(repo_dir: Path, role_map: dict) -> Path:
