@@ -2305,6 +2305,145 @@ class SkillVersionStampTests(unittest.TestCase):
         self.assertEqual(detected, lib.RELEASE_VERSION)
 
 
+class FinalizeQualityLayoutTests(unittest.TestCase):
+    """v1.5.4 Phase 3.6.4 (B-16): _finalize_quality_layout moves
+    intermediate pipeline artifacts under quality/workspace/ at end
+    of Phase 6. Canonical deliverables stay at the top level so the
+    operator-facing quality/ tree is human-readable."""
+
+    def test_moves_workspace_dirs_to_workspace(self) -> None:
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            q = repo / "quality"
+            # Canonical (top-level after reorg).
+            write(q / "REQUIREMENTS.md", "reqs")
+            write(q / "BUGS.md", "bugs")
+            # Intermediate (move to workspace/).
+            write(q / "control_prompts" / "phase1.txt", "p1")
+            write(q / "results" / "tdd-results.json", "{}")
+            write(q / "code_reviews" / "review.md", "review")
+            write(q / "phase3" / "pass_c_formal.jsonl", "{}")
+            write(q / "EXPLORATION_ITER1.md", "iter1")
+            write(q / "EXPLORATION_MERGED.md", "merged")
+
+            run_playbook._finalize_quality_layout(repo)
+
+            # Canonical preserved at top-level.
+            self.assertTrue((q / "REQUIREMENTS.md").is_file())
+            self.assertTrue((q / "BUGS.md").is_file())
+            # Intermediates moved.
+            self.assertFalse((q / "control_prompts").exists())
+            self.assertFalse((q / "results").exists())
+            self.assertFalse((q / "code_reviews").exists())
+            self.assertFalse((q / "phase3").exists())
+            self.assertTrue(
+                (q / "workspace" / "control_prompts" / "phase1.txt").is_file()
+            )
+            self.assertTrue(
+                (q / "workspace" / "results" / "tdd-results.json").is_file()
+            )
+            self.assertTrue(
+                (q / "workspace" / "code_reviews" / "review.md").is_file()
+            )
+            self.assertTrue(
+                (q / "workspace" / "phase3" / "pass_c_formal.jsonl").is_file()
+            )
+            # ITER + MERGED files moved.
+            self.assertFalse((q / "EXPLORATION_ITER1.md").exists())
+            self.assertFalse((q / "EXPLORATION_MERGED.md").exists())
+            self.assertTrue((q / "workspace" / "EXPLORATION_ITER1.md").is_file())
+            self.assertTrue((q / "workspace" / "EXPLORATION_MERGED.md").is_file())
+
+    def test_idempotent_on_already_finalized_tree(self) -> None:
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            q = repo / "quality"
+            write(q / "BUGS.md", "bugs")
+            write(q / "workspace" / "results" / "x.json", "{}")
+            run_playbook._finalize_quality_layout(repo)
+            # Pre-existing workspace child preserved unchanged.
+            self.assertTrue((q / "workspace" / "results" / "x.json").is_file())
+            # Top-level canonical preserved.
+            self.assertTrue((q / "BUGS.md").is_file())
+
+    def test_no_overwrite_when_workspace_child_already_exists(self) -> None:
+        """If a re-run produces both top-level intermediates AND a
+        pre-existing workspace child, preserve workspace and leave
+        top-level alone (don't merge silently)."""
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            q = repo / "quality"
+            write(q / "control_prompts" / "phase1.txt", "live")
+            write(q / "workspace" / "control_prompts" / "phase1.txt", "old")
+            run_playbook._finalize_quality_layout(repo)
+            # Workspace preserved; top-level untouched (the rename
+            # would have overwritten workspace, which we explicitly
+            # avoid).
+            self.assertEqual(
+                (q / "workspace" / "control_prompts" / "phase1.txt").read_text(),
+                "old",
+            )
+            self.assertEqual(
+                (q / "control_prompts" / "phase1.txt").read_text(),
+                "live",
+            )
+
+    def test_no_op_when_quality_dir_missing(self) -> None:
+        with TemporaryDirectory() as tmp:
+            run_playbook._finalize_quality_layout(Path(tmp))
+
+
+class GateResolveArtifactPathTests(unittest.TestCase):
+    """v1.5.4 Phase 3.6.4 (B-16, M5 fix): the gate's
+    _resolve_artifact_path helper tries top-level first
+    (legacy / pre-reorg), then quality/workspace/<name>
+    (post-reorg). Imports the gate from its on-disk path since the
+    gate ships outside the bin/ package tree."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        import importlib.util
+        repo_root = Path(__file__).resolve().parents[2]
+        gate_path = (
+            repo_root / ".github" / "skills" / "quality_gate" / "quality_gate.py"
+        )
+        spec = importlib.util.spec_from_file_location(
+            "qpb_gate_for_b16_test", gate_path
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        cls.gate = module
+
+    def test_top_level_wins_when_present(self) -> None:
+        with TemporaryDirectory() as tmp:
+            q = Path(tmp)
+            (q / "results").mkdir()
+            (q / "results" / "x.json").write_text("top", encoding="utf-8")
+            (q / "workspace" / "results").mkdir(parents=True)
+            (q / "workspace" / "results" / "x.json").write_text(
+                "ws", encoding="utf-8"
+            )
+            resolved = self.gate._resolve_artifact_path(q, "results/x.json")
+            self.assertEqual(resolved.read_text(), "top")
+
+    def test_workspace_used_when_top_level_absent(self) -> None:
+        with TemporaryDirectory() as tmp:
+            q = Path(tmp)
+            (q / "workspace" / "results").mkdir(parents=True)
+            (q / "workspace" / "results" / "x.json").write_text("ws")
+            resolved = self.gate._resolve_artifact_path(q, "results/x.json")
+            self.assertEqual(resolved.read_text(), "ws")
+
+    def test_returns_top_level_when_neither_exists(self) -> None:
+        """Callers test .is_file()/.is_dir() — return top-level so
+        downstream existence checks return False rather than raising."""
+        with TemporaryDirectory() as tmp:
+            q = Path(tmp)
+            resolved = self.gate._resolve_artifact_path(q, "results/x.json")
+            self.assertEqual(resolved, q / "results" / "x.json")
+            self.assertFalse(resolved.exists())
+
+
 class PromptPrefixTests(unittest.TestCase):
     """v1.5.4 Phase 3.6.3 (B-15): the cross-version harness wraps
     pre-v1.5.2 QPB cells with an explicit no-delegation guardrail

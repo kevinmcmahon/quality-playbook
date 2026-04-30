@@ -515,6 +515,44 @@ def count_per_bug_field(bugs_list, field):
 # --- File helpers ---
 
 
+# v1.5.4 Phase 3.6.4 (B-16): the end-of-run reorg moves intermediate
+# pipeline artifacts under quality/workspace/. The gate reads each of
+# those subdirectories at multiple sites; _resolve_artifact_path
+# centralises the dual-layout lookup so each site stays one-line.
+# Top-level wins (legacy / pre-reorg layout); workspace/ is the v1.5.4
+# canonical location after _finalize_quality_layout has run.
+_WORKSPACE_DIRS = (
+    "control_prompts",
+    "results",
+    "code_reviews",
+    "spec_audits",
+    "patches",
+    "writeups",
+    "mechanical",
+    "phase3",
+)
+
+
+def _resolve_artifact_path(quality_dir, name):
+    """Return the live path for an intermediate artifact directory or
+    file under quality/. Tries top-level first (the legacy / current
+    in-flight layout), then quality/workspace/<name> (the v1.5.4
+    end-of-run reorg layout). Returns the top-level path even when
+    neither exists so callers that test ``.is_dir()`` / ``.is_file()``
+    get a False rather than an exception.
+
+    ``name`` may be a single segment (``"results"``) or a path with
+    segments (``"results/tdd-results.json"``); both forms work
+    regardless of layout."""
+    top = quality_dir / name
+    if top.exists():
+        return top
+    workspace = quality_dir / "workspace" / name
+    if workspace.exists():
+        return workspace
+    return top
+
+
 def has_file_matching(directory, patterns):
     """True if any file in `directory` (non-recursive) matches any glob pattern."""
     if not directory.is_dir():
@@ -732,13 +770,13 @@ def check_file_existence(repo_dir, q, strictness):
     else:
         fail("EXPLORATION.md missing")
 
-    cr_dir = q / "code_reviews"
+    cr_dir = _resolve_artifact_path(q, "code_reviews")
     if cr_dir.is_dir() and has_file_matching(cr_dir, ["*.md"]):
         pass_("code_reviews/ has .md files")
     else:
         fail("code_reviews/ missing or empty")
 
-    sa_dir = q / "spec_audits"
+    sa_dir = _resolve_artifact_path(q, "spec_audits")
     if sa_dir.is_dir():
         triage_count = count_files_matching(sa_dir, "*triage*")
         auditor_count = count_files_matching(sa_dir, "*auditor*")
@@ -756,8 +794,8 @@ def check_file_existence(repo_dir, q, strictness):
             if (sa_dir / "triage_probes.sh").is_file():
                 has_probes = True
                 pass_("triage_probes.sh exists (executable triage evidence)")
-            elif (q / "mechanical" / "verify.sh").is_file() and \
-                 file_contains(q / "mechanical" / "verify.sh", r"probe|triage|auditor"):
+            elif (_resolve_artifact_path(q, "mechanical/verify.sh")).is_file() and \
+                 file_contains(_resolve_artifact_path(q, "mechanical/verify.sh"), r"probe|triage|auditor"):
                 has_probes = True
                 pass_("verify.sh contains triage probe assertions")
             if not has_probes:
@@ -834,7 +872,7 @@ def check_bugs_heading(q):
 def check_tdd_sidecar(q, bug_count):
     """TDD sidecar JSON (benchmarks 14, 41)."""
     print("[TDD Sidecar JSON]")
-    json_path = q / "results" / "tdd-results.json"
+    json_path = _resolve_artifact_path(q, "results/tdd-results.json")
 
     if bug_count <= 0:
         info("Zero bugs — tdd-results.json not required")
@@ -938,8 +976,8 @@ def check_tdd_logs(q, bug_count, bug_ids, tdd_data):
         info("Zero bugs — TDD log files not required")
         return
 
-    patches_dir = q / "patches"
-    results_dir = q / "results"
+    patches_dir = _resolve_artifact_path(q, "patches")
+    results_dir = _resolve_artifact_path(q, "results")
     valid_tags = {"RED", "GREEN", "NOT_RUN", "ERROR"}
 
     red_found = 0
@@ -1053,7 +1091,7 @@ def check_tdd_logs(q, bug_count, bug_ids, tdd_data):
 def check_integration_sidecar(q, strictness):
     """Integration sidecar JSON section."""
     print("[Integration Sidecar JSON]")
-    ij = q / "results" / "integration-results.json"
+    ij = _resolve_artifact_path(q, "results/integration-results.json")
 
     if not ij.is_file():
         if strictness == "benchmark":
@@ -1137,8 +1175,8 @@ def check_integration_sidecar(q, strictness):
 def check_recheck_sidecar(q):
     """Recheck sidecar JSON (schema 1.0, uses 'results' key not 'bugs')."""
     print("[Recheck Sidecar JSON]")
-    rj = q / "results" / "recheck-results.json"
-    rs = q / "results" / "recheck-summary.md"
+    rj = _resolve_artifact_path(q, "results/recheck-results.json")
+    rs = _resolve_artifact_path(q, "results/recheck-summary.md")
 
     if not rj.is_file():
         info("recheck-results.json not present (only required when recheck mode was run)")
@@ -1277,7 +1315,7 @@ def check_terminal_gate(q):
 def check_mechanical(q):
     """Mechanical verification section."""
     print("[Mechanical Verification]")
-    mech_dir = q / "mechanical"
+    mech_dir = _resolve_artifact_path(q, "mechanical")
     if not mech_dir.is_dir():
         info("No mechanical/ directory")
         return
@@ -1287,8 +1325,8 @@ def check_mechanical(q):
         return
     pass_("verify.sh exists")
 
-    mv_log = q / "results" / "mechanical-verify.log"
-    mv_exit = q / "results" / "mechanical-verify.exit"
+    mv_log = _resolve_artifact_path(q, "results/mechanical-verify.log")
+    mv_exit = _resolve_artifact_path(q, "results/mechanical-verify.exit")
     if mv_log.is_file() and mv_exit.is_file():
         try:
             exit_code = mv_exit.read_text(encoding="utf-8", errors="replace")
@@ -1309,7 +1347,7 @@ def check_patches(q, bug_count, bug_ids, strictness):
     if bug_count <= 0:
         return
 
-    patches_dir = q / "patches"
+    patches_dir = _resolve_artifact_path(q, "patches")
 
     # Regression test file — required when bugs exist
     reg_test_file = None
@@ -1389,7 +1427,7 @@ def check_writeups(q, bug_count):
     if bug_count <= 0:
         return
 
-    writeups_dir = q / "writeups"
+    writeups_dir = _resolve_artifact_path(q, "writeups")
     writeup_count = 0
     writeup_diff_count = 0
     empty_diff_writeups = []
@@ -1484,7 +1522,7 @@ def check_version_stamps(repo_dir, q):
         else:
             warn("PROGRESS.md missing Skill version field")
 
-    json_path = q / "results" / "tdd-results.json"
+    json_path = _resolve_artifact_path(q, "results/tdd-results.json")
     if json_path.is_file():
         data = load_json(json_path)
         tv = get_str(data, "skill_version")
@@ -1508,7 +1546,7 @@ def check_cross_run_contamination(repo_dir, q, version_arg, skill_version):
         else:
             pass_("No version mismatch detected")
 
-    json_path = q / "results" / "tdd-results.json"
+    json_path = _resolve_artifact_path(q, "results/tdd-results.json")
     if json_path.is_file() and skill_version:
         data = load_json(json_path)
         json_sv = get_str(data, "skill_version")
@@ -1538,7 +1576,7 @@ def _check_exploration_sections(path):
 def check_run_metadata(q):
     """Validate the run-metadata sidecar JSON (run-YYYY-MM-DDTHH-MM-SS.json)."""
     print("[Run Metadata]")
-    results_dir = q / "results"
+    results_dir = _resolve_artifact_path(q, "results")
     pattern = str(results_dir / "run-*.json")
     import glob as _glob
     matches = _glob.glob(pattern)
@@ -2369,7 +2407,7 @@ def _bug_writeup_text(q, bug_id):
     treated as empty text — the invariant still runs on the manifest fields
     (title / summary / source) which are present independently.
     """
-    path = q / "writeups" / f"{bug_id}.md"
+    path = _resolve_artifact_path(q, f"writeups/{bug_id}.md")
     if not path.is_file():
         return ""
     try:
@@ -2749,7 +2787,7 @@ def check_v1_5_3_council_inbox_validation(q):
     phase3 directory does not exist (the project is Code-only or
     Phase 3 has not been run yet).
     """
-    phase3_dir = q / "phase3"
+    phase3_dir = _resolve_artifact_path(q, "phase3")
     if not phase3_dir.is_dir():
         return  # phase 3 not run; not in scope for this manifest set
     inbox_path = phase3_dir / "pass_d_council_inbox.json"
@@ -2913,7 +2951,7 @@ def check_skill_section_req_coverage(repo_dir, q):
     if classification not in ("Skill", "Hybrid"):
         info(f"check_skill_section_req_coverage: skip (project_type={classification!r})")
         return
-    coverage_path = q / "phase3" / "pass_d_section_coverage.json"
+    coverage_path = _resolve_artifact_path(q, "phase3/pass_d_section_coverage.json")
     data = load_json(coverage_path)
     if not isinstance(data, dict):
         info(
@@ -2959,7 +2997,7 @@ def check_reference_file_req_coverage(repo_dir, q):
     if not references_dir.is_dir():
         info("check_reference_file_req_coverage: skip (no references/ directory)")
         return
-    formal_path = q / "phase3" / "pass_c_formal.jsonl"
+    formal_path = _resolve_artifact_path(q, "phase3/pass_c_formal.jsonl")
     if not formal_path.is_file():
         info(
             "check_reference_file_req_coverage: skip "
@@ -3010,7 +3048,7 @@ def check_hybrid_cross_cutting_reqs(repo_dir, q):
     if classification != "Hybrid":
         info(f"check_hybrid_cross_cutting_reqs: skip (project_type={classification!r})")
         return
-    formal_path = q / "phase3" / "pass_c_formal.jsonl"
+    formal_path = _resolve_artifact_path(q, "phase3/pass_c_formal.jsonl")
     if not formal_path.is_file():
         info(
             "check_hybrid_cross_cutting_reqs: skip "
