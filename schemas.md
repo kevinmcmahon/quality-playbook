@@ -1085,11 +1085,13 @@ Layer 1 (mechanical checks):
 ## 11. Per-Run `INDEX.md` Fields
 
 The per-run `INDEX.md` (at `quality/INDEX.md` for the current run, and
-copied to `quality/runs/<ts>/INDEX.md` at archive time) is a structured
-record of run metadata. It is produced by the orchestrator (not the gate),
-which alone knows phase timing and model assignments. The gate validates
-that the file exists and that every required field below is present and
-non-empty.
+copied to `quality/previous_runs/<ts>/INDEX.md` at archive time —
+v1.5.4 Phase 3.6.2 (B-19) renamed the archive directory from the
+legacy `quality/runs/`; legacy archives at the old path remain
+readable) is a structured record of run metadata. It is produced by
+the orchestrator (not the gate), which alone knows phase timing and
+model assignments. The gate validates that the file exists and that
+every required field below is present and non-empty.
 
 | Field                    | Type            | Required | Notes                                                                                                                       |
 |--------------------------|-----------------|----------|------------------------------------------------------------------------------------------------------------------------------|
@@ -1123,9 +1125,14 @@ remain readable by the gate:
     treats the file as a legacy archive, accepts `target_project_type`
     in place of `target_role_breakdown`, and emits a single WARN per
     file noting that the schema is frozen at the v1.5.3 shape. This
-    path exists exclusively to keep historical archives under
-    `quality/previous_runs/` legible to today's tooling without
-    rewriting them retroactively.
+    path exists exclusively to keep historical archives under either
+    `quality/previous_runs/` (current archive directory, v1.5.4+) or
+    the legacy `quality/runs/` (pre-v1.5.4) legible to today's
+    tooling without rewriting them retroactively. v1.5.4 Phase 3.6.2
+    (B-19) also retired the `-PARTIAL` filename suffix in favour of
+    an in-archive `.partial` sentinel file (`<archive>/.partial` is
+    written when `status="partial"`); legacy archives carrying the
+    `-PARTIAL` suffix remain readable.
 
 New runs MUST emit `schema_version: "2.0"`. Migrating an archived
 INDEX in place is OPTIONAL (the schema-routing path covers reads); if
@@ -1139,6 +1146,124 @@ look for required fields (this file) and one place to look for rendering
 (SKILL.md).
 
 Missing or empty fields fail §10 invariant #10.
+
+---
+
+## 11.1. Phase-1 Role Map (`quality/exploration_role_map.json`)
+
+v1.5.4 Phase 1 produces a role map that drives every downstream
+pipeline-activation decision (see `bin/role_map.py` for the canonical
+schema constants and `docs/design/QPB_v1.5.4_Design.md` Part 1 for
+the rationale). The role map IS the v1.5.4 replacement for the
+v1.5.3 mechanical Code/Skill/Hybrid classifier — the trichotomy is
+gone; per-file role tags carry the routing semantics.
+
+| Field             | Type            | Required | Notes                                                                                                                       |
+|-------------------|-----------------|----------|------------------------------------------------------------------------------------------------------------------------------|
+| `schema_version`  | string          | yes      | Currently `"1.0"`. Bumped only on breaking changes to the role-map JSON shape (distinct from the INDEX.md `schema_version`). |
+| `timestamp_start` | string          | yes      | ISO 8601 UTC at the start of Phase 1.                                                                                        |
+| `provenance`      | string          | yes (v1.5.4 Phase 3.6.1+) | One of `"git-ls-files"` (preferred — target is a git repo), `"filesystem-walk-with-skips"` (target is not a git repo), `"unknown"` (legacy maps written before this field was required). |
+| `files`           | array of object | yes      | One entry per in-scope file. Per-entry shape below.                                                                          |
+| `breakdown`       | object          | yes      | Aggregate counts + percentages (subtree shape below).                                                                        |
+| `summary`         | object          | yes (v1.5.4 Phase 3.6.1+) | Single-source-of-truth summary feeding both this role map's `summary` AND EXPLORATION.md's "File inventory" section. Computed by `bin.role_map.summarize_role_map()`; both artifacts MUST render from the helper. |
+
+**`files[]` entry shape:**
+
+| Field                     | Type    | Required | Notes                                                                                       |
+|---------------------------|---------|----------|----------------------------------------------------------------------------------------------|
+| `path`                    | string  | yes      | Repo-relative POSIX path.                                                                    |
+| `role`                    | string  | yes      | One of: `skill-prose`, `skill-reference`, `skill-tool`, `code`, `test`, `docs`, `config`, `fixture`, `formal-spec`, `playbook-output`. See `bin.role_map.ROLE_DESCRIPTIONS` for the canonical taxonomy. |
+| `size_bytes`              | integer | yes      | Non-negative; file size in bytes.                                                             |
+| `rationale`               | string  | yes      | One-or-two-sentence content-based justification for the tag.                                 |
+| `skill_prose_reference`   | string  | yes when `role == "skill-tool"`; optional otherwise | Pointer to the SKILL.md / reference-file location that names this script (e.g. `"SKILL.md:47"` or `"references/forms.md:section-3"`). The Phase 4 prose-to-code divergence check anchors against this. |
+
+**`breakdown` subtree:**
+
+```
+breakdown:
+  files_by_role: { "<role>": <count>, ... }
+  size_by_role:  { "<role>": <total bytes>, ... }
+  percentages:
+    skill_share: <skill-prose + skill-reference share of total bytes>
+    code_share:  <code share of total bytes>
+    tool_share:  <skill-tool share of total bytes>
+    other_share: <remainder; everything else>
+```
+
+Percentages are floats in `[0, 1]` and MUST sum to ~1.0 when total
+size > 0 (validator tolerance: 0.01).
+
+**Disallowed-path constraints (v1.5.4 Phase 3.6.1, codex-prevention):**
+
+The validator at `bin.role_map.validate_role_map` rejects role maps
+containing paths under any of:
+
+  `.git/`, `.venv/`, `venv/`, `node_modules/`, `__pycache__/`,
+  `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `.tox/`
+
+…or paths whose components end in `.egg-info` or `.dist-info`. These
+are .gitignored content / vendored deps that should never be tagged
+as part of the target's intrinsic surface. Operator override:
+`--allow-disallowed-prefix PREFIX` (repeatable) on
+`bin.run_playbook` for legitimately-tracked content.
+
+**Entry-count ceiling:** `MAX_ROLE_MAP_ENTRIES = 2000` (default). A
+role map exceeding the ceiling almost certainly indicates Phase 1
+walked .gitignored content; the validator fails with a diagnostic
+naming the count and the limit. Operator override:
+`--max-role-map-entries N`.
+
+**Validation activation:** the v1.5.4 Phase 2 gate
+(`bin/run_playbook.check_phase_gate("2")`) refuses to advance unless
+the role map exists, parses, and validates against the constraints
+above. Pre-Phase-1 invocations and pre-iteration targets without a
+role map skip the validation; v1.5.3 code-review behaviour is
+preserved as a backward-compat fallback (see Site 2 asymmetry note
+in `bin/run_playbook._code_review_should_skip`).
+
+---
+
+## 11.2. End-of-Run Quality Folder Layout (v1.5.4 Phase 3.6.4)
+
+`bin/run_playbook._finalize_quality_layout` runs at the end of
+Phase 6 (after the gate, before `archive_run`) to organize
+`quality/` into canonical-deliverable + workspace-intermediate
+shape. The gate's `_resolve_artifact_path` reads from both
+top-level (legacy / pre-reorg) and `workspace/` (post-reorg) so
+consumers don't have to track which side an artifact landed on.
+
+```
+quality/
+├── REQUIREMENTS.md          # canonical at top level
+├── QUALITY.md
+├── BUGS.md
+├── RUN_CODE_REVIEW.md
+├── RUN_SPEC_AUDIT.md
+├── RUN_INTEGRATION_TESTS.md
+├── RUN_TDD_TESTS.md
+├── EXPLORATION.md
+├── INDEX.md
+├── PROGRESS.md
+├── exploration_role_map.json
+├── previous_runs/           # archive subtree (B-19; legacy `runs/` also accepted)
+└── workspace/               # intermediate / pipeline artifacts
+    ├── control_prompts/
+    ├── results/
+    ├── code_reviews/
+    ├── spec_audits/
+    ├── patches/
+    ├── writeups/
+    ├── mechanical/
+    ├── phase3/              # four-pass pipeline outputs
+    ├── EXPLORATION_ITER*.md
+    └── EXPLORATION_MERGED.md
+```
+
+The reorganization is idempotent and operator-friendly: pre-existing
+`workspace/` children are preserved (we only move tree → workspace,
+never overwrite). Pre-Phase-3.6 archives that lack the `workspace/`
+sub-tree remain fully readable via the gate's path-resolver
+fallback.
 
 ---
 
