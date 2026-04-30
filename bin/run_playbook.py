@@ -452,6 +452,25 @@ def build_parser() -> argparse.ArgumentParser:
             "updated .gitignore."
         ),
     )
+    # v1.5.4 Phase 3.6.3 (B-15): cross-version harness fix. When the
+    # harness invokes pre-v1.5.2 QPB versions, it injects an explicit
+    # no-delegation prefix so older copilot-cli LLMs don't background
+    # phases 2-6 to a sub-agent that dies with the parent session.
+    # The verified failure mode lived in cross_v1.5.0 / cross_v1.4.6
+    # cells until the v1.5.2 prompts were tightened; --prompt-prefix
+    # restores the same guard for cells run against the older code.
+    parser.add_argument(
+        "--prompt-prefix",
+        type=str,
+        default="",
+        metavar="STRING",
+        help=(
+            "Prepend STRING to every phase prompt. Used by the "
+            "cross-version harness to inject explicit no-delegation "
+            "guardrails when running pre-v1.5.2 QPB cells; not "
+            "intended for direct operator use. Default: empty."
+        ),
+    )
     return parser
 
 
@@ -1249,8 +1268,18 @@ Mark Phase 6 complete in PROGRESS.md (use the checkbox format `- [x] Phase 6 - V
 """
 
 
-def build_phase_prompt(phase: str, no_seeds: bool) -> str:
-    return {
+def _apply_prompt_prefix(body: str, prefix: str) -> str:
+    """v1.5.4 Phase 3.6.3 (B-15): prepend ``prefix`` to ``body`` with a
+    blank-line separator. Empty prefix returns body unchanged."""
+    if not prefix:
+        return body
+    return f"{prefix}\n\n{body}"
+
+
+def build_phase_prompt(
+    phase: str, no_seeds: bool, *, prefix: str = ""
+) -> str:
+    body = {
         "1": phase1_prompt(no_seeds),
         "2": phase2_prompt(),
         "3": phase3_prompt(),
@@ -1258,20 +1287,27 @@ def build_phase_prompt(phase: str, no_seeds: bool) -> str:
         "5": phase5_prompt(),
         "6": phase6_prompt(),
     }[phase]
+    return _apply_prompt_prefix(body, prefix)
 
 
-def single_pass_prompt(no_seeds: bool) -> str:
+def single_pass_prompt(no_seeds: bool, *, prefix: str = "") -> str:
     seed_instruction = " Skip Phase 0 and Phase 0b - start directly at Phase 1." if no_seeds else ""
-    return f"{SKILL_FALLBACK_GUIDE} Execute the quality playbook for this project.{seed_instruction}"
+    return _apply_prompt_prefix(
+        f"{SKILL_FALLBACK_GUIDE} Execute the quality playbook for this project.{seed_instruction}",
+        prefix,
+    )
 
 
-def iteration_prompt(strategy: str) -> str:
-    return (
-        f"{SKILL_FALLBACK_GUIDE} Run the next iteration using the {strategy} strategy. "
-        "Any updates to quality/PROGRESS.md must keep the existing phase tracker in checkbox "
-        "format (`- [x] Phase N - <name>`) — do not rewrite it as a table. The orchestrator "
-        "appends `## Iteration: <strategy> started/complete` sections itself; iteration work "
-        "should not touch the existing phase tracker lines."
+def iteration_prompt(strategy: str, *, prefix: str = "") -> str:
+    return _apply_prompt_prefix(
+        (
+            f"{SKILL_FALLBACK_GUIDE} Run the next iteration using the {strategy} strategy. "
+            "Any updates to quality/PROGRESS.md must keep the existing phase tracker in checkbox "
+            "format (`- [x] Phase N - <name>`) — do not rewrite it as a table. The orchestrator "
+            "appends `## Iteration: <strategy> started/complete` sections itself; iteration work "
+            "should not touch the existing phase tracker lines."
+        ),
+        prefix,
     )
 
 
@@ -2398,7 +2434,10 @@ def run_one_phase(
         _phase3_skipped_sentinel(repo_dir).unlink(missing_ok=True)
 
     phase_index = phase_list.index(phase) + 1 if phase in phase_list else 1
-    prompt = build_phase_prompt(phase, no_seeds=args.no_seeds)
+    prompt = build_phase_prompt(
+        phase, no_seeds=args.no_seeds,
+        prefix=getattr(args, "prompt_prefix", "") or "",
+    )
     output_file = repo_dir / "quality" / "control_prompts" / f"phase{phase}.output.txt"
     lib.logboth(log_file, lib.log(f"  Phase {phase_index}/{len(phase_list) or 1} ({phase_label(phase)}): {repo_dir.name}"))
     exit_code = run_prompt(repo_dir, prompt, f"phase{phase}", output_file, log_file, args.runner, args.model)
@@ -2458,7 +2497,9 @@ def _pace_between_prompts(
             monitor.clear_pacing()
 
 
-def _build_group_prompt(phases: Sequence[str], no_seeds: bool) -> str:
+def _build_group_prompt(
+    phases: Sequence[str], no_seeds: bool, *, prefix: str = ""
+) -> str:
     """Concatenate per-phase prompt bodies for a multi-phase group.
 
     v1.5.1 Item 3.1. The first phase's prompt opens the combined prompt
@@ -2466,14 +2507,21 @@ def _build_group_prompt(phases: Sequence[str], no_seeds: bool) -> str:
     visible header line so the LLM can tell which phase's work
     it's producing. Per Impl-Plan Open Question 5 (lean: visible,
     minimal), the header is a plain `=== Phase N (Label) ===` string.
+
+    v1.5.4 Phase 3.6.3 (B-15): the optional ``prefix`` keyword is
+    applied to the whole combined prompt, not per-phase, so the
+    no-delegation guardrail prose appears once at the top instead
+    of being repeated.
     """
     parts: List[str] = []
     for i, phase in enumerate(phases):
+        # build_phase_prompt is called WITHOUT its prefix kwarg here;
+        # we apply the prefix once to the assembled group below.
         body = build_phase_prompt(phase, no_seeds=no_seeds)
         if i > 0:
             parts.append(f"\n\n=== Phase {phase} ({phase_label(phase)}) ===\n\n")
         parts.append(body)
-    return "".join(parts)
+    return _apply_prompt_prefix("".join(parts), prefix)
 
 
 def _filter_group_for_code_review_skip(
@@ -2621,7 +2669,10 @@ def run_one_phase_group(
         lib.log(f"  Phase group {group_label}: {labels} — single prompt"),
     )
 
-    prompt = _build_group_prompt(group, no_seeds=args.no_seeds)
+    prompt = _build_group_prompt(
+        group, no_seeds=args.no_seeds,
+        prefix=getattr(args, "prompt_prefix", "") or "",
+    )
     exit_code = run_prompt(
         repo_dir,
         prompt,
@@ -2857,7 +2908,9 @@ def run_one_singlepass(repo_dir: Path, args: argparse.Namespace, timestamp: str)
         # In the single-strategy path, args.strategy is a list with one item;
         # execute_strategy_list handles multi-item lists one strategy at a time.
         strategy_name = args.strategy[0]
-        prompt = iteration_prompt(strategy_name)
+        prompt = iteration_prompt(
+            strategy_name, prefix=getattr(args, "prompt_prefix", "") or ""
+        )
         pass_label = f"iteration-{strategy_name}"
         lib.logboth(log_file, lib.log(f"Starting iteration ({strategy_name}): {repo_dir.name} (runner={args.runner}, building on existing quality/)"))
     else:
@@ -2867,7 +2920,10 @@ def run_one_singlepass(repo_dir: Path, args: argparse.Namespace, timestamp: str)
             timestamp,
             **_index_flag_kwargs(args),
         )
-        prompt = single_pass_prompt(no_seeds=args.no_seeds)
+        prompt = single_pass_prompt(
+            no_seeds=args.no_seeds,
+            prefix=getattr(args, "prompt_prefix", "") or "",
+        )
         pass_label = "full"
         lib.logboth(log_file, lib.log(f"Starting playbook (single-pass): {repo_dir.name} (runner={args.runner})"))
 
@@ -3176,7 +3232,9 @@ def run_one_iterations(
             lib.logboth(log_file, lib.log(f"Starting iteration ({strategy}): {repo_dir.name}"))
             before = lib.count_bug_writeups(repo_dir)
 
-            prompt = iteration_prompt(strategy)
+            prompt = iteration_prompt(
+                strategy, prefix=getattr(args, "prompt_prefix", "") or ""
+            )
             pass_label = f"iteration-{strategy}"
             output_file = repo_dir / "quality" / "control_prompts" / f"{pass_label}.output.txt"
             monitor.set_transcript_path(output_file)
@@ -3473,6 +3531,12 @@ def build_worker_command(args: argparse.Namespace, target_path: str) -> List[str
     pace = int(getattr(args, "pace_seconds", 0) or 0)
     if pace > 0:
         command.extend(["--pace-seconds", str(pace)])
+    # v1.5.4 Phase 3.6.3 (B-15): forward the no-delegation prompt prefix
+    # to subprocess workers so the cross-version harness's guardrail
+    # injection survives the parent → worker dispatch.
+    prompt_prefix = getattr(args, "prompt_prefix", "") or ""
+    if prompt_prefix:
+        command.extend(["--prompt-prefix", prompt_prefix])
     command.append(target_path)
     return command
 

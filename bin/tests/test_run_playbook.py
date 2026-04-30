@@ -2305,6 +2305,62 @@ class SkillVersionStampTests(unittest.TestCase):
         self.assertEqual(detected, lib.RELEASE_VERSION)
 
 
+class PromptPrefixTests(unittest.TestCase):
+    """v1.5.4 Phase 3.6.3 (B-15): the cross-version harness wraps
+    pre-v1.5.2 QPB cells with an explicit no-delegation guardrail
+    via --prompt-prefix. The flag must apply to every prompt builder
+    (per-phase, multi-phase group, single-pass, iteration) and must
+    propagate through to subprocess workers."""
+
+    def test_build_phase_prompt_no_prefix_unchanged(self) -> None:
+        plain = run_playbook.build_phase_prompt("1", no_seeds=True)
+        prefixed = run_playbook.build_phase_prompt(
+            "1", no_seeds=True, prefix=""
+        )
+        self.assertEqual(plain, prefixed)
+
+    def test_build_phase_prompt_with_prefix_prepends_with_blank_line(
+        self,
+    ) -> None:
+        prefix = "PREFIX_GUARD_PROSE"
+        body = run_playbook.build_phase_prompt(
+            "1", no_seeds=True, prefix=prefix
+        )
+        self.assertTrue(body.startswith(f"{prefix}\n\n"))
+        # And the original phase content still appears.
+        self.assertIn("Execute Phase 1", body)
+
+    def test_iteration_prompt_with_prefix(self) -> None:
+        body = run_playbook.iteration_prompt("gap", prefix="ITER_PREFIX")
+        self.assertTrue(body.startswith("ITER_PREFIX\n\n"))
+        self.assertIn("gap strategy", body)
+
+    def test_single_pass_prompt_with_prefix(self) -> None:
+        body = run_playbook.single_pass_prompt(
+            no_seeds=True, prefix="SP_PREFIX"
+        )
+        self.assertTrue(body.startswith("SP_PREFIX\n\n"))
+
+    def test_argparse_prompt_prefix_default_is_empty(self) -> None:
+        args = run_playbook.parse_args(["target"])
+        self.assertEqual(getattr(args, "prompt_prefix", ""), "")
+
+    def test_argparse_prompt_prefix_passes_through(self) -> None:
+        args = run_playbook.parse_args(
+            ["target", "--prompt-prefix", "no-delegation guard"]
+        )
+        self.assertEqual(args.prompt_prefix, "no-delegation guard")
+
+    def test_build_worker_command_forwards_prompt_prefix(self) -> None:
+        args = run_playbook.parse_args(
+            ["target", "--prompt-prefix", "fwd-test"]
+        )
+        cmd = run_playbook.build_worker_command(args, "target")
+        # --prompt-prefix appears immediately followed by the value.
+        idx = cmd.index("--prompt-prefix")
+        self.assertEqual(cmd[idx + 1], "fwd-test")
+
+
 class CodexPreventionScriptInvocationGuardTests(unittest.TestCase):
     """v1.5.4 Phase 3.6.1 Section A.2: refuse direct script-style
     invocation. The module relies on relative imports that fail under
