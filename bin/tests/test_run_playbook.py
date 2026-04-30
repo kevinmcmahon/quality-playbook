@@ -1,6 +1,7 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import argparse
+import json
 import os
 import unittest
 
@@ -2303,6 +2304,150 @@ class SkillVersionStampTests(unittest.TestCase):
         from bin import benchmark_lib as lib
         detected = lib.detect_repo_skill_version(lib.QPB_DIR)
         self.assertEqual(detected, lib.RELEASE_VERSION)
+
+
+class AgentsMdGenerationTests(unittest.TestCase):
+    """v1.5.4 Phase 3.6.5 (B-17): per-project AGENTS.md generated at
+    end of Phase 6. Sentinel-on-first-lines protocol distinguishes
+    QPB-managed from operator-authored copies."""
+
+    def _seed_role_map(self, repo: Path) -> None:
+        """Minimal valid role map so _generate_agents_md_content has
+        a summary to render."""
+        write_role_map(repo / "quality", files=[
+            {"path": "src/main.py", "role": "code",
+             "size_bytes": 100, "rationale": "fixture"},
+        ])
+
+    def _seed_index(
+        self, repo: Path, *, gate_verdict: str = "pass",
+        bug_count: int = 3, req_count: int = 7,
+    ) -> None:
+        write(
+            repo / "quality" / "INDEX.md",
+            '# Run Index\n\n```json\n'
+            + json.dumps({
+                "schema_version": "2.0",
+                "summary": {
+                    "requirements": {"1": req_count},
+                    "bugs": {"HIGH": bug_count, "MEDIUM": 0, "LOW": 0},
+                    "gate_verdict": gate_verdict,
+                },
+            })
+            + "\n```\n",
+        )
+
+    def test_safe_write_creates_with_sentinel(self) -> None:
+        with TemporaryDirectory() as tmp:
+            target = Path(tmp) / "AGENTS.md"
+            outcome = run_playbook._safe_write_agents_md(target, "body")
+            self.assertEqual(outcome, "wrote")
+            text = target.read_text(encoding="utf-8")
+            self.assertIn(run_playbook.QPB_AGENTS_SENTINEL, text)
+            self.assertTrue(text.lstrip().startswith(run_playbook.QPB_AGENTS_SENTINEL))
+
+    def test_safe_write_preserves_operator_authored(self) -> None:
+        with TemporaryDirectory() as tmp:
+            target = Path(tmp) / "AGENTS.md"
+            target.write_text("# Operator AGENTS.md\n\nDon't touch.\n")
+            outcome = run_playbook._safe_write_agents_md(target, "regenerated")
+            self.assertEqual(outcome, "preserved")
+            self.assertEqual(
+                target.read_text(),
+                "# Operator AGENTS.md\n\nDon't touch.\n",
+            )
+
+    def test_safe_write_regenerates_qpb_managed(self) -> None:
+        with TemporaryDirectory() as tmp:
+            target = Path(tmp) / "AGENTS.md"
+            target.write_text(
+                f"{run_playbook.QPB_AGENTS_SENTINEL}\n# QPB-managed\nold body\n"
+            )
+            outcome = run_playbook._safe_write_agents_md(target, "fresh body")
+            self.assertEqual(outcome, "regenerated")
+            self.assertIn("fresh body", target.read_text())
+            # Sentinel still present.
+            self.assertIn(
+                run_playbook.QPB_AGENTS_SENTINEL,
+                target.read_text(),
+            )
+
+    def test_generated_content_includes_required_sections(self) -> None:
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            self._seed_role_map(repo)
+            self._seed_index(repo)
+            content = run_playbook._generate_agents_md_content(repo)
+            for required in (
+                "## What this is",
+                "## Read first",
+                "## How to extend the review",
+                "## Caveats and known issues",
+                "REQUIREMENTS.md",
+                "BUGS.md",
+                "exploration_role_map.json",
+                "workspace/",
+                "previous_runs/",
+            ):
+                self.assertIn(required, content)
+            # Counts pulled from INDEX.
+            self.assertIn("**3**", content)  # bug count
+            self.assertIn("**7**", content)  # req count
+
+    def test_generated_content_pulls_exploration_narrative(self) -> None:
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            self._seed_role_map(repo)
+            self._seed_index(repo)
+            write(
+                repo / "quality" / "EXPLORATION.md",
+                "# Exploration\n\n## Architecture\n\n"
+                "The repo is a CLI orchestrator with a single entry point at "
+                "bin/run_playbook.py and an installable skill bundle under "
+                ".github/skills/.\n\n## Other section\n\nbody\n",
+            )
+            content = run_playbook._generate_agents_md_content(repo)
+            self.assertIn("Architecture / domain", content)
+            self.assertIn("CLI orchestrator", content)
+
+    def test_deferred_bugs_appear_in_caveats(self) -> None:
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            self._seed_role_map(repo)
+            self._seed_index(repo)
+            write(
+                repo / "quality" / "BUGS.md",
+                "# BUGS\n\n"
+                "### BUG-001 - first deferred bug\n\n"
+                "- Disposition: deferred\n\n"
+                "### BUG-002 - shipped fix\n\n"
+                "- Disposition: code-fix\n\n"
+                "### BUG-003 - second deferred\n\n"
+                "- Disposition: deferred\n",
+            )
+            content = run_playbook._generate_agents_md_content(repo)
+            self.assertIn("BUG-001", content)
+            self.assertIn("first deferred bug", content)
+            self.assertIn("BUG-003", content)
+            self.assertNotIn("BUG-002", content)
+
+    def test_idempotent_regeneration(self) -> None:
+        """Running the generator twice produces identical output the
+        second time (modulo I/O timestamps the generator doesn't
+        embed). v1.4.6 sentinel respect lives in the gate; the
+        generator's contract is that a second invocation against a
+        QPB-sentinel'd file regenerates cleanly."""
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            self._seed_role_map(repo)
+            self._seed_index(repo)
+            target = repo / "AGENTS.md"
+            content_1 = run_playbook._generate_agents_md_content(repo)
+            run_playbook._safe_write_agents_md(target, content_1)
+            text_after_first = target.read_text()
+            content_2 = run_playbook._generate_agents_md_content(repo)
+            run_playbook._safe_write_agents_md(target, content_2)
+            self.assertEqual(text_after_first, target.read_text())
 
 
 class FinalizeQualityLayoutTests(unittest.TestCase):
