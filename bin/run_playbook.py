@@ -676,7 +676,7 @@ def _role_taxonomy_block() -> str:
 def phase1_prompt(no_seeds: bool) -> str:
     seed_instruction = ""
     if no_seeds:
-        seed_instruction = "Skip Phase 0 and Phase 0b entirely - do not look for quality/runs/ or sibling versioned directories. This is a clean benchmark run. Start directly at Phase 1."
+        seed_instruction = "Skip Phase 0 and Phase 0b entirely - do not look for quality/previous_runs/ (or the legacy quality/runs/) or sibling versioned directories. This is a clean benchmark run. Start directly at Phase 1."
     role_taxonomy = _role_taxonomy_block()
 
     return f"""You are a quality engineer. {SKILL_FALLBACK_GUIDE} For this phase read ONLY the sections up through Phase 1 (stop at the \"---\" line before \"Phase 2\"). Also read the reference files (under whichever references/ directory matches the install path you resolved) that are relevant to exploration.
@@ -1822,12 +1822,22 @@ def formal_docs_guard_banner(repo_dir: Path) -> Optional[str]:
 
 
 def _clear_live_quality(quality_dir: Path) -> None:
-    """Remove every live child of quality/ except the runs/ archive subtree and
-    RUN_INDEX.md (the append-only history that lives alongside runs/)."""
+    """Remove every live child of quality/ except the archive subtrees
+    and RUN_INDEX.md (the append-only history).
+
+    v1.5.4 Phase 3.6.2 (B-19, H3 fix): preserves both the current
+    archive directory (``previous_runs/``) AND the legacy directory
+    (``runs/``) so archives written by older QPB versions survive the
+    transition window."""
     if not quality_dir.is_dir():
         return
+    preserved = (
+        archive_lib.ARCHIVE_DIRNAME,
+        archive_lib.LEGACY_ARCHIVE_DIRNAME,
+        "RUN_INDEX.md",
+    )
     for child in list(quality_dir.iterdir()):
-        if child.name in ("runs", "RUN_INDEX.md"):
+        if child.name in preserved:
             continue
         if child.is_dir():
             shutil.rmtree(child, ignore_errors=True)
@@ -1976,50 +1986,78 @@ def _verify_qpb_source_unchanged(
 
 
 def _prior_run_id_from_live_index(quality_dir: Path) -> Optional[str]:
-    """Return the prior run's compact timestamp from quality/INDEX.md, or None."""
+    """Return the prior run's compact archive timestamp from
+    quality/INDEX.md, or None.
+
+    v1.5.4 Phase 3.6.2 (B-19, M8 fix): pins the source field to
+    ``run_timestamp_end`` (the Phase-6 finalization timestamp), NOT
+    ``run_timestamp_start``. ``_end`` is the meaningful archival
+    anchor — it's when the live tree's artifacts were finalized.
+    Legacy INDEX files that only carry ``_start`` (or carry
+    ``_end == _start`` from the stub) fall through to the
+    ``compute_archive_timestamp`` chain via the caller's fallback.
+    """
     index_path = quality_dir / "INDEX.md"
     if not index_path.is_file():
         return None
     payload = archive_lib.load_index_payload(index_path)
     if not isinstance(payload, dict):
         return None
-    ts = payload.get("run_timestamp_start")
+    ts = payload.get("run_timestamp_end")
     if not isinstance(ts, str) or not ts:
         return None
-    return archive_lib.compact_from_extended(ts)
+    try:
+        return archive_lib.compact_from_extended(ts)
+    except Exception:  # noqa: BLE001 — defensive parse fallback
+        return None
 
 
 def archive_previous_run(repo_dir: Path, current_run_timestamp: str) -> None:
     """Make room for a new run by archiving whatever live quality/ content remains.
 
-    v1.5.1 unified pipeline (Phase 5 revision r1): both the Phase-1 entry
-    archive and the end-of-Phase-6 archive go through
-    `archive_lib.archive_run()` so every `quality/runs/<ts>/` folder has an
-    `INDEX.md` with §11 fields and every run emits a row into
-    `quality/RUN_INDEX.md`.
+    v1.5.1 unified pipeline: both the Phase-1 entry archive and the
+    end-of-Phase-6 archive go through `archive_lib.archive_run()` so
+    every archived run carries an `INDEX.md` with §11 fields and emits
+    a row into `quality/RUN_INDEX.md`.
+
+    v1.5.4 Phase 3.6.2 (B-19): archives now land under
+    ``quality/previous_runs/`` instead of ``quality/runs/``. Both
+    directories are checked when detecting "prior run already
+    archived" (legacy archives are read-compatible). The archive
+    timestamp pins to the prior run's ``run_timestamp_end`` (M8 fix)
+    via :func:`archive_lib.compute_archive_timestamp`.
 
     Branches, in order:
 
-    1. If quality/ has no live content beyond runs/, nothing to do.
-    2. If quality/INDEX.md names a prior run whose archive folder already
-       exists under quality/runs/<prior-ts>/, the prior run was auto-archived
-       at its own successful Phase 6 — just clear the live tree.
-    3. Otherwise archive the live tree as a partial prior run, using the
-       prior run's own start timestamp when available (from INDEX.md), else
-       falling back to the current run's timestamp.
+    1. If quality/ has no live content beyond the archive subtrees,
+       nothing to do.
+    2. If quality/INDEX.md names a prior run whose archive folder
+       already exists under either ``previous_runs/<prior-ts>/`` or
+       the legacy ``runs/<prior-ts>/``, the prior run was
+       auto-archived at its own Phase 6 — just clear the live tree.
+    3. Otherwise archive the live tree as a partial prior run. The
+       timestamp pins to the prior run's end-time via
+       ``compute_archive_timestamp`` (INDEX.run_timestamp_end →
+       BUGS.md mtime → current UTC).
     """
     quality_dir = repo_dir / "quality"
     if not quality_dir.is_dir():
         return
-    if not any(child.name != "runs" for child in quality_dir.iterdir()):
+    archive_dirs = (
+        archive_lib.ARCHIVE_DIRNAME,
+        archive_lib.LEGACY_ARCHIVE_DIRNAME,
+    )
+    if not any(child.name not in archive_dirs for child in quality_dir.iterdir()):
         return
 
     prior_ts = _prior_run_id_from_live_index(quality_dir)
-    if prior_ts and (quality_dir / "runs" / prior_ts).is_dir():
+    if prior_ts and any(
+        (quality_dir / d / prior_ts).is_dir() for d in archive_dirs
+    ):
         _clear_live_quality(quality_dir)
         return
 
-    archive_ts = prior_ts or current_run_timestamp
+    archive_ts = prior_ts or archive_lib.compute_archive_timestamp(quality_dir)
     try:
         archive_lib.archive_run(
             repo_dir,
@@ -2028,8 +2066,9 @@ def archive_previous_run(repo_dir: Path, current_run_timestamp: str) -> None:
             gate_verdict_override="partial",
         )
     except archive_lib.ArchiveError:
-        # Archive target already exists under a -PARTIAL suffix — the prior
-        # attempt was already preserved. Clear the live tree and continue.
+        # Archive target already exists — the prior attempt was
+        # already preserved (with a .partial sentinel inside per
+        # v1.5.4 Phase 3.6.2 B-19). Clear the live tree and continue.
         pass
     _clear_live_quality(quality_dir)
 

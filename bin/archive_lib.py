@@ -6,7 +6,7 @@ Implements the Phase 5c contract from QPB_v1.5.1_Design.md:
   `quality/results/<basename>-YYYYMMDDTHHMMSSZ.<ext>` plus a `<basename>-latest.<ext>`
   pointer (symlink on POSIX, copy fallback on Windows).
 - `archive_run(repo_dir, timestamp, *, status)` snapshots the live `quality/`
-  tree into `quality/runs/<timestamp>[-suffix]/`, writes a per-run `INDEX.md`,
+  tree into `quality/previous_runs/<timestamp>[-FAILED]/`, writes a per-run `INDEX.md`,
   and appends one row to `quality/RUN_INDEX.md`. Status `"success"` uses no
   suffix; `"failed"` and `"partial"` produce `-FAILED` / `-PARTIAL` suffixes.
 - `render_index_markdown`, `render_run_index_row`, `render_run_index_header`,
@@ -45,7 +45,25 @@ DISPOSITION_LITERALS = (
     "deferred",
 )
 TIER_LITERALS = ("1", "2", "3", "4", "5", "unknown")
-STATUS_SUFFIX = {"success": "", "failed": "-FAILED", "partial": "-PARTIAL"}
+# v1.5.4 Phase 3.6.2 (B-19): the `-PARTIAL` filename suffix is retired
+# in favour of an in-archive `.partial` sentinel file. This keeps run
+# IDs derivable from a single timestamp (no suffix discrimination
+# downstream) while still flagging interrupted runs to consumers.
+# `-FAILED` stays — it signals an archived run with a definite gate
+# fail, distinct from "interrupted before Phase 6 finalization".
+STATUS_SUFFIX = {"success": "", "failed": "-FAILED", "partial": ""}
+
+# v1.5.4 Phase 3.6.2 (B-19): the canonical archive directory name
+# under each target's `quality/`. Migrated from `runs/` to
+# `previous_runs/`. Legacy `quality/runs/` archives remain readable
+# for backward-compat but new archives land here.
+ARCHIVE_DIRNAME = "previous_runs"
+LEGACY_ARCHIVE_DIRNAME = "runs"
+
+# Sentinel file written inside an archive folder when the prior run
+# was interrupted (no Phase-6 finalization). Replaces the `-PARTIAL`
+# filename suffix.
+PARTIAL_SENTINEL_NAME = ".partial"
 
 _VERSION_HEADER_PATTERN = re.compile(r"Quality Playbook v([0-9]+(?:\.[0-9]+)+)", re.IGNORECASE)
 _BUG_HEADING_PATTERN = re.compile(r"^###\s+BUG-([A-Za-z0-9]+)\s*$", re.MULTILINE)
@@ -67,7 +85,7 @@ class ArchiveError(Exception):
 def utc_compact_timestamp(now: Optional[datetime] = None) -> str:
     """Return `YYYYMMDDTHHMMSSZ` — basic ISO 8601 timestamp, UTC.
 
-    Used for folder names (quality/runs/<ts>/) and file names under
+    Used for folder names (quality/previous_runs/<ts>/) and file names under
     quality/results/.
     """
     dt = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
@@ -470,7 +488,7 @@ def render_index_markdown(run_id: str, payload: Dict[str, object], *, provenance
     body = json.dumps(payload, indent=2, sort_keys=False)
     return (
         f"# Run Index — {run_id}\n\n"
-        f"Playbook run archived to `quality/runs/{run_id}/`. This file was\n"
+        f"Playbook run archived to `quality/{ARCHIVE_DIRNAME}/{run_id}/`. This file was\n"
         f"{provenance}. Fields marked `\"unknown\"` could not be recovered\n"
         "from the run's artifacts.\n\n"
         "```json\n"
@@ -482,7 +500,7 @@ def render_index_markdown(run_id: str, payload: Dict[str, object], *, provenance
 def render_run_index_header() -> str:
     return (
         "# QPB RUN_INDEX\n\n"
-        "Append-only index of every archived run under `quality/runs/`. One row\n"
+        f"Append-only index of every archived run under `quality/{ARCHIVE_DIRNAME}/`. One row\n"
         "per archived run. Maintained by `bin/migrate_v1_5_0_layout.py` at\n"
         "migration time and by `bin/archive_lib.archive_run` at end of every\n"
         "successful run. Rows are never rewritten; a run's `INDEX.md` is the\n"
@@ -513,7 +531,19 @@ def _format_role_breakdown_summary(payload: Dict[str, object]) -> str:
     )
 
 
-def render_run_index_row(run_id: str, payload: Dict[str, object]) -> str:
+def render_run_index_row(
+    run_id: str,
+    payload: Dict[str, object],
+    *,
+    archive_dir: str = ARCHIVE_DIRNAME,
+) -> str:
+    """Render one RUN_INDEX.md row.
+
+    ``archive_dir`` defaults to the current canonical name
+    (``previous_runs``); legacy callers (e.g.
+    :mod:`bin.migrate_v1_5_0_layout`, which lands archives under the
+    pre-v1.5.4 ``runs/`` directory) pass ``LEGACY_ARCHIVE_DIRNAME``
+    so the navigation link points at the actual on-disk location."""
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
     bugs = summary.get("bugs") if isinstance(summary.get("bugs"), dict) else {}
     bug_count = sum(int(bugs.get(s, 0)) for s in SEVERITY_LITERALS if isinstance(bugs.get(s, 0), int))
@@ -523,7 +553,7 @@ def render_run_index_row(run_id: str, payload: Dict[str, object]) -> str:
         f"| {_format_role_breakdown_summary(payload)} "
         f"| {summary.get('gate_verdict', 'partial')} "
         f"| {bug_count} "
-        f"| [INDEX.md](quality/runs/{run_id}/INDEX.md) |"
+        f"| [INDEX.md](quality/{archive_dir}/{run_id}/INDEX.md) |"
     )
 
 
@@ -568,8 +598,54 @@ def load_index_payload(path: Path) -> Optional[Dict[str, object]]:
 
 
 def _runs_exclude_ignore(*_: object) -> set:
-    """Passed to copytree's `ignore=` to exclude quality/runs/ recursion."""
-    return {"runs"}
+    """Passed to copytree's `ignore=` to exclude both archive
+    directories — current (``previous_runs/``) and legacy (``runs/``)
+    — from recursive inclusion in a fresh archive. v1.5.4 Phase 3.6.2
+    (B-19, H2 fix): without ignoring the current archive dir, every
+    new archive would recursively include the prior archive tree and
+    grow unbounded."""
+    return {ARCHIVE_DIRNAME, LEGACY_ARCHIVE_DIRNAME}
+
+
+def compute_archive_timestamp(
+    quality_dir: Path, *, now: Optional[datetime] = None
+) -> str:
+    """Derive the archive timestamp for the existing live `quality/`
+    tree.
+
+    v1.5.4 Phase 3.6.2 (B-19, M8 fix): pin to the prior run's
+    ``run_timestamp_end`` (the field captured at end-of-Phase-6),
+    NOT ``run_timestamp_start``. The end-time is the meaningful
+    archival anchor — it's when the artifacts in the live tree were
+    finalized. Fallback chain:
+
+      1. ``quality/INDEX.md``'s ``run_timestamp_end`` (compact form).
+      2. ``quality/BUGS.md`` mtime (the most recently-touched
+         canonical artifact when INDEX is missing/malformed).
+      3. Current UTC time (final fallback when both above are absent).
+    """
+    index_path = quality_dir / "INDEX.md"
+    if index_path.is_file():
+        payload = load_index_payload(index_path)
+        if isinstance(payload, dict):
+            ts = payload.get("run_timestamp_end")
+            if isinstance(ts, str) and ts:
+                try:
+                    return compact_from_extended(ts)
+                except Exception:  # noqa: BLE001 — defensive parse fallback
+                    pass
+    bugs_md = quality_dir / "BUGS.md"
+    if bugs_md.is_file():
+        try:
+            mtime = datetime.fromtimestamp(
+                bugs_md.stat().st_mtime, tz=timezone.utc
+            )
+            return mtime.strftime("%Y%m%dT%H%M%SZ")
+        except OSError:
+            pass
+    if now is None:
+        now = datetime.now(tz=timezone.utc)
+    return now.strftime("%Y%m%dT%H%M%SZ")
 
 
 def archive_run(
@@ -582,13 +658,22 @@ def archive_run(
     gate_verdict_override: Optional[str] = None,
     now: Optional[datetime] = None,
 ) -> Path:
-    """Snapshot quality/ into quality/runs/<timestamp>[-SUFFIX]/, write INDEX.md, append RUN_INDEX.md row.
+    """Snapshot quality/ into quality/previous_runs/<timestamp>[-FAILED]/,
+    write INDEX.md, append RUN_INDEX.md row.
+
+    v1.5.4 Phase 3.6.2 (B-19): the archive destination migrated from
+    ``quality/runs/`` to ``quality/previous_runs/``. The ``-PARTIAL``
+    filename suffix was retired in favour of an in-archive
+    ``.partial`` sentinel file (``status="partial"`` writes
+    ``<archive>/.partial`` rather than appending ``-PARTIAL`` to the
+    folder name). ``-FAILED`` remains as a folder-name suffix because
+    it represents a definite gate-failed run, not an interrupted one.
 
     Arguments:
       repo_dir — target repo root.
       timestamp — run start timestamp, basic ISO 8601 (YYYYMMDDTHHMMSSZ).
       status — one of "success" (no suffix), "failed" (-FAILED suffix),
-               "partial" (-PARTIAL suffix).
+               "partial" (no suffix; .partial sentinel written inside).
       target_role_breakdown — v1.5.4 INDEX field; the breakdown subtree
                of `quality/exploration_role_map.json`. Auto-loaded from
                the repo if not supplied; pass ``None`` explicitly to
@@ -607,22 +692,34 @@ def archive_run(
         raise ArchiveError(f"{quality_dir} does not exist; nothing to archive")
 
     run_id = timestamp + STATUS_SUFFIX[status]
-    archive_root = quality_dir / "runs" / run_id
+    archive_root = quality_dir / ARCHIVE_DIRNAME / run_id
     if archive_root.exists():
         raise ArchiveError(
             f"archive target {archive_root} already exists; refusing to overwrite "
             "(invoke with a different timestamp or remove the existing folder first)"
         )
     archive_root.parent.mkdir(parents=True, exist_ok=True)
-    partial_dir = quality_dir / "runs" / (run_id + ".partial")
-    if partial_dir.exists():
-        shutil.rmtree(partial_dir)
+    staging_dir = quality_dir / ARCHIVE_DIRNAME / (run_id + ".staging")
+    if staging_dir.exists():
+        shutil.rmtree(staging_dir)
     shutil.copytree(
         quality_dir,
-        partial_dir / "quality",
-        ignore=shutil.ignore_patterns("runs"),
+        staging_dir / "quality",
+        # v1.5.4 Phase 3.6.2 H2 fix: exclude BOTH the current and
+        # legacy archive dirs so a fresh archive doesn't recursively
+        # include the prior archive tree and grow unbounded.
+        ignore=shutil.ignore_patterns(ARCHIVE_DIRNAME, LEGACY_ARCHIVE_DIRNAME),
     )
-    partial_dir.rename(archive_root)
+    staging_dir.rename(archive_root)
+    # v1.5.4 Phase 3.6.2 (B-19): drop a ``.partial`` sentinel inside
+    # the archive folder when the prior run was interrupted. Replaces
+    # the ``-PARTIAL`` filename suffix.
+    if status == "partial":
+        (archive_root / PARTIAL_SENTINEL_NAME).write_text(
+            "Prior run was archived as partial: no Phase-6 finalization "
+            "captured. Treat artifacts as incomplete.\n",
+            encoding="utf-8",
+        )
 
     # Build the INDEX.md payload using the freshly-archived copy so subsequent
     # git log operations see its content (it's staged but not committed yet).
@@ -666,7 +763,10 @@ def archive_run(
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Archive the current quality/ tree to quality/runs/<timestamp>[-SUFFIX]/. "
+            "Archive the current quality/ tree to "
+            "quality/previous_runs/<timestamp>[-FAILED]/ (v1.5.4 Phase 3.6.2 "
+            "B-19; legacy quality/runs/ archives remain readable but new "
+            "archives land under previous_runs/). "
             "Operator-driven; the orchestrator auto-invokes archive_run on a clean "
             "gate pass, so use this only to preserve a failed or partial run before "
             "the next run's overwrite."

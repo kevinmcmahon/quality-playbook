@@ -52,9 +52,11 @@ class QualityPlaybookShimTests(unittest.TestCase):
                      "--timestamp", "20260419T143022Z"]
                 )
             self.assertEqual(rc, 0, buf_out.getvalue())
-            archive = repo / "quality" / "runs" / "20260419T143022Z-PARTIAL"
+            # v1.5.4 Phase 3.6.2: previous_runs/<TS>/ + .partial sentinel.
+            archive = repo / "quality" / "previous_runs" / "20260419T143022Z"
             self.assertTrue(archive.is_dir())
             self.assertTrue((archive / "INDEX.md").is_file())
+            self.assertTrue((archive / ".partial").is_file())
 
     def test_migrate_dispatches_to_migration_script(self) -> None:
         with TemporaryDirectory() as tmp:

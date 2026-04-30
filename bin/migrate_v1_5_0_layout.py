@@ -196,8 +196,18 @@ def migrate(repo: Path, *, dry_run: bool = False) -> Planner:
         for run_folder in sorted(p for p in legacy_prev.iterdir() if p.is_dir()):
             planner._log(f"dry-run would backfill INDEX.md for quality/runs/{run_folder.name}/")
 
+    # v1.5.4 Phase 3.6.2 (B-19): the migration script is a one-time
+    # rescue tool for v1.5.0 → v1.5.1 layouts; it lands archives at
+    # the LEGACY ``quality/runs/`` path. The render call passes
+    # ``archive_dir=LEGACY_ARCHIVE_DIRNAME`` so RUN_INDEX rows point
+    # at the actual on-disk location rather than the new
+    # ``previous_runs/`` default.
+    legacy_dir = archive_lib.LEGACY_ARCHIVE_DIRNAME
     if run_payloads:
-        rows = [archive_lib.render_run_index_row(run_id, payload) for run_id, payload in run_payloads]
+        rows = [
+            archive_lib.render_run_index_row(run_id, payload, archive_dir=legacy_dir)
+            for run_id, payload in run_payloads
+        ]
         existing_path = repo / "quality" / "RUN_INDEX.md"
         existing = existing_path.read_text(encoding="utf-8") if existing_path.is_file() else ""
         if existing and "| Run |" in existing:
@@ -213,7 +223,11 @@ def migrate(repo: Path, *, dry_run: bool = False) -> Planner:
         for run_folder in sorted(p for p in runs_dir.iterdir() if p.is_dir()):
             payload = archive_lib.load_index_payload(run_folder / "INDEX.md")
             if payload is not None:
-                rebuilt_rows.append(archive_lib.render_run_index_row(run_folder.name, payload))
+                rebuilt_rows.append(
+                    archive_lib.render_run_index_row(
+                        run_folder.name, payload, archive_dir=legacy_dir,
+                    )
+                )
         if rebuilt_rows:
             planner.write_text(
                 repo / "quality" / "RUN_INDEX.md",

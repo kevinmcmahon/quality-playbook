@@ -123,7 +123,10 @@ class RunIndexRenderingTests(unittest.TestCase):
         self.assertIn("skill 0% / code 100% / tool 0% / other 0%", row)
         self.assertIn("| pass ", row)
         self.assertIn("| 6 ", row)  # 2+3+1
-        self.assertIn("[INDEX.md](quality/runs/20260419T143022Z/INDEX.md)", row)
+        self.assertIn(
+            "[INDEX.md](quality/previous_runs/20260419T143022Z/INDEX.md)",
+            row,
+        )
 
     def test_run_index_row_falls_back_to_na_when_role_map_absent(self) -> None:
         payload = {
@@ -219,14 +222,35 @@ class ArchiveRunTests(unittest.TestCase):
             payload = al.load_index_payload(archive / "INDEX.md")
             self.assertEqual(payload["summary"]["gate_verdict"], "fail")
 
-    def test_partial_archive_has_partial_suffix(self) -> None:
+    def test_partial_archive_writes_sentinel_no_filename_suffix(self) -> None:
+        """v1.5.4 Phase 3.6.2 (B-19): partial runs land at the bare
+        timestamp folder name with an in-archive `.partial` sentinel
+        — no `-PARTIAL` filename suffix. Pins the migration."""
         with TemporaryDirectory() as tmp:
             repo = Path(tmp)
             self._seed_live_run(repo)
             archive = al.archive_run(repo, "20260419T143022Z", status="partial")
-            self.assertEqual(archive.name, "20260419T143022Z-PARTIAL")
+            self.assertEqual(archive.name, "20260419T143022Z")
+            self.assertTrue(
+                (archive / al.PARTIAL_SENTINEL_NAME).is_file(),
+                f"expected {al.PARTIAL_SENTINEL_NAME} sentinel inside the "
+                "archive folder for partial runs",
+            )
             payload = al.load_index_payload(archive / "INDEX.md")
             self.assertEqual(payload["summary"]["gate_verdict"], "partial")
+
+    def test_archive_lands_under_previous_runs_not_runs(self) -> None:
+        """v1.5.4 Phase 3.6.2 (B-19): canonical archive directory is
+        `previous_runs/`, not the legacy `runs/`."""
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            self._seed_live_run(repo)
+            archive = al.archive_run(repo, "20260419T143022Z", status="success")
+            self.assertEqual(archive.parent.name, "previous_runs")
+            self.assertFalse(
+                (repo / "quality" / "runs").exists(),
+                "fresh archive must not create the legacy quality/runs/ dir",
+            )
 
     def test_archive_refuses_when_target_exists(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -236,15 +260,32 @@ class ArchiveRunTests(unittest.TestCase):
             with self.assertRaises(al.ArchiveError):
                 al.archive_run(repo, "20260419T143022Z", status="success")
 
-    def test_archive_excludes_runs_subtree(self) -> None:
-        """archive_run must not recurse into quality/runs/ itself."""
+    def test_archive_excludes_archive_subtrees(self) -> None:
+        """v1.5.4 Phase 3.6.2 (H2 fix): archive_run must not recurse
+        into either previous_runs/ or the legacy runs/. Without this
+        every fresh archive grows unbounded."""
         with TemporaryDirectory() as tmp:
             repo = Path(tmp)
             self._seed_live_run(repo)
-            # Pre-existing archived run should not be copied into the new archive.
-            _write(repo / "quality" / "runs" / "priorrun" / "INDEX.md", "prior")
+            # Pre-existing archived runs in BOTH layouts. Neither
+            # should be copied into the new archive.
+            _write(
+                repo / "quality" / "previous_runs" / "priorrun" / "INDEX.md",
+                "prior-current",
+            )
+            _write(
+                repo / "quality" / "runs" / "legacyrun" / "INDEX.md",
+                "prior-legacy",
+            )
             archive = al.archive_run(repo, "20260419T143022Z", status="success")
-            self.assertFalse((archive / "quality" / "runs").exists())
+            self.assertFalse(
+                (archive / "quality" / "previous_runs").exists(),
+                "fresh archive must not include quality/previous_runs/",
+            )
+            self.assertFalse(
+                (archive / "quality" / "runs").exists(),
+                "fresh archive must not include the legacy quality/runs/",
+            )
 
     def test_archive_run_appends_run_index_row(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -253,7 +294,10 @@ class ArchiveRunTests(unittest.TestCase):
             al.archive_run(repo, "20260419T143022Z", status="success")
             text = (repo / "quality" / "RUN_INDEX.md").read_text(encoding="utf-8")
             self.assertIn("20260419T143022Z", text)
-            self.assertIn("[INDEX.md](quality/runs/20260419T143022Z/INDEX.md)", text)
+            self.assertIn(
+                "[INDEX.md](quality/previous_runs/20260419T143022Z/INDEX.md)",
+                text,
+            )
 
     def test_archive_rejects_when_quality_missing(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -280,9 +324,12 @@ class CLITests(unittest.TestCase):
                 al.main([str(repo), "--status", "partial", "--timestamp", "20260419T143022Z"]),
                 0,
             )
-            self.assertTrue(
-                (repo / "quality" / "runs" / "20260419T143022Z-PARTIAL" / "INDEX.md").is_file()
+            # v1.5.4 Phase 3.6.2: partial → previous_runs/<ts>/.partial
+            archive = (
+                repo / "quality" / "previous_runs" / "20260419T143022Z"
             )
+            self.assertTrue((archive / "INDEX.md").is_file())
+            self.assertTrue((archive / al.PARTIAL_SENTINEL_NAME).is_file())
 
     def test_cli_exits_one_on_missing_quality(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -291,6 +338,109 @@ class CLITests(unittest.TestCase):
                 al.main([str(repo), "--timestamp", "20260419T143022Z"]),
                 1,
             )
+
+
+class ComputeArchiveTimestampTests(unittest.TestCase):
+    """v1.5.4 Phase 3.6.2 (B-19, M8 fix): pin the timestamp source
+    chain — INDEX.run_timestamp_end → BUGS.md mtime → current UTC.
+    The prior implementation used INDEX.run_timestamp_start (the
+    *stub* timestamp written before Phase 1), which was the wrong
+    field — `_end` is when the artifacts were finalized."""
+
+    def test_uses_run_timestamp_end_from_index(self) -> None:
+        with TemporaryDirectory() as tmp:
+            quality = Path(tmp)
+            (quality / "INDEX.md").write_text(
+                '# Run Index\n\n```json\n'
+                '{"run_timestamp_start": "2026-04-18T11:30:00Z",'
+                ' "run_timestamp_end":   "2026-04-18T12:34:56Z"}\n'
+                '```\n',
+                encoding="utf-8",
+            )
+            ts = al.compute_archive_timestamp(quality)
+            self.assertEqual(ts, "20260418T123456Z")
+
+    def test_falls_back_to_bugs_mtime_when_index_missing(self) -> None:
+        with TemporaryDirectory() as tmp:
+            quality = Path(tmp)
+            bugs = quality / "BUGS.md"
+            bugs.write_text("# bugs", encoding="utf-8")
+            # Force a known mtime so the assertion is deterministic.
+            target_epoch = 1745000000  # 2025-04-18T16:53:20Z
+            os.utime(bugs, (target_epoch, target_epoch))
+            ts = al.compute_archive_timestamp(quality)
+            from datetime import datetime, timezone
+            expected = datetime.fromtimestamp(
+                target_epoch, tz=timezone.utc
+            ).strftime("%Y%m%dT%H%M%SZ")
+            self.assertEqual(ts, expected)
+
+    def test_final_fallback_to_now_when_both_absent(self) -> None:
+        from datetime import datetime, timezone
+        with TemporaryDirectory() as tmp:
+            quality = Path(tmp)
+            # Empty quality dir — no INDEX, no BUGS.md.
+            fixed_now = datetime(
+                2026, 4, 30, 1, 23, 45, tzinfo=timezone.utc
+            )
+            ts = al.compute_archive_timestamp(quality, now=fixed_now)
+            self.assertEqual(ts, "20260430T012345Z")
+
+    def test_index_with_only_start_falls_through(self) -> None:
+        """Pre-v1.5.4 INDEX files only carry run_timestamp_start (the
+        stub timestamp). M8 fix: those fall through past INDEX to the
+        BUGS.md mtime / current UTC chain rather than mis-pinning."""
+        from datetime import datetime, timezone
+        with TemporaryDirectory() as tmp:
+            quality = Path(tmp)
+            (quality / "INDEX.md").write_text(
+                '# Run Index\n\n```json\n'
+                '{"run_timestamp_start": "2026-04-18T11:30:00Z"}\n'
+                '```\n',
+                encoding="utf-8",
+            )
+            fixed_now = datetime(
+                2026, 4, 30, 1, 23, 45, tzinfo=timezone.utc
+            )
+            ts = al.compute_archive_timestamp(quality, now=fixed_now)
+            # No BUGS.md, no run_timestamp_end → current UTC.
+            self.assertEqual(ts, "20260430T012345Z")
+
+
+class LegacyArchiveLayoutCompatTests(unittest.TestCase):
+    """v1.5.4 Phase 3.6.2 (B-19): pre-v1.5.4 archives sit under
+    ``quality/runs/``; new archives land under
+    ``quality/previous_runs/``. The legacy directory remains readable
+    for backward-compat. These tests pin both directions."""
+
+    def test_legacy_runs_dir_excluded_from_fresh_archive(self) -> None:
+        # Already covered by test_archive_excludes_archive_subtrees,
+        # but pin again from the legacy-compat angle to make the
+        # contract explicit.
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            quality = repo / "quality"
+            quality.mkdir()
+            (quality / "BUGS.md").write_text("bug")
+            (quality / "runs" / "legacy-20260101").mkdir(parents=True)
+            (quality / "runs" / "legacy-20260101" / "INDEX.md").write_text("legacy")
+            archive = al.archive_run(
+                repo, "20260430T020000Z", status="success"
+            )
+            self.assertFalse(
+                (archive / "quality" / "runs").exists(),
+                "legacy runs/ tree must NOT be recursively included",
+            )
+            # Legacy archive itself is untouched.
+            self.assertTrue((quality / "runs" / "legacy-20260101").is_dir())
+
+    def test_constants_exposed(self) -> None:
+        """Constants are part of the public API per the brief — they
+        get referenced by run_playbook (preserve list), the harness
+        scripts (sentinel scan), and downstream consumers."""
+        self.assertEqual(al.ARCHIVE_DIRNAME, "previous_runs")
+        self.assertEqual(al.LEGACY_ARCHIVE_DIRNAME, "runs")
+        self.assertEqual(al.PARTIAL_SENTINEL_NAME, ".partial")
 
 
 if __name__ == "__main__":

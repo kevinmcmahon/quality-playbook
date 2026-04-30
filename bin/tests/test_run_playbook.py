@@ -216,20 +216,37 @@ class RunPlaybookTests(unittest.TestCase):
         self.assertIn("using the parity strategy", run_playbook.iteration_prompt("parity"))
 
     def test_archive_previous_run_archives_and_removes_live_dirs(self) -> None:
-        """Phase 5 revision r1: archive_previous_run now delegates to
-        archive_lib.archive_run with status='partial', so the archive folder
-        carries the -PARTIAL suffix and INDEX.md is produced inside it."""
+        """v1.5.4 Phase 3.6.2 (B-19): archive_previous_run delegates
+        to archive_lib.archive_run with status='partial', which now
+        lands the archive at quality/previous_runs/<TS>/ with an
+        in-archive .partial sentinel (no -PARTIAL filename suffix).
+
+        M8 fix: the archive timestamp pins to the prior run's
+        ``run_timestamp_end`` from INDEX.md (not the current run's
+        timestamp). The fixture seeds INDEX so the test pin is
+        deterministic; without it the chain falls through to
+        BUGS.md mtime / current UTC."""
         with TemporaryDirectory() as temp_dir:
             repo_dir = Path(temp_dir)
             write(repo_dir / "quality" / "BUGS.md", "bug")
             write(repo_dir / "quality" / "control_prompts" / "phase1.output.txt", "prompt")
+            write(
+                repo_dir / "quality" / "INDEX.md",
+                '# Run Index\n\n```json\n'
+                '{"run_timestamp_start": "2026-04-18T11:30:00Z",'
+                ' "run_timestamp_end":   "2026-04-18T12:00:00Z"}\n'
+                '```\n',
+            )
 
-            run_playbook.archive_previous_run(repo_dir, "20260418T120000Z")
+            run_playbook.archive_previous_run(repo_dir, "20260420T100000Z")
 
-            # Live artifacts cleared; the archive subtree survives under quality/runs/.
+            # Live artifacts cleared; archive subtree survives.
             self.assertFalse((repo_dir / "quality" / "BUGS.md").exists())
             self.assertFalse((repo_dir / "quality" / "control_prompts").exists())
-            archive_root = repo_dir / "quality" / "runs" / "20260418T120000Z-PARTIAL" / "quality"
+            archive_dir = (
+                repo_dir / "quality" / "previous_runs" / "20260418T120000Z"
+            )
+            archive_root = archive_dir / "quality"
             self.assertEqual(
                 (archive_root / "BUGS.md").read_text(encoding="utf-8"),
                 "bug",
@@ -238,39 +255,95 @@ class RunPlaybookTests(unittest.TestCase):
                 (archive_root / "control_prompts" / "phase1.output.txt").read_text(encoding="utf-8"),
                 "prompt",
             )
-            # Unified pipeline guarantees per-run INDEX.md and a RUN_INDEX row.
-            self.assertTrue(
-                (repo_dir / "quality" / "runs" / "20260418T120000Z-PARTIAL" / "INDEX.md").is_file()
-            )
+            # Unified pipeline guarantees per-run INDEX.md + RUN_INDEX row +
+            # the .partial sentinel for partial-status archives.
+            self.assertTrue((archive_dir / "INDEX.md").is_file())
+            self.assertTrue((archive_dir / ".partial").is_file())
             run_index = (repo_dir / "quality" / "RUN_INDEX.md").read_text(encoding="utf-8")
-            self.assertIn("20260418T120000Z-PARTIAL", run_index)
+            self.assertIn("20260418T120000Z", run_index)
 
     def test_archive_previous_run_skips_already_archived_prior(self) -> None:
         """When quality/INDEX.md names a prior run whose archive folder
-        already exists, archive_previous_run just clears the live tree
-        without producing a duplicate archive."""
+        already exists (under either previous_runs/ or the legacy runs/),
+        archive_previous_run just clears the live tree without producing
+        a duplicate archive."""
         with TemporaryDirectory() as temp_dir:
             repo_dir = Path(temp_dir)
             write(repo_dir / "quality" / "BUGS.md", "bug")
-            # Pre-existing archive from the prior run's own end-of-Phase-6 success.
-            existing_archive = repo_dir / "quality" / "runs" / "20260419T100000Z"
+            # Pre-existing archive in the new layout.
+            existing_archive = (
+                repo_dir / "quality" / "previous_runs" / "20260419T100000Z"
+            )
             write(existing_archive / "quality" / "BUGS.md", "archived")
-            # Live INDEX referencing that run.
+            # Live INDEX referencing that run via run_timestamp_end (M8
+            # fix: the prior_run lookup now reads _end, not _start).
             write(
                 repo_dir / "quality" / "INDEX.md",
                 '# Run Index\n\n```json\n'
-                '{"run_timestamp_start": "2026-04-19T10:00:00Z"}\n'
+                '{"run_timestamp_start": "2026-04-19T09:30:00Z",'
+                ' "run_timestamp_end":   "2026-04-19T10:00:00Z"}\n'
                 '```\n',
             )
 
             run_playbook.archive_previous_run(repo_dir, "20260420T100000Z")
 
             self.assertFalse((repo_dir / "quality" / "BUGS.md").exists())
-            # Existing archive preserved; no -PARTIAL duplicate created.
             self.assertTrue(existing_archive.is_dir())
+            # No duplicate archive created.
             self.assertFalse(
-                (repo_dir / "quality" / "runs" / "20260419T100000Z-PARTIAL").exists()
+                (
+                    repo_dir / "quality" / "previous_runs" /
+                    "20260419T100000Z" / ".partial"
+                ).exists()
             )
+
+    def test_clear_live_quality_preserves_both_archive_dirs(self) -> None:
+        """v1.5.4 Phase 3.6.2 (B-19, H3 fix): _clear_live_quality
+        preserves both `previous_runs/` (current) and `runs/` (legacy)
+        plus RUN_INDEX.md. Without this the migration window would
+        wipe legacy archives the first time a v1.5.4 run cleared the
+        live tree."""
+        with TemporaryDirectory() as temp_dir:
+            quality = Path(temp_dir) / "quality"
+            write(quality / "BUGS.md", "live-bug")
+            write(quality / "previous_runs" / "20260418" / "INDEX.md", "new-archive")
+            write(quality / "runs" / "20260101" / "INDEX.md", "legacy-archive")
+            write(quality / "RUN_INDEX.md", "history")
+            run_playbook._clear_live_quality(quality)
+            # Live artifact gone.
+            self.assertFalse((quality / "BUGS.md").exists())
+            # Both archive subtrees + RUN_INDEX preserved.
+            self.assertTrue(
+                (quality / "previous_runs" / "20260418" / "INDEX.md").is_file()
+            )
+            self.assertTrue(
+                (quality / "runs" / "20260101" / "INDEX.md").is_file()
+            )
+            self.assertTrue((quality / "RUN_INDEX.md").is_file())
+
+    def test_archive_previous_run_recognises_legacy_runs_layout(self) -> None:
+        """v1.5.4 Phase 3.6.2 (B-19): archives from pre-v1.5.4 QPB
+        sit under the legacy quality/runs/ layout. archive_previous_run
+        must recognise them as already-archived so the live tree
+        clears without a duplicate."""
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            write(repo_dir / "quality" / "BUGS.md", "bug")
+            existing_archive = (
+                repo_dir / "quality" / "runs" / "20260419T100000Z"
+            )
+            write(existing_archive / "quality" / "BUGS.md", "archived")
+            write(
+                repo_dir / "quality" / "INDEX.md",
+                '# Run Index\n\n```json\n'
+                '{"run_timestamp_end": "2026-04-19T10:00:00Z"}\n'
+                '```\n',
+            )
+
+            run_playbook.archive_previous_run(repo_dir, "20260420T100000Z")
+
+            self.assertFalse((repo_dir / "quality" / "BUGS.md").exists())
+            self.assertTrue(existing_archive.is_dir())
 
     def test_write_live_index_stub_passes_gate_invariant_10(self) -> None:
         """Invariant #10: quality/INDEX.md must exist with §11 fields even
