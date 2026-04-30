@@ -52,9 +52,14 @@ class RunPlaybookTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             run_playbook.parse_args(["--next-iteration", "--phase", "3", "./somedir"])
 
-    def test_parse_args_full_run_default_false(self) -> None:
+    def test_parse_args_bare_invocation_defaults_to_full_run(self) -> None:
+        """v1.5.4 Phase 3.6.6 (B-18a): bare invocation now defaults to
+        --full-run. The historical assertion that args.full_run was
+        False on a bare invocation is replaced; the v1.5.3 contract
+        was that the operator had to type --full-run explicitly,
+        which made the canonical command line longer than necessary."""
         args = run_playbook.parse_args(["./somedir"])
-        self.assertFalse(args.full_run)
+        self.assertTrue(args.full_run)
 
     def test_parse_args_accepts_full_run(self) -> None:
         args = run_playbook.parse_args(["--full-run", "./somedir"])
@@ -1634,9 +1639,17 @@ class PhaseGroupsArgparseIntegrationTests(unittest.TestCase):
         )
         self.assertTrue(args.full_run)
 
-    def test_no_phase_flags_means_no_groups(self) -> None:
+    def test_no_phase_flags_means_full_run_groups(self) -> None:
+        """v1.5.4 Phase 3.6.6 (B-18a): bare invocation now triggers
+        --full-run, which expands to one group per phase. The v1.5.3
+        contract (no flags → no groups → operator must specify) is
+        replaced; canonical bare invocation runs all 6 phases + all
+        4 strategies."""
         args = run_playbook.parse_args(["./r"])
-        self.assertIsNone(args.phase_groups)
+        self.assertEqual(
+            args.phase_groups,
+            [["1"], ["2"], ["3"], ["4"], ["5"], ["6"]],
+        )
 
     def test_phase_groups_vs_phase_mutex(self) -> None:
         with self.assertRaises(SystemExit):
@@ -2587,6 +2600,49 @@ class GateResolveArtifactPathTests(unittest.TestCase):
             resolved = self.gate._resolve_artifact_path(q, "results/x.json")
             self.assertEqual(resolved, q / "results" / "x.json")
             self.assertFalse(resolved.exists())
+
+
+class B18aBareInvocationDefaultsToFullRunTests(unittest.TestCase):
+    """v1.5.4 Phase 3.6.6 (B-18a): bare
+    `python -m bin.run_playbook <target>` defaults to --full-run.
+    Single-phase / iteration-only modes still available via
+    --phases / --strategy / --iterations / --next-iteration."""
+
+    def test_bare_invocation_sets_full_run(self) -> None:
+        args = run_playbook.parse_args(["target"])
+        self.assertTrue(args.full_run)
+        # And the full-run sugar expansion populates phase_groups +
+        # iterations to match --full-run's plan.
+        self.assertIsNotNone(args.phase_groups)
+        self.assertEqual(len(args.phase_groups), 6)  # all 6 phases
+        self.assertEqual(args.iterations, list(run_playbook.ALL_STRATEGIES))
+
+    def test_bare_invocation_matches_explicit_full_run(self) -> None:
+        bare = run_playbook.parse_args(["target"])
+        explicit = run_playbook.parse_args(["target", "--full-run"])
+        self.assertEqual(bare.full_run, explicit.full_run)
+        self.assertEqual(bare.phase_groups, explicit.phase_groups)
+        self.assertEqual(bare.iterations, explicit.iterations)
+
+    def test_explicit_phase_does_not_trigger_full_run(self) -> None:
+        args = run_playbook.parse_args(["target", "--phase", "1"])
+        self.assertFalse(args.full_run)
+
+    def test_explicit_phase_groups_does_not_trigger_full_run(self) -> None:
+        args = run_playbook.parse_args(
+            ["target", "--phase-groups", "1,2,3"]
+        )
+        self.assertFalse(args.full_run)
+
+    def test_next_iteration_does_not_trigger_full_run(self) -> None:
+        args = run_playbook.parse_args(["target", "--next-iteration"])
+        self.assertFalse(args.full_run)
+
+    def test_explicit_iterations_does_not_trigger_full_run(self) -> None:
+        args = run_playbook.parse_args(
+            ["target", "--iterations", "gap,parity"]
+        )
+        self.assertFalse(args.full_run)
 
 
 class PromptPrefixTests(unittest.TestCase):

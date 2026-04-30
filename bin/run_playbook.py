@@ -517,10 +517,26 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     if args.worker:
         args.parallel = False
 
+    # v1.5.4 Phase 3.6.6 (B-18a): bare invocation defaults to
+    # --full-run. When the operator types
+    # `python -m bin.run_playbook <target>` without any phase /
+    # iteration flags, run all 6 phases + all 4 iteration strategies
+    # synchronously (the same plan --full-run produces). Single-phase
+    # / iteration-only modes remain opt-in via --phases / --strategy /
+    # --iterations / --next-iteration.
+    phase_groups_raw = getattr(args, "phase_groups_raw", None)
+    if (
+        not args.full_run
+        and not args.phase
+        and phase_groups_raw is None
+        and not args.next_iteration
+        and args.iterations is None
+    ):
+        args.full_run = True
+
     # v1.5.1 Item 3.1 mutex. --phase-groups vs --phase / --full-run are
     # redundant (--phase and --full-run are sugar). --phase-groups vs
     # --next-iteration is allowed (Item 3.2 relies on this).
-    phase_groups_raw = getattr(args, "phase_groups_raw", None)
     if phase_groups_raw is not None and args.phase:
         parser.error(
             "--phase-groups is not compatible with --phase. --phase is sugar "
