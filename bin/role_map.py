@@ -51,7 +51,9 @@ Schema (``quality/exploration_role_map.json``)::
         "role": "skill-prose",
         "size_bytes": 12345,
         "rationale": "..."
-        // optional: "skill_prose_reference": "SKILL.md:47" for skill-tool
+        // "skill_prose_reference": "SKILL.md:47"  — required when role is
+        //   skill-tool (validate_role_map enforces); optional otherwise.
+        //   Anchors the SKILL.md / reference-file location naming this script.
       },
       ...
     ],

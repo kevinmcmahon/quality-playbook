@@ -57,9 +57,21 @@ from bin.skill_derivation import (
 from bin.skill_derivation.runners import make_runner
 
 
-_DEFAULT_PASS_SPEC_PATH = Path(
-    "/Users/andrewstellman/Documents/AI-Driven Development/"
-    "Quality Playbook/Reviews/QPB_v1.5.3_Phase3b_Brief.md"
+# v1.5.4 Phase 3.6.9 Section C Step 5 (Round 7 deferral): the
+# pass-spec brief is used as the LLM compaction-recovery context. The
+# v1.5.3-era hardcoded path
+# (``~/Documents/AI-Driven Development/.../QPB_v1.5.3_Phase3b_Brief.md``)
+# was machine-specific to the development workspace and does not
+# resolve on a fresh QPB install. The v1.5.4 default points to the
+# in-repo design doc (which captures the same recovery-preamble
+# content the v1.5.3 brief did, plus the v1.5.4 redesign rationale).
+# The path is computed relative to this module so it resolves on any
+# QPB checkout. Operators can override with ``--pass-spec-path``.
+_DEFAULT_PASS_SPEC_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "docs"
+    / "design"
+    / "QPB_v1.5.4_Design.md"
 )
 
 
@@ -67,11 +79,16 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="python3 -m bin.skill_derivation",
         description=(
-            "QPB v1.5.3 Phase 3 / 3b four-pass skill-derivation "
-            "pipeline. Reads SKILL.md + reference files; produces "
-            "draft REQs, mechanical citations, formal REQ records, "
-            "and a coverage audit. See "
-            "QPB_v1.5.3_Phase3b_Brief.md for the contract."
+            "QPB v1.5.4 four-pass skill-derivation pipeline. Reads "
+            "quality/exploration_role_map.json (produced by Phase 1) "
+            "and runs Pass A through Pass D over the files tagged "
+            "skill-prose / skill-reference; activation gated by "
+            "bin.role_map.has_skill_prose. Produces draft REQs, "
+            "mechanical citations, formal REQ records, and a coverage "
+            "audit. See docs/design/QPB_v1.5.4_Design.md Part 1 for "
+            "the activation contract and "
+            "docs/design/QPB_v1.5.4_Implementation_Plan.md for phase "
+            "sequencing."
         ),
     )
     parser.add_argument("target_dir", type=Path)
@@ -158,12 +175,12 @@ def _phase3_dir(target_dir: Path) -> Path:
     return target_dir / "quality" / "phase3"
 
 
-# Role-map roles that legitimately contribute to Pass A's skill-derivation
-# input set. Anything else (code, test, docs, config, fixture, formal-spec,
-# playbook-output, future additions) is silently excluded — but B1-F4 says
-# "silently" is the wrong UX, so unexpected entries get a one-line diagnostic
-# on stderr (no gate failure).
-_PASS_A_INPUT_ROLES = ("skill-prose", "skill-reference")
+# v1.5.4 Phase 3.6.9 Section C Step 1: the role-map roles that
+# contribute to Pass A's skill-derivation input set are sourced from
+# bin.role_map.SKILL_PROSE_ROLES rather than a duplicated local
+# constant. Round 1 fixed an analogous duplication
+# (derive_legacy_project_type bin↔gate); the same discipline applies
+# here. SKILL_PROSE_ROLES is the single source of truth.
 
 
 def _role_map_skill_prose_files(
@@ -188,13 +205,15 @@ def _role_map_skill_prose_files(
       tagged ``skill-prose`` or ``skill-reference``.
 
     v1.5.4 Phase 3 Stage 3 (Round 5 finding B1-F4): files tagged with
-    roles outside ``_PASS_A_INPUT_ROLES`` are silently dropped from the
-    return list, but each one prints a single ``[role-map] note:``
+    roles outside ``bin.role_map.SKILL_PROSE_ROLES`` are silently
+    dropped from the return list, but each one prints a single
+    ``[role-map] note:``
     line on stderr naming the file path and its actual role so an
     operator who tagged something ``docs`` and expected Pass A to read
     it has a signal. No gate failure, no exception — the diagnostic is
     advisory.
     """
+    from bin import role_map as _role_map  # noqa: WPS433
     if not isinstance(role_map, dict):
         return None
     files = role_map.get("files") or []
@@ -206,7 +225,7 @@ def _role_map_skill_prose_files(
             continue
         role = entry.get("role")
         path = entry.get("path")
-        if role in _PASS_A_INPUT_ROLES:
+        if role in _role_map.SKILL_PROSE_ROLES:
             if isinstance(path, str) and path.strip():
                 out.append((target_dir / path).resolve())
             continue
