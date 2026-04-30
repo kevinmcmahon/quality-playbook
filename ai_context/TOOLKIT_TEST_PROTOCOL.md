@@ -96,7 +96,7 @@ Tests: canonical vocabulary preservation; doc fidelity to the four-strategy taxo
 
 Tests: IMPROVEMENT_LOOP.md awareness; honest "moving toward statistical control" framing; benchmark-driven calibration vocabulary.
 
-### Persona 13 — The categorization-asker (deferred to v1.5.4+)
+### Persona 13 — The categorization-asker (deferred to v1.6.0+)
 
 > The bug report has tags like "standout," "confirmed," "probable," "candidate." What do these mean? Which should I prioritize?
 
@@ -105,10 +105,14 @@ Tests: categorization-tier vocabulary correctness; standout-as-earned framing.
 (Activate Persona 13 after categorization tagging ships. Originally
 scoped for v1.5.3 but deferred — v1.5.3's actual scope shifted to
 the skill-as-code feature complete pass per the 2026-04-19 Haiku
-demonstration. Categorization tagging is tracked as v1.5.4 backlog
-item B-13 in `Quality Playbook/Reviews/v1.5.4_backlog.md`. Until
-that surface ships, panelists asked this question should answer
-"the doc does not support this — categorization tagging is not yet
+demonstration. Re-deferred from v1.5.4 to v1.6.0+ in v1.5.4 Phase
+3.6.8: v1.5.5 was scoped out of the v1.5.x lineage per CLAUDE.md
+(v1.5.4 is the last v1.5.x release) and v1.5.4's actual scope
+covered classification redesign + regression-replay machinery
+rather than per-bug categorization. Tracked as v1.5.4 backlog item
+B-13 in `Quality Playbook/Reviews/v1.5.4_backlog.md`. Until that
+surface ships, panelists asked this question should answer "the
+doc does not support this — categorization tagging is not yet
 shipped; the operator picks standouts manually by reading the
 writeups.")
 
