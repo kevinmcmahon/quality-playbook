@@ -91,6 +91,23 @@ Gate to Phase 4: all five validation criteria pass; Council ship verdict on Phas
 
 ---
 
+## Phase 3.9 — B-18b SKILL.md self-encoding rewrite (Part 1 follow-up)
+
+Goal: rewrite SKILL.md prose so a one-line operator prompt ("Run the Quality Playbook") produces a v1.5.4-shaped run without further operator hand-holding. B-18b was originally split from B-18a during Round 7.5 and incorrectly deferred to Phase 10 (release-coordination) on Cowork's part. It is feature work, not release-coordination work; this phase lifts it back into v1.5.4 development scope.
+
+Work items:
+- Rewrite SKILL.md prose to encode the canonical invocation (`python3 -m bin.run_playbook <target>`), the v1.5.4 default-full-run behavior, the v1.5.4 mechanics (role map, schema_version 2.0, target_role_breakdown), the guardrails (no sub-agent delegation, no source patches mid-run, no sentinel deletions, `git ls-files` for Phase 1), and the canonical 9-file output artifact contract.
+- The SKILL.md `metadata.version` stamp stays at 1.5.3 in this phase — the version bump is Phase 10 mechanical work.
+- Add 6 prose-contract tests in `bin/tests/` pinning load-bearing sections (canonical invocation reference, bootstrap mode, exploration_role_map.json reference, sub-agent forbid, source-patch forbid, sentinel-preservation forbid).
+
+Brief: `~/Documents/AI-Driven Development/Quality Playbook/Reviews/QPB_v1.5.4_Phase3.9_Brief.md`
+
+Validation: operator pastes "Run the Quality Playbook" at any AI agent pointed at QPB; the AI invokes `python3 -m bin.run_playbook .` synchronously, respects guardrails, produces full artifact set without further instructions. If the AI asks for clarification or delegates, the rewrite needs another iteration.
+
+Gate to Phase 4: tests pass; empirical bootstrap test confirmed by Andrew.
+
+---
+
 ## Phase 4 — Schema First (Part 2)
 
 Goal: write `metrics/regression_replay/SCHEMA.md` before any automation work. The schema constrains the apparatus; designing the apparatus first and the schema second produces silently-incompatible cell records.
@@ -213,18 +230,28 @@ Gate to Phase 10: TTP returns a Pass or Pass-With-Caveats verdict; no broken ref
 
 ## Phase 10 — Benchmark Confirmation and Release
 
-Goal: confirm v1.5.4 hasn't accidentally regressed the playbook itself; tag and release.
+Goal: confirm v1.5.4 hasn't accidentally regressed the playbook itself; complete the release-mechanical work; tag and release.
 
 Work items:
-- Run chi-1.5.1, virtio-1.5.1, express-1.5.1 with v1.5.4 HEAD; compare yields against v1.5.3 baseline. Within ±10% is the gate.
-- QPB self-audit with v1.5.4: REQ count and structure should be unchanged from v1.5.3 (apparatus work doesn't change the skill itself).
+- Run chi-1.5.1, virtio-1.5.1, express-1.5.1 with v1.5.4 HEAD; compare yields against v1.5.3 baseline (within ±10%).
+- QPB self-audit with v1.5.4: REQ count and structure should be at parity with v1.5.3 Haiku-benchmark target (apparatus + classification redesign work shouldn't damage the skill itself).
+- **Mechanical version-stamp updates (single coordinated commit):**
+  - `bin/benchmark_lib.py::RELEASE_VERSION` to `"1.5.4"`.
+  - SKILL.md `metadata.version: 1.5.4`. The SKILL.md frontmatter explicitly notes that inline version occurrences exist throughout the file (frontmatter, banner, version stamp template, sidecar JSON examples, run metadata, recheck template). Hunt every occurrence and bump; one historical reference to v1.4.6 edgequake benchmarking is intentionally preserved per the SKILL.md note.
+  - `schemas.md` banner version (line 1: "Quality Playbook v1.5.3" → "v1.5.4").
+- **README.md updates:**
+  - Update Mode 1 description (currently "Runs Phase 1 through Phase 6 in sequence") to reflect v1.5.4 default-full-run behavior. Bare invocation now defaults to all 6 phases + all 4 iteration strategies; document the cost ratio (~5-10x v1.5.3) and `--phase 1` recovery flag.
+  - Add a dated v1.5.4 entry under the existing version-bands structure (the existing "What's new in v1.5.4 (Part 1)" prose section landed in Phase 2 iteration; Phase 10 adds the formal release-band entry).
+- **CHANGELOG.md backfill** for v1.5.2 + v1.5.3 + v1.5.4. The on-disk file ends at v1.5.1; v1.5.2 + v1.5.3 entries are missing from the Keep-a-Changelog structure. Phase 10 ships all three entries in one commit alongside v1.5.4's release work.
+- **Orientation-doc updates for v1.5.4 default-full-run** (per the orientation-doc carve-out — direct edits OK):
+  - `ai_context/TOOLKIT.md`: update bare-invocation examples to note new default.
+  - `ai_context/DEVELOPMENT_CONTEXT.md` "baseline runs" recipe: update the `python3 ../bin/run_playbook.py chi-1.4.6 cobra-1.4.6 virtio-1.4.6` examples to either (a) explain that under v1.5.4 these are now full-run + 4 iterations across 3 targets (~5-10x prior cost), or (b) add `--phase 1` to recover the legacy "explore only" baseline behavior.
+- Run the Toolkit Test Protocol against TOOLKIT.md + DEVELOPMENT_CONTEXT.md after the orientation-doc updates per the orientation-doc release-gate convention.
 - Tag v1.5.4 on the 1.5.4 branch; push tag to origin; verify with `git ls-remote origin v1.5.4`.
-- Update README with v1.5.4 changelog entry.
-- Update `bin/benchmark_lib.py::RELEASE_VERSION` to "1.5.4" and SKILL.md `version:` stamps accordingly. (The C13.11 cleanup work from the misfire branch may need to be re-applied to the fresh 1.5.3 branch first; if so, the RELEASE_VERSION constant exists and the bump is one line. If not, the RELEASE_VERSION constant is added in this phase.)
 
-Deliverable: v1.5.4 tagged, pushed, README updated, version stamps refreshed.
+Deliverable: v1.5.4 tagged, pushed, README updated with v1.5.4 changelog entry + Mode 1 description corrected, CHANGELOG.md backfilled (v1.5.2 + v1.5.3 + v1.5.4 entries), schemas.md banner + RELEASE_VERSION + SKILL.md version stamps refreshed, orientation docs updated for v1.5.4 default-full-run.
 
-Gate to release: code-project benchmarks pass; v1.5.4 tag confirmed on origin via `git ls-remote`.
+Gate to release: code-project benchmarks pass; orientation-doc TTP returns Pass or Pass-With-Caveats; v1.5.4 tag confirmed on origin via `git ls-remote`.
 
 ---
 

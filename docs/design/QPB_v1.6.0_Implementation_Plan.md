@@ -25,6 +25,7 @@ Work items:
 - `Lever_Calibration_Log.md` has 3+ documented cycles (success criterion 3 from v1.5.4 design)
 - `metrics/regression_replay/SCHEMA.md` is committed and stable
 - The benchmark replicate harness has a (release × benchmark) cell at N≥5; σ data is recorded and consumable as `noise_floor_source` input
+- **Cross-version harness re-queue (B-15 follow-up):** with v1.5.4's `setup_target.sh` full-bundle install + `--prompt-prefix` no-delegation guardrail, re-queue cross_v1.5.0, cross_v1.4.6, cross_v1.4.5 cells for real bug-yield comparison data. The v1.5.4 harness fixes provide the *capability* (per `repos/replicate/replicate.sh` and `replicate_parallel.sh` in the v1.5.4 ship); v1.6.0 calibration cycles 2-5 (per `QPB_v1.5.4_Design.md` lines 162-167 — virtio-1.3.47→1.3.50, express-1.3.50, express options-mutation, casbin-1.4.4) need the resulting yield data as input. This re-queue is operator-driven (Andrew runs the harness), not a Claude Code commit.
 
 Gate to Phase 1: all of the above; no pending v1.5.4 bugs without dispositions; 1.6.0 branch is fresh from main with v1.5.4 tag as base.
 

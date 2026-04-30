@@ -68,6 +68,8 @@ Part 1 is validated by re-running the v1.5.3 wide-test plus three new pure-Markd
 
 3. **QPB self-audit at v1.5.4.** Should produce a role-tagged breakdown surfacing both skill and code surfaces (SKILL.md tagged `skill-prose`, `bin/run_playbook.py` tagged `code`, `bin/citation_verifier.py` potentially tagged `skill-tool` depending on how SKILL.md references it). Pass criterion: REQ count comparable to the Haiku benchmark (per the v1.5.3 success criterion that v1.5.4 inherits) AND the role breakdown surfaces both surfaces.
 
+4. **Operator one-line bootstrap test (Phase 3.9 / B-18b).** A single-line prompt ("Run the Quality Playbook") pointed at any AI agent at any QPB-installed target produces a full bootstrap-shape run without operator hand-holding. SKILL.md self-encodes the canonical invocation, defaults, guardrails, and artifact contract; the seven-paragraph external orchestration prompt becomes redundant. Validates by Andrew running this empirically against codex desktop / claude CLI once Phase 3.9 lands.
+
 ### Out of Scope for Part 1
 
 - Reworking the v1.5.3 four-pass pipeline. Part 1 changes the *input* to the pipeline (which files to feed it) but not the pipeline itself.

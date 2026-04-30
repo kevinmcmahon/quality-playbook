@@ -291,4 +291,6 @@ This proposal originated in Andrew's question during v1.5.4 Phase 3.6 implementa
 - Michael Fagan's foundational 1976 paper on formal inspections
 - Watts Humphrey's PSP/TSP / SEI lineage on inspection-as-process-improvement-data
 
+The catching-questions inventory in Dimension 1 is grounded in the 2026-04-30 Requirements-Miss Archeology (`Quality Playbook/Reviews/Requirements_Miss_Archeology.md`), which catalogues 14 historical requirements misses across QPB v1.2.x → v1.5.4 plus 3 supplementary near-miss patterns. The archeology's inventory of 34 catching questions across 10 categories is the empirical source material for this proposal's checklist content; the questions earned their place by demonstrably catching real defects in QPB's own development, not by being imported wholesale from external methodologies.
+
 The full Cowork conversation that led to this proposal is preserved in Andrew's `AI Chat History/Exported chats/` archive once exported.

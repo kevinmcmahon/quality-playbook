@@ -123,6 +123,47 @@ The full apparatus: `bin/regression_replay.py`, `metrics/regression_replay/SCHEM
 
 ---
 
+## Carry-forward backlog from v1.5.4
+
+The following items were dispositioned `defer-to-v1.6.0` during v1.5.4 Phase 3.6.8 (`Quality Playbook/Reviews/v1.5.4_backlog.md` Section E) but do not fit v1.6.0's "single lever pull" scope. They are candidates for v1.6.x point releases (post-v1.6.0) when calibration cycles motivate them, or for explicit feature releases beyond the v1.6.x track if substantive.
+
+**Algorithmic / curation work (substantive — defer to feature release if motivated):**
+- B-4 — 171-floor curation algorithm: cross-partition merging or recalibrated target band.
+- B-5 — Disposition-table degeneracy: Pass A and Pass C redesign for behavioral-claim categories.
+- B-6 — A.3 resolver heuristic broadening: SKILL.md alias resolution.
+- B-7 — Partition density warnings → curation tuning.
+- B-9 — Detector precision FP analysis: candidate-confidence scoring.
+- B-10 — UC anchor threshold: fixture catalog of borderline UCs.
+
+**Architectural / hygiene work:**
+- B-8 — Pytest import architecture for the gate test suite.
+- B-11 — Phase 4 5-of-5 prose-to-code BUG consolidation: document or remove.
+- B-12 — Calibration anchor refresh cadence in `bin/classify_project.py`.
+
+**Cross-model / cross-version:**
+- B-2 — Cross-model second backend (opus). Subset of v1.6.x cross-model replay (already enumerated above).
+- B-3 — v1.4.5 cross-version cell as optional calibration target.
+
+**Categorization tagging feature (Lever 6 work item):**
+- B-13 feature — Per-bug categorization tagging surface (standout / confirmed / probable / candidate tiers). Original v1.5.3 forward-looking claim. Subsumed by "Categorization tier policy" Out of Scope item above.
+
+**Documentation cadence:**
+- B-14 — Formal orientation-doc release-cadence review + 18-persona TTP run.
+
+**Round 8 deferred MEDIUM/LOW findings (bug-hardening / cleanup):**
+- Round 8a A3 — `PromptCodexPreventionInvariant` test class pinning the load-bearing `phase1_prompt` prose (MUST NOT block, `git ls-files` mandate, source-patch STOP).
+- Round 8a A2 — Sentinel re-verification at phase boundaries (currently pre-flight only).
+- Round 8a A2 — Source-unchanged check on phase failure (currently fires only when `exit_code == 0`).
+- Round 8b A3-M1 — `--strategy <X>` bare-invocation: silent escalation to full-run; document or tighten gate.
+- Round 8b C3 — `_finalize_quality_layout` partial-move failure logging (currently swallows OSErrors silently).
+- Round 8b A1 — Dead helper `_runs_exclude_ignore` at `bin/archive_lib.py:600` — delete.
+- Round 8b B1 — Hardcoded `results/` reads in Phase 6: add comment explaining the intentional pre-`_finalize_quality_layout` path.
+- Round 8b B2 — AGENTS.md operator-authored-preservation warning: route through `lib.log` instead of `sys.stderr` only.
+
+These are listed for inventory; v1.6.x release sequencing is governed by calibration cycles, not by this list. An item lands when a cycle motivates it or a v1.6.x cleanup release scopes it.
+
+---
+
 ## Dependencies
 
 - v1.5.3 ships first (skill-as-code).
