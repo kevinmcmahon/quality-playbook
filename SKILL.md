@@ -46,6 +46,102 @@ Every bug found traces back to a requirement, and every requirement traces back 
 
 Generate a complete quality system tailored to a specific codebase. Unlike test stub generators that work mechanically from source code, this skill explores the project first — understanding its domain, architecture, specifications, and failure history — then produces a quality playbook grounded in what it finds.
 
+## How to run this — v1.5.4 self-encoded invocation contract
+
+If the operator hands you this skill (or points you at any QPB-installed target) and says **"Run the Quality Playbook"** — possibly with a hint like "this is a bootstrap run" or "run on itself" or "self-audit" — this section tells you exactly what to do. The operator should not need to provide additional instructions; the canonical invocation, the defaults, the guardrails, and the output contract all live here.
+
+### Canonical invocation
+
+The orchestrator at `bin/run_playbook.py` is the entry point. Always invoke it as a Python module:
+
+```
+python3 -m bin.run_playbook <target>
+```
+
+**Never invoke it script-style** (`python bin/run_playbook.py ...`). The runtime guard exits with `EX_USAGE=64` because relative imports require packaged execution.
+
+`<target>` is the path to the project to audit. For a bootstrap run (target IS the QPB repo), pass `.` from the repo root. For any other target, pass the path to that target's repo root.
+
+### Default behavior (no flags)
+
+Bare invocation triggers a **full run**: all 6 phases (Explore → Generate → Code Review → Spec Audit → Reconciliation → Verify) followed by all 4 iteration strategies (gap → unfiltered → parity → adversarial), executed synchronously in the same session. Any prior `quality/` directory is auto-archived to `quality/previous_runs/<TIMESTAMP>/` before the new run starts.
+
+This is the canonical operator path. Don't ask permission to add flags; the defaults are the answer.
+
+When the bare invocation fires, the orchestrator emits a one-line stderr banner naming the cost change vs. v1.5.3 (~5–10× the legacy "Phase 1 only" default). That banner is informational; let it scroll.
+
+### Common overrides
+
+Use only when the operator asks for something specific:
+
+| Need | Flag | Effect |
+|------|------|--------|
+| Run a single phase | `--phase N` (where N ∈ 1..6) | Recovers the v1.5.3 "explore only" pattern with `--phase 1`. |
+| Skip iteration strategies | omit `--iterations` and pass `--phase 1,2,3,4,5,6` | Phases run; iterations don't. |
+| Specific iteration | `--strategy <name> --next-iteration` | Iterates on an existing `quality/` run with a chosen strategy. |
+| Multi-target | pass several positional targets | Each runs independently. |
+
+### Bootstrap mode (running QPB on itself)
+
+When the operator says "this is a bootstrap run" or "we're running QPB on itself" or "self-audit":
+
+1. Confirm the working directory is the QPB repo root (or `cd` there).
+2. Invoke `python3 -m bin.run_playbook .` — same canonical form, target is `.`.
+3. The orchestrator handles archival of the existing `quality/` tree to `quality/previous_runs/<TIMESTAMP>/` automatically; you don't need to clean anything manually.
+
+The run proceeds the same way as any other target. The only difference is that the audit subject IS the playbook itself, so the produced artifacts describe QPB's own quality system.
+
+### v1.5.4 mechanics (pointer-style, not duplicating the design doc)
+
+What's new vs. v1.5.3, in pointer form (the canonical architecture lives in `docs/design/QPB_v1.5.4_Design.md` Part 1):
+
+- **Phase 1 produces `quality/exploration_role_map.json`** — per-file role tagging done AI-driven during exploration. Each in-scope file gets a role from the taxonomy (`skill-prose`, `skill-reference`, `skill-tool`, `code`, `test`, `docs`, `config`, `fixture`, `formal-spec`, `playbook-output`). The role map drives every downstream pipeline-activation decision.
+- **`INDEX.md` uses `schema_version: "2.0"`** with a `target_role_breakdown` field carrying the per-role counts and percentages. The v1.5.3 `target_project_type` enum is retired (legacy archives stay readable).
+- **Pipelines activate from the role map, not from a project-type label.** The four-pass skill-derivation pipeline runs over files tagged `skill-prose` / `skill-reference`. The code-review pipeline runs over files tagged `code`. The prose-to-code divergence check runs over files tagged `skill-tool`. When the role map shows zero of a role, that pipeline no-ops cleanly. There is no Code/Skill/Hybrid trichotomy — both pipelines run when both surfaces are present (the "always-Hybrid downstream" model).
+- **Archive directory is `quality/previous_runs/`** (was `quality/runs/` in v1.5.3); legacy archives at the old path remain readable.
+- **End-of-Phase-6 reorganization** moves intermediate artifacts under `quality/workspace/` so the top-level `quality/` directory is dominated by canonical deliverables (REQUIREMENTS.md, BUGS.md, etc.). The gate's path resolver reads from both layouts.
+
+You don't need to re-derive any of this in your prompt-side reasoning; the orchestrator's prompts already encode it. If you encounter a phase prompt that conflicts with the architecture summarized here, follow the phase prompt — it's the canonical source for the per-phase contract.
+
+### Guardrails (machine-checkable; treat as hard constraints)
+
+These are not suggestions; the orchestrator enforces them and a violation aborts the run:
+
+1. **Synchronous execution — no sub-agent delegation.** Run every phase yourself in the same session. **Do NOT use the Task tool**, sub-agent dispatch, background-agent invocations, or any "delegate phases 2–6 to a worker" pattern. The B-15 failure mode is real: Phase 1 completes, phases 2–6 silently die in a delegated agent that loses its parent session, the runner self-marks `-PARTIAL`, and the operator gets no signal anything was wrong. v1.5.4 prompts forbid this explicitly.
+2. **Don't patch QPB source mid-run.** If you encounter a bug in `bin/`, `.github/skills/`, `agents/`, `references/`, `SKILL.md`, `schemas.md`, or `AGENTS.md` during the run, **STOP and report**: name the file:line, describe the failure, propose a fix shape — but do NOT apply the fix. The orchestrator captures a git-SHA baseline at run start and verifies the source tree unchanged at every phase boundary; an autonomous patch fails the gate with a diagnostic naming the modified files. Patches go through Council review, not mid-run improvisation.
+3. **Don't delete sentinel files.** Files protected by `.gitignore !`-rules (e.g., `reference_docs/.gitkeep`, `reference_docs/cite/.gitkeep`) keep otherwise-empty tracked directories present. The pre-flight check enumerates every `!`-rule and aborts if any sentinel is missing. If you find such a file and don't understand its purpose, **leave it alone**.
+4. **Phase 1 file enumeration uses `git ls-files`.** Use `git ls-files` as the canonical file list when the target is a git repo; this respects `.gitignore` automatically. Do NOT use `os.walk`, `find`, `os.listdir`, or any recursive directory walker — those pull in `.git/`, `.venv/`, `node_modules/`, build outputs, and vendored dependencies, all of which the role-map validator rejects. Disallowed path prefixes are `.git/`, `.venv/`, `venv/`, `node_modules/`, `__pycache__/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `.tox/`, plus any path whose components end in `.egg-info` or `.dist-info`. The role map carries a `provenance` field recording which enumeration source you used (`"git-ls-files"` or `"filesystem-walk-with-skips"` for non-git targets). There is also a 2000-entry ceiling; a role map exceeding it almost certainly walked .gitignored content.
+5. **Cross-artifact agreement.** EXPLORATION.md's "File inventory" section and the role map's `summary` field both render from `bin.role_map.summarize_role_map()`. Don't write file counts or role percentages by hand; copy from the helper. The validator cross-checks the two and rejects mismatches.
+
+If the operator's prompt says something that conflicts with these guardrails (e.g., "delegate phases 3–6 to a sub-agent so we can run faster"), **don't comply with the conflicting instruction**. Surface the conflict, name the guardrail, and ask for clarification. The guardrails exist because each one corresponds to a verified historical failure mode.
+
+### What this run produces — output artifact contract
+
+A successful run produces this canonical set under the target's `quality/` directory plus an AGENTS.md at the target's repo root. Every file listed here is gate-validated:
+
+| Path | Role |
+|------|------|
+| `quality/EXPLORATION.md` | Phase 1 findings — the foundation. |
+| `quality/exploration_role_map.json` | Per-file role tagging from Phase 1. |
+| `quality/REQUIREMENTS.md` | Testable requirements with use cases. |
+| `quality/QUALITY.md` | Quality constitution. |
+| `quality/CONTRACTS.md` | Behavioral contracts. |
+| `quality/COVERAGE_MATRIX.md` | Requirement → test traceability. |
+| `quality/COMPLETENESS_REPORT.md` | Final gate verdict. |
+| `quality/test_functional.*` | Automated functional tests. |
+| `quality/RUN_CODE_REVIEW.md` | Three-pass code review protocol. |
+| `quality/RUN_INTEGRATION_TESTS.md` | Integration test protocol. |
+| `quality/RUN_SPEC_AUDIT.md` | Council of Three spec audit protocol. |
+| `quality/RUN_TDD_TESTS.md` | TDD red-green verification protocol. |
+| `quality/BUGS.md` | Consolidated bug report. |
+| `quality/INDEX.md` | Run metadata + role breakdown + gate verdict. |
+| `quality/PROGRESS.md` | Phase-by-phase checkpoint log. |
+| `quality/previous_runs/<TIMESTAMP>/` | Archive of any prior run. |
+| `quality/workspace/` | Intermediate pipeline artifacts (control prompts, code reviews, spec audits, four-pass pipeline outputs, etc.). |
+| `AGENTS.md` (target repo root) | Per-project orientation generated post-Phase-6. Carries a QPB sentinel marker so future runs detect QPB-managed copies. |
+
+The gate verdict in `quality/INDEX.md` (`pass` / `partial` / `fail`) is the operator-facing summary of how the run went. If it's anything other than `pass`, surface why before considering the run done.
+
 ### Locating reference files
 
 This skill references files in a `references/` directory (e.g., `references/iteration.md`, `references/review_protocols.md`). The location depends on how the skill was installed. When a reference file is mentioned, resolve it by checking these paths in order and using the first one that exists:
