@@ -764,5 +764,78 @@ class CodexPreventionSummaryHelperTests(unittest.TestCase):
         self.assertIn(f"Provenance:** `{s['provenance']}`", narrative)
 
 
+class Round8Fix5SummarySelfConsistencyTests(unittest.TestCase):
+    """v1.5.4 Phase 3.7 Fix 5 (Round 8 HIGH): validate_role_map now
+    enforces summary self-consistency. The codex hallucination class
+    was structurally addressed in Section A.1.c (summarize_role_map
+    is the single source of truth for both the JSON summary AND the
+    EXPLORATION.md narrative), but a hand-fabricated role map could
+    still claim {"file_count": 9999, "files": [<2 entries>]} and
+    pass validation. Now it doesn't."""
+
+    def test_validate_rejects_summary_mismatch(self) -> None:
+        rmap = _make_role_map([
+            _entry("SKILL.md", "skill-prose", 1000),
+            _entry("bin/main.py", "code", 500),
+        ])
+        # Hand-fabricate a bogus summary: claims 9999 files when the
+        # actual files[] has 2.
+        rmap["summary"] = {
+            "file_count": 9999,
+            "role_breakdown": {"skill-prose": 9999},
+            "percentages": {
+                "skill_share": 1.0, "code_share": 0.0,
+                "tool_share": 0.0, "other_share": 0.0,
+            },
+            "provenance": "git-ls-files",
+        }
+        errs = rm.validate_role_map(rmap)
+        self.assertTrue(
+            any("summary" in e and "does not match" in e for e in errs),
+            f"expected summary-mismatch error, got: {errs}",
+        )
+
+    def test_validate_accepts_matching_summary(self) -> None:
+        # _make_role_map already populates summary via summarize_role_map,
+        # so a well-formed map passes by construction. This is the
+        # negative control proving the new check doesn't over-fire.
+        rmap = _make_role_map([
+            _entry("SKILL.md", "skill-prose", 1000),
+            _entry("bin/main.py", "code", 500),
+        ])
+        self.assertEqual(rm.validate_role_map(rmap), [])
+
+    def test_validate_handles_missing_summary(self) -> None:
+        """summary is in _REQUIRED_TOP_KEYS (Phase 3.6.1), so a map
+        without it fails the early required-key check rather than
+        reaching the new self-consistency check. Pin the early-exit
+        path so a future refactor can't silently regress it."""
+        rmap = _make_role_map([_entry("SKILL.md", "skill-prose", 1000)])
+        del rmap["summary"]
+        errs = rm.validate_role_map(rmap)
+        self.assertTrue(any("summary" in e for e in errs))
+
+    def test_validate_rejects_summary_with_wrong_role_breakdown(self) -> None:
+        """Even when file_count is right, mismatched role_breakdown
+        counts must still fail (each piece of the summary is
+        cross-checked against the helper's output)."""
+        files = [
+            _entry("SKILL.md", "skill-prose", 1000),
+            _entry("bin/main.py", "code", 500),
+        ]
+        rmap = _make_role_map(files)
+        # Correct file_count, wrong role_breakdown.
+        rmap["summary"] = {
+            "file_count": 2,
+            "role_breakdown": {"skill-prose": 2, "code": 0},  # wrong
+            "percentages": rmap["breakdown"]["percentages"],
+            "provenance": "git-ls-files",
+        }
+        errs = rm.validate_role_map(rmap)
+        self.assertTrue(
+            any("summary" in e and "does not match" in e for e in errs)
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

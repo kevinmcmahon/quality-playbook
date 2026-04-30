@@ -413,6 +413,25 @@ def validate_role_map(
                     f"breakdown.percentages do not sum to 1.0 (sum={psum:.4f})"
                 )
 
+    # v1.5.4 Phase 3.7 Fix 5 (Round 8 HIGH): summary self-consistency.
+    # The codex hallucination class (narrative cites X files / JSON
+    # holds Y) was structurally addressed in Section A.1.c by routing
+    # both artifacts through summarize_role_map(). This validator
+    # check closes the gap: a hand-fabricated role map with
+    # {"file_count": 9999, "files": [<2 entries>]} would otherwise
+    # pass. The stored summary MUST match what summarize_role_map()
+    # would produce from the actual files[] list.
+    stored_summary = data.get("summary")
+    if stored_summary is not None:
+        expected_summary = summarize_role_map(data)
+        if stored_summary != expected_summary:
+            errors.append(
+                f"role map summary {stored_summary!r} does not match "
+                f"summary derived from files[]: {expected_summary!r}. "
+                "The summary must be produced by summarize_role_map() "
+                "from the actual files[] entries."
+            )
+
     return errors
 
 
