@@ -3889,7 +3889,18 @@ def kill_recorded_processes() -> int:
 
 
 def build_worker_command(args: argparse.Namespace, target_path: str) -> List[str]:
-    command = [sys.executable, str(Path(__file__).resolve()), "--worker", "--sequential"]
+    # v1.5.4 Phase 3.8 (Round 9 carry-forward from Phase 3.7 finding):
+    # workers MUST invoke as ``python -m bin.run_playbook``, NOT as
+    # ``python /full/path/to/run_playbook.py``. The Phase 3.6.1 A.2
+    # invocation guard exits EX_USAGE=64 on script-style invocation
+    # (``__package__`` is None when invoked by absolute path); the
+    # ``-m`` form preserves ``__package__ == "bin"`` so the guard
+    # recognizes packaged execution and lets the worker proceed. The
+    # regression was latent for 10 commits because no parallel-mode
+    # test exercised this spawn path; the regression pin in
+    # bin/tests/test_run_playbook.py::Phase38WorkerInvocationTests
+    # catches the next reversion immediately.
+    command = [sys.executable, "-m", "bin.run_playbook", "--worker", "--sequential"]
     runner_flag = {"claude": "--claude", "codex": "--codex"}.get(
         args.runner, "--copilot"
     )

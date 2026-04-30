@@ -421,10 +421,14 @@ class RunPlaybookTests(unittest.TestCase):
 
         command = run_playbook.build_worker_command(phased_args, "/abs/path/to/target")
 
+        # v1.5.4 Phase 3.8: workers invoke via `python -m bin.run_playbook`
+        # rather than the script path so A.2's invocation guard
+        # accepts them. Tail args are unchanged.
         self.assertEqual(command[0], run_playbook.sys.executable)
-        self.assertEqual(Path(command[1]).resolve(), Path(run_playbook.__file__).resolve())
+        self.assertEqual(command[1], "-m")
+        self.assertEqual(command[2], "bin.run_playbook")
         self.assertEqual(
-            command[2:],
+            command[3:],
             [
                 "--worker",
                 "--sequential",
@@ -453,8 +457,9 @@ class RunPlaybookTests(unittest.TestCase):
             worker=False,
         )
         iteration_command = run_playbook.build_worker_command(iteration_args, "/home/user/project")
+        # v1.5.4 Phase 3.8: prefix is python + -m + module name.
         self.assertEqual(
-            iteration_command[2:],
+            iteration_command[3:],
             [
                 "--worker",
                 "--sequential",
@@ -2083,22 +2088,30 @@ class WorkerRoundtripTests(unittest.TestCase):
     def _worker_argv(args: "run_playbook.argparse.Namespace", target: str) -> list:
         """Return the portion of build_worker_command's output that
         worker parse_args actually sees: everything after the python
-        interpreter + script path."""
+        invocation prefix.
+
+        v1.5.4 Phase 3.8: prefix is now ``[sys.executable, '-m',
+        'bin.run_playbook']`` (module-style), so the worker argv
+        starts at index 3 — was index 2 in the script-style v1.5.3
+        form."""
         command = run_playbook.build_worker_command(args, target)
-        # command[0] = sys.executable, command[1] = script path.
-        # Drop the first --worker marker so worker parse_args sees the
-        # same argv it'd see when the worker is invoked as
-        # `python bin/run_playbook.py <rest>`.
-        return command[2:]
+        return command[3:]
 
     def _roundtrip(self, parent_argv: list) -> tuple:
         """Parse parent CLI, build worker cmd, parse that worker cmd
         through a fresh parse_args. Return (parent_args, worker_args,
-        worker_command)."""
+        worker_command).
+
+        v1.5.4 Phase 3.8: build_worker_command now uses module-style
+        invocation (`python -m bin.run_playbook ...`) so the leading
+        argv prefix is 3 elements (sys.executable, '-m',
+        'bin.run_playbook') rather than the v1.5.3 2 elements
+        (sys.executable, script_path). The worker_argv slice starts
+        at index 3."""
         parent = run_playbook.parse_args(parent_argv)
         target_path = parent.targets[0]
         command = run_playbook.build_worker_command(parent, target_path)
-        worker_argv = command[2:]  # drop python + script path
+        worker_argv = command[3:]  # drop python + -m + module name
         worker = run_playbook.parse_args(worker_argv)
         return parent, worker, command
 
@@ -2178,7 +2191,8 @@ class WorkerRoundtripTests(unittest.TestCase):
         )
         for target in parent.targets:
             command = run_playbook.build_worker_command(parent, target)
-            worker_argv = command[2:]
+            # v1.5.4 Phase 3.8: prefix is python + -m + module name.
+            worker_argv = command[3:]
             # The offending combination must not be present.
             self.assertIn("--full-run", command)
             self.assertNotIn("--iterations", command)
@@ -3098,6 +3112,79 @@ class Round8Fix6SourcePathsCoverageTests(unittest.TestCase):
             "schemas.md", modified,
             "_verify_qpb_source_unchanged must surface schemas.md "
             "modifications now that it's in _QPB_SOURCE_PATHS",
+        )
+
+
+class Phase38WorkerInvocationTests(unittest.TestCase):
+    """v1.5.4 Phase 3.8: regression pin for ``build_worker_command``
+    invoking the worker as ``python -m bin.run_playbook`` rather
+    than ``python /full/path/run_playbook.py``.
+
+    The Phase 3.6.1 A.2 invocation guard exits EX_USAGE=64 on
+    script-style invocation. Workers spawned via the script-path
+    form would die before any phase work runs. The regression was
+    latent for 10 commits (Phase 3.6.1 → Phase 3.7) because no
+    parallel-mode test exercised the spawn path. This test catches
+    the next reversion immediately."""
+
+    def _build(self, **overrides):
+        # parse_args emits a Namespace with the full default flag
+        # set, including the new --prompt-prefix etc. Use it rather
+        # than hand-rolling so future flag additions don't break the
+        # test.
+        argv = overrides.pop("argv", ["target", "--phase", "1"])
+        args = run_playbook.parse_args(argv)
+        return run_playbook.build_worker_command(args, "target")
+
+    def test_worker_invocation_uses_module_form(self) -> None:
+        """The load-bearing pin: cmd[0:3] is
+        [sys.executable, '-m', 'bin.run_playbook']. A future refactor
+        that reverts to [sys.executable, str(Path(__file__).resolve()),
+        ...] fails this test."""
+        import sys as _sys
+        cmd = self._build()
+        self.assertEqual(cmd[0], _sys.executable)
+        self.assertEqual(cmd[1], "-m")
+        self.assertEqual(cmd[2], "bin.run_playbook")
+
+    def test_worker_command_does_not_use_script_path(self) -> None:
+        """Negative control: the worker command must NOT contain a
+        path ending in ``run_playbook.py`` as a top-level argv
+        element. The script-style form would have
+        ``cmd[1] == "/full/path/.../bin/run_playbook.py"``; the
+        module-style form has no such element."""
+        cmd = self._build()
+        for arg in cmd:
+            self.assertFalse(
+                arg.endswith("run_playbook.py")
+                and ("/" in arg or "\\" in arg),
+                f"worker command must not invoke script-style; "
+                f"found path-like argv element: {arg!r}",
+            )
+
+    def test_worker_invocation_passes_a2_package_check(self) -> None:
+        """End-to-end pin: spawn the worker form with `--help` and
+        confirm the A.2 guard does NOT fire. ``--help`` short-circuits
+        before any phase work runs but exercises the full
+        ``__main__`` entry; if the guard fires, exit code is 64 and
+        stderr names the package-module requirement. Module-style
+        invocation must produce the standard argparse help output
+        and exit 0."""
+        import subprocess
+        import sys as _sys
+        result = subprocess.run(
+            [_sys.executable, "-m", "bin.run_playbook", "--help"],
+            cwd=str(Path(__file__).resolve().parents[2]),
+            capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(
+            result.returncode, 0,
+            f"-m invocation should produce --help and exit 0; got "
+            f"exit={result.returncode}, stderr={result.stderr[:300]!r}",
+        )
+        self.assertNotIn(
+            "must be invoked as a package module",
+            result.stderr + result.stdout,
         )
 
 
