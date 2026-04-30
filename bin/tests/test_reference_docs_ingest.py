@@ -76,6 +76,57 @@ class ReferenceDocsIngestTests(unittest.TestCase):
             self.assertEqual(len(tier4), 1)
             self.assertEqual(tier4[0][0], "reference_docs/design-notes.md")
 
+    def test_dotfiles_are_skipped(self):
+        """v1.5.4 Phase 3.9.1 BUG 2 regression pin: surfaced during the
+        2026-04-30 empirical bootstrap test. .gitkeep files (and other
+        dotfiles like .DS_Store) are sentinel placeholders protecting
+        otherwise-empty tracked directories — not citable content.
+        Pre-fix, _collect walked them, hit the extension gate with
+        suffix='', and raised IngestError("unsupported extension ''")
+        aborting Phase 1 ingest. Fix: skip dotfiles before the
+        extension check. The .md content should still ingest cleanly
+        alongside."""
+        with tempfile.TemporaryDirectory() as d:
+            root = _scaffold(Path(d))
+            ref = root / "reference_docs"
+            cite = ref / "cite"
+            cite.mkdir(parents=True)
+            # Sentinel placeholders that the QPB .gitignore !-rules
+            # explicitly preserve. _collect must skip them silently.
+            (ref / ".gitkeep").write_text("", encoding="utf-8")
+            (cite / ".gitkeep").write_text("", encoding="utf-8")
+            # A real citable doc alongside.
+            (cite / "spec.md").write_text(
+                "# Project Spec\n\nThe canonical doc.\n",
+                encoding="utf-8",
+            )
+            # Should NOT raise; should produce exactly the spec.md record.
+            manifest = rdi.ingest(root)
+            self.assertEqual(len(manifest["records"]), 1)
+            self.assertEqual(
+                manifest["records"][0]["source_path"],
+                "reference_docs/cite/spec.md",
+            )
+            # And no Tier-4 records for .gitkeep either.
+            tier4 = rdi.load_tier4_context(root)
+            self.assertEqual(tier4, [])
+
+    def test_ds_store_is_skipped(self):
+        """Negative control for the dotfile skip: .DS_Store (macOS
+        Finder metadata) reaching _collect would also raise on the
+        extension gate. The dotfile-skip rule covers it generically."""
+        with tempfile.TemporaryDirectory() as d:
+            root = _scaffold(Path(d))
+            ref = root / "reference_docs"
+            ref.mkdir()
+            (ref / ".DS_Store").write_bytes(b"\x00\x01\x02")
+            (ref / "notes.md").write_text("Freeform notes.\n", encoding="utf-8")
+            manifest = rdi.ingest(root)
+            self.assertEqual(manifest["records"], [])  # Tier 4, not citable
+            tier4 = rdi.load_tier4_context(root)
+            self.assertEqual(len(tier4), 1)
+            self.assertEqual(tier4[0][0], "reference_docs/notes.md")
+
     def test_readme_files_are_skipped(self):
         with tempfile.TemporaryDirectory() as d:
             root = _scaffold(Path(d))

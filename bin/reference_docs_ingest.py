@@ -194,6 +194,15 @@ def _collect(target_repo: Path) -> List[_FileRecord]:
     for path in _iter_candidates(ref_dir):
         if path.name in SKIPPED_FILENAMES:
             continue
+        # Phase 3.9.1 BUG 2 (surfaced during the 2026-04-30 empirical
+        # bootstrap test): skip dotfiles (.gitkeep, .DS_Store, etc.)
+        # before the extension gate. They're sentinel placeholders
+        # protecting otherwise-empty tracked directories — not
+        # citable content. Without this skip, .gitkeep reaches the
+        # extension check with suffix='' and raises IngestError
+        # ("unsupported extension ''"), aborting Phase 1 ingest.
+        if path.name.startswith("."):
+            continue
         ext = path.suffix.lower()
         if ext not in SUPPORTED_EXTENSIONS:
             hint = REJECT_GUIDANCE.get(

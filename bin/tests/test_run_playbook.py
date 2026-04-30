@@ -2772,6 +2772,42 @@ class CodexPreventionSentinelTests(unittest.TestCase):
             # Glob negation pattern is correctly skipped (no concrete path).
             self.assertEqual(len(sentinels), 2)
 
+    def test_discover_sentinels_skips_directory_unignore_patterns(self) -> None:
+        """v1.5.4 Phase 3.9.1 BUG 1 regression pin: surfaced during the
+        2026-04-30 empirical bootstrap test. The QPB .gitignore carries
+        BOTH `!reference_docs/cite/` (directory-level unignore — note
+        the trailing slash) AND `!reference_docs/cite/.gitkeep`
+        (file-level). Pre-fix, the parser picked up the directory
+        pattern; _verify_sentinels then ran is_file() on the
+        directory and reported it as a missing sentinel, aborting
+        the run. Fix: trailing-slash patterns are directory unignores,
+        not file sentinels — skip them. Only file-level `!`-rules
+        appear in the output."""
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / ".gitignore").write_text(
+                "node_modules/\n"
+                "# Mirror of QPB's actual .gitignore shape:\n"
+                "!reference_docs/cite/\n"           # directory unignore (skip)
+                "!reference_docs/cite/.gitkeep\n"   # file unignore (keep)
+                "!reference_docs/.gitkeep\n"        # file unignore (keep)
+                "!some/other/dir/\n"                # another dir unignore (skip)
+                "\n",
+                encoding="utf-8",
+            )
+            sentinels = run_playbook._discover_sentinel_files(repo)
+            posixes = {s.as_posix() for s in sentinels}
+            # File-level unignores survive.
+            self.assertIn("reference_docs/.gitkeep", posixes)
+            self.assertIn("reference_docs/cite/.gitkeep", posixes)
+            # Directory-level unignores (trailing slash) are skipped.
+            self.assertNotIn("reference_docs/cite", posixes)
+            self.assertNotIn("some/other/dir", posixes)
+            # Belt-and-suspenders: no entry corresponds to an existing
+            # tracked directory in the repo (which would falsely
+            # appear missing under is_file()).
+            self.assertEqual(len(sentinels), 2)
+
     def test_verify_sentinels_fails_when_missing(self) -> None:
         with TemporaryDirectory() as tmp:
             repo = Path(tmp)

@@ -1935,10 +1935,18 @@ def _discover_sentinel_files(repo_dir: Path) -> List[Path]:
     """Parse .gitignore !-negations to derive the sentinel-file list.
 
     Returns repo-relative paths matching `!path/to/.gitkeep`-style
-    explicit unignore rules. Patterns containing wildcards (``*``,
-    ``?``, ``[``) are skipped — those are negation patterns, not
-    concrete paths, and the sentinel check needs concrete paths to
-    test for existence.
+    explicit unignore rules — i.e. concrete file paths.
+
+    Skipped:
+      - Patterns containing wildcards (``*``, ``?``, ``[``) — those
+        are negation patterns, not single files.
+      - Patterns ending with ``/`` — gitignore directory-level
+        unignores (e.g. ``!reference_docs/cite/``). The sentinel
+        check runs ``is_file()`` and would falsely report directories
+        as missing files (Phase 3.9.1 BUG 1, surfaced during the
+        2026-04-30 empirical bootstrap test against QPB itself
+        where ``!reference_docs/cite/`` AND
+        ``!reference_docs/cite/.gitkeep`` both appear in .gitignore).
     """
     gitignore = repo_dir / ".gitignore"
     if not gitignore.is_file():
@@ -1953,6 +1961,12 @@ def _discover_sentinel_files(repo_dir: Path) -> List[Path]:
             continue
         # Skip glob-pattern negations — they don't name a single file.
         if any(ch in candidate for ch in "*?["):
+            continue
+        # Phase 3.9.1 BUG 1: skip directory-level unignore patterns
+        # (trailing slash). A directory is not a sentinel file; the
+        # is_file() check in _verify_sentinels would always report
+        # it as missing.
+        if candidate.endswith("/"):
             continue
         sentinels.append(Path(candidate))
     return sentinels
