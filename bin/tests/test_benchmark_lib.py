@@ -288,5 +288,72 @@ class BenchmarkLibTests(unittest.TestCase):
             self.assertFalse(hasattr(lib, name), f"lib.{name} should have been removed")
 
 
+class CountUseCasesTests(unittest.TestCase):
+    """v1.5.4 F-3 (Bootstrap_Findings 2026-04-30): UC count must come
+    from the use_cases_manifest.json record set, not from a grep of
+    REQUIREMENTS.md for `### UC-`. The grep silently undercounts when
+    the LLM uses a different rendering convention even though the
+    manifest is correct."""
+
+    def test_uses_manifest_record_count_when_manifest_present(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            requirements = repo_dir / "quality" / "REQUIREMENTS.md"
+            # Only ONE UC visible to the old grep pattern.
+            write(requirements, "### REQ-001\n### UC-001\n")
+            manifest = repo_dir / "quality" / "use_cases_manifest.json"
+            write(
+                manifest,
+                '{"schema_version":"1.5.3","generated_at":"2026-04-30T00:00:00Z",'
+                '"records":[{"id":"UC-001"},{"id":"UC-002"},{"id":"UC-003"}]}',
+            )
+            # Manifest wins: 3 records, not the 1 the grep would find.
+            self.assertEqual(lib._count_use_cases(repo_dir, requirements), 3)
+
+    def test_falls_back_to_grep_when_manifest_absent(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            requirements = repo_dir / "quality" / "REQUIREMENTS.md"
+            write(requirements, "### REQ-001\n### UC-001\n### UC-002\n")
+            # No manifest on disk → grep fallback returns 2.
+            self.assertEqual(lib._count_use_cases(repo_dir, requirements), 2)
+
+    def test_falls_back_to_grep_when_manifest_malformed(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            requirements = repo_dir / "quality" / "REQUIREMENTS.md"
+            write(requirements, "### UC-001\n### UC-002\n### UC-003\n")
+            manifest = repo_dir / "quality" / "use_cases_manifest.json"
+            write(manifest, "not json {{{")
+            # Malformed JSON falls through silently to grep (3).
+            self.assertEqual(lib._count_use_cases(repo_dir, requirements), 3)
+
+    def test_falls_back_to_grep_when_records_key_missing(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            requirements = repo_dir / "quality" / "REQUIREMENTS.md"
+            write(requirements, "### UC-001\n")
+            manifest = repo_dir / "quality" / "use_cases_manifest.json"
+            # Wrapper present but `records` missing — fall back to grep.
+            write(manifest, '{"schema_version":"1.5.3","generated_at":"x"}')
+            self.assertEqual(lib._count_use_cases(repo_dir, requirements), 1)
+
+    def test_zero_record_manifest_returns_zero_not_grep(self) -> None:
+        """An empty `records` array is an authoritative zero — must not
+        silently fall through to the grep, otherwise the manifest's
+        explicit `[]` would be ignored. This pins the precedence
+        contract: presence-of-records-key is the trigger."""
+        with TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            requirements = repo_dir / "quality" / "REQUIREMENTS.md"
+            write(requirements, "### UC-001\n### UC-002\n")
+            manifest = repo_dir / "quality" / "use_cases_manifest.json"
+            write(
+                manifest,
+                '{"schema_version":"1.5.3","generated_at":"x","records":[]}',
+            )
+            self.assertEqual(lib._count_use_cases(repo_dir, requirements), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

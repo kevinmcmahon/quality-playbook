@@ -108,12 +108,13 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--runner",
-        choices=("claude", "copilot", "codex"),
+        choices=("claude", "copilot", "codex", "cursor"),
         default="claude",
         help=(
             "LLM runner for Pass A. claude (default) wraps "
             "`claude --print`; copilot wraps `gh copilot --prompt`; "
-            "codex wraps `codex exec --full-auto`."
+            "codex wraps `codex exec --full-auto`; cursor wraps "
+            "`cursor agent --print --force`."
         ),
     )
     parser.add_argument(
@@ -165,7 +166,9 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
             "'claude-sonnet-4.6' (default), 'claude-opus-4.6'. For "
             "--runner codex: any model in ~/.codex/config.toml's catalog "
             "(e.g., 'gpt-5-codex'); empty default lets codex pick from "
-            "its own config."
+            "its own config. For --runner cursor: any model accepted "
+            "by `cursor agent --model` (e.g., 'sonnet-4', 'gpt-5'); "
+            "empty default lets cursor pick from its own account/config."
         ),
     )
     return parser.parse_args(argv)

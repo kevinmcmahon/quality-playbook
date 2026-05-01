@@ -78,6 +78,20 @@ class TestSkillDerivationMainArgs(unittest.TestCase):
         self.assertEqual(args.runner, "codex")
         self.assertEqual(args.model, "gpt-5-codex")
 
+    def test_runner_cursor(self) -> None:
+        """v1.5.4 F-1: cursor is a recognized --runner choice."""
+        from bin.skill_derivation.__main__ import _parse_args
+        args = _parse_args(["/tmp/example", "--runner", "cursor"])
+        self.assertEqual(args.runner, "cursor")
+
+    def test_runner_cursor_with_model(self) -> None:
+        from bin.skill_derivation.__main__ import _parse_args
+        args = _parse_args([
+            "/tmp/example", "--runner", "cursor", "--model", "sonnet-4",
+        ])
+        self.assertEqual(args.runner, "cursor")
+        self.assertEqual(args.model, "sonnet-4")
+
     def test_pace_seconds_int(self) -> None:
         from bin.skill_derivation.__main__ import _parse_args
         args = _parse_args(["/tmp/example", "--pace-seconds", "30"])
@@ -157,11 +171,34 @@ class MakeRunnerModelOverrideTests(unittest.TestCase):
         self.assertIsInstance(r, CodexRunner)
         self.assertEqual(r.model, "gpt-5-codex")
 
+    def test_make_runner_cursor_default_model_is_empty(self) -> None:
+        """v1.5.4 F-1: cursor's default model is empty — cursor picks
+        from its account/config when no --model flag is passed (mirrors
+        the codex convention)."""
+        from bin.skill_derivation.runners import make_runner, CursorRunner
+        r = make_runner("cursor")
+        self.assertIsInstance(r, CursorRunner)
+        self.assertEqual(r.model, "")
+
+    def test_make_runner_cursor_override_model(self) -> None:
+        from bin.skill_derivation.runners import make_runner, CursorRunner
+        r = make_runner("cursor", model="sonnet-4")
+        self.assertIsInstance(r, CursorRunner)
+        self.assertEqual(r.model, "sonnet-4")
+
     def test_make_runner_unknown_lists_codex_in_error(self) -> None:
         from bin.skill_derivation.runners import make_runner
         with self.assertRaises(ValueError) as cm:
             make_runner("nonsense")
         self.assertIn("codex", str(cm.exception))
+
+    def test_make_runner_unknown_lists_cursor_in_error(self) -> None:
+        """v1.5.4 F-1: cursor must appear in the error message so an
+        operator who typos the runner name sees all four options."""
+        from bin.skill_derivation.runners import make_runner
+        with self.assertRaises(ValueError) as cm:
+            make_runner("nonsense")
+        self.assertIn("cursor", str(cm.exception))
 
 
 class CodexRunnerArgvTests(unittest.TestCase):
@@ -197,6 +234,46 @@ class CodexRunnerArgvTests(unittest.TestCase):
                 argv,
                 ["codex", "exec", "--full-auto", "-m", "gpt-5-codex"],
             )
+
+
+class CursorRunnerArgvTests(unittest.TestCase):
+    """v1.5.4 F-1: verify CursorRunner builds the correct argv and
+    passes the prompt on stdin (cursor-cli 3.1+ accepts stdin in
+    `--print` mode; verified 2026-04-30)."""
+
+    def test_argv_with_default_empty_model_omits_model_flag(self) -> None:
+        from bin.skill_derivation.runners import CursorRunner
+        from unittest import mock
+        runner = CursorRunner()
+        with mock.patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock.Mock(
+                stdout="HELLO", stderr="", returncode=0,
+            )
+            runner.run("Say HELLO")
+            argv = mock_run.call_args.args[0]
+            kwargs = mock_run.call_args.kwargs
+            self.assertEqual(argv, ["cursor", "agent", "--print", "--force"])
+            self.assertEqual(kwargs.get("input"), "Say HELLO")
+            # Post-bootstrap regression pin: cursor 3.1.10 does NOT
+            # honor `-` as a stdin sentinel (treats it as the literal
+            # prompt). The argv must NOT carry a trailing `-`.
+            self.assertNotIn("-", argv[-1:])
+
+    def test_argv_with_explicit_model_includes_model_flag(self) -> None:
+        from bin.skill_derivation.runners import CursorRunner
+        from unittest import mock
+        runner = CursorRunner(model="sonnet-4")
+        with mock.patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock.Mock(
+                stdout="ok", stderr="", returncode=0,
+            )
+            runner.run("test")
+            argv = mock_run.call_args.args[0]
+            self.assertEqual(
+                argv,
+                ["cursor", "agent", "--print", "--force", "--model", "sonnet-4"],
+            )
+            self.assertNotIn("-", argv[-1:])
 
 
 class Phase4DispatcherSmokeTests(unittest.TestCase):

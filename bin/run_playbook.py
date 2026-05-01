@@ -292,6 +292,7 @@ def build_parser() -> argparse.ArgumentParser:
     runner_group.add_argument("--claude", dest="runner", action="store_const", const="claude", default="copilot", help="Use claude -p instead of gh copilot.")
     runner_group.add_argument("--copilot", dest="runner", action="store_const", const="copilot", help="Use gh copilot (default).")
     runner_group.add_argument("--codex", dest="runner", action="store_const", const="codex", help="Use codex exec --full-auto instead of gh copilot.")
+    runner_group.add_argument("--cursor", dest="runner", action="store_const", const="cursor", help="Use cursor agent --print --force instead of gh copilot (cursor-cli 3.1+).")
 
     seed_group = parser.add_mutually_exclusive_group()
     seed_group.add_argument("--no-seeds", dest="no_seeds", action="store_true", default=True, help="Skip Phase 0/0b seed injection (default).")
@@ -722,6 +723,32 @@ SKILL_FALLBACK_GUIDE = (
 )
 
 
+# v1.5.4 F-1 (Bootstrap_Findings 2026-04-30): phase prompt bodies are
+# externalized to ``phase_prompts/*.md`` at the QPB repo root so that
+# UI-context (skill-direct) and CLI-automation (runner-driven)
+# execution modes read from the same single source of truth. Without
+# this externalization, an edit to a phase prompt would have to be
+# duplicated in two places. See ``phase_prompts/README.md`` for the
+# substitution conventions.
+PHASE_PROMPTS_DIR = Path(__file__).resolve().parents[1] / "phase_prompts"
+
+
+def _load_phase_prompt(name: str, **substitutions: str) -> str:
+    """Load ``phase_prompts/<name>.md`` and apply optional .format() substitutions.
+
+    When ``substitutions`` is empty the file is returned verbatim, so
+    pure-literal prompts (phase2..phase6) do NOT need to escape ``{``
+    and ``}`` characters in JSON code blocks. Files that DO take
+    substitutions (phase1, single_pass, iteration) must double-escape
+    literal braces as ``{{`` / ``}}`` per Python's format-string
+    rules.
+    """
+    text = (PHASE_PROMPTS_DIR / f"{name}.md").read_text(encoding="utf-8")
+    if substitutions:
+        text = text.format(**substitutions)
+    return text
+
+
 def _role_taxonomy_block() -> str:
     """Build the Phase 1 prompt's role-taxonomy section from
     bin.role_map.ROLE_DESCRIPTIONS so adding a role to that dict
@@ -737,576 +764,31 @@ def phase1_prompt(no_seeds: bool) -> str:
     seed_instruction = ""
     if no_seeds:
         seed_instruction = "Skip Phase 0 and Phase 0b entirely - do not look for quality/previous_runs/ (or the legacy quality/runs/) or sibling versioned directories. This is a clean benchmark run. Start directly at Phase 1."
-    role_taxonomy = _role_taxonomy_block()
-
-    return f"""You are a quality engineer. {SKILL_FALLBACK_GUIDE} For this phase read ONLY the sections up through Phase 1 (stop at the \"---\" line before \"Phase 2\"). Also read the reference files (under whichever references/ directory matches the install path you resolved) that are relevant to exploration.
-
-{seed_instruction}
-
-Execute Phase 1: Explore the codebase. The reference_docs/ directory contains gathered documentation - read it to supplement your exploration. Top-level files are Tier 4 context (AI chats, design notes, retrospectives). Files under reference_docs/cite/ are citable sources (project specs, RFCs). If reference_docs/ is missing or empty, proceed with Tier 3 evidence (source tree) alone and note this in EXPLORATION.md.
-
-### MANDATORY FILE-ROLE TAGGING (v1.5.4 Part 1)
-
-Before (or as part of) writing EXPLORATION.md, produce `quality/exploration_role_map.json`. Begin by reading `SKILL.md` at the repository root if present (also check for any other top-level skill-shaped entry file — the indicator is content + name, not extension; a `README.md` is NOT a skill-shaped entry just because it sits at the root). The prose context informs every subsequent file's role tag.
-
-**File source (v1.5.4 Phase 3.6.1, codex-prevention).** Use `git ls-files` as the canonical file list when the target is a git repo — this respects `.gitignore` automatically and is the ONLY supported enumeration source. Do NOT use `os.walk`, `find`, `os.listdir`, or any recursive directory walker — those will pull in `.git/`, `.venv/`, `node_modules/`, build outputs, and vendored dependencies, all of which are FORBIDDEN in the role map (the validator rejects them and aborts the run). When the target is not a git repo, use a filesystem walk that explicitly skips the disallowed paths listed below; record this fallback in the role map's `provenance` field.
-
-**Disallowed paths (MUST NOT appear in the role map under any role):** `.git/`, `.venv/`, `venv/`, `node_modules/`, `__pycache__/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `.tox/`, plus any path with a component ending in `.egg-info` or `.dist-info`. The validator at `bin/role_map.py::DISALLOWED_PATH_PREFIXES` enforces this — if your role map contains any such path, the run aborts. There is also a hard ceiling of 2000 entries; a role map with more is treated as evidence Phase 1 walked .gitignored content.
-
-**Provenance (v1.5.4 Phase 3.6.1).** The role map's top-level `provenance` field MUST be one of:
-- `"git-ls-files"` — preferred. Target is a git repo; you ran `git ls-files` to enumerate.
-- `"filesystem-walk-with-skips"` — fallback. Target is not a git repo; you walked the filesystem with explicit skips for every entry in the disallowed-paths list above.
-- `"unknown"` — accepted only on legacy role maps; do NOT emit this for fresh runs.
-
-For each in-scope file, emit a record with the role taxonomy below. The judgment is content-based: read the file (or enough of it to judge), do NOT pattern-match on extension or directory name alone.
-
-**Sentinel files (v1.5.4 Phase 3.6.1).** Files named `.gitkeep` (or similar empty-directory markers) in the repository's tracked tree MUST NOT be deleted. They keep otherwise-empty directories present in git history. If you find such a file and don't understand its purpose, leave it alone. The pre-flight check verifies all `.gitignore !`-rule sentinels are present and aborts the run if any are missing.
-
-**If you encounter a bug in QPB itself during this run** (e.g., an exception from `bin/run_playbook.py`, a missing import, a broken assertion in QPB source), STOP the run immediately and report:
-1. The exact error and where it occurred (file:line + traceback)
-2. A diagnosis of the likely root cause
-3. A proposed fix shape (do NOT apply it)
-
-Do NOT patch QPB source code yourself. QPB source changes go through Council review (see `~/Documents/AI-Driven Development/CLAUDE.md`). A structural backstop captures the QPB source tree's git SHA at run start and verifies it unchanged at every phase boundary; an autonomous source patch will fail the gate with a diagnostic naming the modified files.
-
-Role taxonomy (single source of truth: `bin/role_map.py::ROLE_DESCRIPTIONS`):
-{role_taxonomy}
-
-If a file genuinely doesn't fit any of these, you may add a new role — but document the addition in your role map's first entry as a comment-style rationale.
-
-The output file `quality/exploration_role_map.json` MUST conform to this schema:
-
-```
-{{
-  "schema_version": "1.0",
-  "timestamp_start": "<ISO 8601 UTC timestamp at the start of Phase 1>",
-  "provenance": "git-ls-files",
-  "files": [
-    {{
-      "path": "<repo-relative POSIX path>",
-      "role": "<one of the role taxonomy values>",
-      "size_bytes": <int>,
-      "rationale": "<one or two sentences justifying the tag, content-based>"
-    }}
-    // ... one entry per in-scope file. When role == "skill-tool", also
-    // include a "skill_prose_reference" string pointing at the SKILL.md /
-    // reference-file location that names this script (e.g., "SKILL.md:47"
-    // or "references/forms.md:section-3"); the prose-to-code divergence
-    // check in Phase 4 reads this back to find the cited prose.
-  ],
-  "breakdown": {{
-    "files_by_role": {{ "<role>": <count>, ... }},
-    "size_by_role":  {{ "<role>": <total bytes>, ... }},
-    "percentages": {{
-      "skill_share": <skill-prose + skill-reference share of total bytes>,
-      "code_share":  <code share of total bytes>,
-      "tool_share":  <skill-tool share of total bytes>,
-      "other_share": <remainder>
-    }}
-  }},
-  "summary": {{
-    "file_count": <int>,
-    "role_breakdown": {{ "<role>": <count>, ... }},
-    "percentages": {{ ... same four shares as above ... }},
-    "provenance": "git-ls-files"
-  }}
-}}
-```
-
-The `breakdown` is YOUR aggregation — compute it from the per-file entries. Percentages are floats in [0, 1] and must sum to ~1.0 when total size > 0. The four shares are: skill_share = (skill-prose + skill-reference) bytes / total; code_share = code bytes / total; tool_share = skill-tool bytes / total; other_share = the remainder (test, docs, config, fixture, formal-spec, playbook-output).
-
-**Cross-artifact agreement (v1.5.4 Phase 3.6.1, codex-prevention).** The `summary` field on the role map and EXPLORATION.md's "File inventory" section MUST agree because both render from the same helper, `bin.role_map.summarize_role_map()`. The role map's `summary` field is the helper's output verbatim. EXPLORATION.md's file-inventory section is the output of `bin.role_map.render_role_map_narrative()` (which itself reads `summarize_role_map`). Do NOT write narrative file counts or percentages by hand — copy from the helper. The validator and downstream consumers cross-check the two; disagreement is a defect.
-
-Tagging discipline:
-1. `skill-tool` and `code` is the load-bearing distinction. A script is only `skill-tool` if SKILL.md (or a doc SKILL.md cites) explicitly names it and tells the agent to invoke it. Independent code modules — even small ones in a `scripts/` directory — are `code` if no SKILL.md prose directs the agent to use them.
-2. Anything that came from a prior playbook run (the target's `quality/` subtree, an installed `.github/skills/quality_gate.py` from QPB itself) is `playbook-output`, never the role it would have if it were the target's own surface. This prevents the v1.5.3 LOC-pollution failure mode where a target's apparent code surface was inflated by QPB's own infrastructure.
-3. If SKILL.md is absent at the root and no other skill-shaped entry file exists, the role map will have zero `skill-prose` entries. That's fine — the four-pass derivation pipeline will no-op for this target.
-
-Handling edge cases (v1.5.4 Phase 1 edge-case discipline):
-- **No SKILL.md at root, no other skill-shaped entry.** Tag every file by content as usual. The role map will carry zero `skill-prose` and `skill-reference` entries; the four-pass pipeline will no-op. Do NOT invent a synthetic SKILL.md or label something `skill-prose` for a project that genuinely has no skill surface.
-- **SKILL.md references a script that does not exist.** Add a top-level `broken_references` array to the role map carrying `{{"prose_location": "<file>:<line>", "missing_script": "<path-as-cited>"}}` entries. Do NOT add a synthetic file entry for the missing script. Note the broken reference in EXPLORATION.md so Phase 4's prose-to-code divergence check can register it as a known gap. (This field is additive; the gate's role-map validator does not require it.)
-- **Target with a very large file count (1000+).** Process in batches. The `files` array can grow incrementally as you walk the tree; once you've made all per-file judgments, compute `breakdown` from the full set and write the file once. Do not write a partial role map mid-walk — the validator considers the file complete when it appears.
-- **Ambiguous prose ("the helper script", "the validator").** Default to `code`. `skill-tool` requires an unambiguous citation: SKILL.md or a referenced doc must name the file (or a path-suffix that uniquely identifies it) AND direct the agent to invoke it. When in doubt, tag `code` and capture the ambiguity in `rationale` — it's better to under-tag `skill-tool` than to inflate the surface area Phase 4's prose-to-code check operates on.
-- **Generated files (build outputs, vendored dependencies, lockfiles).** Skip them at the ignore-rule layer; do not include them in the role map. If you can't tell whether a file is generated, look for a generation marker (header comment naming the generator, sibling `.generated` file, presence in `.gitignore`); if generated, omit from the role map.
-
-When Phase 1 is complete, write your full exploration findings to quality/EXPLORATION.md. This file must contain:
-- Domain and stack identification
-- Architecture map (key modules, entry points, data flow)
-- Existing test inventory
-- Specification summary (from reference_docs/ and any inline docs)
-- Quality risks identified
-- Skeleton/dispatch/state-machine analysis (if applicable)
-- Testable requirements derived (REQ-NNN format)
-- Use cases derived (UC-NN format)
-- A "File-role tagging" section that confirms `quality/exploration_role_map.json` was produced and summarizes the breakdown (the four `percentages` shares plus `files_by_role`). If you tagged any file with a role outside the documented taxonomy, list that file and explain why a new role was warranted.
-
-### MANDATORY CARTESIAN UC RULE (Lever 1, v1.5.2)
-
-For every requirement with a `References` field naming ≥2 files (or ≥2 file:line ranges in distinct files), apply the **Cartesian eligibility check** before deciding whether to emit a single umbrella UC or per-site UCs:
-
-**Gate 1 — Path-suffix match.** At least two references must share a path-suffix role: the last segment before the extension, or a matching function-name pattern that appears across the files.
-- Example of a match: `virtio_mmio.c`, `virtio_vdpa.c`, `virtio_pci_modern.c` all implement `_finalize_features`. The `_finalize_features` function is the shared role.
-- Example of a non-match: `CONFIG_FOO`, `CONFIG_BAR` flags in the same kconfig file — same kind of thing, but not parallel implementations.
-
-**Gate 2 — Function-level similarity.** Each matching reference must cite a line range of similar size (within 2× of the median) and each range must be inside a function body — not a file-header, a kconfig block, or a macro expansion list.
-
-**Decision:**
-- **Both gates pass →** emit one UC per site, numbered `UC-N.a`, `UC-N.b`, `UC-N.c`, …  Each per-site UC has its own Actors, Preconditions, Flow, Postconditions. The parent REQ-N remains as the umbrella.
-- **Only Gate 1 passes →** keep a single umbrella UC and mark the reference cluster `heterogeneous` in a `<!-- cluster: heterogeneous -->` HTML comment in the UC body. Phase 3 can still override if it finds per-site divergence.
-- **Neither gate passes →** single umbrella UC, no special marking.
-
-### Worked example — REQ-010 / VIRTIO_F_RING_RESET (virtio)
-
-Suppose Phase 1 derives:
-
-    ### REQ-010: Virtio transports must honor VIRTIO_F_RING_RESET negotiation
-    - References: drivers/virtio/virtio_mmio.c, drivers/virtio/virtio_vdpa.c, drivers/virtio/virtio_pci_modern.c
-    - Pattern: whitelist
-
-Applying the Cartesian check:
-- Gate 1: all three files contain `_finalize_features` functions — matches.
-- Gate 2: each cited range is inside a function body of similar size — matches.
-
-Both gates pass → emit per-site UCs:
-
-    ### UC-10.a: VIRTIO_F_RING_RESET on PCI modern transport
-    - Actors: virtio_pci_modern driver, guest kernel
-    - Preconditions: device advertises VIRTIO_F_RING_RESET
-    - Flow: vp_modern_finalize_features propagates bit through config space …
-    - Postconditions: feature_bit reflected in final config
-
-    ### UC-10.b: VIRTIO_F_RING_RESET on MMIO transport
-    - Actors: virtio_mmio driver, guest kernel
-    - Preconditions: device advertises VIRTIO_F_RING_RESET
-    - Flow: vm_finalize_features must mirror PCI modern behavior …
-    - Postconditions: feature_bit survives finalize call
-
-    ### UC-10.c: VIRTIO_F_RING_RESET on vDPA transport
-    - Actors: virtio_vdpa driver, vdpa device backend
-    - Preconditions: device advertises VIRTIO_F_RING_RESET
-    - Flow: virtio_vdpa_finalize_features forwards through set_driver_features …
-    - Postconditions: feature_bit visible to vdpa backend
-
-### CONFIRMATION CHECKLIST (Cartesian UC rule)
-
-Before completing Phase 1, confirm each item explicitly in EXPLORATION.md under a section titled "Cartesian UC rule confirmation":
-
-1. For every REQ with ≥2 References, I ran Gate 1 (path-suffix match).
-2. For every REQ that passed Gate 1, I ran Gate 2 (function-level similarity).
-3. Where both gates passed, I emitted per-site UCs (UC-N.a, UC-N.b, …).
-4. Where only Gate 1 passed, I marked the cluster `<!-- cluster: heterogeneous -->`.
-5. Where neither gate passed, I kept a single umbrella UC without marking.
-6. For each REQ with a pattern match in Gate 1, I added `Pattern: whitelist|parity|compensation` to the REQ block.
-
-Also initialize quality/PROGRESS.md with the run metadata and the phase tracker in the EXACT checkbox format below. This format is a hard contract: the Phase 5 gate checks for the substring `- [x] Phase 4` before allowing reconciliation to start, and it only matches the checkbox form. Do NOT substitute a Markdown table, bulleted prose, or any other layout — table-format runs have aborted mid-pipeline because the gate does not see "Complete" in a table cell as equivalent.
-
-Template for the phase tracker section of PROGRESS.md (fill in the Skill version from SKILL.md metadata):
-
-```
-# Quality Playbook Progress
-
-Skill version: <vX.Y.Z>
-Date: <YYYY-MM-DD>
-
-## Phase tracker
-
-- [x] Phase 1 - Explore
-- [ ] Phase 2 - Generate
-- [ ] Phase 3 - Code Review
-- [ ] Phase 4 - Spec Audit
-- [ ] Phase 5 - Reconciliation
-- [ ] Phase 6 - Verify
-```
-
-As each later phase completes it will flip its own `- [ ]` to `- [x]` — keep the line text (including the phase name after the dash) stable so substring matching in the Phase 5 gate and downstream tooling works.
-
-IMPORTANT: Do NOT proceed to Phase 2. Your only job is exploration and writing findings to disk. Write thorough, detailed findings - the next phase will read EXPLORATION.md to generate artifacts, so everything important must be captured in that file.
-"""
+    return _load_phase_prompt(
+        "phase1",
+        seed_instruction=seed_instruction,
+        role_taxonomy=_role_taxonomy_block(),
+    )
 
 
 def phase2_prompt() -> str:
-    return """You are a quality engineer continuing a phase-by-phase quality playbook run. Phase 1 (exploration) is already complete.
-
-Read these files to get context:
-1. quality/EXPLORATION.md - your Phase 1 findings (requirements, risks, architecture)
-2. quality/PROGRESS.md - run metadata and phase status
-3. .github/skills/SKILL.md - read the Phase 2 section (from \"Phase 2: Generate the Quality Playbook\" through the \"Checkpoint: Update PROGRESS.md after artifact generation\" section). Also read the reference files cited in that section.
-
-**Field preservation rule (v1.5.2, Lever 2).** When transcribing REQ hypotheses from EXPLORATION.md into `quality/REQUIREMENTS.md` and `quality/requirements_manifest.json`, every `- Pattern: <value>` field present on the source hypothesis MUST appear on the corresponding REQ in both output files. Pattern values are `whitelist | parity | compensation`. Phase 1's Cartesian UC rule (confirmation checklist item 6) requires Pattern tagging for every REQ where both UC gates match; Phase 2 must not silently drop these tags. If a hypothesis lacks Pattern but you believe it should have one (per-site UCs emitted with `UC-N.a`/`UC-N.b` suffixes, multi-file `References` suggesting a parallel structure), add Pattern during Phase 2 — do not omit the field. The Phase 5 cardinality gate cannot enforce coverage on a REQ it doesn't know is pattern-tagged; silent omission is a documented v1.4.5-regression vector.
-
-Execute Phase 2: Generate all quality artifacts. Use the exploration findings in EXPLORATION.md as your source - do not re-explore the codebase from scratch. Generate:
-- quality/QUALITY.md (quality constitution)
-- quality/CONTRACTS.md (behavioral contracts)
-- quality/REQUIREMENTS.md (with REQ-NNN and UC-NN identifiers from EXPLORATION.md)
-- quality/COVERAGE_MATRIX.md
-- Functional tests (quality/test_functional.*)
-- quality/RUN_CODE_REVIEW.md (code review protocol)
-- quality/RUN_INTEGRATION_TESTS.md (integration test protocol)
-- quality/RUN_SPEC_AUDIT.md (spec audit protocol)
-- quality/RUN_TDD_TESTS.md (TDD verification protocol)
-- quality/COMPLETENESS_REPORT.md (baseline, without verdict)
-- If dispatch/enumeration contracts exist: quality/mechanical/ with verify.sh and extraction artifacts. Run verify.sh immediately and save receipts.
-
-Update PROGRESS.md: mark Phase 2 complete (use the checkbox format `- [x] Phase 2 - Generate` — do NOT switch to a table), update artifact inventory.
-
-IMPORTANT: Do NOT proceed to Phase 3 (code review). Your job is artifact generation only. The next phase will execute the review protocols you generated.
-"""
+    return _load_phase_prompt("phase2")
 
 
 def phase3_prompt() -> str:
-    return """You are a quality engineer continuing a phase-by-phase quality playbook run. Phases 1-2 are complete.
-
-Read these files to get context:
-1. quality/PROGRESS.md - run metadata, phase status, artifact inventory
-2. quality/EXPLORATION.md - Phase 1 findings (especially the \"Candidate Bugs for Phase 2\" section)
-3. quality/REQUIREMENTS.md - derived requirements and use cases
-4. quality/CONTRACTS.md - behavioral contracts
-5. .github/skills/SKILL.md - read the Phase 3 section (\"Phase 3: Code Review and Regression Tests\"). Also read .github/skills/references/review_protocols.md.
-
-Execute Phase 3: Code Review + Regression Tests.
-Run the 3-pass code review per quality/RUN_CODE_REVIEW.md. For every confirmed bug:
-- Add to quality/BUGS.md with ### BUG-NNN heading format
-- Write a regression test (xfail-marked)
-- Generate quality/patches/BUG-NNN-regression-test.patch (MANDATORY for every confirmed bug)
-- Generate quality/patches/BUG-NNN-fix.patch (strongly encouraged)
-- Write code review reports to quality/code_reviews/
-- Update PROGRESS.md BUG tracker
-
-### MANDATORY GRID STEP (Lever 2, v1.5.2) — pattern-tagged REQs only
-
-For every REQ in quality/REQUIREMENTS.md that has a `Pattern:` field (`whitelist`, `parity`, or `compensation`), you MUST produce a compensation grid BEFORE writing any BUG entries for that REQ.
-
-**Step 1. Enumerate the authoritative item set.** Mechanical extraction from source — uapi header, spec section, documented constants. Do NOT invent. Example: for VIRTIO_F_RING_RESET-family, grep `include/uapi/linux/virtio_config.h` for `VIRTIO_F_*` and list the bits the REQ covers.
-
-**Step 2. Enumerate the sites.** From the REQ's per-site UCs (UC-N.a, UC-N.b, …). If the REQ has a single umbrella UC but is pattern-tagged, the grid is 1-dimensional over items.
-
-**Step 3. Produce the grid.** Write `quality/compensation_grid.json` with one entry per REQ:
-
-```json
-{
-  "schema_version": "1.5.2",
-  "reqs": {
-    "REQ-010": {
-      "pattern": "whitelist",
-      "items": ["RING_RESET", "ADMIN_VQ", "NOTIF_CONFIG_DATA", "SR_IOV"],
-      "sites": ["PCI", "MMIO", "vDPA"],
-      "cells": [
-        {"cell_id": "REQ-010/cell-RING_RESET-PCI", "item": "RING_RESET", "site": "PCI", "present": true,  "evidence": "drivers/virtio/virtio_pci_modern.c:XXX-YYY"},
-        {"cell_id": "REQ-010/cell-RING_RESET-MMIO", "item": "RING_RESET", "site": "MMIO", "present": false, "evidence": "drivers/virtio/virtio_mmio.c: no match for RING_RESET"}
-      ]
-    }
-  }
-}
-```
-
-Cell IDs are mechanical: `REQ-<N>/cell-<item>-<site>`. No whitespace, uppercase item/site identifiers where natural.
-
-**Step 4. Apply the BUG-default rule.** For every cell where:
-- the item is defined in authoritative source AND
-- the item is absent from any shared filter AND
-- the item is absent from the site's compensation path
-
-→ the cell DEFAULTS to BUG. Emit one `### BUG-NNN` entry with the cell's file:line citation, spec basis, and expected-vs-actual behavior. Include a `- Covers: [REQ-N/cell-<item>-<site>]` line (see schemas.md §8 for the field contract).
-
-**Step 5. Downgrade to QUESTION requires a structured JSON record.** Append one record per downgraded cell to `quality/compensation_grid_downgrades.json`:
-
-```json
-{
-  "schema_version": "1.5.2",
-  "downgrades": [
-    {
-      "cell_id": "REQ-010/cell-RING_RESET-MMIO",
-      "authority_ref": "include/uapi/linux/virtio_config.h:116",
-      "site_citation": "drivers/virtio/virtio_mmio.c:109-131",
-      "reason_class": "intentionally-partial",
-      "falsifiable_claim": "MMIO does not support RING_RESET because the MMIO transport predates the feature bit and kernel docs at Documentation/virtio/virtio_mmio.rst:42-55 state the transport is frozen at its v1.0 feature set; falsifiable by showing MMIO re-sets bit 40 under any kernel release."
-    }
-  ]
-}
-```
-
-- `reason_class` enum: `out-of-scope | deprecated | platform-gated | handled-upstream | intentionally-partial`.
-- `authority_ref`, `site_citation`, `falsifiable_claim` are required and non-empty.
-- `falsifiable_claim` must state an observable condition that would make the claim wrong.
-- Missing any required field, or `reason_class` outside the enum, or zero-length `falsifiable_claim` → cell REVERTS to BUG at Phase 5 gate time. There is no re-prompt loop.
-
-**Step 6. Self-check.** Before finalizing BUGS.md for this REQ, verify that every cell in the grid appears in either:
-- some BUG's `- Covers: [...]` list, OR
-- a downgrade record in `quality/compensation_grid_downgrades.json`.
-
-Any cell missing from both will fail the Phase 5 cardinality gate. This self-check is advisory in Phase 3; the blocking gate runs in Phase 5.
-
-### Worked example — RING_RESET grid (virtio)
-
-REQ-010 pattern: whitelist. Items: {RING_RESET, ADMIN_VQ, NOTIF_CONFIG_DATA, SR_IOV}. Sites: {PCI, MMIO, vDPA}. Grid: 4 × 3 = 12 cells.
-
-Code inspection reveals PCI implements all four; MMIO implements none of the four (frozen at v1.0 feature set); vDPA implements NOTIF_CONFIG_DATA but not the other three.
-
-Grid (present=T, absent=F):
-
-|                       | PCI | MMIO | vDPA |
-|-----------------------|-----|------|------|
-| RING_RESET            |  T  |  F   |  F   |
-| ADMIN_VQ              |  T  |  F   |  F   |
-| NOTIF_CONFIG_DATA     |  T  |  F   |  T   |
-| SR_IOV                |  T  |  F   |  F   |
-
-BUG-default applies to every F cell (8 total). Possible consolidation:
-
-### BUG-001: MMIO ignores VIRTIO_F_RING_RESET
-- Primary requirement: REQ-010
-- Covers: [REQ-010/cell-RING_RESET-MMIO]
-
-### BUG-002: vDPA ignores VIRTIO_F_RING_RESET
-- Primary requirement: REQ-010
-- Covers: [REQ-010/cell-RING_RESET-vDPA]
-
-### BUG-003: vDPA missing ADMIN_VQ hookup
-- Primary requirement: REQ-010
-- Covers: [REQ-010/cell-ADMIN_VQ-vDPA]
-
-### BUG-004: MMIO ignores NOTIF_CONFIG_DATA negotiation (common filter gap)
-- Primary requirement: REQ-010
-- Covers: [REQ-010/cell-NOTIF_CONFIG_DATA-MMIO]
-
-### BUG-005: MMIO + vDPA both miss SR_IOV propagation
-- Primary requirement: REQ-010
-- Covers: [REQ-010/cell-SR_IOV-MMIO, REQ-010/cell-SR_IOV-vDPA]
-- Consolidation rationale: shared fix path in both transports goes through the same feature-bit filter; single patch on the shared helper closes both cells.
-
-If the reviewer concluded MMIO ADMIN_VQ is intentionally out-of-scope because ADMIN_VQ is a PCI-only spec feature, the downgrade record would be:
-
-```json
-{
-  "cell_id": "REQ-010/cell-ADMIN_VQ-MMIO",
-  "authority_ref": "include/uapi/linux/virtio_pci.h:NN",
-  "site_citation": "drivers/virtio/virtio_mmio.c: no admin virtqueue implementation",
-  "reason_class": "out-of-scope",
-  "falsifiable_claim": "ADMIN_VQ is MMIO-scoped — falsifiable by citing any virtio-spec normative text requiring ADMIN_VQ on non-PCI transports."
-}
-```
-
-Union check: 8 BUG-covered cells + 1 downgrade cell = 9. Grid has 12 cells; 4 present cells don't need coverage. Total: 8 F cells covered via BUGs + 1 via downgrade = all 9 absent cells accounted for. Grid → clean.
-
-### ITERATION mode addendum (MANDATORY INCREMENTAL WRITE, Phase 8)
-
-When running in iteration mode (gap / unfiltered / parity / adversarial), write candidate BUG stubs to disk immediately on identification, not at end-of-review. Path: `quality/code_reviews/<iteration>-candidates.md`. One `### CANDIDATE-NNN` heading per candidate, with at least a file:line citation. Reviewer upgrades candidates to confirmed BUGs in BUGS.md only after full triage.
-
-### CONFIRMATION CHECKLIST (Lever 2, v1.5.2)
-
-Before writing the Phase 3 completion checkpoint to PROGRESS.md, confirm each item explicitly in your Phase 3 summary:
-
-1. For every pattern-tagged REQ, I produced a compensation grid in `quality/compensation_grid.json`.
-2. For every grid, I applied the BUG-default rule mechanically.
-3. Every BUG emitted for a pattern-tagged REQ has a `- Covers: [...]` field with valid cell IDs.
-4. Every BUG whose Covers list has ≥2 entries has a non-empty `- Consolidation rationale: ...` field.
-5. For every downgraded cell, I wrote a complete structured record in `quality/compensation_grid_downgrades.json` with all five required fields and a valid `reason_class`.
-6. For every pattern-tagged REQ, the union of Covers lists + downgrade cells equals the grid's cell set.
-
-Mark Phase 3 (Code review + regression tests) complete in PROGRESS.md (use the checkbox format `- [x] Phase 3 - Code Review` — do NOT switch to a table).
-
-IMPORTANT: Do NOT proceed to Phase 4 (spec audit). The next phase will run the spec audit with a fresh context window.
-"""
+    return _load_phase_prompt("phase3")
 
 
 def phase4_prompt() -> str:
-    return """You are a quality engineer continuing a phase-by-phase quality playbook run. Phases 1-3 are complete.
-
-Read these files to get context:
-1. quality/PROGRESS.md - run metadata, phase status, BUG tracker
-2. quality/REQUIREMENTS.md - derived requirements
-3. quality/BUGS.md - bugs found in Phase 3 (code review)
-4. .github/skills/SKILL.md - read the Phase 4 section (\"Phase 4: Spec Audit and Triage\"). Also read .github/skills/references/spec_audit.md.
-
-Execute Phase 4: Spec Audit + Triage + Layer-2 semantic citation check.
-
-Part A — spec audit:
-Run the spec audit per quality/RUN_SPEC_AUDIT.md. Produce:
-- Individual auditor reports at quality/spec_audits/YYYY-MM-DD-auditor-N.md (one per auditor)
-- Triage synthesis at quality/spec_audits/YYYY-MM-DD-triage.md
-- Executable triage probes at quality/spec_audits/triage_probes.sh
-- Regression tests and patches for any net-new spec audit bugs
-- Update BUGS.md and PROGRESS.md BUG tracker with any new findings
-
-Part B — Layer-2 semantic citation check (v1.5.1):
-The gate's invariant #17 (schemas.md §10) requires three Council members to
-vote on each Tier 1/2 REQ's citation_excerpt. Execute these steps:
-
-1. Generate per-Council-member prompts:
-     python3 -m bin.quality_playbook semantic-check plan .
-   This writes one or more prompt files to
-   quality/council_semantic_check_prompts/<member>.txt per member in the
-   Council roster (bin/council_config.py: claude-opus-4.7, gpt-5.4,
-   gemini-2.5-pro). For >15 Tier 1/2 REQs, prompts are split into batches
-   of 5 (<member>-batch<N>.txt).
-   If no Tier 1/2 REQs exist (Spec Gap run), this step writes an empty
-   quality/citation_semantic_check.json directly — skip steps 2-4.
-
-2. For each Council member's prompt file, feed the prompt to that model
-   (the same roster that ran Part A) and capture its JSON-array response
-   to quality/council_semantic_check_responses/<member>.json. If the
-   member was batched, concatenate the per-batch responses into a single
-   array in the response file. Every entry must have req_id, verdict
-   (supports|overreaches|unclear), and reasoning.
-
-3. Assemble the semantic-check output:
-     python3 -m bin.quality_playbook semantic-check assemble . \\
-       --member claude-opus-4.7 --response quality/council_semantic_check_responses/claude-opus-4.7.json \\
-       --member gpt-5.4         --response quality/council_semantic_check_responses/gpt-5.4.json \\
-       --member gemini-2.5-pro  --response quality/council_semantic_check_responses/gemini-2.5-pro.json
-   This writes quality/citation_semantic_check.json per schemas.md §9.
-
-4. Verify the output file exists. Phase 6's gate invariant #17 requires
-   it on every Tier 1/2 run.
-
-Mark Phase 4 (Spec audit + triage + semantic check) complete in PROGRESS.md (use the checkbox format `- [x] Phase 4 - Spec Audit` — the Phase 5 entry gate looks for that exact substring and will abort if it finds a table row or any other layout).
-
-IMPORTANT: Do NOT proceed to Phase 5 (reconciliation). The next phase will handle reconciliation and TDD.
-"""
+    return _load_phase_prompt("phase4")
 
 
 def phase5_prompt() -> str:
-    return """You are a quality engineer continuing a phase-by-phase quality playbook run. Phases 1-4 are complete.
-
-Read these files to get context:
-1. quality/PROGRESS.md - run metadata, phase status, cumulative BUG tracker
-2. quality/BUGS.md - all confirmed bugs from code review and spec audit
-3. quality/REQUIREMENTS.md - derived requirements
-4. .github/skills/SKILL.md - read the Phase 5 section (\"Phase 5: Post-Review Reconciliation and Closure Verification\"). Also read .github/skills/references/requirements_pipeline.md, .github/skills/references/review_protocols.md, and .github/skills/references/spec_audit.md.
-
-Execute Phase 5: Reconciliation + TDD + Closure.
-
-1. Run the Post-Review Reconciliation per references/requirements_pipeline.md. Update COMPLETENESS_REPORT.md.
-2. Run closure verification: every BUG in the tracker must have either a regression test or an explicit exemption.
-3. Write bug writeups at quality/writeups/BUG-NNN.md for EVERY confirmed bug. The canonical template is the \"Bug writeup generation\" section of .github/skills/SKILL.md — read that section before writing. Use the exact field headings listed there: **Summary, Spec reference, The code, Observable consequence, Depth judgment, The fix, The test, Related issues**. Sections 1–4, 6, 7 are required in every writeup; section 5 (Depth judgment) fires only when the consequence isn't self-evident from the immediate code; section 8 (Related issues) is included only when related bugs exist. Do NOT introduce fields that aren't in the template (no \"Minimal reproduction\" as a top-level field, no \"Patch path:\" as a top-level field — those belong inside Spec reference and The test respectively).
-
-   **MANDATORY HYDRATION STEP.** Before writing a writeup, re-open quality/BUGS.md and locate the `### BUG-NNN:` entry for the bug you are about to write up. Every confirmed bug in BUGS.md already has the content you need — your job is to copy it into the writeup's sections, not to invent it. If a field is missing from BUGS.md, that is a reconciliation error to surface in PROGRESS.md, not a field to fabricate. Use this field map:
-
-   | BUGS.md field              | Writeup section              | How to use it                                                                 |
-   |----------------------------|------------------------------|-------------------------------------------------------------------------------|
-   | Title line (### BUG-NNN:…) | Summary                      | One sentence naming the function/code path and the observable failure.        |
-   | Primary requirement        | Spec reference               | `- Requirement: REQ-NNN`                                                      |
-   | Spec basis                 | Spec reference               | `- Spec basis: <doc path + line range(s), semicolon-separated if multiple>` plus a ≤15-word contract quote copied verbatim from the cited lines. |
-   | Location                   | The code                     | Cite `file:line` and describe what the current path does there.               |
-   | Minimal reproduction       | Observable consequence       | Weave into the consequence paragraph as the triggering input.                 |
-   | Expected + Actual behavior | Observable consequence       | The actual behavior is the observable failure; the expected defines the gap.  |
-   | Regression test            | The test                     | `- Regression test: <function name>` — verbatim from BUGS.md.                 |
-   | Patches (regression)       | The test                     | `- Regression patch: <path>` — verbatim from BUGS.md.                         |
-   | Patches (fix)              | The fix + The test           | If a fix patch file exists, read it and paste the unified diff inside ```diff; also list the patch path as `- Fix patch: <path>` under The test. If no fix patch exists (confirmed-open bug), write the minimal concrete unified diff directly in The fix anyway — SKILL.md requires an inline diff in every writeup. In the no-patch case, omit the `Fix patch:` bullet from The test. |
-   | Red/green logs             | The test                     | `- Red receipt: quality/results/BUG-NNN.red.log` and the matching green path. |
-
-   **Worked example.** The BUGS.md entry for BUG-004 is:
-
-       ### BUG-004: naive upstream timestamps crash ETA math
-       - Source: Code Review
-       - Severity: HIGH
-       - Primary requirement: REQ-006
-       - Location: bus_tracker.py:138-144
-       - Spec basis: quality/REQUIREMENTS.md:163-172; quality/QUALITY.md:57-65
-       - Minimal reproduction: Return a visit whose ExpectedArrivalTime is an ISO string
-         without timezone information, such as 2026-04-21T12:00:00.
-       - Expected behavior: The affected arrival degrades to unknown-time while the rest
-         of the stop remains usable.
-       - Actual behavior: datetime.fromisoformat() returns a naive datetime and
-         subtracting it from datetime.now(timezone.utc) raises TypeError, aborting the
-         stop/request path.
-       - Regression test: quality.test_regression.TestPhase3Regressions.test_bug_004_fetch_stop_arrivals_degrades_naive_timestamps
-       - Patches: quality/patches/BUG-004-regression-test.patch, quality/patches/BUG-004-fix.patch
-
-   The hydrated writeup sections look like this (sketch — paste the real diff from the
-   fix patch file into ```diff, don't make one up):
-
-       ## Summary
-       fetch_stop_arrivals() crashes the whole stop/request path when an upstream visit
-       carries a naive ExpectedArrivalTime, instead of degrading that arrival to
-       unknown-time.
-
-       ## Spec reference
-       - Requirement: REQ-006
-       - Spec basis: quality/REQUIREMENTS.md:163-172; quality/QUALITY.md:57-65
-       - Behavioral contract quote: \"degrade a bad per-arrival timestamp to unknown-time instead of aborting the whole response path\"
-
-       ## The code
-       At bus_tracker.py:138-144, the parser calls datetime.fromisoformat(...) on
-       ExpectedArrivalTime and subtracts the result from datetime.now(timezone.utc)…
-
-       ## Observable consequence
-       When the upstream visit returns ExpectedArrivalTime=\"2026-04-21T12:00:00\"
-       (no timezone), fromisoformat() returns a naive datetime, the subtraction
-       raises TypeError, and the entire stop/request path aborts rather than the
-       single affected arrival degrading to unknown-time.
-
-       ## The fix
-       ```diff
-       <paste the real unified diff from quality/patches/BUG-004-fix.patch here>
-       ```
-
-       ## The test
-       - Regression test: quality.test_regression.TestPhase3Regressions.test_bug_004_fetch_stop_arrivals_degrades_naive_timestamps
-       - Regression patch: quality/patches/BUG-004-regression-test.patch
-       - Fix patch: quality/patches/BUG-004-fix.patch
-       - Red receipt: quality/results/BUG-004.red.log
-       - Green receipt: quality/results/BUG-004.green.log
-
-   **Confirmation checklist (per writeup, before moving to the next bug).** (a) Every
-   required section has populated content copied from BUGS.md or the patch files —
-   no empty backticks, no sentinel filler like \"is a confirmed code bug in ``\" or
-   \"The affected implementation lives at ``\" or \"Patch path: ``\". (b) The ```diff
-   fence contains at least one `+` or `-` line from the actual fix patch. (c) The
-   Summary names a real function or code path, not the BUG identifier. (d) No
-   angle-bracket placeholders (e.g., `<...>`) remain in the final writeup — those are
-   pedagogical markers from the worked example and from SKILL.md, never acceptable
-   output.
-4. Run the TDD red-green cycle: for each confirmed bug, run the regression test against unpatched code -> quality/results/BUG-NNN.red.log. If a fix patch exists, run against patched code -> quality/results/BUG-NNN.green.log. If the test runner is unavailable, create the log with NOT_RUN on the first line.
-5. Generate sidecar JSON: quality/results/tdd-results.json and quality/results/integration-results.json (schema_version \"1.1\", canonical fields: id, requirement, red_phase, green_phase, verdict, fix_patch_present, writeup_path).
-6. If mechanical verification artifacts exist, run quality/mechanical/verify.sh and save receipts.
-7. Run terminal gate verification, write it to PROGRESS.md.
-
-### MANDATORY CARDINALITY GATE (Lever 3, v1.5.2)
-
-Before finalizing this phase, run the cardinality reconciliation gate against the current repo state:
-
-    python3 -c "import sys; sys.path.insert(0, '.github/skills/quality_gate'); import quality_gate; failures = quality_gate.validate_cardinality_gate('.'); sys.exit(1 if failures else 0)"
-
-If the gate reports uncovered cells, malformed cell IDs, missing consolidation rationale on multi-cell Covers, or malformed downgrade records, STOP. Fix the BUGS.md entries or the `compensation_grid_downgrades.json` file. Do NOT proceed to completion until the gate returns clean.
-
-For every pattern-tagged REQ, the Phase 5 contract is:
-- Every grid cell with `"present": false` appears in either a BUG's `Covers:` list or a downgrade record.
-- Every `Covers:` entry uses the canonical cell ID form `REQ-N/cell-<item>-<site>`.
-- Every BUG with ≥2 `Covers:` entries has a non-empty `Consolidation rationale:` line.
-- Every downgrade record has `cell_id`, `authority_ref`, `site_citation`, `reason_class` (in the enum), `falsifiable_claim` (non-empty).
-
-The cardinality gate is blocking. It is intentionally stricter than the Phase 3 advisory self-check; the advisory check is meant to surface problems early, but Phase 5 is where they become fatal.
-
-Mark Phase 5 complete in PROGRESS.md (use the checkbox format `- [x] Phase 5 - Reconciliation` — do NOT switch to a table).
-
-IMPORTANT: quality_gate.py will FAIL Phase 5 if any writeup is missing a non-empty ```diff block or contains any of these sentinel phrases verbatim: \"is a confirmed code bug in ``\", \"The affected implementation lives at ``\", \"Patch path: ``\", \"- Regression test: ``\", \"- Regression patch: ``\". Those two checks are the hard gate. Skipping the BUGS.md hydration step above is not gate-enforced but will produce writeups that read as unpopulated stubs and fail a human review — do not skip it.
-"""
+    return _load_phase_prompt("phase5")
 
 
 def phase6_prompt() -> str:
-    return """You are a quality engineer doing the verification phase of a quality playbook run. Phases 1-5 are complete.
-
-Read .github/skills/SKILL.md - the Phase 6 section (\"Phase 6: Verify\"). Follow the incremental verification steps (6.1 through 6.5).
-
-Step 6.1: If quality/mechanical/verify.sh exists, run it. Record exit code.
-Step 6.2: Run quality_gate.py:
-  python3 .github/skills/quality_gate.py .
-Read the output carefully. For every FAIL result, fix the issue:
-- Missing regression-test patches: generate quality/patches/BUG-NNN-regression-test.patch
-- Missing inline diffs in writeups: add a ```diff block
-- Non-canonical JSON fields: fix tdd-results.json (use 'id' not 'bug_id', etc.)
-- Missing files: create them
-After fixing all FAILs, run quality_gate.py again. Repeat until 0 FAIL.
-Save final output to quality/results/quality-gate.log.
-
-Step 6.3: Run functional tests if a test runner is available.
-Step 6.4: File-by-file verification checklist (read one file at a time, check, move on).
-Step 6.5: Metadata consistency check.
-
-Append each step's result to quality/results/phase6-verification.log.
-Mark Phase 6 complete in PROGRESS.md (use the checkbox format `- [x] Phase 6 - Verify` — do NOT switch to a table).
-"""
+    return _load_phase_prompt("phase6")
 
 
 def _apply_prompt_prefix(body: str, prefix: str) -> str:
@@ -1333,23 +815,21 @@ def build_phase_prompt(
 
 def single_pass_prompt(no_seeds: bool, *, prefix: str = "") -> str:
     seed_instruction = " Skip Phase 0 and Phase 0b - start directly at Phase 1." if no_seeds else ""
-    return _apply_prompt_prefix(
-        f"{SKILL_FALLBACK_GUIDE} Execute the quality playbook for this project.{seed_instruction}",
-        prefix,
-    )
+    body = _load_phase_prompt(
+        "single_pass",
+        skill_fallback_guide=SKILL_FALLBACK_GUIDE,
+        seed_instruction=seed_instruction,
+    ).rstrip("\n")
+    return _apply_prompt_prefix(body, prefix)
 
 
 def iteration_prompt(strategy: str, *, prefix: str = "") -> str:
-    return _apply_prompt_prefix(
-        (
-            f"{SKILL_FALLBACK_GUIDE} Run the next iteration using the {strategy} strategy. "
-            "Any updates to quality/PROGRESS.md must keep the existing phase tracker in checkbox "
-            "format (`- [x] Phase N - <name>`) — do not rewrite it as a table. The orchestrator "
-            "appends `## Iteration: <strategy> started/complete` sections itself; iteration work "
-            "should not touch the existing phase tracker lines."
-        ),
-        prefix,
-    )
+    body = _load_phase_prompt(
+        "iteration",
+        skill_fallback_guide=SKILL_FALLBACK_GUIDE,
+        strategy=strategy,
+    ).rstrip("\n")
+    return _apply_prompt_prefix(body, prefix)
 
 
 def next_strategy(strategy: str) -> str:
@@ -1501,6 +981,24 @@ def command_for_runner(runner: str, prompt: str, model: Optional[str]) -> List[s
         if model:
             command.extend(["-m", model])
         command.append("-")
+        return command
+    if runner == "cursor":
+        # v1.5.4 F-1 (corrected post-bootstrap): `cursor agent
+        # --print` reads the prompt on stdin ONLY when no positional
+        # arg is given. Unlike codex 0.125+, cursor 3.1.10 does NOT
+        # honor `-` as a stdin sentinel — it treats `-` as the
+        # literal prompt content (cursor responds with "your last
+        # message was only a hyphen, so there isn't a clear task
+        # yet"). The fix: pass NO positional arg and pipe the prompt
+        # on stdin (the run_prompt site below detects cursor and
+        # sets run_kwargs["input"] = prompt). `--force` (alias
+        # `--yolo`) skips confirmation prompts for unattended runs.
+        # Original bug surfaced in the post-Phase-3.9.1 bootstrap
+        # smoke test when `cursor agent --print --force -` aborted
+        # Phase 1 with the literal-hyphen response.
+        command = ["cursor", "agent", "--print", "--force"]
+        if model:
+            command.extend(["--model", model])
         return command
     copilot_model = model or lib.DEFAULT_MODEL
     return ["gh", "copilot", "-p", prompt, "--model", copilot_model, "--yolo"]
@@ -1802,7 +1300,7 @@ def run_prompt(repo_dir: Path, prompt: str, pass_name: str, output_file: Path, l
                 text=True,
                 check=False,
             )
-            if runner == "codex":
+            if runner in ("codex", "cursor"):
                 run_kwargs["input"] = prompt
             else:
                 run_kwargs["stdin"] = subprocess.DEVNULL
@@ -1822,6 +1320,8 @@ def ensure_runner_available(runner: str) -> bool:
         return lib.require_copilot()
     if runner == "codex":
         return shutil.which("codex") is not None
+    if runner == "cursor":
+        return shutil.which("cursor") is not None
     return shutil.which("claude") is not None
 
 
@@ -3780,6 +3280,8 @@ def display_run_header(args: argparse.Namespace, repo_dirs: Sequence[Path], disp
         print(f"Model:    {args.model or lib.DEFAULT_MODEL}")
     elif args.runner == "codex":
         print(f"Model:    {args.model or '(codex config default)'}")
+    elif args.runner == "cursor":
+        print(f"Model:    {args.model or '(cursor account default)'}")
     else:
         print(f"Model:    {args.model or '(default)'}")
     print(f"No seeds: {args.no_seeds}  (Phase 0/0b skipped when true)")
@@ -3915,9 +3417,11 @@ def build_worker_command(args: argparse.Namespace, target_path: str) -> List[str
     # bin/tests/test_run_playbook.py::Phase38WorkerInvocationTests
     # catches the next reversion immediately.
     command = [sys.executable, "-m", "bin.run_playbook", "--worker", "--sequential"]
-    runner_flag = {"claude": "--claude", "codex": "--codex"}.get(
-        args.runner, "--copilot"
-    )
+    runner_flag = {
+        "claude": "--claude",
+        "codex": "--codex",
+        "cursor": "--cursor",  # v1.5.4 F-1: Cursor CLI runner.
+    }.get(args.runner, "--copilot")
     command.append(runner_flag)
     command.append("--no-seeds" if args.no_seeds else "--with-seeds")
     # v1.5.1 Item 3.1: prefer --phase-groups when the operator passed it
@@ -4109,9 +3613,11 @@ def print_suggested_next_command(args: argparse.Namespace, failures_occurred: bo
     if failures_occurred:
         print("  Run finished with errors — inspect quality/control_prompts/ and re-run with --phase <N>")
         return
-    runner_flag = {"claude": " --claude", "codex": " --codex"}.get(
-        args.runner, ""
-    )
+    runner_flag = {
+        "claude": " --claude",
+        "codex": " --codex",
+        "cursor": " --cursor",  # v1.5.4 F-1: Cursor CLI runner.
+    }.get(args.runner, "")
     model_flag = f" --model {shlex.quote(args.model)}" if getattr(args, "model", None) else ""
     interpreter = os.path.basename(sys.executable) if sys.executable else "python"
     script_path = sys.argv[0] if sys.argv and sys.argv[0] else "bin/run_playbook.py"
@@ -4165,6 +3671,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print("ERROR: 'gh copilot' not available. Install with: gh extension install github/gh-copilot", file=sys.stderr)
         elif args.runner == "codex":
             print("ERROR: 'codex' CLI not found. Install from https://github.com/openai/codex", file=sys.stderr)
+        elif args.runner == "cursor":
+            print("ERROR: 'cursor' CLI not found. Install from https://cursor.com/cli", file=sys.stderr)
         else:
             print("ERROR: 'claude' CLI not found. Install from https://docs.anthropic.com/claude-code", file=sys.stderr)
         return 1

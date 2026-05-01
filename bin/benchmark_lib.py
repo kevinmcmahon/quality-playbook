@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fnmatch
+import json
 import os
 import re
 import subprocess
@@ -310,6 +311,32 @@ def count_bug_writeups(repo_dir: Path) -> int:
     return sum(1 for path in writeups_dir.glob("BUG-*.md") if path.is_file())
 
 
+def _count_use_cases(repo_dir: Path, requirements_file: Path) -> int:
+    """Return the UC count for a repo's quality/ artifacts.
+
+    v1.5.4 F-3 (Bootstrap_Findings 2026-04-30): the authoritative
+    source is `quality/use_cases_manifest.json` (schemas.md §7) — a
+    machine-validated record set written by Phase 2. The previous
+    REQUIREMENTS.md grep (`### UC-`) silently undercounts when the
+    Phase 2 LLM renders use cases under a different heading
+    convention (e.g. `## UC-001` / `#### UC:` / a use-cases narrative
+    section that names UCs inline), even though the manifest is
+    correct. Falling back to the grep is fine when the manifest is
+    absent (older runs, pre-v1.5.3 artifacts) so we don't regress
+    benchmark output for archived runs.
+    """
+    manifest = repo_dir / "quality" / "use_cases_manifest.json"
+    if manifest.is_file():
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+            records = data.get("records")
+            if isinstance(records, list):
+                return len(records)
+        except (OSError, ValueError):
+            pass
+    return count_matching_lines(requirements_file, r"### UC-")
+
+
 def _marker(path: Path, exists_marker: str = "Y", missing_marker: str = "N") -> str:
     return exists_marker if path.exists() else missing_marker
 
@@ -360,7 +387,7 @@ def print_summary(repo_dirs: Sequence[Path]) -> str:
         tdd_file = repo_dir / "quality" / "TDD_TRACEABILITY.md"
         ag = count_matching_lines(requirements_file, r"architectural-guidance")
         req = count_matching_lines(requirements_file, r"### REQ-")
-        uc = count_matching_lines(requirements_file, r"### UC-")
+        uc = _count_use_cases(repo_dir, requirements_file)
         uc_int = count_matching_lines(integration_file, r"UC-")
         infra_int = count_matching_lines(integration_file, r"\[Infrastructure\]")
         tdd_verified = count_matching_lines(tdd_file, r"TDD verified")

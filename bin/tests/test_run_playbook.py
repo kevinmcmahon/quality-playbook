@@ -401,6 +401,70 @@ class RunPlaybookTests(unittest.TestCase):
         copilot_model = run_playbook.command_for_runner("copilot", "prompt text", "gpt-5.5")
         self.assertEqual(copilot_model, ["gh", "copilot", "-p", "prompt text", "--model", "gpt-5.5", "--yolo"])
 
+    def test_build_worker_command_propagates_cursor_runner(self) -> None:
+        """v1.5.4 F-1: when the operator passes --cursor, the spawned
+        worker subprocess must also receive --cursor (not the default
+        --copilot fallback). Regression pin: an earlier draft had the
+        runner_flag dict missing the cursor entry."""
+        cursor_args = run_playbook.argparse.Namespace(
+            parallel=False,
+            runner="cursor",
+            no_seeds=False,
+            phase="3",
+            next_iteration=False,
+            strategy=["parity"],
+            model=None,
+            kill=False,
+            targets=["./project-a"],
+            worker=False,
+        )
+        command = run_playbook.build_worker_command(cursor_args, "/abs/path/to/target")
+        # The runner flag is the fourth element after [python, -m, module, --worker, --sequential]
+        self.assertIn("--cursor", command)
+        self.assertNotIn("--copilot", command)
+
+    def test_command_for_runner_builds_cursor_variants(self) -> None:
+        """v1.5.4 F-1 (post-bootstrap fix): cursor runner builds
+        `cursor agent --print --force [--model <model>]` with NO
+        positional argument. The prompt is piped on stdin via
+        run_kwargs["input"] = prompt at the run_prompt site. Unlike
+        codex, cursor 3.1.10 does NOT honor `-` as a stdin sentinel
+        (it would be treated as the literal prompt content) — the
+        original draft of this runner appended `-` and aborted
+        Phase 1 with cursor responding "your last message was only a
+        hyphen, so there isn't a clear task yet". The fix: no
+        trailing `-`. This regression pin catches a future revert."""
+        cursor_default = run_playbook.command_for_runner("cursor", "prompt text", None)
+        self.assertEqual(
+            cursor_default,
+            ["cursor", "agent", "--print", "--force"],
+        )
+        # Crucial regression assertion: NO trailing "-".
+        self.assertNotEqual(cursor_default[-1], "-")
+
+        cursor_model = run_playbook.command_for_runner("cursor", "prompt text", "sonnet-4")
+        self.assertEqual(
+            cursor_model,
+            ["cursor", "agent", "--print", "--force", "--model", "sonnet-4"],
+        )
+        self.assertNotEqual(cursor_model[-1], "-")
+
+    def test_ensure_runner_available_recognizes_cursor(self) -> None:
+        """v1.5.4 F-1: ensure_runner_available checks for the cursor
+        binary on PATH. We mock shutil.which to verify the lookup
+        targets the right binary name (we don't want the test to
+        depend on cursor being installed in the test env)."""
+        from unittest import mock
+        with mock.patch("bin.run_playbook.shutil.which") as which:
+            which.return_value = "/usr/local/bin/cursor"
+            self.assertTrue(run_playbook.ensure_runner_available("cursor"))
+            which.assert_called_with("cursor")
+
+        with mock.patch("bin.run_playbook.shutil.which") as which:
+            which.return_value = None
+            self.assertFalse(run_playbook.ensure_runner_available("cursor"))
+            which.assert_called_with("cursor")
+
     def test_command_preview_quotes_shell_arguments(self) -> None:
         preview = run_playbook.command_preview(["gh", "copilot", "-p", "contains spaces", "weird'quote"])
         self.assertEqual(preview, "gh copilot -p 'contains spaces' 'weird'\"'\"'quote'")

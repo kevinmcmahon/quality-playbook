@@ -1,19 +1,21 @@
 """runners.py — LLM runner abstraction for skill_derivation passes.
 
-Three concrete runners ship: ClaudeRunner (subprocess `claude --print
+Four concrete runners ship: ClaudeRunner (subprocess `claude --print
 --model sonnet`), CopilotRunner (subprocess `gh copilot --prompt
---model claude-sonnet-4.6`), and CodexRunner (subprocess `codex exec
---full-auto [-m <model>]`, codex-cli 0.125+). Tests use MockRunner
-from test_skill_derivation_pass_a.py.
+--model claude-sonnet-4.6`), CodexRunner (subprocess `codex exec
+--full-auto [-m <model>]`, codex-cli 0.125+), and CursorRunner
+(subprocess `cursor agent --print --force [--model <model>]`,
+cursor-cli 3.1+). Tests use MockRunner from
+test_skill_derivation_pass_a.py.
 
 Default to claude-print for Phase 3 self-audit runs because Phase 3
 fires 60-100+ LLM calls per run and gh-copilot's weekly quota has
 been under pressure -- defaulting to claude routes Phase 3 cost to
 Anthropic's quota.
 
-The CLI flag (`--runner claude|copilot|codex`) follows the existing
-bin/run_playbook.py convention; do not introduce a parallel env-var
-scheme.
+The CLI flag (`--runner claude|copilot|codex|cursor`) follows the
+existing bin/run_playbook.py convention; do not introduce a parallel
+env-var scheme.
 """
 
 from __future__ import annotations
@@ -173,6 +175,67 @@ class CodexRunner:
             )
 
 
+@dataclass
+class CursorRunner:
+    """Subprocess wrapper for `cursor agent --print --force [--model <model>]`.
+
+    v1.5.4 F-1 (Bootstrap_Findings 2026-04-30): Cursor CLI is the
+    fourth sibling alongside claude/copilot/codex. The `cursor agent`
+    subcommand runs the Cursor agent in a terminal; `--print` makes
+    it non-interactive (script-friendly) and gives it access to all
+    tools including write+shell. `--force` (alias `--yolo`) skips
+    confirmation prompts so the run is fully unattended — required
+    for batch automation.
+
+    Cursor reads the prompt on stdin ONLY when no positional arg is
+    given. Unlike codex 0.125+, cursor 3.1.10 does NOT honor `-` as
+    a stdin sentinel — it treats `-` as the literal prompt content.
+    We therefore pass NO positional arg and pipe the prompt via
+    `subprocess.run(input=prompt)`. (Verified post-bootstrap smoke
+    test: `cursor agent --print --force -` aborts with "your last
+    message was only a hyphen, so there isn't a clear task yet";
+    `echo PROMPT | cursor agent --print --force` works correctly.)
+
+    The default model is empty (the empty string) — cursor picks its
+    own default per its account/config. An explicit value overrides
+    via `--model <model>`.
+    """
+
+    model: str = ""
+    timeout_seconds: int = 600
+
+    def run(self, prompt: str) -> RunnerResult:
+        import time
+        argv = ["cursor", "agent", "--print", "--force"]
+        if self.model:
+            argv.extend(["--model", self.model])
+        start = time.monotonic()
+        try:
+            result = subprocess.run(
+                argv,
+                input=prompt,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout_seconds,
+                check=False,
+            )
+            elapsed_ms = int((time.monotonic() - start) * 1000)
+            return RunnerResult(
+                stdout=result.stdout,
+                stderr=result.stderr,
+                elapsed_ms=elapsed_ms,
+                returncode=result.returncode,
+            )
+        except subprocess.TimeoutExpired:
+            elapsed_ms = int((time.monotonic() - start) * 1000)
+            return RunnerResult(
+                stdout="",
+                stderr=f"timeout after {self.timeout_seconds}s",
+                elapsed_ms=elapsed_ms,
+                returncode=124,
+            )
+
+
 def make_runner(name: str, *, model: str | None = None) -> LLMRunner:
     """Factory. CLI flag value -> runner instance.
 
@@ -187,6 +250,8 @@ def make_runner(name: str, *, model: str | None = None) -> LLMRunner:
         return CopilotRunner(model=model) if model else CopilotRunner()
     if name == "codex":
         return CodexRunner(model=model) if model else CodexRunner()
+    if name == "cursor":
+        return CursorRunner(model=model) if model else CursorRunner()
     raise ValueError(
-        f"unknown runner {name!r}; valid values: claude, copilot, codex"
+        f"unknown runner {name!r}; valid values: claude, copilot, codex, cursor"
     )
