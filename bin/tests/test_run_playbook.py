@@ -3215,6 +3215,78 @@ class Round8Fix6SourcePathsCoverageTests(unittest.TestCase):
         )
 
 
+class CouncilRound2P04PhasePromptsSourcePathTests(unittest.TestCase):
+    """Council Round 2 2026-04-30 P0-4: phase_prompts/ is now
+    load-bearing single-source-of-truth runtime prompt content
+    (introduced by F-1 externalization). The source-unchanged
+    invariant must watch it; otherwise a mid-run Phase-N LLM
+    rewriting phase_prompts/phase3.md would not trip the gate.
+    Same class of finding F-2 closed for AGENTS.md."""
+
+    def test_source_paths_includes_phase_prompts(self) -> None:
+        self.assertIn("phase_prompts/", run_playbook._QPB_SOURCE_PATHS)
+
+    def test_verifier_diffs_against_phase_prompts_changes(self) -> None:
+        """Pin that the actual diff machinery treats phase_prompts/
+        as a watched path. The phase_prompts/ directory was first
+        introduced in commit aee53c2 (F-1). Diffing from any pre-F-1
+        baseline must surface phase_prompts/ entries — but ONLY if
+        the path is in _QPB_SOURCE_PATHS (the diff is filtered by
+        the path list).
+
+        Mutation contract: removing 'phase_prompts/' from
+        _QPB_SOURCE_PATHS makes this test fail because the diff
+        filter no longer includes the directory and the modified
+        list comes back empty for phase_prompts/ entries."""
+        import subprocess
+        qpb_dir = Path(__file__).resolve().parents[2]
+        # Find a SHA from before phase_prompts/ was created. The
+        # introducing commit is aee53c2; any earlier commit works.
+        result = subprocess.run(
+            ["git", "log", "--format=%H", "-n", "30", "HEAD"],
+            cwd=str(qpb_dir), capture_output=True, text=True, check=True,
+        )
+        commits = [c for c in result.stdout.splitlines() if c.strip()]
+        # Walk the history looking for a commit where phase_prompts/
+        # didn't yet exist. The check `git ls-tree <sha> phase_prompts/`
+        # returns empty when the directory wasn't tracked yet.
+        pre_f1_sha = None
+        for sha in commits:
+            ls = subprocess.run(
+                ["git", "ls-tree", sha, "phase_prompts/"],
+                cwd=str(qpb_dir), capture_output=True, text=True, check=False,
+            )
+            if not ls.stdout.strip():
+                pre_f1_sha = sha
+                break
+        if pre_f1_sha is None:
+            self.skipTest(
+                "no pre-F-1 commit available to diff against — git "
+                "history may have been rewritten or shallow-cloned"
+            )
+        modified = run_playbook._verify_qpb_source_unchanged(
+            qpb_dir, pre_f1_sha
+        )
+        phase_prompts_changes = [
+            m for m in modified if m.startswith("phase_prompts/")
+        ]
+        self.assertGreater(
+            len(phase_prompts_changes), 0,
+            "_verify_qpb_source_unchanged must surface phase_prompts/ "
+            "additions now that the directory is in _QPB_SOURCE_PATHS. "
+            "If this assertion fails after a code change, the most "
+            "likely cause is 'phase_prompts/' was removed from the "
+            "tuple — restore it.",
+        )
+
+    def test_source_paths_preserves_prior_coverage_after_p04(self) -> None:
+        """Negative control: P0-4's addition must not displace any
+        prior coverage."""
+        for path in ("bin/", ".github/skills/", "agents/", "references/",
+                     "SKILL.md", "schemas.md", "AGENTS.md"):
+            self.assertIn(path, run_playbook._QPB_SOURCE_PATHS)
+
+
 class Phase38WorkerInvocationTests(unittest.TestCase):
     """v1.5.4 Phase 3.8: regression pin for ``build_worker_command``
     invoking the worker as ``python -m bin.run_playbook`` rather

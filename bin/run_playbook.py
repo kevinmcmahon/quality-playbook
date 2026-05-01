@@ -1504,6 +1504,17 @@ _QPB_SOURCE_PATHS = (
     # source-unchanged invariant.
     "schemas.md",
     "AGENTS.md",
+    # Council Round 2 2026-04-30 P0-4: F-1's externalization made
+    # phase_prompts/*.md load-bearing single-source-of-truth runtime
+    # prompt content read by both Mode A (skill-direct) and Mode B
+    # (runner-driven). A mid-run Phase-N LLM rewriting any
+    # phase_prompts/*.md file would shift downstream phases without
+    # the SHA256 byte-equality test catching it (that test pins
+    # between-commit drift, not within-run mutation). Same class of
+    # gap as F-2 closed for AGENTS.md — F-1 introduced a new
+    # load-bearing directory and missed the matching invariant
+    # update.
+    "phase_prompts/",
 )
 
 

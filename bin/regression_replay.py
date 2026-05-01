@@ -66,7 +66,15 @@ DEFAULT_NOISE_FLOOR = 0.05
 #   variants matched zero of those either.
 # Tolerant heading: colon + title both optional; bold-key variants
 # added for both Primary requirement and Location.
-_BUG_HEADING_RE = re.compile(r"^###\s+(BUG-\d+)(?::\s+(.*))?$", re.MULTILINE)
+#
+# Council Round 2 2026-04-30 P0-3: 15 archive files (chi-1.3.13..16/46,
+# express-1.3.14/15/16/21/25, virtio-1.3.13/18/19/21-manual/22) use H2
+# `## BUG-NNN` headings. Round 1's `^###` pin missed them — chi-1.3.46
+# parsed to 0 records when the real recall is 3. Fix: accept any
+# heading depth >=2 (`^##+`). H1 is intentionally excluded so a
+# documentation/wishlist `# BUG-NNN` outline doesn't false-positive
+# (empirically: 0 archive files use H1, so this is safe).
+_BUG_HEADING_RE = re.compile(r"^##+\s+(BUG-\d+)(?::\s+(.*))?$", re.MULTILINE)
 _REQ_FIELD_RES = (
     re.compile(r"^-\s+\*\*Requirement:\*\*\s+(\S+)\s*$", re.MULTILINE),
     re.compile(r"^-\s+\*\*Primary requirement:\*\*\s+(\S+)\s*$", re.MULTILINE),
@@ -76,6 +84,11 @@ _REQ_FIELD_RES = (
 _FILE_FIELD_RES = (
     re.compile(r"^-\s+\*\*File:\*\*\s+`([^`]+)`", re.MULTILINE),
     re.compile(r"^-\s+\*\*Location:\*\*\s+`([^`]+)`", re.MULTILINE),
+    # Council Round 2 2026-04-30 P0-3 (corpus-extension): chi-1.3.46
+    # and virtio-1.3.13 use bold-key `**File:Line:**` (capital-L)
+    # variant. Without this, primary_file remained None even after
+    # the heading regex fix recognized the records.
+    re.compile(r"^-\s+\*\*File:Line:\*\*\s+`([^`]+)`", re.MULTILINE),
     re.compile(r"^-\s+File:line:\s+`([^`]+)`", re.MULTILINE),
     re.compile(r"^-\s+File:\s+`([^`]+)`", re.MULTILINE),
     re.compile(r"^-\s+Location:\s+`?([^`\n]+?)`?\s*$", re.MULTILINE),

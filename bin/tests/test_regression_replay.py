@@ -24,7 +24,9 @@ from bin import regression_replay as rr
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CHI_1_3_45_BUGS = REPO_ROOT / "repos" / "archive" / "chi-1.3.45" / "quality" / "BUGS.md"
+CHI_1_3_46_BUGS = REPO_ROOT / "repos" / "archive" / "chi-1.3.46" / "quality" / "BUGS.md"
 CHI_1_5_1_BUGS = REPO_ROOT / "repos" / "archive" / "chi-1.5.1" / "quality" / "BUGS.md"
+VIRTIO_1_3_13_BUGS = REPO_ROOT / "repos" / "archive" / "virtio-1.3.13" / "quality" / "BUGS.md"
 BUS_TRACKER_1_5_0_BUGS = REPO_ROOT / "repos" / "bus-tracker-1.5.0" / "quality" / "BUGS.md"
 
 
@@ -302,20 +304,36 @@ class WriteCellTests(unittest.TestCase):
 
 
 class CorpusRealFileParserTests(unittest.TestCase):
-    """Council 2026-04-30 P0-1 regression pin: parse against the
-    actual benchmark archive corpus, not synthetic fixtures.
+    """Council Round 1 + Round 2 2026-04-30 P0-1 / P0-3 regression pin:
+    parse against the actual benchmark archive corpus, not synthetic
+    fixtures.
 
-    Methodology lesson from the Council synthesis: ``synthetic-fixture
-    coverage masked the real-input failure``. The original v1.5-era
-    test (``test_parses_v15_era_plain_field_shape``) hand-wrote
-    plain-key fields, so bold-key variants used by real archives
-    (``- **Primary requirement:** REQ-NNN``) were never exercised.
-    The original heading regex required a colon-then-title that
-    chi-1.5.1's bare ``### BUG-001`` doesn't carry.
+    Methodology lesson from two consecutive Council reviews:
+    ``synthetic-fixture coverage masked the real-input failure``.
+    Round 1's gap was bold-key field variants and the bare-heading
+    case (chi-1.5.1, bus-tracker-1.5.0). Round 2's gap was H2
+    headings (chi-1.3.46 + 14 other archive files) — the Round 1
+    fix-up's fixture set was the right shape but didn't enumerate
+    every distinct heading depth in ``repos/archive/``.
 
-    This test loads real archive files and asserts non-zero records
-    AND non-zero match-keyed records. Loosening the heading regex
-    or removing a bold-key variant trips this immediately."""
+    **Discipline for adding new fixtures.** Before writing a new
+    fixture-from-memory, run something like
+
+        find repos/archive -name BUGS.md -exec head -1 {} \\;
+
+    to surface every distinct file shape in the corpus. As of
+    2026-05-01 the corpus uses two heading depths:
+    - H3 (``### BUG-NNN``): 56 files, both v1.3-era bold-key
+      (chi-1.3.45) and v1.5-era plain-key / bold-key
+      (chi-1.5.1, bus-tracker-1.5.0).
+    - H2 (``## BUG-NNN``): 15 files, all v1.3-era
+      (chi-1.3.13/14/15/16/46, express-1.3.14/15/16/21/25,
+      virtio-1.3.13/18/19/21-manual/22).
+
+    H1 (``# BUG-NNN``) is unused in the corpus — the H1-negative
+    test below pins this so a future regex over-broadening to
+    ``^#+`` doesn't silently false-positive on documentation
+    headings."""
 
     def test_chi_1_5_1_archive_parses_with_match_keys(self) -> None:
         """Empirical reproduction of P0-1 claim 1: chi-1.5.1's bare
@@ -361,6 +379,84 @@ class CorpusRealFileParserTests(unittest.TestCase):
         recs = rr.parse_bugs_md(CHI_1_3_45_BUGS)
         self.assertEqual(len(recs), 10)
         self.assertTrue(all(r.match_key is not None for r in recs))
+
+    def test_chi_1_3_46_h2_archive_parses(self) -> None:
+        """Council Round 2 P0-3: chi-1.3.46 uses H2 ``## BUG-NNN:``
+        headings; the Round 1 fix-up's ``^###`` pin missed it,
+        producing 0 records when the real recall is 3. The Round 2
+        fix loosens the heading regex to accept any depth >=2.
+
+        Also pins the ``**File:Line:**`` (capital-L) variant added
+        for chi-1.3.46 / virtio-1.3.13 — without it, primary_file
+        stays None even with the heading fix.
+
+        Note: chi-1.3.46 records do NOT carry a structured
+        Requirement field (the REQ is embedded inline in the
+        ``**Source:**`` field). match_key is therefore None for
+        these records — that's correct apparatus reporting (the
+        data IS missing); recovering inline-prose REQs would be a
+        separate parser change beyond P0-3's scope."""
+        if not CHI_1_3_46_BUGS.is_file():
+            self.skipTest(f"missing {CHI_1_3_46_BUGS}")
+        recs = rr.parse_bugs_md(CHI_1_3_46_BUGS)
+        self.assertEqual(
+            len(recs), 3,
+            "Council Round 2 P0-3 pin: chi-1.3.46 must parse to 3 "
+            "records (was 0 with the H3-only regex)."
+        )
+        # Primary file extraction must work via the **File:Line:**
+        # bold-key variant added in P0-3.
+        files = [r.primary_file for r in recs]
+        self.assertEqual(
+            len([f for f in files if f]), 3,
+            "all 3 chi-1.3.46 records must have primary_file extracted "
+            "via the **File:Line:** capital-L variant"
+        )
+        # Spot-check the first record matches Council Round 2's
+        # documented expectation.
+        self.assertEqual(recs[0].bug_id, "BUG-001")
+        self.assertEqual(recs[0].primary_file, "compress.go")
+
+    def test_virtio_1_3_13_h2_archive_parses(self) -> None:
+        """Council Round 2 P0-3: at least one express/virtio H2
+        archive must be in the fixture set per the Council's
+        explicit recommendation. virtio-1.3.13 uses
+        ``## BUG-NNN: title`` with bold-key ``**File:Line:**`` —
+        same shape family as chi-1.3.46."""
+        if not VIRTIO_1_3_13_BUGS.is_file():
+            self.skipTest(f"missing {VIRTIO_1_3_13_BUGS}")
+        recs = rr.parse_bugs_md(VIRTIO_1_3_13_BUGS)
+        self.assertGreaterEqual(len(recs), 1)
+        # File extraction works via **File:Line:** variant.
+        self.assertEqual(recs[0].bug_id, "BUG-001")
+        self.assertEqual(recs[0].primary_file, "virtio_mmio.c")
+
+    def test_h1_headings_do_not_false_positive(self) -> None:
+        """Council Round 2 P0-3 explicit caution: ``# BUG-001`` (H1)
+        must NOT match the heading regex — it could appear in
+        documentation outlines or wishlists. The current corpus uses
+        only H2/H3, so widening to ``^#+`` would over-broaden.
+
+        Mutation contract: changing the regex to ``^#+`` makes this
+        test fail because the synthetic H1 fixture would then match."""
+        with TemporaryDirectory() as tmp:
+            p = Path(tmp) / "BUGS.md"
+            _write(
+                p,
+                "# BUG-001: This is a heading-1 outline marker, NOT a bug record\n"
+                "\n"
+                "## BUG-001: Real H2 bug record\n"
+                "- **Source:** Code Review\n"
+                "- **File:Line:** `foo.go:1-2`\n",
+            )
+            recs = rr.parse_bugs_md(p)
+            # Exactly one record: the H2 one. The H1 outline must be
+            # silently rejected.
+            self.assertEqual(
+                len(recs), 1,
+                "H1 `# BUG-NNN` headings must not match — they appear "
+                "in outlines/wishlists and would false-positive."
+            )
 
 
 class SmokeTestAgainstChi1345Archive(unittest.TestCase):
