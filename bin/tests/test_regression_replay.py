@@ -24,6 +24,8 @@ from bin import regression_replay as rr
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CHI_1_3_45_BUGS = REPO_ROOT / "repos" / "archive" / "chi-1.3.45" / "quality" / "BUGS.md"
+CHI_1_5_1_BUGS = REPO_ROOT / "repos" / "archive" / "chi-1.5.1" / "quality" / "BUGS.md"
+BUS_TRACKER_1_5_0_BUGS = REPO_ROOT / "repos" / "bus-tracker-1.5.0" / "quality" / "BUGS.md"
 
 
 def _write(path: Path, content: str) -> None:
@@ -299,6 +301,68 @@ class WriteCellTests(unittest.TestCase):
             self.assertEqual(out.name, "virtio-1.3.50-BUG-007.json")
 
 
+class CorpusRealFileParserTests(unittest.TestCase):
+    """Council 2026-04-30 P0-1 regression pin: parse against the
+    actual benchmark archive corpus, not synthetic fixtures.
+
+    Methodology lesson from the Council synthesis: ``synthetic-fixture
+    coverage masked the real-input failure``. The original v1.5-era
+    test (``test_parses_v15_era_plain_field_shape``) hand-wrote
+    plain-key fields, so bold-key variants used by real archives
+    (``- **Primary requirement:** REQ-NNN``) were never exercised.
+    The original heading regex required a colon-then-title that
+    chi-1.5.1's bare ``### BUG-001`` doesn't carry.
+
+    This test loads real archive files and asserts non-zero records
+    AND non-zero match-keyed records. Loosening the heading regex
+    or removing a bold-key variant trips this immediately."""
+
+    def test_chi_1_5_1_archive_parses_with_match_keys(self) -> None:
+        """Empirical reproduction of P0-1 claim 1: chi-1.5.1's bare
+        ``### BUG-NNN`` headings (no colon, no inline title)."""
+        if not CHI_1_5_1_BUGS.is_file():
+            self.skipTest(f"missing {CHI_1_5_1_BUGS}")
+        recs = rr.parse_bugs_md(CHI_1_5_1_BUGS)
+        # The chi-1.5.1 archive carries 9 confirmed bugs.
+        self.assertEqual(len(recs), 9, "chi-1.5.1 record count drift")
+        keyed = [r for r in recs if r.match_key is not None]
+        self.assertEqual(
+            len(keyed), 9,
+            "every chi-1.5.1 record must have a match_key — bold/plain "
+            "field variants must all be recognized"
+        )
+
+    def test_bus_tracker_1_5_0_bold_key_variants_recognized(self) -> None:
+        """Empirical reproduction of P0-1 claims 2 and 3:
+        bus-tracker-1.5.0 uses bold-key Primary requirement / Location
+        variants. Removing either bold variant from the regex set
+        drops match_key counts to zero."""
+        if not BUS_TRACKER_1_5_0_BUGS.is_file():
+            self.skipTest(f"missing {BUS_TRACKER_1_5_0_BUGS}")
+        recs = rr.parse_bugs_md(BUS_TRACKER_1_5_0_BUGS)
+        self.assertEqual(len(recs), 18, "bus-tracker-1.5.0 record count drift")
+        keyed = [r for r in recs if r.match_key is not None]
+        self.assertEqual(
+            len(keyed), 18,
+            "every bus-tracker-1.5.0 record must have a match_key — "
+            "bold-key Primary requirement / Location variants must work"
+        )
+        # Spot-check first record's normalized fields.
+        self.assertEqual(recs[0].requirement, "REQ-004")
+        self.assertEqual(recs[0].primary_file, "bus_tracker.py")
+
+    def test_chi_1_3_45_legacy_bold_key_still_works(self) -> None:
+        """Cross-check: the v1.3-era ``- **Requirement:** /
+        - **File:**`` shape that worked before P0-1 fix must still
+        parse — the bold-key additions for v1.5 must NOT regress
+        v1.3 coverage."""
+        if not CHI_1_3_45_BUGS.is_file():
+            self.skipTest(f"missing {CHI_1_3_45_BUGS}")
+        recs = rr.parse_bugs_md(CHI_1_3_45_BUGS)
+        self.assertEqual(len(recs), 10)
+        self.assertTrue(all(r.match_key is not None for r in recs))
+
+
 class SmokeTestAgainstChi1345Archive(unittest.TestCase):
     """Phase 5 deliverable: end-to-end run against the chi-1.3.45
     archive. Uses measurement-only mode (the historical baseline IS
@@ -350,6 +414,105 @@ class SmokeTestAgainstChi1345Archive(unittest.TestCase):
             self.assertEqual(cell["recall_against_historical"], 1.0)
             self.assertEqual(len(cell["recovered_bug_ids"]), 10)
             self.assertEqual(cell["missed_bug_ids"], [])
+
+
+class CliValidationTests(unittest.TestCase):
+    """Council 2026-04-30 P1-1: --runner argparse validation must
+    reject typos rather than silently dispatching to the default
+    --copilot fallback."""
+
+    def test_runner_typo_rejected_by_argparse(self) -> None:
+        parser = rr._build_parser()
+        # argparse calls sys.exit(2) on choices= violation.
+        with self.assertRaises(SystemExit):
+            parser.parse_args([
+                "--benchmark", "chi",
+                "--historical-version", "1.3.45",
+                "--historical-bugs", "/tmp/h.md",
+                "--current-bugs", "/tmp/c.md",
+                "--runner", "cursr",  # typo
+            ])
+
+    def test_all_four_supported_runners_accepted(self) -> None:
+        parser = rr._build_parser()
+        for runner in ("claude", "copilot", "codex", "cursor"):
+            args = parser.parse_args([
+                "--benchmark", "chi",
+                "--historical-version", "1.3.45",
+                "--historical-bugs", "/tmp/h.md",
+                "--current-bugs", "/tmp/c.md",
+                "--runner", runner,
+            ])
+            self.assertEqual(args.runner, runner)
+
+
+class InvokeRunnerExitCodeTests(unittest.TestCase):
+    """Council 2026-04-30 P1-2: a non-zero runner exit must abort the
+    cell write rather than producing a cell against a stale BUGS.md."""
+
+    def test_invoke_runner_returns_returncode(self) -> None:
+        from unittest import mock
+        with mock.patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock.Mock(returncode=42)
+            result = rr._invoke_runner(
+                Path("/tmp/target"), "1,2,3", "claude", ""
+            )
+        self.assertEqual(result.returncode, 42)
+        self.assertIsInstance(result.wall_clock_seconds, int)
+
+    def test_main_aborts_on_runner_failure(self) -> None:
+        from unittest import mock
+        with TemporaryDirectory() as tmp:
+            target = Path(tmp) / "target"
+            (target / "quality").mkdir(parents=True)
+            (target / "quality" / "BUGS.md").write_text(
+                "### BUG-001: existing\n- **Requirement:** REQ-1\n- **File:** `a.go:1`\n",
+                encoding="utf-8",
+            )
+            output_dir = Path(tmp) / "out"
+            with mock.patch.object(rr, "_invoke_runner") as mock_inv:
+                mock_inv.return_value = rr.RunnerInvocationResult(
+                    returncode=99, wall_clock_seconds=5
+                )
+                rc = rr.main([
+                    "--benchmark", "chi",
+                    "--historical-version", "1.3.45",
+                    "--historical-bugs", str(target / "quality" / "BUGS.md"),
+                    "--target-dir", str(target),
+                    "--invoke-runner",
+                    "--output-dir", str(output_dir),
+                ])
+            # Should propagate the non-zero exit, not return 0.
+            self.assertEqual(rc, 99)
+            # No cell written.
+            self.assertFalse(list(output_dir.rglob("*.json")))
+
+
+class QpbVersionFieldSourceTests(unittest.TestCase):
+    """Council 2026-04-30 P2-1: qpb_version_under_test must come from
+    bin/benchmark_lib.RELEASE_VERSION per SCHEMA.md, not from
+    SKILL.md via detect_skill_version (separate source of truth)."""
+
+    def test_cell_record_qpb_version_matches_release_version(self) -> None:
+        from bin import benchmark_lib
+        with TemporaryDirectory() as tmp:
+            inputs = rr.CellInputs(
+                benchmark="chi",
+                historical_qpb_version="1.3.45",
+                historical_bug_id="all",
+                historical_path=Path(tmp) / "h.md",
+                current_path=Path(tmp) / "c.md",
+                target_dir=None,
+                qpb_dir=Path(tmp),  # empty dir → no SKILL.md visible
+            )
+            measurement = rr.measure_recall([], [])
+            record = rr.build_cell_record(inputs, measurement)
+        self.assertEqual(
+            record["qpb_version_under_test"],
+            benchmark_lib.RELEASE_VERSION,
+            "qpb_version_under_test must come from RELEASE_VERSION "
+            "(SCHEMA.md contract), not detect_skill_version fallbacks",
+        )
 
 
 if __name__ == "__main__":

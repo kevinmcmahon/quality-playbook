@@ -227,6 +227,37 @@ class SkillMdModeSplitTests(unittest.TestCase):
         text = _read_skill_md()
         self.assertIn("`--cursor`", text)
 
+    def test_skill_md_mode_a_documents_phase_0_phase_7_iteration_handoff(self) -> None:
+        """Council 2026-04-30 P1-3: Mode A scopes itself to phases
+        1..6; Phase 0/0b, Phase 7, and iteration strategies must be
+        explicitly addressed (either inline or as Mode-B handoffs).
+        The asymmetry the Council flagged was that Mode B covered
+        these but Mode A silently dropped them."""
+        text = _read_skill_md()
+        # Section heading.
+        self.assertIn("Mode A scope", text)
+        # Each surface must be named.
+        self.assertIn("Phase 0", text)
+        self.assertIn("Phase 7", text)
+        self.assertIn("Iteration strategies", text)
+        # Mode-B handoff must be the documented escape for iterations.
+        self.assertIn("--next-iteration --strategy", text)
+
+    def test_skill_md_mode_b_points_at_bootstrap_hygiene(self) -> None:
+        """Council 2026-04-30 P1-4: Mode B must point operators at
+        the Bootstrap-mode hygiene paragraph for recovery from
+        aborted runs. Without this pointer, only Mode A operators
+        see the `git restore quality/` mechanic even though it
+        applies to both modes."""
+        text = _read_skill_md()
+        self.assertIn(
+            "Recovering from a partial / aborted runner-driven run", text
+        )
+        # The Mode B recovery section must explicitly reference the
+        # Bootstrap-mode paragraph and the canonical command.
+        self.assertIn("Bootstrap-run operator hygiene", text)
+        self.assertIn("git restore quality/", text)
+
 
 class SkillMdBootstrapHygieneTests(unittest.TestCase):
     """v1.5.4 F-4 (Bootstrap_Findings 2026-04-30): operator-hygiene

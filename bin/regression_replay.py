@@ -57,14 +57,25 @@ DEFAULT_NOISE_FLOOR = 0.05
 # (``- **Requirement:** REQ-NNN``); the v1.5-era shape uses
 # plain-key fields (``- Primary requirement: REQ-NNN``). The
 # matcher normalizes both.
-_BUG_HEADING_RE = re.compile(r"^###\s+(BUG-\d+):\s+(.*)$", re.MULTILINE)
+# Council 2026-04-30 P0-1 (corpus-real-file-coverage):
+# - chi-1.5.1 archives use `### BUG-001` with NO colon and NO inline
+#   title; the original `:\s+(.*)$` regex matched zero records.
+# - bus-tracker-1.5.0 uses bold-key Primary requirement / Location
+#   variants (`- **Primary requirement:** REQ-004`,
+#   `- **Location:** \`bus_tracker.py:...\``); the original plain-key
+#   variants matched zero of those either.
+# Tolerant heading: colon + title both optional; bold-key variants
+# added for both Primary requirement and Location.
+_BUG_HEADING_RE = re.compile(r"^###\s+(BUG-\d+)(?::\s+(.*))?$", re.MULTILINE)
 _REQ_FIELD_RES = (
     re.compile(r"^-\s+\*\*Requirement:\*\*\s+(\S+)\s*$", re.MULTILINE),
+    re.compile(r"^-\s+\*\*Primary requirement:\*\*\s+(\S+)\s*$", re.MULTILINE),
     re.compile(r"^-\s+Primary requirement:\s+(\S+)\s*$", re.MULTILINE),
     re.compile(r"^-\s+Requirement:\s+(\S+)\s*$", re.MULTILINE),
 )
 _FILE_FIELD_RES = (
     re.compile(r"^-\s+\*\*File:\*\*\s+`([^`]+)`", re.MULTILINE),
+    re.compile(r"^-\s+\*\*Location:\*\*\s+`([^`]+)`", re.MULTILINE),
     re.compile(r"^-\s+File:line:\s+`([^`]+)`", re.MULTILINE),
     re.compile(r"^-\s+File:\s+`([^`]+)`", re.MULTILINE),
     re.compile(r"^-\s+Location:\s+`?([^`\n]+?)`?\s*$", re.MULTILINE),
@@ -94,7 +105,7 @@ class BugRecord:
 
 
 def _strip_lines(file_field: str) -> str:
-    """Drop ``:line-range`` suffix from a BUGS.md file citation.
+    r"""Drop ``:line-range`` suffix from a BUGS.md file citation.
 
     ``middleware/compress.go:218-220,240-245`` → ``middleware/compress.go``
     ``tree.go:706-745`` → ``tree.go``
@@ -127,7 +138,10 @@ def parse_bugs_md(path: Path) -> List[BugRecord]:
         end = headings[i + 1].start() if i + 1 < len(headings) else len(text)
         body = text[start:end]
         bug_id = m.group(1)
-        title = m.group(2).strip()
+        # Council 2026-04-30 P0-1: title group is now optional (the
+        # tolerant heading regex makes it None when the heading is
+        # bare `### BUG-NNN`, as in chi-1.5.1).
+        title = (m.group(2) or "").strip()
 
         requirement = None
         for req_re in _REQ_FIELD_RES:
@@ -289,9 +303,15 @@ def build_cell_record(
     The dict is JSON-serializable; callers write it via ``json.dump``
     with ``indent=2`` to keep cell records human-diffable.
     """
-    qpb_version = (
-        benchmark_lib.detect_skill_version(inputs.qpb_dir) or SCHEMA_VERSION
-    )
+    # Council 2026-04-30 P2-1: SCHEMA.md states qpb_version_under_test
+    # is "read from `bin/benchmark_lib.RELEASE_VERSION` at apparatus
+    # invocation time." The earlier draft read `detect_skill_version`
+    # (which parses SKILL.md) — a separate source of truth that could
+    # drift, and that would silently fall back to SCHEMA_VERSION when
+    # SKILL.md is missing (yielding qpb_version_under_test=1.5.4 when
+    # the real release is older). Use RELEASE_VERSION to match the
+    # schema contract.
+    qpb_version = benchmark_lib.RELEASE_VERSION
     return {
         "schema_version": SCHEMA_VERSION,
         "timestamp": _utc_now_iso(),
@@ -353,21 +373,32 @@ def write_cell(
     return out
 
 
+@dataclass
+class RunnerInvocationResult:
+    """Outcome of a runner subprocess invocation."""
+
+    returncode: int
+    wall_clock_seconds: int
+
+
 def _invoke_runner(
     target_dir: Path, phase_scope: str, runner: str, model: str
-) -> int:
+) -> RunnerInvocationResult:
     """Replay-mode helper: invoke ``python3 -m bin.run_playbook`` against
     the target.
 
-    Returns the wall-clock seconds the run took. Subprocess stdout /
-    stderr are inherited so the operator sees progress.
+    Subprocess stdout / stderr are inherited so the operator sees
+    progress. Council 2026-04-30 P1-2: returns the subprocess exit
+    code so the caller can abort the cell write when the runner
+    crashed (the original implementation discarded ``returncode`` and
+    silently produced a cell against a stale BUGS.md).
     """
     runner_flag = {
         "claude": "--claude",
         "copilot": "--copilot",
         "codex": "--codex",
         "cursor": "--cursor",
-    }.get(runner, "--copilot")
+    }[runner]  # KeyError = caller bug; --runner choices= guarantees membership
     argv = [
         sys.executable, "-m", "bin.run_playbook",
         runner_flag, "--phase", phase_scope,
@@ -376,8 +407,11 @@ def _invoke_runner(
         argv.extend(["--model", model])
     argv.append(str(target_dir))
     start = time.monotonic()
-    subprocess.run(argv, check=False)
-    return int(time.monotonic() - start)
+    proc = subprocess.run(argv, check=False)
+    return RunnerInvocationResult(
+        returncode=proc.returncode,
+        wall_clock_seconds=int(time.monotonic() - start),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -437,7 +471,14 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--before-cell", default=None, help="Path to the before-lever cell.")
     p.add_argument("--after-cell", default=None, help="Path to the after-lever cell.")
     p.add_argument("--phase-scope", default="1,2,3")
-    p.add_argument("--runner", default="claude")
+    p.add_argument(
+        "--runner",
+        default="claude",
+        # Council 2026-04-30 P1-1: choices= validation. Without this,
+        # `--runner cursr` (typo) fell through to the --copilot
+        # default in `_invoke_runner`'s runner_flag dict.
+        choices=("claude", "copilot", "codex", "cursor"),
+    )
     p.add_argument("--model", default="")
     p.add_argument(
         "--output-dir",
@@ -479,9 +520,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "ERROR: --invoke-runner requires --target-dir", file=sys.stderr
             )
             return 2
-        wall_clock = _invoke_runner(
+        result = _invoke_runner(
             args.target_dir, args.phase_scope, args.runner, args.model
         )
+        wall_clock = result.wall_clock_seconds
+        # Council 2026-04-30 P1-2: surface non-zero exit codes. The
+        # earlier draft swallowed the runner's returncode and would
+        # have written a cell record against whatever stale BUGS.md
+        # was on disk — a calibration-data corruption vector.
+        if result.returncode != 0:
+            print(
+                f"ERROR: bin.run_playbook exited {result.returncode}; "
+                f"refusing to write cell against potentially-stale BUGS.md. "
+                f"Use measurement-only mode (omit --invoke-runner) if you "
+                f"want to record a cell from existing artifacts.",
+                file=sys.stderr,
+            )
+            return result.returncode
         current_bugs = args.current_bugs or (
             args.target_dir / "quality" / "BUGS.md"
         )

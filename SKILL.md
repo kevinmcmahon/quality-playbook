@@ -77,6 +77,16 @@ You are responsible — without the orchestrator's structural backstop — for t
 
 For the bootstrap-run (self-audit) variant of Mode A, see "Bootstrap mode" below — the only delta is that the target IS the QPB repo, so cite the same `phase_prompts/` files you read from.
 
+#### Mode A scope — what's covered, what's Mode-B-only
+
+Council 2026-04-30 P1-3: the per-phase walkthrough above scopes Mode A to **phases 1..6**. The following surfaces are deliberately Mode-B-only — if the operator wants them, point them at the runner instead of trying to drive them yourself:
+
+- **Phase 0 / Phase 0b (seed injection from prior runs).** The orchestrator handles seed discovery, prior-run scanning, and seed-prompt injection. In Mode A, treat every run as `--no-seeds` (skip Phase 0/0b entirely, start at Phase 1). If the operator explicitly asks for seed-driven exploration, hand off to Mode B (`python3 -m bin.run_playbook --with-seeds <target>`).
+- **Phase 7 (interactive Present / Explore / Improve).** This phase is a back-and-forth dialogue with the operator about the generated artifacts; it has no pre-baked prompt in `phase_prompts/`. After Phase 6 in Mode A, present the artifact summary table inline (see "What this run produces" below for the file list) and let the operator drive what to explore next conversationally — that IS Phase 7. There is no orchestrator subprocess to spawn.
+- **Iteration strategies (gap / unfiltered / parity / adversarial).** Iterations re-enter the playbook with a strategy-specific addendum. In Mode A, after Phase 6 completes cleanly, hand off to Mode B for iterations: `python3 -m bin.run_playbook --next-iteration --strategy <name> <target>`. The iteration prompts (`phase_prompts/iteration.md`) ARE single-source-of-truth, but the iteration-orchestration loop (rotating through gap → unfiltered → parity → adversarial) is the runner's job. A Mode A operator who wants iterations after Phase 6 should be told: "Phase 6 is done; run `python3 -m bin.run_playbook --full-run <target>` to get all four iteration strategies, or pick one strategy explicitly with `--next-iteration --strategy gap`."
+
+If the operator asks for one of these surfaces in Mode A and the request is ambiguous (e.g., "also do the iterations"), surface the mode-handoff explicitly rather than improvising — improvisation is how the prompt content drifts away from the runner's canonical loop.
+
 ### Mode B — runner-driven invocation (CLI-automation)
 
 The operator runs `python3 -m bin.run_playbook` themselves (typically because they want batching, headless CI, or to route per-phase work to a different model). The orchestrator at `bin/run_playbook.py` spawns a CLI agent per phase, feeds it the externalized phase prompt, and aggregates the result.
@@ -112,6 +122,10 @@ Use only when the operator asks for something specific:
 | Specific iteration | `--strategy <name> --next-iteration` | Iterates on an existing `quality/` run with a chosen strategy. |
 | Multi-target | pass several positional targets | Each runs independently. |
 | Per-phase CLI agent | `--claude` / `--copilot` / `--codex` / `--cursor` | Picks which CLI runner the orchestrator spawns. Default is `--copilot`. v1.5.4 added the `--cursor` runner (cursor-cli 3.1+). |
+
+#### Recovering from a partial / aborted runner-driven run
+
+Council 2026-04-30 P1-4: the operator-hygiene guidance for cleaning up after an aborted run lives in the **Bootstrap mode** section below ("Bootstrap-run operator hygiene") — the recovery is identical in Mode B: `git restore quality/` to discard the partial Phase 1/2 output, then re-invoke. **Do NOT** edit files outside `quality/` to "tidy up" — the source-unchanged invariant trips on the very next run. See the Bootstrap-mode hygiene paragraph for the full mechanic; it applies regardless of whether the abort happened during a self-audit run or against an external target.
 
 ### Bootstrap mode (running QPB on itself)
 

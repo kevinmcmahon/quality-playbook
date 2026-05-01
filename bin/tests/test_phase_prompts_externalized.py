@@ -6,7 +6,7 @@ at the QPB repo root, loaded by
 source-of-truth lever that lets UI-context skill-direct mode and
 CLI-automation runner-driven mode read the same content.
 
-These tests pin two contracts:
+These tests pin three contracts:
 
 1. **Loader contract** — verbatim return for pure-literal prompts,
    ``str.format()`` substitution for parameterized prompts, missing
@@ -17,17 +17,29 @@ These tests pin two contracts:
    future edit deletes one, this test fires before downstream gates
    silently regress.
 
-The byte-equality regression — that `phaseN_prompt()` outputs the
-exact bytes the legacy in-source f-string templates produced — is
-covered implicitly by the existing prompt-content tests in
-test_run_playbook.py, test_phase3_iteration_prompt.py,
-test_phase3_prompt_worked_example.py, and test_role_tagging.py.
-Those tests pin substrings that would shift if externalization
-introduced any character drift.
+3. **Byte-equality contract** — Council 2026-04-30 P0-2: pin SHA256
+   hashes for every rendered prompt artifact so cosmetic drift in
+   ``phase_prompts/*.md`` (whitespace tweak, typo fix, prose
+   rewrite) trips a test. Substring assertions in sibling test files
+   covered the load-bearing phrasing but missed any change outside
+   those substrings; the Council mutation test confirmed altering
+   ``phase1.md``'s opening sentence left all 304 substring
+   assertions green. Hashes are the only catch-everything net.
+
+   When you intentionally edit a phase_prompts/*.md file, capture the
+   new hashes by running:
+
+       python3 -c "from bin import run_playbook; import hashlib; \\
+         print({k: hashlib.sha256(v.encode()).hexdigest() for k, v in [ \\
+           ('phase2', run_playbook.phase2_prompt()), ...]})"
+
+   and update ``EXPECTED_HASHES`` below. The hash baseline IS the
+   change-acknowledgement signal.
 """
 
 from __future__ import annotations
 
+import hashlib
 import unittest
 from pathlib import Path
 
@@ -128,6 +140,96 @@ class FormatStringEscapingTests(unittest.TestCase):
         # The compensation-grid schema JSON in phase3.md uses single
         # braces because we never call .format() on it.
         self.assertIn('{\n  "schema_version": "1.5.2"', raw)
+
+
+class PhasePromptByteEqualityTests(unittest.TestCase):
+    """Council 2026-04-30 P0-2: SHA256 hash regression baseline for
+    every rendered phase prompt artifact.
+
+    The hashes below are captured against ``b279d2f`` + the P0
+    fix-up commit's apparatus state. Any change to
+    ``phase_prompts/*.md`` (or to the loader, or to substitution
+    inputs) shifts the hash and trips the matching assertion. To
+    update the baseline after an intentional edit, re-capture via
+    the snippet in this file's module docstring.
+
+    Coverage: all 13 rendered artifacts — phase1 in both seed modes,
+    phase2..6, single_pass in both seed modes, and iteration for
+    every strategy in ``next_strategy``'s rotation (gap, unfiltered,
+    parity, adversarial)."""
+
+    EXPECTED_HASHES = {
+        "phase1_no_seeds_True":  (17081, "5b79a14bae8b11e03e80edf32ea34e457db029e8d41692647247e5725c39cf4e"),
+        "phase1_no_seeds_False": (16884, "78f026bcc0c9f39a6225534f191fa1cbc837a9b5a0720ef717ae8160f99ddeb8"),
+        "phase2":                ( 2593, "38b3001831f960079a357b3852cc235b5fc6c930c19b2f2ff165d078eb4341b7"),
+        "phase3":                ( 8464, "59749f49d2379ce8fd2efdf7a23015a71216cd6041be0360fddbcc167ab1e128"),
+        "phase4":                ( 3031, "93f2cb5d8eebfc2b52371866c10c7e0b176dc5203c8b75c6552a4a71e168c978"),
+        "phase5":                (10185, "ff1d676111b1c026e80450a6c8bf11ce3236e3335ce8abef52ded023f81b9248"),
+        "phase6":                ( 1217, "33f65c1831c49b6c3dabc5ec61d792056bd505dd4bcd22e2d8012aa7fa3862a7"),
+        "single_pass_True":      (  371, "d80c2210b0b0ccce35675dfc5ef9c39085a299068ab7530395da571f047e4743"),
+        "single_pass_False":     (  316, "a9c9d87fbcf61e9c81f2ddf95decf1a2037d1868d14230c40733d108e7ab3643"),
+        "iteration_gap":         (  618, "9502722ac76cf16e20251fee8e44c8c1ec0bff71444c3c6a97c8edd66fdd6087"),
+        "iteration_unfiltered":  (  625, "53c3645790dcef586db5a495304822d42b77f0834ca21fbb0fadbb728b626343"),
+        "iteration_parity":      (  621, "89f3d44558f05741db352804d6474d30b321b08d70b8669e2470514a4519712a"),
+        "iteration_adversarial": (  626, "a4be96b7c4cab429a8ccdd26b8432ec8ad4c9a45f6efdd8dabf21801ae776c65"),
+    }
+
+    def _render(self, label: str) -> str:
+        if label == "phase1_no_seeds_True":
+            return run_playbook.phase1_prompt(no_seeds=True)
+        if label == "phase1_no_seeds_False":
+            return run_playbook.phase1_prompt(no_seeds=False)
+        if label == "single_pass_True":
+            return run_playbook.single_pass_prompt(no_seeds=True)
+        if label == "single_pass_False":
+            return run_playbook.single_pass_prompt(no_seeds=False)
+        if label.startswith("iteration_"):
+            strategy = label.split("_", 1)[1]
+            return run_playbook.iteration_prompt(strategy)
+        if label.startswith("phase"):
+            phase_num = label[len("phase"):]
+            return getattr(run_playbook, f"phase{phase_num}_prompt")()
+        raise ValueError(f"unknown artifact label: {label}")
+
+    def test_every_rendered_artifact_matches_expected_hash(self) -> None:
+        for label, (expected_len, expected_hash) in self.EXPECTED_HASHES.items():
+            with self.subTest(artifact=label):
+                body = self._render(label)
+                actual_hash = hashlib.sha256(body.encode("utf-8")).hexdigest()
+                self.assertEqual(
+                    len(body), expected_len,
+                    f"{label}: byte length drift "
+                    f"(expected {expected_len}, got {len(body)}). If the "
+                    f"phase prompt was intentionally edited, update "
+                    f"EXPECTED_HASHES."
+                )
+                self.assertEqual(
+                    actual_hash, expected_hash,
+                    f"{label}: SHA256 drift. If the phase prompt was "
+                    f"intentionally edited, update EXPECTED_HASHES with "
+                    f"the new hash. New hash: {actual_hash}"
+                )
+
+    def test_iteration_strategies_cover_every_rotation_step(self) -> None:
+        """Pin that EXPECTED_HASHES covers every strategy in
+        ``next_strategy``'s rotation. Adding a new iteration strategy
+        without adding its hash would silently leave that prompt
+        unprotected."""
+        rotation = set()
+        s = "gap"
+        while s:
+            rotation.add(s)
+            s = run_playbook.next_strategy(s)
+        covered = {
+            label[len("iteration_"):]
+            for label in self.EXPECTED_HASHES
+            if label.startswith("iteration_")
+        }
+        self.assertEqual(
+            rotation, covered,
+            f"iteration strategy rotation {rotation} differs from "
+            f"hash-pinned set {covered}"
+        )
 
 
 class CursorRunnerStdinPipingTests(unittest.TestCase):
