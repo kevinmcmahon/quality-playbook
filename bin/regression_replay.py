@@ -1,0 +1,537 @@
+"""Regression replay apparatus — v1.5.4 Phase 5.
+
+Runs current QPB against historical benchmark targets to measure
+recall against the benchmark's historical bug list, then writes a
+cell record per ``metrics/regression_replay/SCHEMA.md``.
+
+The apparatus has two modes:
+
+1. **Replay mode** (``--invoke-runner``): the apparatus invokes
+   ``python3 -m bin.run_playbook`` against the target with the
+   specified phase scope, then reads the produced
+   ``<target>/quality/BUGS.md`` as the "current" bug set.
+   This is the production path used by Phase 6+ calibration cycles.
+
+2. **Measurement-only mode** (default): the operator points the
+   apparatus at an already-existing ``--current-bugs`` BUGS.md path
+   and the apparatus only does the parse/match/recall/cell-write
+   work. This is the smoke-test and CI path used in Phase 5 and
+   for re-measuring an existing cell pair without burning LLM time.
+
+Both modes produce identical cell.json shapes; the difference is
+only WHERE the "current" BUGS.md comes from.
+
+The matcher reduces a bug record to its (requirement, file_basename)
+spec-basis tuple. BUG-NNN ID renumbering is normal between runs
+(LLMs renumber sequentially); file:line ranges shift slightly as
+code drifts; the (REQ, file basename) tuple is the stable identity.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+import time
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
+
+try:
+    from bin import benchmark_lib  # type: ignore
+except Exception:  # pragma: no cover
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from bin import benchmark_lib  # type: ignore
+
+
+SCHEMA_VERSION = "1.5.4"
+DEFAULT_OUTPUT_DIR = Path("metrics/regression_replay")
+DEFAULT_NOISE_FLOOR = 0.05
+
+
+# Regex inventory. Both v1.3-era and v1.5-era BUGS.md shapes are
+# supported. The v1.3-era shape uses bold-key fields
+# (``- **Requirement:** REQ-NNN``); the v1.5-era shape uses
+# plain-key fields (``- Primary requirement: REQ-NNN``). The
+# matcher normalizes both.
+_BUG_HEADING_RE = re.compile(r"^###\s+(BUG-\d+):\s+(.*)$", re.MULTILINE)
+_REQ_FIELD_RES = (
+    re.compile(r"^-\s+\*\*Requirement:\*\*\s+(\S+)\s*$", re.MULTILINE),
+    re.compile(r"^-\s+Primary requirement:\s+(\S+)\s*$", re.MULTILINE),
+    re.compile(r"^-\s+Requirement:\s+(\S+)\s*$", re.MULTILINE),
+)
+_FILE_FIELD_RES = (
+    re.compile(r"^-\s+\*\*File:\*\*\s+`([^`]+)`", re.MULTILINE),
+    re.compile(r"^-\s+File:line:\s+`([^`]+)`", re.MULTILINE),
+    re.compile(r"^-\s+File:\s+`([^`]+)`", re.MULTILINE),
+    re.compile(r"^-\s+Location:\s+`?([^`\n]+?)`?\s*$", re.MULTILINE),
+)
+
+
+@dataclass(frozen=True)
+class BugRecord:
+    """A single ``### BUG-NNN`` record extracted from a BUGS.md file.
+
+    The match key for recall accounting is ``(requirement,
+    primary_file)`` — both normalized. ``primary_file`` is the
+    basename of the first cited file, with line ranges stripped.
+    """
+
+    bug_id: str
+    title: str
+    requirement: Optional[str]
+    primary_file: Optional[str]
+    raw_file_field: Optional[str]
+
+    @property
+    def match_key(self) -> Optional[Tuple[str, str]]:
+        if self.requirement is None or self.primary_file is None:
+            return None
+        return (self.requirement, self.primary_file)
+
+
+def _strip_lines(file_field: str) -> str:
+    """Drop ``:line-range`` suffix from a BUGS.md file citation.
+
+    ``middleware/compress.go:218-220,240-245`` → ``middleware/compress.go``
+    ``tree.go:706-745`` → ``tree.go``
+    Multi-file citations like ``mux.go:127-133\`, \`mux.go:368-371`` get
+    the first file's path; downstream callers use the basename.
+    """
+    first = file_field.split(",")[0].split("`")[0].strip()
+    if ":" in first:
+        return first.split(":", 1)[0]
+    return first
+
+
+def parse_bugs_md(path: Path) -> List[BugRecord]:
+    """Extract every ``### BUG-NNN`` record from a BUGS.md file.
+
+    Handles both v1.3-era and v1.5-era field-name conventions.
+    Records are returned in source order; missing fields are recorded
+    as None (the match-key property treats those records as
+    unmatched).
+    """
+    if not path.is_file():
+        raise FileNotFoundError(f"BUGS.md not found: {path}")
+
+    text = path.read_text(encoding="utf-8")
+    records: List[BugRecord] = []
+
+    headings = list(_BUG_HEADING_RE.finditer(text))
+    for i, m in enumerate(headings):
+        start = m.end()
+        end = headings[i + 1].start() if i + 1 < len(headings) else len(text)
+        body = text[start:end]
+        bug_id = m.group(1)
+        title = m.group(2).strip()
+
+        requirement = None
+        for req_re in _REQ_FIELD_RES:
+            rm = req_re.search(body)
+            if rm:
+                requirement = rm.group(1).strip()
+                break
+
+        raw_file = None
+        primary_file = None
+        for file_re in _FILE_FIELD_RES:
+            fm = file_re.search(body)
+            if fm:
+                raw_file = fm.group(1).strip()
+                stripped = _strip_lines(raw_file)
+                primary_file = stripped.rsplit("/", 1)[-1] if stripped else None
+                break
+
+        records.append(
+            BugRecord(
+                bug_id=bug_id,
+                title=title,
+                requirement=requirement,
+                primary_file=primary_file,
+                raw_file_field=raw_file,
+            )
+        )
+
+    return records
+
+
+@dataclass
+class RecallMeasurement:
+    """Result of matching current bugs against a historical baseline."""
+
+    historical: List[BugRecord]
+    current: List[BugRecord]
+    recovered_ids: List[str]   # historical IDs that current matched
+    missed_ids: List[str]      # historical IDs that current did not match
+    spurious_ids: List[str]    # current IDs that matched no historical bug
+
+    @property
+    def recall(self) -> float:
+        if not self.historical:
+            return 0.0
+        return len(self.recovered_ids) / len(self.historical)
+
+
+def measure_recall(
+    historical: Sequence[BugRecord], current: Sequence[BugRecord]
+) -> RecallMeasurement:
+    """Match current against historical by (requirement, file basename).
+
+    A historical bug is "recovered" if at least one current bug
+    shares its match_key. A current bug is "spurious" if it matches
+    no historical bug. Bugs with missing match_key never match
+    anything (their absence from both sets is the apparatus's
+    "no signal" verdict — surface as needed).
+    """
+    historical_keys: Dict[Tuple[str, str], List[str]] = {}
+    for rec in historical:
+        key = rec.match_key
+        if key is not None:
+            historical_keys.setdefault(key, []).append(rec.bug_id)
+
+    current_keys_seen: FrozenSet[Tuple[str, str]] = frozenset(
+        rec.match_key for rec in current if rec.match_key is not None
+    )
+
+    recovered: List[str] = []
+    missed: List[str] = []
+    for key, ids in historical_keys.items():
+        if key in current_keys_seen:
+            recovered.extend(ids)
+        else:
+            missed.extend(ids)
+
+    spurious: List[str] = []
+    for rec in current:
+        key = rec.match_key
+        if key is None or key not in historical_keys:
+            spurious.append(rec.bug_id)
+
+    return RecallMeasurement(
+        historical=list(historical),
+        current=list(current),
+        recovered_ids=sorted(set(recovered)),
+        missed_ids=sorted(set(missed)),
+        spurious_ids=sorted(set(spurious)),
+    )
+
+
+def _git_sha(repo: Path) -> str:
+    """Return ``git rev-parse HEAD`` for ``repo``, empty on failure."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except FileNotFoundError:
+        pass
+    return ""
+
+
+def _utc_now_iso() -> str:
+    return (
+        datetime.now(timezone.utc)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z")
+    )
+
+
+def _utc_now_path_ts() -> str:
+    """Path-friendly UTC timestamp matching the archive convention."""
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+@dataclass
+class CellInputs:
+    """All inputs needed to build a cell record."""
+
+    benchmark: str
+    historical_qpb_version: str
+    historical_bug_id: str
+    historical_path: Path
+    current_path: Path
+    target_dir: Optional[Path]
+    qpb_dir: Path
+    lever_under_test: Optional[str] = None
+    lever_change_summary: Optional[str] = None
+    before_lever: Optional[str] = None
+    after_lever: Optional[str] = None
+    phase_scope: str = "1,2,3"
+    iteration_strategies: Sequence[str] = field(default_factory=tuple)
+    runner: str = "claude"
+    model: str = ""
+    wall_clock_seconds: int = 0
+    regression_check_status: str = "skipped"
+    regression_checked_cells: Sequence[str] = field(default_factory=tuple)
+    regression_regressed_cells: Sequence[str] = field(default_factory=tuple)
+    noise_floor_threshold: float = DEFAULT_NOISE_FLOOR
+    noise_floor_source: str = (
+        "single-run point estimate; σ unmeasured (acceptable for "
+        "smoke / single-shot measurement — calibration cycles aggregate)"
+    )
+    notes: str = ""
+
+
+def build_cell_record(
+    inputs: CellInputs, measurement: RecallMeasurement
+) -> dict:
+    """Assemble a cell record dict matching SCHEMA.md.
+
+    The dict is JSON-serializable; callers write it via ``json.dump``
+    with ``indent=2`` to keep cell records human-diffable.
+    """
+    qpb_version = (
+        benchmark_lib.detect_skill_version(inputs.qpb_dir) or SCHEMA_VERSION
+    )
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "timestamp": _utc_now_iso(),
+        "benchmark": inputs.benchmark,
+        "qpb_version_under_test": qpb_version,
+        "historical_qpb_version": inputs.historical_qpb_version,
+        "historical_bug_id": inputs.historical_bug_id,
+        "historical_bug_count": len(measurement.historical),
+        "current_bug_count": len(measurement.current),
+        "current_bug_ids": sorted(rec.bug_id for rec in measurement.current),
+        "recovered_bug_ids": list(measurement.recovered_ids),
+        "missed_bug_ids": list(measurement.missed_ids),
+        "spurious_bug_ids": list(measurement.spurious_ids),
+        "recall_against_historical": round(measurement.recall, 4),
+        "lever_under_test": inputs.lever_under_test,
+        "lever_change_summary": inputs.lever_change_summary,
+        "before_lever": inputs.before_lever,
+        "after_lever": inputs.after_lever,
+        "regression_check": {
+            "status": inputs.regression_check_status,
+            "checked_cells": list(inputs.regression_checked_cells),
+            "regressed_cells": list(inputs.regression_regressed_cells),
+            "noise_floor_threshold": inputs.noise_floor_threshold,
+        },
+        "noise_floor_source": inputs.noise_floor_source,
+        "apparatus": {
+            "qpb_commit_sha": _git_sha(inputs.qpb_dir),
+            "target_commit_sha": (
+                _git_sha(inputs.target_dir) if inputs.target_dir else ""
+            ),
+            "phase_scope": inputs.phase_scope,
+            "iteration_strategies": list(inputs.iteration_strategies),
+            "runner": inputs.runner,
+            "model": inputs.model,
+            "wall_clock_seconds": inputs.wall_clock_seconds,
+        },
+        "notes": inputs.notes,
+    }
+
+
+def write_cell(
+    record: dict, output_dir: Path, run_timestamp: Optional[str] = None
+) -> Path:
+    """Write the record under ``<output_dir>/<run_timestamp>/<benchmark>-<version>-<bug_id>.json``.
+
+    Returns the absolute output path. Creates parent directories.
+    """
+    ts = run_timestamp or _utc_now_path_ts()
+    cell_dir = output_dir / ts
+    cell_dir.mkdir(parents=True, exist_ok=True)
+    filename = (
+        f"{record['benchmark']}-{record['historical_qpb_version']}-"
+        f"{record['historical_bug_id']}.json"
+    )
+    out = cell_dir / filename
+    out.write_text(
+        json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return out
+
+
+def _invoke_runner(
+    target_dir: Path, phase_scope: str, runner: str, model: str
+) -> int:
+    """Replay-mode helper: invoke ``python3 -m bin.run_playbook`` against
+    the target.
+
+    Returns the wall-clock seconds the run took. Subprocess stdout /
+    stderr are inherited so the operator sees progress.
+    """
+    runner_flag = {
+        "claude": "--claude",
+        "copilot": "--copilot",
+        "codex": "--codex",
+        "cursor": "--cursor",
+    }.get(runner, "--copilot")
+    argv = [
+        sys.executable, "-m", "bin.run_playbook",
+        runner_flag, "--phase", phase_scope,
+    ]
+    if model:
+        argv.extend(["--model", model])
+    argv.append(str(target_dir))
+    start = time.monotonic()
+    subprocess.run(argv, check=False)
+    return int(time.monotonic() - start)
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="regression_replay",
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("--benchmark", required=True, help="Short benchmark name (e.g., chi).")
+    p.add_argument(
+        "--historical-version",
+        required=True,
+        help="Historical benchmark version label (e.g., 1.3.45).",
+    )
+    p.add_argument(
+        "--historical-bugs",
+        required=True,
+        type=Path,
+        help="Path to the historical baseline BUGS.md.",
+    )
+    p.add_argument(
+        "--current-bugs",
+        type=Path,
+        default=None,
+        help=(
+            "Path to the BUGS.md produced by the current QPB run. "
+            "If --invoke-runner is given, this defaults to "
+            "<target>/quality/BUGS.md."
+        ),
+    )
+    p.add_argument(
+        "--target-dir",
+        type=Path,
+        default=None,
+        help="Target benchmark directory. Required when --invoke-runner is given.",
+    )
+    p.add_argument(
+        "--bug-id",
+        default="all",
+        help="Historical bug ID this cell scopes to, or 'all' for full-set recall.",
+    )
+    p.add_argument(
+        "--invoke-runner",
+        action="store_true",
+        help=(
+            "Invoke `python3 -m bin.run_playbook` against --target-dir before "
+            "measuring. Default is measurement-only (read --current-bugs as-is)."
+        ),
+    )
+    p.add_argument("--lever-id", default=None)
+    p.add_argument("--lever-summary", default=None)
+    p.add_argument("--before-cell", default=None, help="Path to the before-lever cell.")
+    p.add_argument("--after-cell", default=None, help="Path to the after-lever cell.")
+    p.add_argument("--phase-scope", default="1,2,3")
+    p.add_argument("--runner", default="claude")
+    p.add_argument("--model", default="")
+    p.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_OUTPUT_DIR,
+        help="Cell output root (default: metrics/regression_replay).",
+    )
+    p.add_argument(
+        "--run-timestamp",
+        default=None,
+        help=(
+            "Override the auto-generated YYYYMMDDTHHMMSSZ run timestamp "
+            "(useful when bundling related cells under one directory)."
+        ),
+    )
+    p.add_argument(
+        "--noise-floor",
+        type=float,
+        default=DEFAULT_NOISE_FLOOR,
+        help="Noise-floor threshold for the regression-check field.",
+    )
+    p.add_argument("--notes", default="")
+    return p
+
+
+def _qpb_dir() -> Path:
+    return Path(__file__).resolve().parent.parent
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = _build_parser().parse_args(argv)
+
+    qpb_dir = _qpb_dir()
+
+    wall_clock = 0
+    if args.invoke_runner:
+        if args.target_dir is None:
+            print(
+                "ERROR: --invoke-runner requires --target-dir", file=sys.stderr
+            )
+            return 2
+        wall_clock = _invoke_runner(
+            args.target_dir, args.phase_scope, args.runner, args.model
+        )
+        current_bugs = args.current_bugs or (
+            args.target_dir / "quality" / "BUGS.md"
+        )
+    else:
+        if args.current_bugs is None:
+            print(
+                "ERROR: --current-bugs is required in measurement-only mode",
+                file=sys.stderr,
+            )
+            return 2
+        current_bugs = args.current_bugs
+
+    historical = parse_bugs_md(args.historical_bugs)
+    current = parse_bugs_md(current_bugs)
+    measurement = measure_recall(historical, current)
+
+    inputs = CellInputs(
+        benchmark=args.benchmark,
+        historical_qpb_version=args.historical_version,
+        historical_bug_id=args.bug_id,
+        historical_path=args.historical_bugs,
+        current_path=current_bugs,
+        target_dir=args.target_dir,
+        qpb_dir=qpb_dir,
+        lever_under_test=args.lever_id,
+        lever_change_summary=args.lever_summary,
+        before_lever=args.before_cell,
+        after_lever=args.after_cell,
+        phase_scope=args.phase_scope,
+        runner=args.runner,
+        model=args.model,
+        wall_clock_seconds=wall_clock,
+        noise_floor_threshold=args.noise_floor,
+        notes=args.notes,
+    )
+
+    record = build_cell_record(inputs, measurement)
+    output_path = write_cell(record, args.output_dir, args.run_timestamp)
+
+    print(f"regression_replay: wrote {output_path}")
+    print(
+        f"  recall: {measurement.recall:.2%} "
+        f"({len(measurement.recovered_ids)}/{len(historical)} historical bugs recovered)"
+    )
+    if measurement.missed_ids:
+        print(f"  missed: {', '.join(measurement.missed_ids)}")
+    if measurement.spurious_ids:
+        print(f"  spurious (current-only): {', '.join(measurement.spurious_ids)}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
