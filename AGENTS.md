@@ -41,9 +41,10 @@ Use the canonical installer from this checkout:
 Default `--layout auto` updates detected existing layouts and installs the
 Claude layout for a fresh target. Use `--layout all` to install Claude, Copilot
 flat, and Copilot nested layouts; use `--dry-run` to preview changes. The
-installer preserves `quality/`, root `AGENTS.md`, existing `reference_docs/`
-contents, and `.gitignore`, and backs up locally modified installed files under
-`.quality-playbook-backups/`.
+installer updates `SKILL.md`, `references/`, `phase_prompts/`, `quality_gate.py`,
+`LICENSE.txt`, and QPB agent files. It preserves `quality/`, root `AGENTS.md`,
+existing `reference_docs/` contents, and `.gitignore`, and backs up locally
+modified installed files under `.quality-playbook-backups/`.
 
 `install-claude-code.sh` remains as a compatibility wrapper for Claude-only
 installs:
