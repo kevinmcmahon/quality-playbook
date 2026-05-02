@@ -60,13 +60,47 @@ requirements. The results are weaker but valid.
 
 ### Step 2: Install the skill
 
-Copy the skill files into your project:
+From the Quality Playbook checkout, install or update the skill into your target
+project:
 
-**Claude Code:**
+```bash
+./install-quality-playbook.sh /path/to/target-project
+```
+
+The default `auto` layout updates any existing Quality Playbook layout it finds.
+For a fresh project, it installs the Claude Code layout. To install every
+supported layout, run:
+
+```bash
+./install-quality-playbook.sh --layout all /path/to/target-project
+```
+
+Supported layouts are `claude`, `copilot-flat`, and `copilot-nested`; add
+`--dry-run` to preview creates, replacements, backups, and removals. The
+installer writes `.quality-playbook-install.json`, backs up locally modified
+installed files under `.quality-playbook-backups/`, removes stale playbook-owned
+files, updates `SKILL.md`, `references/`, `phase_prompts/`, `quality_gate.py`,
+`LICENSE.txt`, and QPB agent files, and creates `reference_docs/cite` without
+touching existing `reference_docs/` contents, `quality/`, root `AGENTS.md`, or
+`.gitignore`.
+
+`install-claude-code.sh` remains as a compatibility wrapper and installs or
+updates only the Claude Code layout:
+
+```bash
+./install-claude-code.sh /path/to/target-project
+```
+
+Manual copy commands are fallback-only for environments that cannot run the
+installer:
+
+**Claude Code fallback:**
 ```bash
 mkdir -p .claude/skills/quality-playbook/references
+mkdir -p .claude/skills/quality-playbook/phase_prompts
 cp SKILL.md .claude/skills/quality-playbook/SKILL.md
 cp references/* .claude/skills/quality-playbook/references/
+cp phase_prompts/* .claude/skills/quality-playbook/phase_prompts/
 cp .github/skills/quality_gate/quality_gate.py .claude/skills/quality-playbook/quality_gate.py
 # v1.5.2: single reference_docs/ tree at the target repo root.
 # No README ships — cite/ contents are adopter-provided plaintext.
@@ -77,22 +111,26 @@ mkdir -p reference_docs reference_docs/cite
 cat skill-template.gitignore >> .gitignore
 ```
 
-**GitHub Copilot (flat layout):**
+**GitHub Copilot flat fallback:**
 ```bash
 mkdir -p .github/skills/references
+mkdir -p .github/skills/phase_prompts
 cp SKILL.md .github/skills/SKILL.md
 cp references/* .github/skills/references/
+cp phase_prompts/* .github/skills/phase_prompts/
 cp .github/skills/quality_gate/quality_gate.py .github/skills/quality_gate.py
 # v1.5.2: single reference_docs/ tree at the target repo root.
 mkdir -p reference_docs reference_docs/cite
 cat skill-template.gitignore >> .gitignore
 ```
 
-**GitHub Copilot (nested layout):**
+**GitHub Copilot nested fallback:**
 ```bash
 mkdir -p .github/skills/quality-playbook/references
+mkdir -p .github/skills/quality-playbook/phase_prompts
 cp SKILL.md .github/skills/quality-playbook/SKILL.md
 cp references/* .github/skills/quality-playbook/references/
+cp phase_prompts/* .github/skills/quality-playbook/phase_prompts/
 cp .github/skills/quality_gate/quality_gate.py .github/skills/quality-playbook/quality_gate.py
 # v1.5.2: single reference_docs/ tree at the target repo root.
 mkdir -p reference_docs reference_docs/cite

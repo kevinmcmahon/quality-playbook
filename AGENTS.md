@@ -32,9 +32,10 @@ Use the canonical installer from this checkout:
 Default `--layout auto` updates detected existing layouts and installs the
 Claude layout for a fresh target. Use `--layout all` to install Claude, Copilot
 flat, and Copilot nested layouts; use `--dry-run` to preview changes. The
-installer preserves `quality/`, root `AGENTS.md`, existing `reference_docs/`
-contents, and `.gitignore`, and backs up locally modified installed files under
-`.quality-playbook-backups/`.
+installer updates `SKILL.md`, `references/`, `phase_prompts/`, `quality_gate.py`,
+`LICENSE.txt`, and QPB agent files. It preserves `quality/`, root `AGENTS.md`,
+existing `reference_docs/` contents, and `.gitignore`, and backs up locally
+modified installed files under `.quality-playbook-backups/`.
 
 `install-claude-code.sh` remains as a compatibility wrapper for Claude-only
 installs:
@@ -48,8 +49,10 @@ Manual copy commands are fallback-only when the installer cannot be run:
 **GitHub Copilot fallback:**
 ```bash
 mkdir -p .github/skills/references
+mkdir -p .github/skills/phase_prompts
 cp SKILL.md .github/skills/SKILL.md
 cp references/* .github/skills/references/
+cp phase_prompts/* .github/skills/phase_prompts/
 cp .github/skills/quality_gate/quality_gate.py .github/skills/quality_gate.py
 # v1.5.2+: single reference_docs/ tree at the target repo root.
 mkdir -p reference_docs reference_docs/cite
@@ -60,8 +63,10 @@ cat skill-template.gitignore >> .gitignore
 **Claude Code fallback:**
 ```bash
 mkdir -p .claude/skills/quality-playbook/references
+mkdir -p .claude/skills/quality-playbook/phase_prompts
 cp SKILL.md .claude/skills/quality-playbook/SKILL.md
 cp references/* .claude/skills/quality-playbook/references/
+cp phase_prompts/* .claude/skills/quality-playbook/phase_prompts/
 cp .github/skills/quality_gate/quality_gate.py .claude/skills/quality-playbook/quality_gate.py
 # v1.5.2+: single reference_docs/ tree at the target repo root.
 mkdir -p reference_docs reference_docs/cite

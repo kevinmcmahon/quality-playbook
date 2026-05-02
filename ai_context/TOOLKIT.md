@@ -33,14 +33,44 @@ The skill file is `SKILL.md`. The iteration reference is `references/iteration.m
 
 The user wants to run the quality playbook on a codebase. Here's what to do:
 
-1. **Copy skill files into the repo.** The playbook expects its files in one of four documented install locations, and every component (runner, gate, orchestrator agents) checks all four in order:
+1. **Install or update the skill files.** Prefer the canonical installer from
+   the Quality Playbook checkout:
 
-   1. **Repo root (source checkout):** `SKILL.md`, `references/`, `quality_gate.py` at the project root. Useful when running the playbook out of the quality-playbook checkout itself.
-   2. **Claude Code:** `.claude/skills/quality-playbook/SKILL.md`, `.claude/skills/quality-playbook/references/`, `.claude/skills/quality-playbook/quality_gate.py`.
-   3. **GitHub Copilot (flat):** `.github/skills/SKILL.md`, `.github/skills/references/`, `.github/skills/quality_gate.py`.
-   4. **GitHub Copilot (nested):** `.github/skills/quality-playbook/SKILL.md`, `.github/skills/quality-playbook/references/`, `.github/skills/quality-playbook/quality_gate.py`.
+   ```bash
+   ./install-quality-playbook.sh /path/to/target-project
+   ```
 
-   Create the directories if they don't exist. Copy from wherever the user has the playbook files. The source tree has the gate script inside a package directory with tests (`.github/skills/quality_gate/quality_gate.py` plus a `tests/` subdirectory) — target repos only need the standalone `quality_gate.py` file itself, not the package. `repos/setup_repos.sh` handles this automatically: it copies just the module file into each target's `.github/skills/quality_gate.py`.
+   Default `--layout auto` updates every existing Quality Playbook layout it
+   detects; if the target has no existing layout, it installs the Claude Code
+   layout. Use `--layout all` to install Claude, Copilot flat, and Copilot
+   nested layouts, or choose one layout with `--layout claude`,
+   `--layout copilot-flat`, or `--layout copilot-nested`. Use `--dry-run` to
+   preview creates, replacements, backups, and removals.
+
+   The installer writes `.quality-playbook-install.json`, backs up locally
+   modified installed files under `.quality-playbook-backups/`, removes stale
+   playbook-owned files, updates `SKILL.md`, `references/`, `phase_prompts/`,
+   `quality_gate.py`, `LICENSE.txt`, and QPB agent files, and creates
+   `reference_docs/cite`. It does not touch `quality/`, root `AGENTS.md`,
+   existing `reference_docs/` contents, or `.gitignore`.
+   `install-claude-code.sh` remains as a compatibility wrapper for Claude-only
+   installs.
+
+   If the installer cannot be run, copy files manually into one of four
+   documented install locations. Every component (runner, gate, orchestrator
+   agents) checks all four in order:
+
+   1. **Repo root (source checkout):** `SKILL.md`, `references/`, `phase_prompts/`, `quality_gate.py` at the project root. Useful when running the playbook out of the quality-playbook checkout itself.
+   2. **Claude Code:** `.claude/skills/quality-playbook/SKILL.md`, `.claude/skills/quality-playbook/references/`, `.claude/skills/quality-playbook/phase_prompts/`, `.claude/skills/quality-playbook/quality_gate.py`.
+   3. **GitHub Copilot (flat):** `.github/skills/SKILL.md`, `.github/skills/references/`, `.github/skills/phase_prompts/`, `.github/skills/quality_gate.py`.
+   4. **GitHub Copilot (nested):** `.github/skills/quality-playbook/SKILL.md`, `.github/skills/quality-playbook/references/`, `.github/skills/quality-playbook/phase_prompts/`, `.github/skills/quality-playbook/quality_gate.py`.
+
+   For manual fallback, create the directories if they don't exist and copy
+   from wherever the user has the playbook files. The source tree has the gate
+   script inside a package directory with tests
+   (`.github/skills/quality_gate/quality_gate.py` plus a `tests/` subdirectory)
+   — target repos only need the standalone `quality_gate.py` file itself, not
+   the package.
 
 2. **Add documentation (strongly recommended).**
 
@@ -162,25 +192,26 @@ Key properties:
 
 ### Setup script
 
-`repos/setup_repos.sh` still copies skill files into one or more target repos. Core logic:
+Use `install-quality-playbook.sh` for automation too. It is idempotent,
+manifest-aware, and preserves user-owned playbook output:
 
 ```bash
-# Adapt paths for the user's environment
-SKILL_DIR="/path/to/quality-playbook"   # where SKILL.md etc. live
-REPO_DIR="/path/to/repos"               # where target repos live
+QPB_DIR="/path/to/quality-playbook"
 
 for repo in "$@"; do
-    dst="${REPO_DIR}/${repo}/.github/skills"
-    mkdir -p "${dst}/references"
-    cp "${SKILL_DIR}/SKILL.md" "${dst}/SKILL.md"
-    # iteration.md is now in references/ — copied by the wildcard below
-    cp "${SKILL_DIR}/.github/skills/quality_gate/quality_gate.py" "${dst}/quality_gate.py"
-    cp "${SKILL_DIR}/references/"*.md "${dst}/references/"
-    echo "Set up ${repo}"
+    "${QPB_DIR}/install-quality-playbook.sh" "${repo}"
 done
 ```
 
-On Windows (PowerShell), replace the loop with `foreach ($repo in $args)` and use `Copy-Item` / `New-Item -ItemType Directory`.
+Use `--layout all` when a target should support every documented agent layout:
+
+```bash
+"${QPB_DIR}/install-quality-playbook.sh" --layout all /path/to/target-repo
+```
+
+Manual copy loops are fallback-only for environments where the installer cannot
+run. On Windows (PowerShell), either run the script from a Bash-compatible shell
+or copy the same files manually with `Copy-Item` / `New-Item -ItemType Directory`.
 
 ### Runner behavior
 
